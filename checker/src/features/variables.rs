@@ -28,6 +28,7 @@ pub enum VariableOrImport {
 		/// be turned into a [`VariableId`]
 		declared_at: SpanWithSource,
 		context: ContextLocation,
+		allow_reregistration: bool,
 	},
 	MutableImport {
 		of: VariableId,
@@ -149,6 +150,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 				Logical::Pure(_) => todo!(),
 				Logical::Or { .. } => todo!(),
 				Logical::Implies { .. } => todo!(),
+				Logical::BasedOnKey { .. } => todo!(),
 			}
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
@@ -181,10 +183,15 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 				under,
 				checking_data,
 				position,
-				true,
+				crate::types::properties::AccessMode::Regular,
 			)
 			.map_or(TypeId::ERROR_TYPE, Instance::get_value)
 	});
 
-	VariableRegisterArguments { constant: on.constant, space, initial_value }
+	VariableRegisterArguments {
+		constant: on.constant,
+		space,
+		initial_value,
+		allow_reregistration: on.allow_reregistration,
+	}
 }

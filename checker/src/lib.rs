@@ -67,7 +67,7 @@ where
 
 pub use source_map::{self, SourceId, Span};
 
-use crate::subtyping::State;
+use crate::{context::information::ModuleInformation, subtyping::State};
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
@@ -160,6 +160,15 @@ pub trait ASTImplementation: Sized {
 	);
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
+
+	/// This is for inference
+	///
+	/// Return [`TypeId::ERROR_TYPE`] if cannot find
+	fn expression_quick_lookup<'a>(
+		expression: &'a Self::Expression<'a>,
+		environment: &Environment,
+		types: &TypeStore,
+	) -> TypeId;
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
@@ -412,16 +421,16 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 	#[must_use]
 	pub fn get_type_at_position(&self, path: &str, pos: u32, debug: bool) -> Option<String> {
 		let source = self.module_contents.get_source_at_path(path.as_ref())?;
-		self.modules.get(&source).expect("no module").get_instance_at_position(pos).map(
-			|instance| {
-				crate::types::printing::print_type(
-					instance.get_value_on_ref(),
-					&self.types,
-					&self.top_level_information,
-					debug,
-				)
-			},
-		)
+		let module = &self.modules.get(&source)?;
+
+		module.get_instance_at_position(pos).map(|instance| {
+			crate::types::printing::print_type(
+				instance.get_value_on_ref(),
+				&self.types,
+				&ModuleInformation { top: &self.top_level_information, module: &module.info },
+				debug,
+			)
+		})
 	}
 
 	#[must_use]
@@ -438,7 +447,10 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 					crate::types::printing::print_type(
 						instance.get_value_on_ref(),
 						&self.types,
-						&self.top_level_information,
+						&ModuleInformation {
+							top: &self.top_level_information,
+							module: &module.info,
+						},
 						debug,
 					),
 					SpanWithSource { start: range.start, end: range.end, source },
@@ -471,7 +483,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 #[allow(clippy::needless_pass_by_value)]
 pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	entry_points: Vec<PathBuf>,
-	type_definition_files: HashSet<PathBuf>,
+	type_definition_files: Vec<PathBuf>,
 	resolver: T,
 	options: TypeCheckOptions,
 	parser_requirements: A::ParserRequirements,
@@ -483,7 +495,11 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
 	crate::utilities::notify!("--- Reading definition files from {:?} ---", type_definition_files);
+
+	// TODO if env === hide definition file
+	// crate::utilities::set_debug_mode(false);
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
+	// crate::utilities::set_debug_mode(true);
 
 	if checking_data.diagnostics_container.has_error() {
 		return CheckOutput {
@@ -516,7 +532,13 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			match module {
 				Ok(module) => {
-					root.new_module_context(source, module, &mut checking_data);
+					let evaluate_exports = checking_data.options.evaluate_exports;
+
+					let module = root.new_module_context(source, module, &mut checking_data);
+
+					if evaluate_exports {
+						module.exported.clone().evaluate_generally(&root, &mut checking_data.types);
+					}
 				}
 				Err(err) => {
 					checking_data.diagnostics_container.add_error(err);
@@ -585,7 +607,7 @@ pub(crate) struct Cache {
 }
 
 pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	type_definition_files: HashSet<PathBuf>,
+	type_definition_files: Vec<PathBuf>,
 	root: &mut RootContext,
 	checking_data: &mut CheckingData<T, A>,
 ) {
@@ -604,51 +626,8 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 		};
 
 		match file {
-			File::Binary(mut content) => {
-				crate::utilities::notify!("Using cache :)");
-				assert_eq!(length, 1, "only a single cache is current supported");
-
-				let vec = content[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
-					.to_owned();
-
-				let at_end =
-					<u32 as BinarySerializable>::deserialize(&mut vec.into_iter(), SourceId::NULL);
-
-				let source_id = {
-					// Get source and content which is at the end.
-					let mut drain = content
-						.drain((CACHE_MARKER.len() + U32_BYTES as usize + at_end as usize)..);
-
-					// Okay as end
-					let (_source_id, path) =
-						<(SourceId, String) as BinarySerializable>::deserialize(
-							&mut drain,
-							SourceId::NULL,
-						);
-
-					let get_source_at_path =
-						checking_data.modules.files.get_source_at_path(Path::new(&path));
-
-					if let Some(source_id) = get_source_at_path {
-						eprintln!("reusing source id {source_id:?}");
-						source_id
-					} else {
-						// Collect from end
-						let source_content = String::from_utf8(drain.collect::<Vec<_>>()).unwrap();
-						checking_data.modules.files.new_source_id(path.into(), source_content)
-					}
-				};
-
-				let mut bytes = content.drain((CACHE_MARKER.len() + U32_BYTES as usize)..);
-
-				// TODO WIP
-				let Cache { variables, named_types, info, types } =
-					Cache::deserialize(&mut bytes, source_id);
-
-				root.variables = variables;
-				root.named_types = named_types;
-				root.info = info;
-				checking_data.types = types;
+			File::Binary(content) => {
+				deserialize_cache(length, content, checking_data, root);
 			}
 			File::Source(source_id, content) => {
 				let result = A::definition_module_from_string(
@@ -677,6 +656,53 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 	}
 }
 
+fn deserialize_cache<T: ReadFromFS, A: ASTImplementation>(
+	length: usize,
+	mut content: Vec<u8>,
+	checking_data: &mut CheckingData<T, A>,
+	root: &mut RootContext,
+) {
+	crate::utilities::notify!("Using cache :)");
+	assert_eq!(length, 1, "only a single cache is current supported");
+
+	let end_content =
+		content[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)].to_owned();
+
+	let at_end =
+		<u32 as BinarySerializable>::deserialize(&mut end_content.into_iter(), SourceId::NULL);
+
+	let source_id = {
+		// Get source and content which is at the end.
+		let mut drain =
+			content.drain((CACHE_MARKER.len() + U32_BYTES as usize + at_end as usize)..);
+
+		// Okay as end
+		let (_source_id, path) =
+			<(SourceId, String) as BinarySerializable>::deserialize(&mut drain, SourceId::NULL);
+
+		let get_source_at_path = checking_data.modules.files.get_source_at_path(Path::new(&path));
+
+		if let Some(source_id) = get_source_at_path {
+			eprintln!("reusing source id {source_id:?}");
+			source_id
+		} else {
+			// Collect from end
+			let source_content = String::from_utf8(drain.collect::<Vec<_>>()).unwrap();
+			checking_data.modules.files.new_source_id(path.into(), source_content)
+		}
+	};
+
+	let mut bytes = content.drain((CACHE_MARKER.len() + U32_BYTES as usize)..);
+
+	// TODO WIP
+	let Cache { variables, named_types, info, types } = Cache::deserialize(&mut bytes, source_id);
+
+	root.variables = variables;
+	root.named_types = named_types;
+	root.info = info;
+	checking_data.types = types;
+}
+
 const U32_BYTES: u32 = u32::BITS / u8::BITS;
 
 pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -689,21 +715,20 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
-	add_definition_files_to_root(
-		HashSet::from_iter([on.to_path_buf()]),
-		&mut root,
-		&mut checking_data,
-	);
+	{
+		add_definition_files_to_root(vec![on.to_path_buf()], &mut root, &mut checking_data);
 
-	assert!(
-		!checking_data.diagnostics_container.has_error(),
-		"found error in definition file {:#?}",
-		checking_data.diagnostics_container.get_diagnostics()
-	);
+		assert!(
+			!checking_data.diagnostics_container.has_error(),
+			"found error in definition file {:#?}",
+			checking_data.diagnostics_container.get_diagnostics()
+		);
+	}
 
 	let mut buf = CACHE_MARKER.to_vec();
 
-	buf.extend_from_slice(&0_u32.to_le_bytes());
+	// This reserves a u32 bytes which marks where the content lives
+	buf.extend_from_slice(&[0u8; (u32::BITS / u8::BITS) as usize]);
 
 	let cache = Cache {
 		variables: root.variables,
@@ -711,19 +736,25 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		info: root.info,
 		types: checking_data.types,
 	};
+
 	cache.serialize(&mut buf);
 
-	let cache_len: usize = buf.len() - CACHE_MARKER.len() - U32_BYTES as usize;
-	// Set length
-	buf[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
-		.copy_from_slice(&(cache_len as u32).to_le_bytes());
+	// Add content
+	{
+		let cache_len: usize = buf.len() - CACHE_MARKER.len() - U32_BYTES as usize;
+		// Set length
+		buf[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
+			.copy_from_slice(&(cache_len as u32).to_le_bytes());
 
-	// TODO not great
-	let Some(File::Source(source, content)) = checking_data.modules.get_file(on) else { panic!() };
+		// TODO not great
+		let Some(File::Source(source, content)) = checking_data.modules.get_file(on) else {
+			panic!()
+		};
 
-	let path = on.to_str().unwrap().to_owned();
-	(source, path).serialize(&mut buf);
-	buf.extend_from_slice(content.as_bytes());
+		let path = on.to_str().unwrap().to_owned();
+		(source, path).serialize(&mut buf);
+		buf.extend_from_slice(content.as_bytes());
+	}
 
 	buf
 }

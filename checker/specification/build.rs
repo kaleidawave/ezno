@@ -134,7 +134,8 @@ fn markdown_lines_append_test_to_rust(
 
 fn heading_to_rust_identifier(heading: &str) -> String {
 	heading
-		.replace([' ', '-', '/', '&', '.', '+'], "_")
-		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")
+		.replace("...", "")
+		.replace([' ', '-', '/', '.', '+'], "_")
+		.replace(['*', '\'', '`', '"', '&', '!', '(', ')', ','], "")
 		.to_lowercase()
 }

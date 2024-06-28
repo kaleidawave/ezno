@@ -5,6 +5,7 @@
 use crate::{
 	context::{environment::Label, information::InformationChain},
 	diagnostics,
+	features::CannotDeleteFromError,
 	types::{
 		calling::FunctionCallingError, printing::print_type_with_type_arguments, GenericChain,
 		GenericChainLink,
@@ -220,20 +221,29 @@ impl TypeStringRepresentation {
 				crate::PropertyValue::Deleted => todo!(),
 				crate::PropertyValue::ConditionallyExists { .. } => todo!(),
 			},
-			crate::context::Logical::Or { .. } => {
-				todo!()
-				// let left = Self::from_property_constraint(*left, None, ctx, types, debug_mode);
-				// let right = Self::from_property_constraint(*right, None, ctx, types, debug_mode);
+			crate::context::Logical::Or { condition, left, right } => {
+				let left_right = (*left, *right);
+				if let (Ok(left), Ok(right)) = left_right {
+					let left = Self::from_property_constraint(left, None, ctx, types, debug_mode);
+					let right = Self::from_property_constraint(right, None, ctx, types, debug_mode);
 
-				// #[allow(irrefutable_let_patterns)]
-				// if let (TypeStringRepresentation::Type(mut l), TypeStringRepresentation::Type(r)) =
-				// 	(left, right)
-				// {
-				// 	l.push_str(&r);
-				// 	TypeStringRepresentation::Type(l)
-				// } else {
-				// 	unreachable!()
-				// }
+					#[allow(irrefutable_let_patterns)]
+					if let (
+						TypeStringRepresentation::Type(mut l),
+						TypeStringRepresentation::Type(r),
+					) = (left, right)
+					{
+						crate::utilities::notify!("Here?");
+						l.push_str(" | ");
+						l.push_str(&r);
+						TypeStringRepresentation::Type(l)
+					} else {
+						unreachable!()
+					}
+				} else {
+					crate::utilities::notify!("Here {:?} base on {:?}", left_right, condition);
+					TypeStringRepresentation::Type("TODO".to_owned())
+				}
 			}
 			crate::context::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
@@ -251,6 +261,7 @@ impl TypeStringRepresentation {
 					debug_mode,
 				)
 			}
+			crate::Logical::BasedOnKey { .. } => todo!(),
 		}
 	}
 }
@@ -283,6 +294,9 @@ pub(crate) enum TypeCheckError<'a> {
 	FunctionCallingError(FunctionCallingError),
 	JSXCallingError(FunctionCallingError),
 	TemplateLiteralError(FunctionCallingError),
+	/// From calling super
+	SuperCallError(FunctionCallingError),
+	/// When accessing
 	PropertyDoesNotExist {
 		on: TypeStringRepresentation,
 		property: PropertyRepresentation,
@@ -297,6 +311,7 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 	CouldNotFindType(&'a str, SpanWithSource),
 	TypeHasNoGenericParameters(String, SpanWithSource),
+	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
 	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
 	InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
@@ -308,48 +323,29 @@ pub(crate) enum TypeCheckError<'a> {
 		annotation_position: SpanWithSource,
 		returned_position: SpanWithSource,
 	},
-	// TODO are these the same errors?
-	TypeIsNotIndexable(TypeStringRepresentation),
-	TypeIsNotIterable(TypeStringRepresentation),
-	// This could be a syntax error but that is difficult to type...
+	/// This could be a syntax error but that is difficult to type...
 	NonTopLevelExport(SpanWithSource),
 	FieldNotExported {
 		file: &'a str,
 		importing: &'a str,
 		position: SpanWithSource,
 	},
-	InvalidJSXAttribute {
-		attribute_name: String,
-		attribute_type: TypeStringRepresentation,
-		value_type: TypeStringRepresentation,
-		// TODO
-		attribute_type_site: (),
-		value_site: SpanWithSource,
-	},
-	InvalidJSXInterpolatedValue {
-		interpolation_site: SpanWithSource,
-		expected: TypeStringRepresentation,
-		found: TypeStringRepresentation,
-	},
-	/// for the `satisfies` keyword
+	/// For the `satisfies` keyword
 	NotSatisfied {
 		at: SpanWithSource,
 		expected: TypeStringRepresentation,
 		found: TypeStringRepresentation,
 	},
-	// catch type is not compatible with thrown type
+	/// Catch type is not compatible with thrown type
 	CatchTypeDoesNotMatch {
 		at: SpanWithSource,
 		expected: TypeStringRepresentation,
 		found: TypeStringRepresentation,
 	},
+	/// Something the checker does not supported
 	Unsupported {
 		thing: &'static str,
 		at: SpanWithSource,
-	},
-	ReDeclaredVariable {
-		name: &'a str,
-		position: SpanWithSource,
 	},
 	InvalidDefaultParameter {
 		at: SpanWithSource,
@@ -362,9 +358,6 @@ pub(crate) enum TypeCheckError<'a> {
 		function_type: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
-	StatementsNotRun {
-		between: SpanWithSource,
-	},
 	CannotRedeclareVariable {
 		name: String,
 		position: SpanWithSource,
@@ -375,7 +368,6 @@ pub(crate) enum TypeCheckError<'a> {
 		argument: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
-	NotDefinedOperator(&'static str, SpanWithSource),
 	PropertyNotWriteable(SpanWithSource),
 	NotTopLevelImport(SpanWithSource),
 	DoubleDefaultExport(SpanWithSource),
@@ -391,7 +383,6 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	TypeNeedsTypeArguments(&'a str, SpanWithSource),
-	CannotFindType(&'a str, SpanWithSource),
 	TypeAlreadyDeclared {
 		name: String,
 		position: SpanWithSource,
@@ -423,6 +414,10 @@ pub(crate) enum TypeCheckError<'a> {
 		base: TypeStringRepresentation,
 		overload: TypeStringRepresentation,
 	},
+	FunctionWithoutBodyNotAllowedHere {
+		position: SpanWithSource,
+	},
+	CannotDeleteProperty(CannotDeleteFromError),
 }
 
 impl From<TypeCheckError<'_>> for Diagnostic {
@@ -457,6 +452,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				TypeCheckError::FunctionCallingError(error) => function_calling_error_diagnostic(error, kind, ""),
 				TypeCheckError::JSXCallingError(error) => function_calling_error_diagnostic(error, kind, " (in JSX)"),
 				TypeCheckError::TemplateLiteralError(error) => function_calling_error_diagnostic(error, kind, " (in template literal)"),
+				TypeCheckError::SuperCallError(error) => function_calling_error_diagnostic(error, kind, " (in super call)"),
 				TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {
 						variable_type,
@@ -504,19 +500,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 							kind,
 						}
 					}
-				},
-				TypeCheckError::InvalidJSXAttribute {
-					attribute_name,
-					attribute_type,
-					value_type,
-					attribute_type_site: _variable_site,
-					value_site,
-				} => Diagnostic::Position {
-					reason: format!(
-						"Type {attribute_name} is not assignable to {value_type} attribute of type {attribute_type}",
-					),
-					position: value_site,
-					kind,
 				},
 				TypeCheckError::ReturnedTypeDoesNotMatch {
 					annotation_position,
@@ -566,8 +549,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				TypeCheckError::InvalidComparison(_, _) => todo!(),
 				TypeCheckError::InvalidAddition(_, _) => todo!(),
 				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
-				TypeCheckError::TypeIsNotIndexable(_) => todo!(),
-				TypeCheckError::TypeIsNotIterable(_) => todo!(),
 				TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
 					reason: "Cannot export at not top level".to_owned(),
 					position,
@@ -580,11 +561,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						kind,
 					}
 				}
-				TypeCheckError::InvalidJSXInterpolatedValue {
-					interpolation_site: _,
-					expected: _,
-					found: _,
-				} => todo!(),
 				TypeCheckError::RestParameterAnnotationShouldBeArrayType(pos) => {
 					Diagnostic::Position {
 						reason: "Rest parameter annotation should be array type".to_owned(),
@@ -597,13 +573,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position: at,
 					kind,
 				},
-				TypeCheckError::ReDeclaredVariable { name, position } => {
-					Diagnostic::Position {
-						reason: format!("Cannot declare variable {name}"),
-						position,
-						kind,
-					}
-				}
 				TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,
@@ -613,11 +582,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						"{function_constraint} constraint on function does not match synthesised form {function_type}",
 					),
 					position,
-					kind,
-				},
-				TypeCheckError::StatementsNotRun { between } => Diagnostic::Position {
-					reason: "Statements are never run".to_owned(),
-					position: between,
 					kind,
 				},
 				TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
@@ -632,11 +596,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						kind,
 					}
 				}
-				TypeCheckError::NotDefinedOperator(op, position) => Diagnostic::Position {
-					reason: format!("Operator not typed {op}"),
-					position,
-					kind,
-				},
 				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
 					reason: "Property not writeable".into(),
 					position,
@@ -680,11 +639,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				},
 				TypeCheckError::TypeNeedsTypeArguments(ty, position) => Diagnostic::Position {
 					reason: format!("Type {ty} requires type arguments"),
-					position,
-					kind,
-				},
-				TypeCheckError::CannotFindType(ty, position) => Diagnostic::Position {
-					reason: format!("Cannot find type {ty}"),
 					position,
 					kind,
 				},
@@ -740,6 +694,20 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					)],
 					position: overload_position,
 					kind,
+				},
+				TypeCheckError::FunctionWithoutBodyNotAllowedHere { position } => {
+					Diagnostic::Position {
+						reason: "Function without body not allowed here".to_owned(),
+						position,
+						kind,
+					}
+				}
+				TypeCheckError::CannotDeleteProperty(CannotDeleteFromError { constraint, position }) => {
+					Diagnostic::Position {
+						reason: format!("Cannot delete from object constrained to {constraint}"),
+						position,
+						kind,
+					}
 				}
 			}
 	}
@@ -775,6 +743,12 @@ pub enum TypeCheckWarning {
 		position: SpanWithSource,
 	},
 	InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
+	/// TODO WIP
+	ConditionalExceptionInvoked {
+		value: TypeStringRepresentation,
+		/// Should be set
+		call_site: SpanWithSource,
+	},
 	Unreachable(SpanWithSource),
 }
 
@@ -839,9 +813,21 @@ impl From<TypeCheckWarning> for Diagnostic {
 			TypeCheckWarning::Unreachable(position) => {
 				Diagnostic::Position { reason: "Unreachable statement".to_owned(), position, kind }
 			}
+			TypeCheckWarning::ConditionalExceptionInvoked { value, call_site } => {
+				Diagnostic::Position {
+					reason: format!("Conditional '{value}' was thrown in function"),
+					position: call_site,
+					kind,
+				}
+			}
 		}
 	}
 }
+
+/// Only for internal things
+///
+/// WIP
+pub struct InfoDiagnostic(pub String, pub SpanWithSource);
 
 #[derive(Debug)]
 pub struct CannotFindTypeError<'a>(pub &'a str);
@@ -998,11 +984,6 @@ fn function_calling_error_diagnostic(
 				assignment_position,
 			)],
 		},
-		FunctionCallingError::UnconditionalThrow { value, call_site } => Diagnostic::Position {
-			reason: format!("Conditional '{value}' was thrown in function{context}"),
-			position: call_site,
-			kind,
-		},
 		FunctionCallingError::MismatchedThis { call_site, expected, found } => {
 			Diagnostic::Position {
 				reason: format!("The 'this' context of the function is expected to be {expected}, found {found}{context}"),
@@ -1014,6 +995,13 @@ fn function_calling_error_diagnostic(
 			Diagnostic::Position {
 				reason: format!("Cannot throw {thrown} in block that expects {catch}{context}"),
 				position: thrown_position,
+				kind,
+			}
+		}
+		FunctionCallingError::DeleteConstraint { constraint, delete_position, call_site: _ } => {
+			Diagnostic::Position {
+				reason: format!("Cannot delete from object constrained to {constraint}"),
+				position: delete_position,
 				kind,
 			}
 		}

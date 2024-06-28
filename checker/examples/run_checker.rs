@@ -1,7 +1,7 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
 	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
-	use std::{collections::HashSet, fs, path::Path, time::Instant};
+	use std::{fs, path::Path, time::Instant};
 
 	let default_path = Path::new("private").join("tocheck").join("aaa.tsx");
 	let simple_dts_path = Path::new("checker").join("definitions").join("simple.d.ts");
@@ -12,8 +12,7 @@ fn main() {
 	let path = args
 		.first()
 		.and_then(|arg| (!arg.starts_with("--")).then_some(arg))
-		.map(Path::new)
-		.unwrap_or(default_path.as_path());
+		.map_or(default_path.as_path(), Path::new);
 
 	let use_simple = args.iter().any(|item| item == "--simple-dts");
 	let no_cache = args.iter().any(|item| item == "--no-cache");
@@ -24,28 +23,38 @@ fn main() {
 	let resolver = |path: &std::path::Path| fs::read(path).ok();
 
 	let definition_file = if use_simple {
-		simple_dts_path.to_path_buf()
+		simple_dts_path.clone()
 	} else if no_cache {
-		overrides_dts_path.to_path_buf()
+		overrides_dts_path.clone()
 	} else {
 		ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()
 	};
-	let type_definition_files = HashSet::from_iter([definition_file]);
+
+	let entry_points = vec![path.to_path_buf()];
+	let type_definition_files = vec![definition_file];
 
 	let options = TypeCheckOptions {
 		debug_types,
 		record_all_assignments_and_reads: true,
+		max_inline_count: 600,
 		..Default::default()
 	};
 
 	let result = check_project::<_, synthesis::EznoParser>(
-		vec![path.to_path_buf()],
+		entry_points,
 		type_definition_files,
 		resolver,
 		options,
 		(),
 		None,
 	);
+
+	if args.iter().any(|arg| arg == "--export") {
+		eprintln!("Export:");
+		let mut buf = String::new();
+		synthesis::definition_file::build_definition_file(&result, &mut buf);
+		eprintln!("{buf}");
+	}
 
 	if args.iter().any(|arg| arg == "--types") {
 		eprintln!("Types:");

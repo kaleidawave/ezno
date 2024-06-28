@@ -7,7 +7,7 @@ use crate::{
 	context::Logical,
 	features::{
 		functions::{ClosureId, FunctionBehavior},
-		objects::SpecialObjects,
+		objects::SpecialObject,
 	},
 	types::{FunctionType, PolyNature, Type},
 	Environment, FunctionId, TypeId,
@@ -38,11 +38,6 @@ pub struct TypeStore {
 	///
 	/// TODO is there a faster alternative to a [`HashMap`] like how [`Type`]s are stored in a [`Vec`]
 	pub(crate) functions: HashMap<FunctionId, FunctionType>,
-
-	// TODO
-	pub(crate) _dependent_dependencies: HashMap<TypeId, HashSet<TypeId>>,
-	// TODO
-	pub(crate) _specialisations: HashMap<TypeId, Vec<TypeId>>,
 
 	/// can be used for tree shaking
 	pub called_functions: HashSet<FunctionId>,
@@ -97,12 +92,6 @@ impl Default for TypeStore {
 				// TODO
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
-			// TODO Symbols, needs Constant::Symbol
-			Type::AliasTo {
-				name: "SymbolToPrimitive".into(),
-				to: TypeId::ANY_TYPE,
-				parameters: None,
-			},
 			// TODO WIP
 			Type::AliasTo {
 				name: "Literal".into(),
@@ -115,6 +104,61 @@ impl Default for TypeStore {
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
 			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
+			Type::Constant(crate::Constant::Symbol { key: "iterator".to_owned() }),
+			Type::Constant(crate::Constant::Symbol { key: "asyncIterator".to_owned() }),
+			Type::Constant(crate::Constant::Symbol { key: "hasInstance".to_owned() }),
+			Type::Constant(crate::Constant::Symbol { key: "toPrimitive".to_owned() }),
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "S".into(),
+				// TODO to string...
+				constrained: true,
+			}),
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Uppercase".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Lowercase".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Capitalize".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Uncapitalize".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			// Yeah
+			Type::AliasTo {
+				to: TypeId::T_TYPE,
+				name: "NoInfer".into(),
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "T".into(),
+				// TODO to number...
+				constrained: true,
+			}),
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "LessThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "GreaterThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "MultipleOf".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -128,9 +172,7 @@ impl Default for TypeStore {
 		Self {
 			types,
 			lookup_generic_map,
-			functions: HashMap::new(),
-			_dependent_dependencies: Default::default(),
-			_specialisations: Default::default(),
+			functions: Default::default(),
 			called_functions: Default::default(),
 			closure_counter: 0,
 			interface_extends: Default::default(),
@@ -311,6 +353,16 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
+	/// Doesn't evaluate events
+	pub(crate) fn new_logical_and_type(&mut self, left: TypeId, right: TypeId) -> TypeId {
+		self.new_conditional_type(left, right, TypeId::FALSE)
+	}
+
+	/// Doesn't evaluate events
+	pub(crate) fn new_logical_or_type(&mut self, left: TypeId, right: TypeId) -> TypeId {
+		self.new_conditional_type(left, TypeId::TRUE, right)
+	}
+
 	pub fn new_closure_id(&mut self) -> ClosureId {
 		self.closure_counter += 1;
 		ClosureId(self.closure_counter)
@@ -324,7 +376,7 @@ impl TypeStore {
 	pub fn new_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
-		self.register_type(Type::SpecialObject(SpecialObjects::Function(id, Default::default())))
+		self.register_type(Type::SpecialObject(SpecialObject::Function(id, Default::default())))
 	}
 
 	pub fn new_hoisted_function_type(&mut self, function_type: FunctionType) -> TypeId {
@@ -347,7 +399,7 @@ impl TypeStore {
 				on: indexee,
 				under,
 				result: base,
-				bind_this: true,
+				mode: super::properties::AccessMode::Regular,
 			});
 			self.register_type(ty)
 		} else if let Ok(prop) = super::properties::get_property_unbound(
@@ -364,6 +416,7 @@ impl TypeStore {
 				Logical::Pure(ty) => ty.as_get_type(),
 				Logical::Or { .. } => todo!(),
 				Logical::Implies { .. } => todo!(),
+				Logical::BasedOnKey { .. } => todo!(),
 			}
 		} else {
 			crate::utilities::notify!("Error: no index on type annotation");
@@ -374,7 +427,7 @@ impl TypeStore {
 	/// TODO flags
 	pub fn new_regex(&mut self, pattern: String) -> TypeId {
 		self.register_type(Type::SpecialObject(
-			crate::features::objects::SpecialObjects::RegularExpression(pattern),
+			crate::features::objects::SpecialObject::RegularExpression(pattern),
 		))
 	}
 
@@ -447,7 +500,7 @@ impl TypeStore {
 	) -> TypeId {
 		let id = constructor.id;
 		self.functions.insert(id, constructor);
-		self.register_type(Type::SpecialObject(SpecialObjects::ClassConstructor {
+		self.register_type(Type::SpecialObject(SpecialObject::ClassConstructor {
 			name,
 			constructor: id,
 			prototype: constructs,

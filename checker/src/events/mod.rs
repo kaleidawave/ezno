@@ -8,9 +8,9 @@ use crate::{
 	context::get_on_ctx,
 	features::{functions::ClosedOverVariables, iteration::IterationKind},
 	types::{
-		calling::CalledWithNew,
+		calling::{Callable, CalledWithNew},
 		functions::SynthesisedArgument,
-		properties::{PropertyKey, PropertyValue, Publicity},
+		properties::{AccessMode, PropertyKey, PropertyValue, Publicity},
 		TypeId,
 	},
 	FunctionId, GeneralContext, SpanWithSource, VariableId,
@@ -62,7 +62,7 @@ pub enum Event {
 		reflects_dependency: Option<TypeId>,
 		publicity: Publicity,
 		position: SpanWithSource,
-		bind_this: bool,
+		mode: AccessMode,
 	},
 	/// All changes to the value of a property
 	Setter {
@@ -79,13 +79,13 @@ pub enum Event {
 	},
 	/// This includes closed over variables, anything dependent
 	CallsType {
-		on: TypeId,
+		on: Callable,
 		with: Box<[SynthesisedArgument]>,
 		reflects_dependency: Option<TypeId>,
 		timing: CallingTiming,
 		called_with_new: CalledWithNew,
 		possibly_thrown: Option<TypeId>,
-		position: SpanWithSource,
+		call_site: SpanWithSource,
 	},
 	/// Run events conditionally
 	Conditionally {
@@ -148,7 +148,7 @@ pub enum Event {
 		/// `None` for `let x;`
 		initial_value: Option<TypeId>,
 	},
-
+	Miscellaneous(MiscellaneousEvents),
 	/// TODO was trying to avoid
 	EndOfControlFlow(u32),
 }
@@ -166,7 +166,23 @@ impl From<FinalEvent> for Event {
 	}
 }
 
-/// Nothing runs after this event
+/// Some of these are [`crate::features::objects::Proxy`] traps
+#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
+pub enum MiscellaneousEvents {
+	/// Also for <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/has>
+	Has { on: TypeId, publicity: Publicity, under: PropertyKey<'static>, into: TypeId },
+	/// Very similar to [`MiscellaneousEvents::Has`] but deletes the properties
+	/// Also for <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/deleteProperty>
+	Delete {
+		on: TypeId,
+		publicity: Publicity,
+		under: PropertyKey<'static>,
+		into: Option<TypeId>,
+		position: SpanWithSource,
+	},
+}
+
+/// A break in application
 #[derive(Debug, Clone, Copy, binary_serialize_derive::BinarySerializable)]
 pub enum FinalEvent {
 	Return {
@@ -188,6 +204,9 @@ pub enum FinalEvent {
 		position: SpanWithSource,
 	},
 	// Yield {
+	// 	value: TypeId,
+	// 	returns: TypeId,
+	// 	position: SpanWithSource,
 	// }
 }
 

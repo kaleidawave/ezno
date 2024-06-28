@@ -5,7 +5,7 @@ use source_map::{Nullable, SpanWithSource};
 use crate::{
 	features::{
 		functions::{ClosureChain, ClosureId, ThisValue},
-		objects::SpecialObjects,
+		objects::SpecialObject,
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
 			evaluate_pure_unary_operator,
@@ -14,7 +14,6 @@ use crate::{
 	subtyping::{State, SubTypingOptions},
 	types::{
 		generics::contributions::Contributions,
-		get_constraint,
 		properties::{get_property_unbound, Publicity},
 		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	},
@@ -82,7 +81,7 @@ pub(crate) fn substitute(
 			id
 		}
 		// Closures for objects
-		Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
+		Type::SpecialObject(SpecialObject::ClassConstructor { .. })
 		| Type::Object(ObjectNature::RealDeal) => {
 			// Apply curring
 			if arguments.closures.is_empty() {
@@ -114,12 +113,12 @@ pub(crate) fn substitute(
 				}))
 			}
 		}
-		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
+		Type::SpecialObject(SpecialObject::Function(f, t)) => {
 			// Substitute the this type
 			let id = if let ThisValue::Passed(p) = t {
 				let function_id = *f;
 				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
-				types.register_type(Type::SpecialObject(SpecialObjects::Function(
+				types.register_type(Type::SpecialObject(SpecialObject::Function(
 					function_id,
 					passed,
 				)))
@@ -141,7 +140,17 @@ pub(crate) fn substitute(
 			arguments: structure_arguments,
 		}) => {
 			let on = *on;
-			let new_structure_arguments = match structure_arguments.clone() {
+			let generic_arguments = structure_arguments.clone();
+
+			// Fold intrinsic type
+			if on.tsc_string_intrinsic() {
+				let arg =
+					structure_arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
+				let value = substitute(arg, arguments, environment, types);
+				return convert_tsc_string_intrinsic(value, on, types);
+			}
+
+			let new_structure_arguments = match generic_arguments {
 				GenericArguments::ExplicitRestrictions(restrictions) => {
 					let restrictions = restrictions
 						.into_iter()
@@ -163,11 +172,11 @@ pub(crate) fn substitute(
 			}))
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			SpecialObjects::Promise { .. } => todo!(),
-			SpecialObjects::Generator { .. } => todo!(),
-			SpecialObjects::Proxy { .. } => todo!(),
-			SpecialObjects::RegularExpression(_) => todo!(),
-			SpecialObjects::Import(_) => todo!(),
+			SpecialObject::Promise { .. } => todo!(),
+			SpecialObject::Generator { .. } => todo!(),
+			SpecialObject::Proxy { .. } => todo!(),
+			SpecialObject::RegularExpression(_) => todo!(),
+			SpecialObject::Import(_) => todo!(),
 			_ => unreachable!(),
 		},
 		Type::And(lhs, rhs) => {
@@ -214,6 +223,7 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
+				let operand = substitute(operand, arguments, environment, types);
 				match evaluate_pure_unary_operator(
 					operator, operand, types,
 					// Restrictions should have been made ahead of time
@@ -303,10 +313,12 @@ pub(crate) fn substitute(
 					types.register_type(Type::Constructor(ty))
 				}
 			}
-			Constructor::Property { on, under, result, bind_this, .. } => {
-				let on = get_constraint(on, types).unwrap_or(on);
+			Constructor::Property { on, under, result, mode, .. } => {
+				let under = under.substitute(arguments, environment, types);
 
+				let on = substitute(on, arguments, environment, types);
 				let on_type = types.get_type_by_id(on);
+
 				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: TypeId::ARRAY_TYPE,
 					arguments,
@@ -337,30 +349,25 @@ pub(crate) fn substitute(
 							on,
 							under,
 							result: new_result,
-							bind_this,
+							mode,
 						}))
 					}
 				} else if let Type::Interface { .. }
-				| Type::Object(ObjectNature::AnonymousTypeAnnotation) = on_type
+				| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+				| Type::AliasTo { .. } = on_type
 				{
-					let under = match under {
-						crate::types::properties::PropertyKey::Type(under) => {
-							let ty = substitute(under, arguments, environment, types);
-							crate::types::properties::PropertyKey::from_type(ty, types)
-						}
-						under @ crate::types::properties::PropertyKey::String(_) => under.clone(),
-					};
-
 					// TODO union ors etc
-					match get_property_unbound(
+					let get_property = get_property_unbound(
 						(on, None),
 						(Publicity::Public, &under, None),
 						environment,
 						types,
-					) {
-						Ok(Logical::Pure(PropertyValue::Value(v))) => v,
-						result => {
-							crate::utilities::notify!("Here!! {:?}", result);
+					);
+
+					match get_property {
+						Ok(value) => resolve_logical_during_substitution(value),
+						Err(err) => {
+							crate::utilities::notify!("{:?}", err);
 							TypeId::ERROR_TYPE
 						}
 					}
@@ -404,18 +411,6 @@ pub(crate) fn substitute(
 				// 	.get_property(on, property, checking_data, None)
 				// 	.expect("Inferred constraints and checking failed for a property")
 			}
-
-			// Constructor::PrototypeOf(prototype) => {
-			// 	let prototype = substitute(prototype, arguments, environment, types);
-			// 	if let Type::AliasTo { to, .. } = types.get_type_by_id(prototype) {
-			// 		crate::utilities::notify!(
-			// 			"TODO temp might have to do more here when specialising a prototype"
-			// 		);
-			// 		*to
-			// 	} else {
-			// 		todo!()
-			// 	}
-			// }
 			Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 				let operator = match operator {
 					crate::features::operations::CanonicalEqualityAndInequality::StrictEqual => {
@@ -438,10 +433,15 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::TypeOperator(op) => match op {
-				crate::types::TypeOperator::PrototypeOf(_) => todo!(),
 				crate::types::TypeOperator::TypeOf(ty) => {
 					let ty = substitute(ty, arguments, environment, types);
 					crate::features::type_of_operator(ty, types)
+				}
+				crate::types::TypeOperator::PrototypeOf(_) => {
+					unreachable!("'PrototypeOf' should be specialised by events")
+				}
+				crate::types::TypeOperator::HasProperty(_, _) => {
+					unreachable!("'HasProperty' should be specialised by events")
 				}
 			},
 			Constructor::TypeRelationOperator(op) => match op {
@@ -503,6 +503,64 @@ pub(crate) fn substitute(
 				types.new_key_of(on)
 			}
 		},
+	}
+}
+
+pub(crate) fn convert_tsc_string_intrinsic(
+	on: TypeId,
+	value: TypeId,
+	types: &mut TypeStore,
+) -> TypeId {
+	match types.get_type_by_id(value) {
+		Type::Constant(crate::Constant::String(s)) => {
+			if s.is_empty() {
+				return value;
+			}
+			let transformed = match on {
+				TypeId::STRING_UPPERCASE => s.to_uppercase(),
+				TypeId::STRING_LOWERCASE => s.to_lowercase(),
+				TypeId::STRING_CAPITALIZE => {
+					let mut chars = s.chars();
+					let mut s = chars.next().unwrap().to_uppercase().collect::<String>();
+					s.extend(chars);
+					s
+				}
+				TypeId::STRING_UNCAPITALIZE => {
+					let mut chars = s.chars();
+					let mut s = chars.next().unwrap().to_lowercase().collect::<String>();
+					s.extend(chars);
+					s
+				}
+				_ => unreachable!(),
+			};
+			types.new_constant_type(crate::Constant::String(transformed))
+		}
+		Type::AliasTo { to, .. } => convert_tsc_string_intrinsic(on, *to, types),
+		Type::Or(lhs, rhs) => {
+			let (lhs, rhs) = (*lhs, *rhs);
+			let lhs = convert_tsc_string_intrinsic(on, lhs, types);
+			let rhs = convert_tsc_string_intrinsic(on, rhs, types);
+			types.new_or_type(lhs, rhs)
+		}
+		_ => types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on,
+			arguments: GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+				TypeId::STRING_GENERIC,
+				(value, SpanWithSource::NULL),
+			)])),
+		})),
+	}
+}
+
+fn resolve_logical_during_substitution(value: Logical<PropertyValue>) -> TypeId {
+	match value {
+		Logical::Pure(v) => {
+			// substitute(id, arguments, environment, types)
+			v.as_get_type()
+		}
+		Logical::Or { .. } => todo!(),
+		Logical::Implies { .. } => todo!(),
+		Logical::BasedOnKey { .. } => todo!(),
 	}
 }
 

@@ -21,14 +21,14 @@ use crate::{
 	features::{
 		assignments::Reference,
 		functions::ClosureChain,
-		objects::{Proxy, SpecialObjects},
+		objects::{Proxy, SpecialObject},
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{
-		generics::generic_type_arguments::GenericArguments, FunctionType, PolyNature, Type, TypeId,
-		TypeStore,
+		generics::generic_type_arguments::GenericArguments, properties::SliceArgument,
+		FunctionType, PolyNature, Type, TypeId, TypeStore,
 	},
-	CheckingData, DiagnosticsContainer, FunctionId, VariableId,
+	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 };
 
 use self::{
@@ -173,7 +173,7 @@ pub struct Context<T: ContextType> {
 	pub(crate) can_reference_this: CanReferenceThis,
 
 	/// When a objects `TypeId` is in here getting a property returns a constructor rather than
-	pub possibly_mutated_objects: HashSet<TypeId>,
+	pub possibly_mutated_objects: HashMap<TypeId, TypeId>,
 	pub possibly_mutated_variables: HashSet<VariableId>,
 
 	// pub (crate) info: info,
@@ -184,6 +184,8 @@ pub struct VariableRegisterArguments {
 	pub constant: bool,
 	pub space: Option<TypeId>,
 	pub initial_value: Option<TypeId>,
+	/// for `var` declarations
+	pub allow_reregistration: bool,
 }
 
 #[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -203,7 +205,7 @@ impl<T: ContextType> Context<T> {
 		&mut self,
 		name: &'b str,
 		declared_at: SpanWithSource,
-		VariableRegisterArguments { constant, initial_value, space }: VariableRegisterArguments,
+		VariableRegisterArguments { constant, initial_value, space, allow_reregistration }: VariableRegisterArguments,
 		record_event: bool,
 	) -> Result<(), CannotRedeclareVariable<'b>> {
 		let id = VariableId(declared_at.source, declared_at.start);
@@ -214,31 +216,43 @@ impl<T: ContextType> Context<T> {
 			VariableMutability::Mutable { reassignment_constraint: space }
 		};
 
-		let variable = VariableOrImport::Variable { declared_at, mutability, context: None };
+		let variable = VariableOrImport::Variable {
+			declared_at,
+			mutability,
+			context: None,
+			allow_reregistration,
+		};
 
-		let existing = match self.variables.entry(name.to_owned()) {
-			Entry::Occupied(_) => true,
+		let entry = self.variables.entry(name.to_owned());
+		let existing_that_can_be_rewritten = match entry {
+			Entry::Occupied(e) => match e.get() {
+				VariableOrImport::Variable { allow_reregistration, .. } => !*allow_reregistration,
+				VariableOrImport::MutableImport { .. }
+				| VariableOrImport::ConstantImport { .. } => true,
+			},
 			Entry::Vacant(vacant) => {
 				vacant.insert(variable);
+				self.variable_names.insert(id, name.to_owned());
 				false
 			}
 		};
 
-		self.variable_names.insert(id, name.to_owned());
+		// Still set data regardless
+		{
+			if let Some(initial_value) = initial_value {
+				self.info.variable_current_value.insert(id, initial_value);
+			}
 
-		if let Some(initial_value) = initial_value {
-			self.info.variable_current_value.insert(id, initial_value);
+			if record_event {
+				self.info.events.push(crate::events::Event::RegisterVariable {
+					name: name.to_owned(),
+					position: declared_at,
+					initial_value,
+				});
+			}
 		}
 
-		if record_event {
-			self.info.events.push(crate::events::Event::RegisterVariable {
-				name: name.to_owned(),
-				position: declared_at,
-				initial_value,
-			});
-		}
-
-		if existing {
+		if existing_that_can_be_rewritten {
 			Err(CannotRedeclareVariable { name })
 		} else {
 			Ok(())
@@ -251,9 +265,23 @@ impl<T: ContextType> Context<T> {
 		argument: VariableRegisterArguments,
 		declared_at: SpanWithSource,
 		diagnostics_container: &mut DiagnosticsContainer,
+		type_mappings: &mut TypeMappings,
 		record_event: bool,
 	) {
-		if let Err(_err) = self.register_variable(name, declared_at, argument, record_event) {
+		if argument.allow_reregistration {
+			if let Some(existing) = self.variables.get(name) {
+				type_mappings.var_aliases.insert(declared_at.start, existing.get_id());
+			}
+		}
+
+		if let Some(reassignment_constraint) = argument.space {
+			let id = crate::VariableId(self.get_source(), declared_at.start);
+			type_mappings.variables_to_constraints.0.insert(id, reassignment_constraint);
+		}
+
+		let register_variable = self.register_variable(name, declared_at, argument, record_event);
+
+		if let Err(CannotRedeclareVariable { name }) = register_variable {
 			diagnostics_container.add_error(TypeCheckError::CannotRedeclareVariable {
 				name: name.to_owned(),
 				position: declared_at,
@@ -674,6 +702,7 @@ impl<T: ContextType> Context<T> {
 					None
 				} else if self.context_type.get_parent().is_some() {
 					self.info.events.append(&mut info.events);
+					self.info.state.append(info.state);
 					None
 				} else {
 					Some((info, Default::default()))
@@ -699,6 +728,10 @@ impl<T: ContextType> Context<T> {
 		})
 	}
 
+	/// ```ts
+	/// <T>(...)
+	///  ^
+	/// ```
 	pub fn new_explicit_type_parameter(
 		&mut self,
 		name: &str,
@@ -919,16 +952,6 @@ impl<T: ContextType> Context<T> {
 		id: VariableId,
 		value_ty: TypeId,
 	) {
-		if let Some(_closed_over_references) =
-			self.context_type.as_syntax().map(|s| &s.closed_over_references)
-		{
-			// crate::utilities::notify!(
-			// 	"is {:?} closed over {:?}",
-			// 	id,
-			// 	closed_over_references.get(&RootReference::Variable(id))
-			// );
-		}
-
 		self.info.variable_current_value.insert(id, value_ty);
 	}
 
@@ -944,13 +967,18 @@ impl<T: ContextType> Context<T> {
 		let id = crate::VariableId(declared_at.source, declared_at.start);
 
 		let kind = VariableMutability::Constant;
-		let variable = VariableOrImport::Variable { declared_at, mutability: kind, context };
+		let variable = VariableOrImport::Variable {
+			declared_at,
+			mutability: kind,
+			context,
+			allow_reregistration: false,
+		};
 		let entry = self.variables.entry(name.to_owned());
 		if let Entry::Vacant(vacant) = entry {
 			vacant.insert(variable);
 
 			// TODO unsure ...
-			let ty = if let Type::SpecialObject(SpecialObjects::Function(..)) =
+			let ty = if let Type::SpecialObject(SpecialObject::Function(..)) =
 				types.get_type_by_id(variable_ty)
 			{
 				variable_ty
@@ -1024,6 +1052,7 @@ impl<T: ContextType> Context<T> {
 			})
 	}
 
+	/// WIP for tree shaking
 	pub(crate) fn is_always_run(&self) -> bool {
 		!self.parents_iter().any(|ctx| {
 			if let GeneralContext::Syntax(s) = ctx {
@@ -1102,6 +1131,16 @@ impl<T: ContextType> Context<T> {
 				}
 			})
 	}
+
+	pub(crate) fn get_prototype(&self, on: TypeId) -> TypeId {
+		if let Some(prototype) = self.info.prototypes.get(&on) {
+			*prototype
+		} else if let Some(parent) = self.context_type.get_parent() {
+			get_on_ctx!(parent.get_prototype(on))
+		} else {
+			TypeId::OBJECT_TYPE
+		}
+	}
 }
 
 pub enum AssignmentError {
@@ -1130,19 +1169,29 @@ pub enum AssignmentError {
 #[derive(Debug, Clone)]
 pub enum Logical<T> {
 	Pure(T),
-	/// Note this uses [`PossibleLogical<T>`] rather than [`Logical<T>`]
+	/// Note this uses [`PossibleLogical<T>`] rather than [`Logical<T>`].
+	/// Either `left` or `right` is [Ok]
 	Or {
 		/// This can be [`TypeId::BOOLEAN_TYPE`] for unknown left-right-ness
 		condition: TypeId,
 		left: Box<PossibleLogical<T>>,
 		right: Box<PossibleLogical<T>>,
 	},
+	/// Passes down [`GenericArguments`] found trying to get to source
 	Implies {
 		on: Box<Self>,
 		antecedent: GenericArguments,
 	},
+	/// WIP mainly for mapped type properties
+	/// TODO this is partially defined like [`Self::Or`] ???
+	/// - Can this work for arrays
+	BasedOnKey {
+		on: Box<Self>,
+		key: SliceArgument,
+	},
 }
 
+/// TODO split up
 #[derive(Debug, Clone)]
 pub enum MissingOrToCalculate {
 	/// Doesn't contain request
@@ -1155,10 +1204,23 @@ pub enum MissingOrToCalculate {
 	Proxy(Proxy),
 }
 
-pub type PossibleLogical<T> = Result<Logical<T>, MissingOrToCalculate>;
+// #[derive(Debug, Clone)]
+// pub enum NeedsCalculation {
+// 	/// From [`TypeId::ANY_TYPE`]
+// 	Infer { on: TypeId },
+// 	/// Proxies require extra work in some cases
+// 	Proxy(Proxy),
+// }
 
+/// TODO explain
+pub type PossibleLogical<T> = Result<Logical<T>, MissingOrToCalculate>;
+// pub type PossibleLogical2<T> = Result<Logical<T>, ()>;
+
+/// WIP
 pub enum SetPropertyError {
 	NotWriteable,
+	Readonly,
+	AssigningToTuple,
 	DoesNotMeetConstraint {
 		property_constraint: TypeStringRepresentation,
 		reason: crate::types::subtyping::NonEqualityReason,

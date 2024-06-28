@@ -21,7 +21,7 @@ use super::{
 pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
-		key: ParserPropertyKeyType,
+		key: InterfaceKey,
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
@@ -31,16 +31,16 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 	fn interface_type(&self) -> Option<TypeId>;
 }
 
+pub(crate) enum InterfaceKey<'a> {
+	ClassProperty(&'a ParserPropertyKey<parser::property_key::PublicOrPrivate>),
+	// ObjectProperty(&'a ParserPropertyKey<parser::property_key::AlwaysPublic>),
+	Type(TypeId),
+}
+
 pub(crate) enum InterfaceValue {
 	Function(FunctionType, GetterSetter),
 	Value(TypeId),
 	Optional(TypeId),
-}
-
-pub(crate) enum ParserPropertyKeyType<'a> {
-	ClassProperty(&'a ParserPropertyKey<parser::property_key::PublicOrPrivate>),
-	// ObjectProperty(&'a ParserPropertyKey<parser::property_key::AlwaysPublic>),
-	Type(TypeId),
 }
 
 pub(crate) struct OnToType(pub(crate) TypeId);
@@ -48,29 +48,18 @@ pub(crate) struct OnToType(pub(crate) TypeId);
 impl SynthesiseInterfaceBehavior for OnToType {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
-		key: ParserPropertyKeyType,
+		key: InterfaceKey,
 		value: InterfaceValue,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
 		position: SpanWithSource,
 	) {
 		let (publicity, under) = match key {
-			ParserPropertyKeyType::ClassProperty(key) => {
+			InterfaceKey::ClassProperty(key) => {
 				// TODO
 				let perform_side_effect_computed = true;
 				(
-					if matches!(
-						key,
-						parser::PropertyKey::Identifier(
-							_,
-							_,
-							parser::property_key::PublicOrPrivate::Private
-						)
-					) {
-						Publicity::Private
-					} else {
-						Publicity::Public
-					},
+					if key.is_private() { Publicity::Private } else { Publicity::Public },
 					parser_property_key_to_checker_property_key(
 						key,
 						environment,
@@ -79,11 +68,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 					),
 				)
 			}
-			// ParserPropertyKeyType::ObjectProperty(key) => (
-			// 	Publicity::Public,
-			// 	parser_property_key_to_checker_property_key(key, environment, checking_data),
-			// ),
-			ParserPropertyKeyType::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
+			InterfaceKey::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
 		let ty = match value {
 			InterfaceValue::Function(function, getter_setter) => match getter_setter {
@@ -137,9 +122,16 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					type_parameters,
 					parameters,
 					return_type,
-					is_optional: _,
+					is_optional,
 					position,
 				} => {
+					if *is_optional {
+						checking_data.raise_unimplemented_error(
+							"is_optional interface method",
+							position.with_source(environment.get_source()),
+						);
+					}
+
 					// Fix for performing const annotations. TODO want to do better
 					let behavior = if member
 						.decorators
@@ -174,7 +166,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 
 					interface_register_behavior.register(
-						ParserPropertyKeyType::ClassProperty(name),
+						InterfaceKey::ClassProperty(name),
 						InterfaceValue::Function(function, getter),
 						checking_data,
 						environment,
@@ -190,7 +182,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				} => {
 					if *is_readonly {
 						checking_data.raise_unimplemented_error(
-							"readonly items",
+							"readonly interface property",
 							position.with_source(environment.get_source()),
 						);
 					}
@@ -205,7 +197,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					};
 
 					interface_register_behavior.register(
-						ParserPropertyKeyType::ClassProperty(name),
+						InterfaceKey::ClassProperty(name),
 						value,
 						checking_data,
 						environment,
@@ -213,18 +205,30 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 				}
 				InterfaceMember::Indexer {
-					name: _,
+					name,
 					indexer_type,
 					return_type,
-					is_readonly: _,
+					is_readonly,
 					position,
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
+
+					if *is_readonly {
+						checking_data.raise_unimplemented_error(
+							"readonly interface index",
+							position.with_source(environment.get_source()),
+						);
+					}
+
+					// TODO WIP
+					crate::utilities::notify!("Here for {}", name);
+					let value = InterfaceValue::Optional(value);
+
 					interface_register_behavior.register(
-						ParserPropertyKeyType::Type(key),
-						InterfaceValue::Value(value),
+						InterfaceKey::Type(key),
+						value,
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),
@@ -254,43 +258,83 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					parameter,
 					matching_type,
 					as_type,
-					optionality: _,
-					is_readonly: _,
+					optionality,
+					is_readonly,
 					output_type,
 					position,
 				} => {
+					// For mapped types: https://www.typescriptlang.org/docs/handbook/2/mapped-types.html
+
 					let matching_type =
 						synthesise_type_annotation(matching_type, environment, checking_data);
 
 					let (key, value) = {
 						// TODO special scope here
-						let mut environment = environment.new_lexical_environment(Scope::Block {});
+						let mut sub_environment =
+							environment.new_lexical_environment(Scope::Block {});
 						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
 							crate::types::PolyNature::MappedGeneric {
 								name: parameter.clone(),
 								eager_fixed: matching_type,
 							},
 						));
-						environment.named_types.insert(parameter.clone(), parameter_type);
+						sub_environment.named_types.insert(parameter.clone(), parameter_type);
 
 						let key = if let Some(as_type) = as_type {
-							synthesise_type_annotation(as_type, &mut environment, checking_data)
+							synthesise_type_annotation(as_type, &mut sub_environment, checking_data)
 						} else {
 							parameter_type
 						};
 
 						let value = synthesise_type_annotation(
 							output_type,
-							&mut environment,
+							&mut sub_environment,
 							checking_data,
 						);
+
+						environment
+							.info
+							.current_properties
+							.extend(sub_environment.info.current_properties);
 
 						(key, value)
 					};
 
+					let value = match optionality {
+						parser::types::interface::Optionality::Default => {
+							InterfaceValue::Value(value)
+						}
+						parser::types::interface::Optionality::Optional => {
+							InterfaceValue::Optional(value)
+						}
+						parser::types::interface::Optionality::Required => {
+							let position = position.with_source(environment.get_source());
+							checking_data
+								.raise_unimplemented_error("mapped type required", position);
+							InterfaceValue::Value(value)
+						}
+					};
+
+					match is_readonly {
+						parser::types::interface::MappedReadonlyKind::Negated => {
+							// Hmm this one is tricky
+							let position = position.with_source(environment.get_source());
+							checking_data.raise_unimplemented_error(
+								"mapped type negated readonly",
+								position,
+							);
+						}
+						parser::types::interface::MappedReadonlyKind::Always => {
+							let position = position.with_source(environment.get_source());
+							checking_data
+								.raise_unimplemented_error("mapped type readonly", position);
+						}
+						parser::types::interface::MappedReadonlyKind::False => {}
+					}
+
 					interface_register_behavior.register(
-						ParserPropertyKeyType::Type(key),
-						InterfaceValue::Value(value),
+						InterfaceKey::Type(key),
+						value,
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),

@@ -166,10 +166,27 @@ impl crate::ASTImplementation for EznoParser {
 			parser::statements::ForLoopStatementInitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
-				synthesise_variable_declaration(declaration, environment, checking_data, false);
+				synthesise_variable_declaration(
+					declaration,
+					environment,
+					checking_data,
+					false,
+					// IMPORTANT!
+					checking_data.options.infer_sensible_constraints_in_for_loops,
+				);
 			}
-			parser::statements::ForLoopStatementInitialiser::VarStatement(_) => todo!(),
-			parser::statements::ForLoopStatementInitialiser::Expression(_) => todo!(),
+			parser::statements::ForLoopStatementInitialiser::VarStatement(stmt) => {
+				checking_data.raise_unimplemented_error(
+					"var in for statement initiliser",
+					stmt.get_position().with_source(environment.get_source()),
+				);
+			}
+			parser::statements::ForLoopStatementInitialiser::Expression(expr) => {
+				checking_data.raise_unimplemented_error(
+					"expression as for statement initiliser",
+					expr.get_position().with_source(environment.get_source()),
+				);
+			}
 		}
 	}
 
@@ -193,6 +210,62 @@ impl crate::ASTImplementation for EznoParser {
 	) {
 		synthesise_block(&block.0, environment, checking_data);
 	}
+
+	fn expression_quick_lookup<'a>(
+		expression: &'a Self::Expression<'a>,
+		environment: &Environment,
+		types: &crate::types::TypeStore,
+	) -> TypeId {
+		match expression {
+			parser::Expression::NumberLiteral(_, _) => TypeId::NUMBER_TYPE,
+			parser::Expression::StringLiteral(_, _, _) => TypeId::STRING_TYPE,
+			parser::Expression::BooleanLiteral(_, _) => TypeId::BOOLEAN_TYPE,
+			parser::Expression::RegexLiteral { .. } => TypeId::REGEXP_TYPE,
+			parser::Expression::ArrayLiteral(_, _) => TypeId::ERROR_TYPE,
+			parser::Expression::ObjectLiteral(_) => todo!(),
+			parser::Expression::TemplateLiteral(_) => todo!(),
+			parser::Expression::ParenthesizedExpression(inner, _) => match &**inner {
+				parser::ast::MultipleExpression::Multiple { .. } => todo!(),
+				parser::ast::MultipleExpression::Single(inner) => {
+					Self::expression_quick_lookup(inner, environment, types)
+				}
+			},
+			parser::Expression::BinaryOperation { .. } => todo!(),
+			parser::Expression::SpecialOperators(_, _) => todo!(),
+			parser::Expression::UnaryOperation { .. } => todo!(),
+			parser::Expression::Assignment { .. } => todo!(),
+			parser::Expression::BinaryAssignmentOperation { .. } => {
+				todo!()
+			}
+			parser::Expression::UnaryPrefixAssignmentOperation { .. } => {
+				todo!()
+			}
+			parser::Expression::UnaryPostfixAssignmentOperation { .. } => {
+				todo!()
+			}
+			parser::Expression::VariableReference(_, _) => todo!(),
+			parser::Expression::ThisReference(_) => todo!(),
+			parser::Expression::SuperExpression(_, _) => todo!(),
+			parser::Expression::NewTarget(_) => todo!(),
+			parser::Expression::ImportMeta(_) => todo!(),
+			parser::Expression::DynamicImport { .. } => todo!(),
+			parser::Expression::PropertyAccess { .. } => {
+				todo!()
+			}
+			parser::Expression::Index { .. } => todo!(),
+			parser::Expression::FunctionCall { .. } => todo!(),
+			parser::Expression::ConstructorCall { .. } => todo!(),
+			parser::Expression::ConditionalTernary { .. } => todo!(),
+			parser::Expression::ArrowFunction(_) => todo!(),
+			parser::Expression::ExpressionFunction(_) => todo!(),
+			parser::Expression::ClassExpression(_) => todo!(),
+			parser::Expression::Null(_) => TypeId::NULL_TYPE,
+			parser::Expression::Comment { .. }
+			| parser::Expression::JSXRoot(_)
+			| parser::Expression::IsExpression(_)
+			| parser::Expression::Marker { .. } => TypeId::ERROR_TYPE,
+		}
+	}
 }
 
 /// `perform_side_effect_computed` is used for hoisting
@@ -209,21 +282,23 @@ pub(super) fn parser_property_key_to_checker_property_key<
 		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Identifier(value, ..) => {
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
-		ParserPropertyKey::NumberLiteral(number, _) => {
+		ParserPropertyKey::NumberLiteral(number, pos) => {
 			let result = f64::try_from(number.clone());
-			match result {
-				Ok(v) => {
-					// TODO is there a better way
-					#[allow(clippy::float_cmp)]
-					if v.floor() == v {
-						PropertyKey::from_usize(v as usize)
-					} else {
-						// TODO
-						PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
-					}
+			if let Ok(v) = result {
+				// TODO is there a better way
+				#[allow(clippy::float_cmp)]
+				if v.floor() == v {
+					PropertyKey::from_usize(v as usize)
+				} else {
+					// TODO
+					PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
 				}
-				// TODO
-				Err(()) => todo!(),
+			} else {
+				checking_data.raise_unimplemented_error(
+					"big int as property key",
+					pos.with_source(environment.get_source()),
+				);
+				PropertyKey::Type(TypeId::ERROR_TYPE)
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {
@@ -273,9 +348,113 @@ impl StatementOrExpressionVariable for ExpressionPosition {
 	}
 }
 
+pub mod definition_file {
+	use iterator_endiate::EndiateIteratorExt;
+	use parser::ExpressionOrStatementPosition;
+
+	use crate::{
+		types::{printing, GenericChain},
+		FunctionId,
+	};
+
+	pub fn build_definition_file(result: &crate::CheckOutput<super::EznoParser>, buf: &mut String) {
+		for (source_id, module) in &result.modules {
+			for item in &module.content.items {
+				match item {
+					parser::StatementOrDeclaration::Declaration(parser::Declaration::Export(
+						decorated,
+					)) => match &decorated.on {
+						parser::ast::ExportDeclaration::Variable { exported, position: _ } => {
+							match exported {
+								parser::ast::export::Exportable::Class(_) => todo!(),
+								parser::ast::export::Exportable::Function(func) => {
+									let expected = result.types.get_function_from_id(FunctionId(
+										*source_id,
+										parser::ASTNode::get_position(func).start,
+									));
+									buf.push_str("export default function ");
+									buf.push_str(func.name.as_option_str().unwrap_or_default());
+									buf.push('(');
+									for (not_at_end, param) in
+										expected.parameters.parameters.iter().nendiate()
+									{
+										buf.push_str(&param.name);
+										buf.push_str(": ");
+										printing::print_type_into_buf(
+											param.ty,
+											buf,
+											&mut Default::default(),
+											GenericChain::None,
+											&result.types,
+											&module.info,
+											false,
+										);
+										if not_at_end {
+											buf.push_str(", ");
+										}
+									}
+									buf.push(')');
+									buf.push_str(": ");
+									printing::print_type_into_buf(
+										expected.return_type,
+										buf,
+										&mut Default::default(),
+										GenericChain::None,
+										&result.types,
+										&module.info,
+										false,
+									);
+									buf.push_str(";\n");
+								}
+								parser::ast::export::Exportable::Variable(_) => todo!(),
+								parser::ast::export::Exportable::Interface(item) => {
+									buf.push_str("export default ");
+									todo!("{item:?}");
+									// item.to_string_from_buffer(buf, &ToStringOptions::typescript(), LocalToStringInformation { under:  })
+								}
+								parser::ast::export::Exportable::TypeAlias(item) => {
+									buf.push_str("export default ");
+									todo!("{item:?}");
+									// item.to_string_from_buffer(buf, &ToStringOptions::typescript(), LocalToStringInformation { under:  })
+								}
+								parser::ast::export::Exportable::Parts(_) => todo!(),
+								parser::ast::export::Exportable::ImportAll { .. } => {
+									todo!()
+								}
+								parser::ast::export::Exportable::ImportParts { .. } => todo!(),
+							}
+						}
+						parser::ast::ExportDeclaration::Default { .. } => todo!(),
+						parser::ast::ExportDeclaration::DefaultFunction { .. } => todo!(),
+					},
+					parser::StatementOrDeclaration::Declaration(
+						parser::Declaration::Interface(_),
+					) => {
+						todo!()
+					}
+					parser::StatementOrDeclaration::Declaration(
+						parser::Declaration::TypeAlias(_),
+					) => {
+						todo!()
+					}
+					parser::StatementOrDeclaration::Declaration(
+						parser::Declaration::DeclareVariable(..),
+					) => {}
+					parser::StatementOrDeclaration::Declaration(parser::Declaration::Class(..)) => {
+					}
+					parser::StatementOrDeclaration::Statement(
+						parser::Statement::MultiLineComment(..),
+					) => {}
+					_ => {}
+				}
+			}
+		}
+	}
+}
+
 /// For the REPL in Ezno's CLI
 pub mod interactive {
-	use std::{collections::HashSet, mem, path::PathBuf};
+	use std::{mem, path::PathBuf};
 
 	use source_map::{FileSystem, MapFileStore, SourceId, WithPathMap};
 
@@ -295,7 +474,7 @@ pub mod interactive {
 	impl<'a, T: crate::ReadFromFS> State<'a, T> {
 		pub fn new(
 			resolver: &'a T,
-			type_definition_files: HashSet<PathBuf>,
+			type_definition_files: Vec<PathBuf>,
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
 			let mut checking_data =

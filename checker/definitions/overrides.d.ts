@@ -101,35 +101,6 @@ declare class Array<T> {
         return false
     }
 
-    // fill(value: T, start: number = 0, end = this.length): this {
-    //     // TODO
-    //     return this
-    // }
-
-    // reduce<U>(cb: (acc: U, t: T, i?: number) => U, initial?: U): U {
-    //     const { length } = this;
-    //     let acc = initial ?? this[0];
-    //     let i: number = typeof initial === "undefined" ? 1 : 0;;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         acc = cb(acc, value, i++);
-    //     }
-    //     return acc;
-    // }
-
-    // includes(searchElement: T, fromIndex?: number): boolean {
-    //     const { length } = this;
-    //     // TODO this is currently broken
-    //     let i: number = fromIndex ?? 0;
-    //     while (i < length) {
-    //         const value = this[i++];
-    //         if (value === searchElement) {
-    //             return true
-    //         }
-    //     }
-    //     return false
-    // }
-
     join(joiner: string = ","): string {
         const { length } = this;
         let i: number = 1;
@@ -294,11 +265,11 @@ declare class SyntaxError extends Error {
 
 declare class JSON {
     // TODO any temp
-    @Constant("json:parse", SyntaxError)
+    @Constant("JSON:parse", SyntaxError)
     static parse(input: string): any;
 
     // TODO any temp
-    @Constant("json:stringify")
+    @Constant("JSON:stringify")
     static stringify(input: any): string;
 }
 
@@ -312,7 +283,7 @@ declare class Symbols {
 }
 
 declare class Proxy {
-    @Constant("proxy:constructor")
+    @Constant("Proxy:constructor")
         constructor(obj: any, cb: any);
 }
 

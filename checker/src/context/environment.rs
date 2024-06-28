@@ -2,7 +2,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	context::get_on_ctx,
+	context::{get_on_ctx, information::ReturnState},
 	diagnostics::{
 		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeCheckError,
 		TypeStringRepresentation, TDZ,
@@ -14,7 +14,7 @@ use crate::{
 			AssignmentKind, Reference,
 		},
 		modules::Exported,
-		objects::SpecialObjects,
+		objects::SpecialObject,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
@@ -24,7 +24,7 @@ use crate::{
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
 		printing,
-		properties::{PropertyKey, PropertyKind, PropertyValue, Publicity},
+		properties::{AccessMode, PropertyKey, PropertyKind, PropertyValue, Publicity},
 		PolyNature, Type, TypeStore,
 	},
 	CheckingData, Instance, RootContext, TypeCheckOptions, TypeId,
@@ -272,7 +272,11 @@ impl<'a> Environment<'a> {
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
 						let reference_position = reference.get_position();
-						let existing = self.get_reference(reference.clone(), checking_data, true);
+						let existing = self.get_reference(
+							reference.clone(),
+							checking_data,
+							AccessMode::Regular,
+						);
 
 						let expression = expression.unwrap();
 						let expression_pos =
@@ -311,7 +315,11 @@ impl<'a> Environment<'a> {
 						// let value =
 						// 	self.get_variable_or_error(&name, &assignment_span, checking_data);
 						let span = reference.get_position();
-						let existing = self.get_reference(reference.clone(), checking_data, true);
+						let existing = self.get_reference(
+							reference.clone(),
+							checking_data,
+							AccessMode::Regular,
+						);
 
 						// TODO existing needs to be cast to number!!
 
@@ -354,7 +362,11 @@ impl<'a> Environment<'a> {
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {
-						let existing = self.get_reference(reference.clone(), checking_data, true);
+						let existing = self.get_reference(
+							reference.clone(),
+							checking_data,
+							AccessMode::Regular,
+						);
 						let expression = expression.unwrap();
 						let new = evaluate_logical_operation_with_expression(
 							(existing, reference.get_position().without_source()),
@@ -506,7 +518,7 @@ impl<'a> Environment<'a> {
 						None,
 						position,
 						&checking_data.options,
-						false,
+						AccessMode::DoNotBindThis,
 					);
 
 					let rhs_value = if let Some((_, value)) = value {
@@ -578,7 +590,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		reference: Reference,
 		checking_data: &mut CheckingData<U, A>,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> TypeId {
 		match reference {
 			Reference::Variable(name, position) => {
@@ -591,7 +603,7 @@ impl<'a> Environment<'a> {
 					&with,
 					checking_data,
 					span,
-					bind_this,
+					mode,
 				);
 				match get_property_handle_errors {
 					Ok(i) => i.get_value(),
@@ -665,62 +677,64 @@ impl<'a> Environment<'a> {
 
 		if let Some((_, boundary, variable)) = variable_in_map {
 			match variable {
-				VariableOrImport::Variable { mutability, declared_at, context: _ } => {
-					match mutability {
-						VariableMutability::Constant => {
-							Err(AssignmentError::Constant(*declared_at))
+				VariableOrImport::Variable {
+					mutability,
+					declared_at,
+					context: _,
+					allow_reregistration: _,
+				} => match mutability {
+					VariableMutability::Constant => Err(AssignmentError::Constant(*declared_at)),
+					VariableMutability::Mutable { reassignment_constraint } => {
+						let variable = variable.clone();
+						let variable_site = *declared_at;
+						let variable_id = variable.get_id();
+
+						if boundary.is_none()
+							&& !self
+								.get_chain_of_info()
+								.any(|info| info.variable_current_value.contains_key(&variable_id))
+						{
+							return Err(AssignmentError::TDZ(TDZ {
+								position: assignment_position,
+								variable_name: variable_name.to_owned(),
+							}));
 						}
-						VariableMutability::Mutable { reassignment_constraint } => {
-							let variable = variable.clone();
-							let variable_site = *declared_at;
-							let variable_id = variable.get_id();
 
-							if boundary.is_none()
-								&& !self.get_chain_of_info().any(|info| {
-									info.variable_current_value.contains_key(&variable_id)
-								}) {
-								return Err(AssignmentError::TDZ(TDZ {
-									position: assignment_position,
-									variable_name: variable_name.to_owned(),
-								}));
-							}
-
-							if let Some(reassignment_constraint) = *reassignment_constraint {
-								let result = type_is_subtype_object(
-									reassignment_constraint,
-									new_type,
-									self,
-									types,
-								);
-
-								if let SubTypeResult::IsNotSubType(_mismatches) = result {
-									return Err(AssignmentError::DoesNotMeetConstraint {
-										variable_type: TypeStringRepresentation::from_type_id(
-											reassignment_constraint,
-											self,
-											types,
-											false,
-										),
-										value_type: TypeStringRepresentation::from_type_id(
-											new_type, self, types, false,
-										),
-										variable_site,
-										value_site: assignment_position,
-									});
-								}
-							}
-
-							self.info.events.push(Event::SetsVariable(
-								variable_id,
+						if let Some(reassignment_constraint) = *reassignment_constraint {
+							let result = type_is_subtype_object(
+								reassignment_constraint,
 								new_type,
-								assignment_position,
-							));
-							self.info.variable_current_value.insert(variable_id, new_type);
+								self,
+								types,
+							);
 
-							Ok(new_type)
+							if let SubTypeResult::IsNotSubType(_mismatches) = result {
+								return Err(AssignmentError::DoesNotMeetConstraint {
+									variable_type: TypeStringRepresentation::from_type_id(
+										reassignment_constraint,
+										self,
+										types,
+										false,
+									),
+									value_type: TypeStringRepresentation::from_type_id(
+										new_type, self, types, false,
+									),
+									variable_site,
+									value_site: assignment_position,
+								});
+							}
 						}
+
+						self.info.events.push(Event::SetsVariable(
+							variable_id,
+							new_type,
+							assignment_position,
+						));
+						self.info.variable_current_value.insert(variable_id, new_type);
+
+						Ok(new_type)
 					}
-				}
+				},
 				VariableOrImport::MutableImport { .. }
 				| VariableOrImport::ConstantImport { .. } => {
 					Err(AssignmentError::Constant(assignment_position))
@@ -759,51 +773,6 @@ impl<'a> Environment<'a> {
 		self.context_type.requests.extend(requests);
 	}
 
-	/// TODO decidable & private?
-	#[must_use]
-	pub fn property_in(&self, on: TypeId, property: &PropertyKey) -> bool {
-		self.get_chain_of_info().any(|info| match info.current_properties.get(&on) {
-			Some(v) => {
-				v.iter().any(
-					|(_, p, v)| if let PropertyValue::Deleted = v { false } else { p == property },
-				)
-			}
-			None => false,
-		})
-	}
-
-	/// TODO decidable & private?
-	pub fn delete_property(
-		&mut self,
-		on: TypeId,
-		property: &PropertyKey,
-		position: SpanWithSource,
-	) -> bool {
-		let existing = self.property_in(on, property);
-
-		let under = property.into_owned();
-
-		// on_default() okay because might be in a nested context.
-		// entry empty does not mean no properties, just no properties set on this level
-		self.info.current_properties.entry(on).or_default().push((
-			Publicity::Public,
-			under.clone(),
-			PropertyValue::Deleted,
-		));
-
-		// TODO Event::Delete. Dependent result based on in
-		self.info.events.push(Event::Setter {
-			on,
-			under,
-			new: PropertyValue::Deleted,
-			initialization: false,
-			publicity: Publicity::Public,
-			position,
-		});
-
-		existing
-	}
-
 	pub(crate) fn get_parent(&self) -> GeneralContext {
 		match self.context_type.parent {
 			GeneralContext::Syntax(syn) => GeneralContext::Syntax(syn),
@@ -821,7 +790,7 @@ impl<'a> Environment<'a> {
 		with: Option<TypeId>,
 		position: SpanWithSource,
 		options: &TypeCheckOptions,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> Option<(PropertyKind, TypeId)> {
 		crate::types::properties::get_property(
 			on,
@@ -832,7 +801,7 @@ impl<'a> Environment<'a> {
 			&mut CheckThings { debug_types: options.debug_types },
 			types,
 			position,
-			bind_this,
+			mode,
 		)
 	}
 
@@ -843,7 +812,7 @@ impl<'a> Environment<'a> {
 		key: &PropertyKey,
 		checking_data: &mut CheckingData<U, A>,
 		site: SpanWithSource,
-		bind_this: bool,
+		mode: AccessMode,
 	) -> Result<Instance, ()> {
 		let get_property = self.get_property(
 			on,
@@ -853,7 +822,7 @@ impl<'a> Environment<'a> {
 			None,
 			site,
 			&checking_data.options,
-			bind_this,
+			mode,
 		);
 
 		if let Some((kind, result)) = get_property {
@@ -967,7 +936,7 @@ impl<'a> Environment<'a> {
 							let ty = checking_data.types.get_type_by_id(current_value);
 
 							// TODO temp
-							if let Type::SpecialObject(SpecialObjects::Function(..)) = ty {
+							if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
 								return Ok(VariableWithValue(og_var.clone(), current_value));
 							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
 								crate::utilities::notify!(
@@ -1106,8 +1075,18 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource) {
+	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource, types: &mut TypeStore) {
 		let final_event = FinalEvent::Throw { thrown, position };
+
+		// WIP
+		let final_return =
+			if let ReturnState::Rolling { under, returned: rolling_returning } = self.info.state {
+				types.new_conditional_type(under, rolling_returning, TypeId::NEVER_TYPE)
+			} else {
+				TypeId::NEVER_TYPE
+			};
+		self.info.state = ReturnState::Finished(final_return);
+
 		self.info.events.push(final_event.into());
 	}
 
@@ -1187,8 +1166,20 @@ impl<'a> Environment<'a> {
 			}
 		}
 
-		let final_event = FinalEvent::Return { returned, position: returned_position };
-		self.info.events.push(final_event.into());
+		{
+			let final_event = FinalEvent::Return { returned, position: returned_position };
+			self.info.events.push(final_event.into());
+
+			// WIP
+			let final_return = if let ReturnState::Rolling { under, returned: rolling_returning } =
+				self.info.state
+			{
+				checking_data.types.new_conditional_type(under, rolling_returning, returned)
+			} else {
+				returned
+			};
+			self.info.state = ReturnState::Finished(final_return);
+		}
 	}
 
 	pub fn add_continue(
@@ -1245,9 +1236,7 @@ impl<'a> Environment<'a> {
 	) -> Result<Option<TypeId>, SetPropertyError> {
 		crate::types::properties::set_property(
 			on,
-			publicity,
-			under,
-			PropertyValue::Value(new),
+			(publicity, under, PropertyValue::Value(new)),
 			self,
 			&mut CheckThings { debug_types: options.debug_types },
 			types,
@@ -1325,5 +1314,7 @@ fn set_property_error_to_type_check_error(
 				assignment_position: assignment_span,
 			})
 		}
+		SetPropertyError::Readonly => todo!(),
+		SetPropertyError::AssigningToTuple => todo!(),
 	}
 }

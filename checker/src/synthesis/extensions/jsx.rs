@@ -24,7 +24,13 @@ pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
 ) -> TypeId {
 	match jsx_root {
 		JSXRoot::Element(element) => synthesise_jsx_element(element, environment, checking_data),
-		JSXRoot::Fragment(_) => todo!(),
+		JSXRoot::Fragment(fragment) => {
+			checking_data.raise_unimplemented_error(
+				"JSX fragment",
+				fragment.get_position().with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
 	}
 }
 
@@ -189,11 +195,15 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	let position = element.get_position().with_source(environment.get_source());
 	let jsx_function =
-		match environment.get_variable_handle_error(JSX_NAME, position, checking_data) {
-			Ok(ty) => ty.1,
-			Err(_) => {
-				todo!()
-			}
+		if let Ok(ty) = environment.get_variable_handle_error(JSX_NAME, position, checking_data) {
+			ty.1
+		} else {
+			checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindVariable {
+				variable: JSX_NAME,
+				possibles: Vec::default(),
+				position,
+			});
+			TypeId::ERROR_TYPE
 		};
 
 	let tag_name_argument = SynthesisedArgument {
@@ -220,12 +230,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let calling_input = CallingInput {
 		called_with_new: crate::types::calling::CalledWithNew::None,
 		call_site: position,
-		call_site_type_arguments: None,
+		max_inline: checking_data.options.max_inline_count,
 	};
 	match call_type(
-		jsx_function,
+		crate::types::calling::Callable::Type(jsx_function),
 		args,
-		&calling_input,
+		calling_input,
 		environment,
 		&mut check_things,
 		&mut checking_data.types,
@@ -413,13 +423,20 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
 		JSXNode::InterpolatedExpression(expression, _expression_position) => {
 			match &**expression {
-				parser::ast::FunctionArgument::Spread(_, _) => todo!(),
+				parser::ast::FunctionArgument::Spread(_, pos) => {
+					checking_data.raise_unimplemented_error(
+						"spread JSX child",
+						pos.with_source(environment.get_source()),
+					);
+					TypeId::UNDEFINED_TYPE
+				}
 				parser::ast::FunctionArgument::Standard(expression) => {
 					crate::utilities::notify!("Cast JSX interpolated value?");
 					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE)
 				}
 				parser::ast::FunctionArgument::Comment { .. } => {
-					todo!()
+					// TODO?
+					TypeId::UNDEFINED_TYPE
 				}
 			}
 			// function intoNode(data) {
@@ -483,8 +500,20 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 			(name, synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE))
 		}
 		JSXAttribute::BooleanAttribute(name, _) => (name, TypeId::TRUE),
-		JSXAttribute::Spread(_, _) => todo!(),
-		JSXAttribute::Shorthand(_) => todo!(),
+		JSXAttribute::Spread(_, pos) => {
+			checking_data.raise_unimplemented_error(
+				"spread JSX attribute",
+				pos.with_source(environment.get_source()),
+			);
+			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::ERROR_TYPE);
+		}
+		JSXAttribute::Shorthand(expr) => {
+			checking_data.raise_unimplemented_error(
+				"shorthand JSX attribute",
+				expr.get_position().with_source(environment.get_source()),
+			);
+			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::ERROR_TYPE);
+		}
 	};
 
 	(PropertyKey::String(Cow::Owned(key.clone())), value)

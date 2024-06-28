@@ -94,7 +94,12 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 						declaration.name.get_ast_ref(),
 						&mut environment,
 						checking_data,
-						VariableRegisterArguments { constant: true, space: None, initial_value },
+						VariableRegisterArguments {
+							constant: true,
+							space: None,
+							initial_value,
+							allow_reregistration: false,
+						},
 					);
 				}
 			}
@@ -126,6 +131,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 						constant: FUNCTION_REASSIGNMENT_CONSTANT,
 						space: None,
 						initial_value: None,
+						allow_reregistration: false,
 					},
 				);
 			}
@@ -135,6 +141,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Statement(
 				Statement::Comment(..) | Statement::Empty(..) | Statement::AestheticSemiColon(..),
 			) => {}
+			StatementOrDeclaration::Statement(Statement::MultiLineComment(..)) => {
+				crate::utilities::notify!("TODO add information to item?");
+			}
 			item => {
 				crate::utilities::notify!("unknown {:?}", item);
 				checking_data.diagnostics_container.add_warning(

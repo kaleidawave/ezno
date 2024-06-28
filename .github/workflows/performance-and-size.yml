@@ -87,8 +87,8 @@ jobs:
         run: |
           strings=(
             "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
-            "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
           )
+          # Currently broken "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
 
           for url in "${strings[@]}"; do
               curl -sS $url > input.js

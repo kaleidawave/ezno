@@ -68,16 +68,25 @@ impl RootContext {
 			("object".to_owned(), TypeId::OBJECT_TYPE),
 			("Literal".to_owned(), TypeId::LITERAL_RESTRICTION),
 			("Readonly".to_owned(), TypeId::READONLY_RESTRICTION),
+			("Uppercase".to_owned(), TypeId::STRING_UPPERCASE),
+			("Lowercase".to_owned(), TypeId::STRING_LOWERCASE),
+			("Capitalize".to_owned(), TypeId::STRING_CAPITALIZE),
+			("Uncapitalize".to_owned(), TypeId::STRING_UNCAPITALIZE),
+			("NoInfer".to_owned(), TypeId::NOINFER),
+			("LessThan".to_owned(), TypeId::LESS_THAN),
+			("GreaterThan".to_owned(), TypeId::GREATER_THAN),
+			("MultipleOf".to_owned(), TypeId::MULTIPLE_OF),
 		]);
 
 		let mut info = crate::LocalInformation::default();
 
-		// Add undefined
+		// Add undefined as a variable
 		let variables = {
 			let variable_or_import = VariableOrImport::Variable {
 				mutability: crate::features::variables::VariableMutability::Constant,
 				declared_at: source_map::Nullable::NULL,
 				context: None,
+				allow_reregistration: false,
 			};
 			let undefined_id = variable_or_import.get_id();
 			let variables = [("undefined".to_owned(), variable_or_import)];

@@ -13,7 +13,7 @@ use crate::{
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
 
-use super::objects::SpecialObjects;
+use super::objects::SpecialObject;
 
 /// For these **binary** operations both operands are synthesised
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
@@ -510,8 +510,8 @@ fn attempt_constant_equality(
 		let rhs = types.get_type_by_id(rhs);
 		if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
 			cst1 == cst2
-		} else if let (Type::Object(..) | Type::SpecialObject(SpecialObjects::Function(..)), _)
-		| (_, Type::Object(..) | Type::SpecialObject(SpecialObjects::Function(..))) = (lhs, rhs)
+		} else if let (Type::Object(..) | Type::SpecialObject(SpecialObject::Function(..)), _)
+		| (_, Type::Object(..) | Type::SpecialObject(SpecialObject::Function(..))) = (lhs, rhs)
 		{
 			// Same objects and functions always have same type id. Poly case doesn't occur here
 			false

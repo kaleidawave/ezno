@@ -1,7 +1,7 @@
 A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance.
 
 > [!IMPORTANT]
-> Ezno is in active development and **does not currently support enough features to check existing projects**. Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
+> Ezno is in active development and **does not currently support enough features to check existing projects** (see [blocking issues](https://github.com/kaleidawave/ezno/labels/blocking)). Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
 
 <!-- ![project lines of code](https://projects.kaleidawave.workers.dev/project/ezno/badge) -->
 
@@ -21,7 +21,7 @@ What Ezno is not
 - Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC
 - Faster as a means to serve large codebases. Cut out bloat and complex code first!
 - Smarter as a means to allow more *dynamic patterns*. Keep things simple!
-- A binary executable compiler. It takes in JavaScript (or a TypeScript or Ezno superset) and does similar processes to traditional compilers, but at the end emits JavaScript. However, in the future, it _could_ generate a lower level format using its event (side-effect) representation.
+- A binary executable compiler. It takes in JavaScript (or a TypeScript or Ezno superset) and does similar processes to traditional compilers, but at the end emits JavaScript. However, in the future, it *could* generate a lower level format using its event (side-effect) representation.
 
 Read more about Ezno (in chronological order)
 - [Introducing Ezno](https://kaleidawave.github.io/posts/introducing-ezno/)
@@ -39,7 +39,6 @@ This project is a workspace consisting of a few crates:
 | parser | ![parser lines of code](https://projects.kaleidawave.workers.dev/project/ezno-parser/badge) | AST definitions, logic for parsing, AST to string and visiting |
 <!-- | ezno-web-framework | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
 <!-- | ezno-lsp | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
-
 
 ## Help contribute
 

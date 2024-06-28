@@ -4,10 +4,12 @@ use super::variables::{VariableMutability, VariableOrImport};
 use crate::{
 	context::{
 		information::{get_value_of_constant_import_variable, LocalInformation},
+		invocation::InvocationContext,
 		VariableRegisterArguments,
 	},
-	parse_source, CheckingData, Environment, Instance, Scope, Type, TypeId, TypeMappings,
-	VariableId,
+	parse_source,
+	types::calling::CallingInput,
+	CheckingData, Environment, Instance, Scope, TypeId, TypeMappings, VariableId,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};
@@ -31,7 +33,7 @@ pub enum ImportKind<'a, T: Iterator<Item = NamePair<'a>>> {
 	Everything,
 }
 
-/// A module once it has been type chedked (note could have type errorts that have been raised) and all information has been resolved about it
+/// A module once it has been type checked (note could have type errors that have been raised) and all information has been resolved about it
 pub struct SynthesisedModule<M> {
 	pub content: M,
 	pub exported: Exported,
@@ -84,12 +86,70 @@ impl Exported {
 
 		(variable, r#type)
 	}
+
+	/// For tree shaking
+	pub(crate) fn evaluate_generally(
+		&self,
+		root: &crate::RootContext,
+		types: &mut crate::types::TypeStore,
+	) {
+		use crate::source_map::{Nullable, SpanWithSource};
+		use crate::types::{SpecialObject, SynthesisedArgument, Type};
+
+		// TODO might need special
+		let mut environment = root.new_lexical_environment(Scope::Block {});
+
+		if let Some(default) = &self.default {
+			match types.get_type_by_id(*default) {
+				Type::SpecialObject(SpecialObject::Function(func, this_value)) => {
+					let func = types.get_function_from_id(*func);
+					let mut arguments = Vec::new();
+					for parameter in &func.parameters.parameters {
+						arguments.push(SynthesisedArgument {
+							// TODO get_constraint + open
+							value: parameter.ty,
+							spread: false,
+							position: SpanWithSource::NULL,
+						});
+					}
+					let input = CallingInput {
+						called_with_new: crate::types::calling::CalledWithNew::None,
+						call_site: SpanWithSource::NULL,
+						max_inline: 0,
+					};
+
+					let this_value = *this_value;
+					let _result = func.clone().call(
+						(this_value, &arguments, None, None),
+						input,
+						&mut environment,
+						&mut InvocationContext::new_empty(),
+						types,
+					);
+
+					crate::utilities::notify!("Call result as well");
+				}
+				Type::SpecialObject(SpecialObject::ClassConstructor { .. }) => {
+					todo!()
+				}
+				Type::Object(_d) => {
+					todo!()
+				}
+				ty => {
+					crate::utilities::notify!("Cannot call {:?}", ty);
+				}
+			}
+		}
+		for (_name, (_variable_id, _)) in &self.named {
+			todo!("call like type")
+		}
+	}
 }
 
 /// After a syntax error
 pub struct InvalidModule;
 
-/// The result of syntehsising a module
+/// The result of synthesising a module
 pub type FinalModule<M> = Result<SynthesisedModule<M>, InvalidModule>;
 
 #[derive(Debug, Clone)]
@@ -160,9 +220,11 @@ pub fn import_items<
 					constant: true,
 					initial_value: Some(TypeId::ERROR_TYPE),
 					space: None,
+					allow_reregistration: false,
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
@@ -191,9 +253,11 @@ pub fn import_items<
 								constant: true,
 								space: None,
 								initial_value: Some(TypeId::ERROR_TYPE),
+								allow_reregistration: false,
 							},
 							position,
 							&mut checking_data.diagnostics_container,
+							&mut checking_data.local_type_mappings,
 							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
@@ -243,9 +307,11 @@ pub fn import_items<
 							constant: true,
 							space: None,
 							initial_value: Some(TypeId::ERROR_TYPE),
+							allow_reregistration: false,
 						},
 						declared_at,
 						&mut checking_data.diagnostics_container,
+						&mut checking_data.local_type_mappings,
 						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
@@ -253,9 +319,10 @@ pub fn import_items<
 		}
 		ImportKind::All { under, position } => {
 			let value = if let Ok(Ok(ref exports)) = exports {
-				checking_data.types.register_type(Type::SpecialObject(
-					crate::features::objects::SpecialObjects::Import(exports.clone()),
-				))
+				let import_object = crate::Type::SpecialObject(
+					crate::features::objects::SpecialObject::Import(exports.clone()),
+				);
+				checking_data.types.register_type(import_object)
 			} else {
 				crate::utilities::notify!("TODO :?");
 				TypeId::ERROR_TYPE
@@ -266,9 +333,11 @@ pub fn import_items<
 					constant: true,
 					space: None,
 					initial_value: Some(value),
+					allow_reregistration: false,
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
 		}

@@ -25,7 +25,7 @@ Now in the `ezno` directory, `cargo run` should show the CLI.
 You can run just the checker with
 
 ```shell
-cargo run -p ezno-checker --example run-checker path/to/file.ts
+cargo run -p ezno-checker --example run_checker path/to/file.ts
 ```
 
 > [!TIP]
