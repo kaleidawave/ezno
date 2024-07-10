@@ -83,7 +83,6 @@ use crate::{ParseError, Quoted};
 )]
 #[cfg_attr(feature = "extras", automaton_mappings(
     ">!" => TSXToken::InvertAssign,
-    "/%" => TSXToken::DividesOperator,
     "<@>" => TSXToken::ComposeOperator,
     "|>" => TSXToken::PipeOperator,
 ))]
@@ -155,8 +154,6 @@ pub enum TSXToken {
     JSXComment(String),
 
     // Non standard
-    #[cfg(feature = "extras")]
-    DividesOperator,
     #[cfg(feature = "extras")]
     InvertAssign,
     #[cfg(feature = "extras")]
@@ -282,7 +279,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::EOS => 0,
 
 			#[cfg(feature = "extras")]
-			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,
+			TSXToken::InvertAssign | TSXToken::PipeOperator => 2,
 			#[cfg(feature = "extras")]
 			TSXToken::ComposeOperator => 3,
 		}
@@ -408,11 +405,13 @@ impl TSXToken {
 		matches!(
 			self,
 			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::In | TSXKeyword::Of | TSXKeyword::Await)
+			| TSXToken::Keyword(TSXKeyword::Do)
 				| TSXToken::Arrow
 				// for `const x = 2; /something/g`
 				| TSXToken::SemiColon
 				| TSXToken::OpenParentheses
 				| TSXToken::OpenBrace
+				| TSXToken::OpenBracket
 				| TSXToken::JSXExpressionStart
 				| TSXToken::QuestionMark
 				| TSXToken::Colon
