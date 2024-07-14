@@ -3,6 +3,7 @@
 //! Events is the general name for the IR (intermediate representation) of impure operations. Effect = Events of a function
 
 pub(crate) mod application;
+pub mod printing;
 
 use crate::{
 	context::get_on_ctx,
@@ -73,7 +74,7 @@ pub enum Event {
 		/// THIS DOES NOT CALL SETTERS, JUST SETS VALUE!
 		/// TODO this is [define] property
 		/// see <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields>
-		initialization: bool,
+		initialisation: bool,
 		publicity: Publicity,
 		position: SpanWithSource,
 	},

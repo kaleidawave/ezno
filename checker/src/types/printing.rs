@@ -1,25 +1,21 @@
 use iterator_endiate::EndiateIteratorExt;
 use std::collections::HashSet;
 
-use super::{properties::PropertyKey, GenericChain, PolyNature, Type, TypeId, TypeStore};
+use super::{GenericChain, PolyNature, Type, TypeId, TypeStore};
 use crate::{
-	context::{
-		information::{get_value_of_constant_import_variable, InformationChain},
-		Logical,
-	},
-	events::{Event, FinalEvent},
+	context::information::{get_value_of_constant_import_variable, InformationChain},
 	features::{
 		functions::ThisValue,
 		objects::{Proxy, SpecialObject},
 	},
 	types::{
 		generics::generic_type_arguments::GenericArguments,
-		get_constraint,
-		properties::{get_properties_on_single_type, get_property_unbound, AccessMode, Publicity},
+		get_array_length, get_constraint, get_simple_value,
+		properties::{get_properties_on_single_type, AccessMode, PropertyKey, Publicity},
 		Constructor, FunctionEffect, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
 		TypeRelationOperator,
 	},
-	Constant, PropertyValue,
+	PropertyValue,
 };
 
 #[must_use]
@@ -96,7 +92,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::MappedGeneric { name, eager_fixed } => {
 				if debug {
-					write!(buf, "[mg {} {}]", ty.0, name).unwrap();
+					write!(buf, "[mg {} {}] ", ty.0, name).unwrap();
 				}
 				print_type_into_buf(*eager_fixed, buf, cycles, args, types, info, debug);
 			}
@@ -398,13 +394,20 @@ pub fn print_type_into_buf<C: InformationChain>(
 			if debug {
 				write!(buf, "{name}#{}", ty.0).unwrap();
 				if let Type::AliasTo { to, .. } = t {
-					buf.push_str(" to ");
+					buf.push_str(" = ");
 					print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 				}
 			} else {
 				buf.push_str(name);
 			}
-			// TODO
+
+			// TODO under option
+			// if let Type::AliasTo { to, .. } = t {
+			// 	buf.push_str(" = ");
+			// 	print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+			// }
+
+			// TODO only if not partially applied generic
 			// if let (true, Some(parameters)) = (debug, parameters) {
 			// 	buf.push('{');
 			// 	for param in parameters {
@@ -604,6 +607,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 								todo!()
 							}
 						}
+						PropertyValue::Configured { .. } => {
+							todo!()
+						}
 					}
 
 					if not_at_end {
@@ -614,6 +620,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 		}
 		Type::SpecialObject(special_object) => match special_object {
+			SpecialObject::Null => {
+				buf.push_str("null");
+			}
 			SpecialObject::Promise { .. } => todo!(),
 			SpecialObject::Generator { .. } => todo!(),
 			SpecialObject::Proxy(Proxy { handler, over }) => {
@@ -663,40 +672,6 @@ pub fn print_type_into_buf<C: InformationChain>(
 	cycles.remove(&ty);
 }
 
-/// For getting `length` and stuff
-fn get_simple_value(
-	ctx: &impl InformationChain,
-	on: TypeId,
-	property: &PropertyKey,
-	types: &TypeStore,
-) -> Option<TypeId> {
-	fn get_logical(v: Logical<PropertyValue>) -> Option<TypeId> {
-		match v {
-			Logical::Pure(PropertyValue::Value(t)) => Some(t),
-			Logical::Implies { on, antecedent: _ } => get_logical(*on),
-			_ => None,
-		}
-	}
-
-	get_property_unbound((on, None), (Publicity::Public, property, None), ctx, types)
-		.ok()
-		.and_then(get_logical)
-}
-
-fn get_array_length(
-	ctx: &impl InformationChain,
-	on: TypeId,
-	types: &TypeStore,
-) -> Result<ordered_float::NotNan<f64>, Option<TypeId>> {
-	let length_property = PropertyKey::String(std::borrow::Cow::Borrowed("length"));
-	let id = get_simple_value(ctx, on, &length_property, types).ok_or(None)?;
-	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
-		Ok(*n)
-	} else {
-		Err(Some(id))
-	}
-}
-
 #[must_use]
 pub fn print_property_key<C: InformationChain>(
 	key: &PropertyKey,
@@ -733,190 +708,5 @@ pub(crate) fn print_property_key_into_buf<C: InformationChain>(
 			print_type_into_buf(*t, buf, cycles, args, types, info, debug);
 			buf.push(']');
 		}
-	}
-}
-
-pub fn debug_effects<C: InformationChain>(
-	buf: &mut String,
-	events: &[Event],
-	types: &TypeStore,
-	info: &C,
-	depth: u8,
-	debug: bool,
-) {
-	use std::fmt::Write;
-
-	let args = GenericChain::None;
-
-	let mut idx = 0;
-
-	while idx < events.len() {
-		for _ in 0..depth {
-			buf.push('\t');
-		}
-		let event = &events[idx];
-		match event {
-			Event::ReadsReference { reference, reflects_dependency, position: _ } => {
-				write!(buf, "read '{reference:?}' into {reflects_dependency:?}").unwrap();
-			}
-			Event::SetsVariable(variable, value, _) => {
-				write!(buf, "{variable:?}' = ").unwrap();
-				print_type_into_buf(*value, buf, &mut HashSet::new(), args, types, info, debug);
-			}
-			Event::Getter {
-				on,
-				under,
-				reflects_dependency,
-				publicity: _,
-				position: _,
-				mode: _,
-			} => {
-				buf.push_str("read ");
-				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
-				if let PropertyKey::String(_) = under {
-					buf.push('.');
-				}
-				print_property_key_into_buf(
-					under,
-					buf,
-					&mut HashSet::new(),
-					args,
-					types,
-					info,
-					debug,
-				);
-				write!(buf, " into {reflects_dependency:?}").unwrap();
-			}
-			Event::Setter { on, under, new, initialization, publicity: _, position: _ } => {
-				if *initialization {
-					write!(buf, "initialise {:?} with ", *on).unwrap();
-					if let PropertyValue::Value(new) = new {
-						print_type_into_buf(
-							*new,
-							buf,
-							&mut HashSet::new(),
-							args,
-							types,
-							info,
-							debug,
-						);
-					} else {
-						write!(buf, "{new:?}").unwrap();
-					}
-				} else {
-					print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
-					buf.push('[');
-					print_property_key_into_buf(
-						under,
-						buf,
-						&mut HashSet::default(),
-						args,
-						types,
-						info,
-						debug,
-					);
-					buf.push_str("] = ");
-					if let PropertyValue::Value(new) = new {
-						print_type_into_buf(
-							*new,
-							buf,
-							&mut HashSet::new(),
-							args,
-							types,
-							info,
-							debug,
-						);
-					} else {
-						write!(buf, "{new:?}").unwrap();
-					}
-				}
-			}
-			Event::CallsType {
-				on,
-				with: _,
-				reflects_dependency,
-				timing,
-				called_with_new: _,
-				call_site: _,
-				possibly_thrown: _,
-			} => {
-				buf.push_str("call ");
-				match on {
-					crate::types::calling::Callable::Fixed(function, _) => {
-						write!(buf, " {function:?} ").unwrap();
-					}
-					crate::types::calling::Callable::Type(on) => {
-						let mut cycles = HashSet::new();
-						print_type_into_buf(*on, buf, &mut cycles, args, types, info, debug);
-					}
-				}
-				write!(buf, " into {reflects_dependency:?} ",).unwrap();
-				buf.push_str(match timing {
-					crate::events::CallingTiming::Synchronous => "now",
-					crate::events::CallingTiming::QueueTask => "queue",
-					crate::events::CallingTiming::AtSomePointManyTimes => "sometime",
-				});
-				// TODO args
-			}
-			Event::Conditionally { condition, truthy_events, otherwise_events, position: _ } => {
-				let truthy_events = *truthy_events as usize;
-				let otherwise_events = *otherwise_events as usize;
-
-				buf.push_str("if ");
-				print_type_into_buf(*condition, buf, &mut HashSet::new(), args, types, info, debug);
-				buf.push_str(" then \n");
-				let events_if_true = &events[(idx + 1)..=(idx + truthy_events)];
-				debug_effects(buf, events_if_true, types, info, depth + 1, debug);
-				if otherwise_events != 0 {
-					let start = idx + truthy_events + 1;
-					let otherwise = &events[(start)..(start + otherwise_events)];
-					buf.push_str(" else \n");
-					debug_effects(buf, otherwise, types, info, depth + 1, debug);
-				}
-				idx += truthy_events + otherwise_events + 1;
-				continue;
-			}
-			Event::CreateObject { prototype: _, referenced_in_scope_as, position: _ } => {
-				write!(buf, "create object as {referenced_in_scope_as:?}").unwrap();
-			}
-			Event::Iterate { iterate_over, initial: _, kind: _ } => {
-				buf.push_str("iterate\n");
-				let inner_events = &events[(idx + 1)..(idx + 1 + *iterate_over as usize)];
-				debug_effects(buf, inner_events, types, info, depth + 1, debug);
-				idx += *iterate_over as usize + 1;
-				continue;
-			}
-			Event::FinalEvent(FinalEvent::Throw { thrown, .. }) => {
-				buf.push_str("throw ");
-				print_type_into_buf(*thrown, buf, &mut HashSet::new(), args, types, info, debug);
-			}
-			Event::FinalEvent(FinalEvent::Break { .. }) => {
-				buf.push_str("break");
-			}
-			Event::FinalEvent(FinalEvent::Continue { .. }) => {
-				buf.push_str("continue");
-			}
-			Event::FinalEvent(FinalEvent::Return { returned, position: _ }) => {
-				buf.push_str("return ");
-				print_type_into_buf(*returned, buf, &mut HashSet::new(), args, types, info, debug);
-			}
-			Event::ExceptionTrap { .. } => todo!(),
-			Event::RegisterVariable { .. } => {
-				buf.push_str("register variable");
-			}
-			Event::EndOfControlFlow(_) => {
-				buf.push_str("end");
-			}
-			Event::Miscellaneous(misc) => match misc {
-				crate::events::MiscellaneousEvents::Has { .. } => {
-					buf.push_str("Has");
-				}
-				crate::events::MiscellaneousEvents::Delete { .. } => {
-					buf.push_str("Delete");
-				}
-			},
-		}
-		buf.push('\n');
-		idx += 1;
 	}
 }

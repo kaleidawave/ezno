@@ -3,7 +3,7 @@ pub mod casts;
 pub mod classes;
 pub mod functions;
 pub mod generics;
-pub mod others;
+pub mod intrinsics;
 pub mod printing;
 pub mod properties;
 pub mod store;
@@ -12,6 +12,7 @@ mod terms;
 
 use derive_debug_extras::DebugExtras;
 
+use derive_enum_from_into::EnumFrom;
 pub(crate) use generics::substitution::*;
 
 pub use crate::features::objects::SpecialObject;
@@ -25,7 +26,7 @@ use crate::{
 	events::RootReference,
 	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	types::properties::AccessMode,
-	Decidable, FunctionId,
+	Decidable, FunctionId, Logical,
 };
 
 pub use self::functions::*;
@@ -92,66 +93,46 @@ impl TypeId {
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
 	pub const NEW_TARGET_ARG: Self = Self(22);
 
-	pub const LITERAL_RESTRICTION: Self = Self(23);
-	pub const READONLY_RESTRICTION: Self = Self(24);
+	pub const IMPORT_META: Self = Self(23);
 
-	pub const IMPORT_META: Self = Self(25);
-
+	// known symbols
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator>
-	pub const SYMBOL_ITERATOR: Self = Self(26);
+	pub const SYMBOL_ITERATOR: Self = Self(24);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator>
-	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(27);
+	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(25);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance>
-	pub const SYMBOL_HAS_INSTANCE: Self = Self(28);
+	pub const SYMBOL_HAS_INSTANCE: Self = Self(26);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive>
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(29);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(27);
 
 	// TSC intrinsics
-	pub const STRING_GENERIC: Self = Self(30);
-	pub const STRING_UPPERCASE: Self = Self(31);
-	pub const STRING_LOWERCASE: Self = Self(32);
-	pub const STRING_CAPITALIZE: Self = Self(33);
-	pub const STRING_UNCAPITALIZE: Self = Self(34);
-	pub const NOINFER: Self = Self(35);
+	pub const STRING_GENERIC: Self = Self(28);
+	pub const STRING_UPPERCASE: Self = Self(29);
+	pub const STRING_LOWERCASE: Self = Self(30);
+	pub const STRING_CAPITALIZE: Self = Self(31);
+	pub const STRING_UNCAPITALIZE: Self = Self(32);
+	pub const NO_INFER: Self = Self(33);
+	/// Might be a special type in TSC
+	pub const READONLY_RESTRICTION: Self = Self(34);
 
 	// Ezno intrinsics
 
 	/// Used in [`Self::LESS_THAN`], [`Self::LESS_THAN`] and [`Self::MULTIPLE_OF`]
-	pub const NUMBER_GENERIC: Self = Self(36);
-	pub const LESS_THAN: Self = Self(37);
-	pub const GREATER_THAN: Self = Self(38);
-	pub const MULTIPLE_OF: Self = Self(39);
+	pub const NUMBER_GENERIC: Self = Self(35);
+	pub const LESS_THAN: Self = Self(36);
+	pub const GREATER_THAN: Self = Self(37);
+	pub const MULTIPLE_OF: Self = Self(38);
+	pub const NOT_NOT_A_NUMBER: Self = Self(39);
+
+	pub const LITERAL_RESTRICTION: Self = Self(40);
+	pub const EXCLUSIVE_RESTRICTION: Self = Self(41);
+
+	/// WIP
+	pub const OPEN_BOOLEAN_TYPE: Self = Self::BOOLEAN_TYPE;
+	pub const OPEN_NUMBER_TYPE: Self = Self::NUMBER_TYPE;
 
 	/// Above +1 (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 40;
-}
-
-impl TypeId {
-	#[must_use]
-	pub fn tsc_string_intrinsic(self) -> bool {
-		matches!(
-			self,
-			Self::STRING_UPPERCASE
-				| Self::STRING_LOWERCASE
-				| Self::STRING_CAPITALIZE
-				| Self::STRING_UNCAPITALIZE
-		)
-	}
-
-	#[must_use]
-	pub fn is_intrinsic(self) -> bool {
-		self.tsc_string_intrinsic()
-			|| self.ezno_number_intrinsic()
-			|| matches!(
-				self,
-				TypeId::LITERAL_RESTRICTION | TypeId::READONLY_RESTRICTION | TypeId::NOINFER
-			)
-	}
-
-	#[must_use]
-	pub fn ezno_number_intrinsic(self) -> bool {
-		matches!(self, Self::LESS_THAN | Self::GREATER_THAN | Self::MULTIPLE_OF)
-	}
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 42;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -484,6 +465,10 @@ pub enum GenericChainLink<'a> {
 		parent_link: GenericChainParent<'a>,
 		value: &'a GenericArguments,
 	},
+	SpecialLink {
+		parent_link: GenericChainParent<'a>,
+		value: (),
+	},
 	FunctionRoot {
 		parent_link: Option<&'a GenericArguments>,
 		call_site_type_arguments: Option<&'a TypeRestrictions>,
@@ -522,6 +507,7 @@ impl<'a> GenericChainLink<'a> {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
 				})
 				.or_else(|| type_arguments.get(&on).map(|a| vec![*a])),
+			GenericChainLink::SpecialLink { .. } => todo!(),
 		}
 	}
 
@@ -560,6 +546,7 @@ impl<'a> GenericChainLink<'a> {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
 				})
 				.or_else(|| type_arguments.get(&on).copied()),
+			GenericChainLink::SpecialLink { .. } => todo!(),
 		}
 	}
 
@@ -596,6 +583,7 @@ impl<'a> GenericChainLink<'a> {
 					}
 				}
 			}
+			GenericChainLink::SpecialLink { .. } => todo!(),
 		}
 	}
 }
@@ -832,13 +820,162 @@ pub(crate) fn get_structure_arguments_based_on_object_constraint<'a, C: Informat
 	}
 }
 
-pub(crate) fn tuple_like(ty: TypeId, types: &TypeStore, environment: &crate::Environment) -> bool {
+pub(crate) fn tuple_like(id: TypeId, types: &TypeStore, environment: &crate::Environment) -> bool {
 	// TODO should be `ObjectNature::AnonymousObjectType` or something else
-	if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(ty) {
+	let ty = types.get_type_by_id(id);
+	if let Type::Object(ObjectNature::RealDeal) = ty {
 		environment
 			.get_chain_of_info()
-			.any(|info| info.prototypes.get(&ty).is_some_and(|p| *p == TypeId::ARRAY_TYPE))
+			.any(|info| info.prototypes.get(&id).is_some_and(|p| *p == TypeId::ARRAY_TYPE))
+	} else if let Type::AliasTo { to, .. } = ty {
+		tuple_like(*to, types, environment)
 	} else {
 		false
+	}
+}
+
+pub(crate) fn unfold_tuple(_ty: TypeId) -> TypeId {
+	// return Type::PropertyOf()
+	todo!()
+}
+
+pub(crate) fn assign_to_tuple(_ty: TypeId) -> TypeId {
+	todo!()
+	// if let PropertyKey::Type(slice) =
+}
+
+/// For getting `length` and stuff
+fn get_simple_value(
+	ctx: &impl InformationChain,
+	on: TypeId,
+	property: &PropertyKey,
+	types: &TypeStore,
+) -> Option<TypeId> {
+	fn get_logical(v: Logical<crate::PropertyValue>) -> Option<TypeId> {
+		match v {
+			Logical::Pure(crate::PropertyValue::Value(t)) => Some(t),
+			Logical::Implies { on, antecedent: _ } => get_logical(*on),
+			_ => None,
+		}
+	}
+
+	properties::get_property_unbound(
+		(on, None),
+		(properties::Publicity::Public, property, None),
+		ctx,
+		types,
+	)
+	.ok()
+	.and_then(get_logical)
+}
+
+fn get_array_length(
+	ctx: &impl InformationChain,
+	on: TypeId,
+	types: &TypeStore,
+) -> Result<ordered_float::NotNan<f64>, Option<TypeId>> {
+	let length_property = PropertyKey::String(std::borrow::Cow::Borrowed("length"));
+	let id = get_simple_value(ctx, on, &length_property, types).ok_or(None)?;
+	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
+		Ok(*n)
+	} else {
+		Err(Some(id))
+	}
+}
+
+/// TODO name?
+#[derive(Clone, Copy, Debug)]
+pub enum ArrayItem {
+	Member(TypeId),
+	Optional(TypeId),
+	Wildcard(TypeId),
+}
+
+/// WIP
+pub(crate) fn as_slice(
+	ty: TypeId,
+	types: &TypeStore,
+	environment: &crate::Environment,
+) -> Result<Vec<ArrayItem>, ()> {
+	if tuple_like(ty, types, environment) {
+		let ty = if let Type::AliasTo { to, .. } = types.get_type_by_id(ty) { *to } else { ty };
+		let properties =
+			environment.get_chain_of_info().find_map(|info| info.current_properties.get(&ty));
+		if let Some(properties) = properties {
+			Ok(properties
+				.iter()
+				.filter_map(|(_, key, value)| {
+					let not_length_value = !key.is_equal_to("length");
+					not_length_value.then(|| {
+						crate::utilities::notify!("key (should be incremental) {:?}", key);
+						if let Some(_) = key.as_number(types) {
+							if let crate::PropertyValue::ConditionallyExists { .. } = value {
+								ArrayItem::Optional(value.as_get_type())
+							} else {
+								ArrayItem::Member(value.as_get_type())
+							}
+						} else {
+							ArrayItem::Wildcard(value.as_get_type())
+						}
+					})
+				})
+				.collect())
+		} else {
+			crate::utilities::notify!("BAD");
+			Err(())
+		}
+	} else {
+		Err(())
+	}
+}
+
+/// WIP for counting slice indexes
+#[derive(EnumFrom, Clone, Copy, Debug)]
+pub enum Counter {
+	On(usize),
+	AddTo(TypeId),
+}
+
+impl Counter {
+	/// TODO &mut or Self -> Self?
+	pub fn increment(&mut self, types: &mut TypeStore) {
+		match self {
+			Counter::On(value) => {
+				*value += 1;
+			}
+			Counter::AddTo(value) => {
+				*value = types.register_type(Type::Constructor(Constructor::BinaryOperator {
+					lhs: *value,
+					operator: MathematicalAndBitwise::Add,
+					rhs: TypeId::ONE,
+				}));
+			}
+		}
+	}
+
+	pub fn add_type(&mut self, ty: TypeId, types: &mut TypeStore) {
+		let current = self.into_type(types);
+		let new = types.register_type(Type::Constructor(Constructor::BinaryOperator {
+			lhs: ty,
+			operator: MathematicalAndBitwise::Add,
+			rhs: current,
+		}));
+		*self = Counter::AddTo(new);
+	}
+
+	pub(crate) fn into_property_key(self) -> PropertyKey<'static> {
+		match self {
+			Counter::On(value) => PropertyKey::from_usize(value),
+			Counter::AddTo(ty) => PropertyKey::Type(ty),
+		}
+	}
+
+	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
+		match self {
+			Counter::On(value) => {
+				types.new_constant_type(Constant::Number((value as f64).try_into().unwrap()))
+			}
+			Counter::AddTo(ty) => ty,
+		}
 	}
 }

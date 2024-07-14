@@ -374,6 +374,144 @@ declare let aNumber: number;
 
 - Expected string, found boolean
 
+#### Array filter
+
+```ts
+[1, 2, 3].filter(x => x % 2 == 0) satisfies [2];
+```
+
+- ?
+
+#### Array slice
+
+```ts
+[1, 2, 3, 4, 5].slice(3) satisfies something;
+```
+
+- ?
+
+#### Array splice
+
+```ts
+const array = [1, 2, 3, 4, 5];
+array.splice(2);
+array satisfies something;
+```
+
+- ?
+
+#### Array shift and unshift
+
+```ts
+const array = [1, 2, 3];
+array.shift() satisfies not1;
+```
+
+- ?
+
+#### Array copying methods
+
+```ts
+// toReversed
+// with
+```
+
+- ?
+
+#### Array find & index of
+
+```ts
+// indexOf
+// lastIndexOf
+// find
+// findIndexOf
+```
+
+- ?
+
+#### Array constructor
+
+```ts
+new Array({ length: 5 }, (_, i) => i) satisfies string
+```
+
+- ?
+
+#### Array `concat` and spread push
+
+```ts
+// concat()
+// push(...x)
+```
+
+- ?
+
+#### Array values and entries
+
+> Iterators
+
+```ts
+const x =[1, 2, 3].values();
+```
+
+- ?
+
+#### Array flat
+
+```ts
+// flatten
+// flatMap
+```
+
+- ?
+
+#### Array reducers
+
+> May be hard bc reversed generics order
+
+```ts
+// reduce
+// reduceRight
+```
+
+- ?
+
+#### Map `set` and `get`
+
+```ts
+const x = new Map();
+x.set(4, 2);
+x.set(4, 3);
+x.get(4) satisfies 2;
+x.get(2) satisfies string;
+```
+
+- Expected 2, found 3
+- Expected string, found undefined
+
+#### Map `items`
+
+```ts
+const x = new Map();
+x.items()
+```
+
+- ?
+
+#### Map generics
+
+```ts
+const x: Map<number, string> = new Map();
+x.set(4, false);
+
+const y = new Map();
+y.set(6, 2);
+y.set(4, "hi");
+y satisfies string;
+```
+
+- Expected string, found Map<6 | 4, 2 | "hi">
+
 ### Expressions
 
 #### Bad arithmetic operator

@@ -34,6 +34,8 @@ mod specification {
 const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
 // const SIMPLE_DTS: Option<&str> = None;
 
+const IN_CI: bool = option_env!("CI").is_some();
+
 /// Called by each test
 fn check_errors(
 	heading: &'static str,
@@ -63,7 +65,11 @@ fn check_errors(
 	// eprintln!("{:?}", code);
 
 	// let result = panic::catch_unwind(|| {
-	eprintln!("{:?}", std::env::current_dir());
+
+	if IN_CI {
+		eprintln!("::group::Running {heading}");
+	}
+
 	let definition_file_name: PathBuf = if SIMPLE_DTS.is_some() {
 		"./checker/definitions/simple.d.ts".into()
 	} else {
@@ -110,6 +116,10 @@ fn check_errors(
 			}
 		})
 		.collect();
+
+	if IN_CI {
+		eprintln!("::endgroup::");
+	}
 
 	if diagnostics != expected_diagnostics {
 		panic!(

@@ -183,7 +183,14 @@ pub(crate) fn apply_events(
 					// }
 				}
 			}
-			Event::Setter { on, under, new, initialization, publicity, position } => {
+			Event::Setter {
+				on,
+				under,
+				new,
+				initialisation: initialization,
+				publicity,
+				position,
+			} => {
 				let on = substitute(*on, type_arguments, top_environment, types);
 
 				if unknown_mode {
@@ -207,19 +214,18 @@ pub(crate) fn apply_events(
 						PropertyValue::Deleted | PropertyValue::ConditionallyExists { .. } => {
 							unreachable!()
 						}
+						PropertyValue::Configured { .. } => {
+							todo!()
+						}
 					};
 
 					{
-						// crate::utilities::notify!(
-						// 	"[Event::Setter] {}[{}] = {}",
-						// 	crate::types::printing::print_type(on, types, &gc, true),
-						// 	crate::types::printing::print_type(under, types, &gc, true),
-						// 	if let Property::Value(new) = new {
-						// 		crate::types::printing::print_type(new, types, &gc, true)
-						// 	} else {
-						// 		format!("{:#?}", new)
-						// 	}
-						// );
+						crate::utilities::notify!(
+							"[Event::Setter] ({})[{:?}] = {:?}",
+							crate::types::printing::print_type(on, types, top_environment, true),
+							under,
+							new
+						);
 					}
 
 					if *initialization {

@@ -11,13 +11,7 @@ pub enum Constant {
 	Number(ordered_float::NotNan<f64>),
 	String(String),
 	Boolean(bool),
-	Symbol {
-		key: String,
-	},
-	/// A unique function type given
-	/// the `x` reference of `function x() {}`
-	Undefined,
-	Null,
+	Symbol { key: String },
 	NaN,
 }
 
@@ -30,8 +24,6 @@ impl Constant {
 			Constant::String(value) => Cow::Borrowed(value),
 			Constant::Boolean(value) => Cow::Borrowed(if *value { "true" } else { "false" }),
 			Constant::Symbol { key } => Cow::Owned(format!("Symbol({key})")),
-			Constant::Undefined => Cow::Borrowed("undefined"),
-			Constant::Null => Cow::Borrowed("null"),
 			Constant::NaN => Cow::Borrowed("NaN"),
 		}
 	}
@@ -45,8 +37,6 @@ impl Constant {
 			Constant::String(value) => format!("\"{value}\""),
 			Constant::Boolean(value) => if *value { "true" } else { "false" }.to_owned(),
 			Constant::Symbol { key } => format!("Symbol({key})"),
-			Constant::Undefined => "undefined".to_owned(),
-			Constant::Null => "null".to_owned(),
 			Constant::NaN => "NaN".to_owned(),
 		}
 	}
@@ -57,8 +47,6 @@ impl Constant {
 			Constant::Number(_) | Constant::NaN => TypeId::NUMBER_TYPE,
 			Constant::String(_) => TypeId::STRING_TYPE,
 			Constant::Boolean(_) => TypeId::BOOLEAN_TYPE,
-			Constant::Undefined => TypeId::UNDEFINED_TYPE,
-			Constant::Null => TypeId::NULL_TYPE,
 			Constant::Symbol { .. } => TypeId::SYMBOL_TYPE,
 		}
 	}

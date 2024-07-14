@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::Map as SmallMap;
+use crate::{types::intrinsics::Intrinsic, Map as SmallMap};
 use source_map::SpanWithSource;
 
 use crate::{
@@ -57,8 +57,9 @@ impl Default for TypeStore {
 			Type::Class { name: "boolean".to_owned(), parameters: None },
 			Type::Class { name: "number".to_owned(), parameters: None },
 			Type::Class { name: "string".to_owned(), parameters: None },
-			Type::Constant(crate::Constant::Undefined),
-			Type::Constant(crate::Constant::Null),
+			// sure?
+			Type::Interface { name: "undefined".to_owned(), nominal: true, parameters: None },
+			Type::SpecialObject(SpecialObject::Null),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
 			Type::Class { name: "Array".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
@@ -92,17 +93,6 @@ impl Default for TypeStore {
 				// TODO
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
-			// TODO WIP
-			Type::AliasTo {
-				name: "Literal".into(),
-				to: TypeId::T_TYPE,
-				parameters: Some(vec![TypeId::T_TYPE]),
-			},
-			Type::AliasTo {
-				name: "Readonly".into(),
-				to: TypeId::T_TYPE,
-				parameters: Some(vec![TypeId::T_TYPE]),
-			},
 			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
 			Type::Constant(crate::Constant::Symbol { key: "iterator".to_owned() }),
 			Type::Constant(crate::Constant::Symbol { key: "asyncIterator".to_owned() }),
@@ -139,6 +129,11 @@ impl Default for TypeStore {
 				name: "NoInfer".into(),
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
+			Type::AliasTo {
+				name: "Readonly".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "T".into(),
 				// TODO to number...
@@ -158,6 +153,22 @@ impl Default for TypeStore {
 				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
 				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "NotNotANumber".into(),
+				parameters: None,
+			},
+			// TODO WIP
+			Type::AliasTo {
+				name: "Literal".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "Exclusive".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
 			},
 		];
 
@@ -185,8 +196,8 @@ impl TypeStore {
 	pub fn new_constant_type(&mut self, constant: crate::Constant) -> crate::TypeId {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
-			crate::Constant::Number(number) if number == 1f64 => TypeId::ONE,
 			crate::Constant::Number(number) if number == 0f64 => TypeId::ZERO,
+			crate::Constant::Number(number) if number == 1f64 => TypeId::ONE,
 			crate::Constant::Boolean(value) => {
 				if value {
 					TypeId::TRUE
@@ -194,8 +205,6 @@ impl TypeStore {
 					TypeId::FALSE
 				}
 			}
-			crate::Constant::Undefined => TypeId::UNDEFINED_TYPE,
-			crate::Constant::Null => TypeId::NULL_TYPE,
 			crate::Constant::NaN => TypeId::NAN_TYPE,
 			_ => {
 				let ty = Type::Constant(constant);
@@ -222,7 +231,7 @@ impl TypeStore {
 		}
 
 		if let (TypeId::TRUE, TypeId::FALSE) | (TypeId::FALSE, TypeId::TRUE) = (lhs, rhs) {
-			return TypeId::BOOLEAN_TYPE;
+			return TypeId::OPEN_BOOLEAN_TYPE;
 		}
 		if let TypeId::NEVER_TYPE = lhs {
 			return rhs;
@@ -513,5 +522,32 @@ impl TypeStore {
 
 	pub(crate) fn new_key_of(&mut self, of: TypeId) -> TypeId {
 		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
+	}
+
+	pub(crate) fn new_intrinsic(&mut self, intrinsic: Intrinsic, argument: TypeId) -> TypeId {
+		let (on, to_pair) = match intrinsic {
+			Intrinsic::Uppercase => (TypeId::STRING_UPPERCASE, TypeId::STRING_GENERIC),
+			Intrinsic::Lowercase => (TypeId::STRING_LOWERCASE, TypeId::STRING_GENERIC),
+			Intrinsic::Capitalize => (TypeId::STRING_CAPITALIZE, TypeId::STRING_GENERIC),
+			Intrinsic::Uncapitalize => (TypeId::STRING_UNCAPITALIZE, TypeId::STRING_GENERIC),
+			Intrinsic::NoInfer => (TypeId::NO_INFER, TypeId::T_TYPE),
+			Intrinsic::Literal => (TypeId::LITERAL_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::LessThan => (TypeId::LESS_THAN, TypeId::NUMBER_GENERIC),
+			Intrinsic::GreaterThan => (TypeId::GREATER_THAN, TypeId::NUMBER_GENERIC),
+			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
+			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::NotNotANumber => {
+				return TypeId::NOT_NOT_A_NUMBER;
+			}
+		};
+		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+			to_pair,
+			(argument, <SpanWithSource as source_map::Nullable>::NULL),
+		)]));
+
+		self.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on,
+			arguments,
+		}))
 	}
 }

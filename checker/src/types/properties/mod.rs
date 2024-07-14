@@ -10,9 +10,9 @@ use crate::{
 	subtyping::{slice_matches_type, SubTypingOptions},
 	types::{
 		generics::contributions::{self, Contributions},
-		properties, FunctionType, GenericChain, PolyNature,
+		properties, GenericChain, PartiallyAppliedGenerics, PolyNature,
 	},
-	Constant, Environment, Logical, TypeId,
+	Constant, Environment, FunctionId, Logical, TypeId,
 };
 use std::borrow::Cow;
 
@@ -38,11 +38,18 @@ pub enum Publicity {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PropertyKey<'a> {
 	String(Cow<'a, str>),
+	/// Use [`PropertyKey::from_type`] for canonicalisation (generating [`PropertyKey::String`] when possible)
 	Type(TypeId),
 	// SomeThingLike(TypeId),
 }
 
-// Cannot derive BinarySerializable because lifetime
+impl From<&'static str> for PropertyKey<'static> {
+	fn from(value: &'static str) -> Self {
+		Self::String(Cow::Borrowed(value))
+	}
+}
+
+// Cannot auto derive BinarySerializable because lifetime
 impl crate::BinarySerializable for PropertyKey<'static> {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		match self {
@@ -88,8 +95,6 @@ impl<'a> PropertyKey<'a> {
 					// Okay I think?
 					PropertyKey::Type(ty)
 				}
-				Constant::Undefined => todo!(),
-				Constant::Null => todo!(),
 				Constant::NaN => todo!(),
 			}
 		} else {
@@ -174,14 +179,34 @@ impl<'a> PropertyKey<'a> {
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PropertyValue {
 	Value(TypeId),
-	Getter(Box<FunctionType>),
-	Setter(Box<FunctionType>),
+	Getter(FunctionId),
+	Setter(FunctionId),
 	/// TODO doesn't exist Deleted | Optional
 	Deleted,
 	ConditionallyExists {
 		on: TypeId,
+		/// Should be always Value | Getter | Setter | Deleted
 		truthy: Box<Self>,
 	},
+	Configured {
+		/// This points to the previous. Can be conditionally via [`PropertyValue::ConditionallyExists`]
+		on: Box<Self>,
+		descriptor: Descriptor,
+	},
+}
+
+#[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct Descriptor {
+	pub writable: TypeId,
+	pub enumerable: TypeId,
+	pub configurable: TypeId,
+}
+
+// The default descriptor for 'a' for `{ a: 2 }`
+impl Default for Descriptor {
+	fn default() -> Self {
+		Self { writable: TypeId::TRUE, enumerable: TypeId::TRUE, configurable: TypeId::TRUE }
+	}
 }
 
 impl PropertyValue {
@@ -190,7 +215,10 @@ impl PropertyValue {
 	pub fn as_get_type(&self) -> TypeId {
 		match self {
 			PropertyValue::Value(value) => *value,
-			PropertyValue::Getter(getter) => getter.return_type,
+			PropertyValue::Getter(_getter) => {
+				crate::utilities::notify!("Here. Should pass down types");
+				TypeId::ERROR_TYPE
+			}
 			// TODO unsure about these two
 			PropertyValue::Setter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
@@ -198,6 +226,7 @@ impl PropertyValue {
 				// TODO temp
 				truthy.as_get_type()
 			}
+			PropertyValue::Configured { on, .. } => on.as_get_type(),
 		}
 	}
 
@@ -205,7 +234,10 @@ impl PropertyValue {
 	pub fn as_set_type(&self) -> TypeId {
 		match self {
 			PropertyValue::Value(value) => *value,
-			PropertyValue::Setter(setter) => setter.return_type,
+			PropertyValue::Setter(_setter) => {
+				crate::utilities::notify!("Here. Should pass down types");
+				TypeId::ERROR_TYPE
+			}
 			// TODO unsure about these two
 			PropertyValue::Getter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
@@ -213,6 +245,7 @@ impl PropertyValue {
 				// TODO temp
 				truthy.as_get_type()
 			}
+			PropertyValue::Configured { on, .. } => on.as_get_type(),
 		}
 	}
 }
@@ -276,6 +309,10 @@ pub(crate) fn key_matches(
 				crate::utilities::notify!("{:?}", c);
 				// TODO
 				(*s == c.as_js_string(), None)
+			} else if *want == TypeId::NUMBER_TYPE {
+				(s.parse::<usize>().is_ok(), None)
+			} else if *want == TypeId::STRING_TYPE {
+				(s.parse::<usize>().is_err(), None)
 			} else {
 				(false, None)
 			}
@@ -286,6 +323,7 @@ pub(crate) fn key_matches(
 				(key, key_type_arguments),
 				(want, want_type_arguments)
 			);
+
 			if let Some(substituted_key) =
 				key_type_arguments.and_then(|args| args.get_single_argument(*key))
 			{
@@ -306,7 +344,31 @@ pub(crate) fn key_matches(
 			} else if key == TypeId::NUMBER_TYPE {
 				(s.parse::<usize>().is_ok(), None)
 			} else if key == TypeId::STRING_TYPE {
+				crate::utilities::notify!("Here!");
+				// TODO is this okay?
 				(s.parse::<usize>().is_err(), None)
+			} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: on @ (TypeId::MULTIPLE_OF | TypeId::LESS_THAN | TypeId::GREATER_THAN),
+				arguments,
+			}) = types.get_type_by_id(key)
+			{
+				// Special behavior here to treat numerical property keys (which are strings) as numbers
+				// TODO unify with the subtyping
+				let value = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+				if let (Type::Constant(Constant::Number(argument)), Ok(value)) =
+					(types.get_type_by_id(value), s.parse::<usize>())
+				{
+					let value: ordered_float::NotNan<f64> = (value as f64).try_into().unwrap();
+					let result = match *on {
+						TypeId::LESS_THAN => *argument < value,
+						TypeId::GREATER_THAN => *argument > value,
+						TypeId::MULTIPLE_OF => value % *argument == 0f64,
+						_ => unreachable!(),
+					};
+					(result, None)
+				} else {
+					(false, None)
+				}
 			} else {
 				slice_matches_type((key, key_type_arguments), s.as_ref(), info_chain, types)
 			}

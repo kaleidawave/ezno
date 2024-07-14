@@ -65,6 +65,9 @@ pub(crate) fn get_property_unbound(
 								pure
 							});
 						}
+						//  else {
+						// 	// crate::utilities::notify!("Key {:?}, want_key={:?}", key, want_key);
+						// }
 					}
 
 					None
@@ -81,6 +84,22 @@ pub(crate) fn get_property_unbound(
 		return Err(MissingOrToCalculate::Infer { on });
 	}
 
+	if let PropertyKey::Type(key) = under {
+		if *key == TypeId::ERROR_TYPE {
+			return Err(MissingOrToCalculate::Error);
+		} else if let Type::Constructor(Constructor::ConditionalResult {
+			condition,
+			truthy_result,
+			otherwise_result,
+			..
+		}) = types.get_type_by_id(*key)
+		{
+			todo!("conditional via Logical {:?}", (condition, truthy_result, otherwise_result));
+		} else {
+			crate::utilities::notify!("TODO maybe PropertyKeyOf only");
+		}
+	}
+
 	match types.get_type_by_id(on) {
 		Type::SpecialObject(SpecialObject::Function(function_id, _)) => resolver(
 			(on, on_type_arguments),
@@ -89,12 +108,17 @@ pub(crate) fn get_property_unbound(
 			types,
 		)
 		.or_else(|| {
+			let get_function_from_id = types.get_function_from_id(*function_id);
 			if let (
 				true,
 				crate::features::functions::FunctionBehavior::Function { prototype, .. },
-			) = (under.is_equal_to("prototype"), &types.get_function_from_id(*function_id).behavior)
+			) = (under.is_equal_to("prototype"), &get_function_from_id.behavior)
 			{
 				Some(Logical::Pure(PropertyValue::Value(*prototype)))
+			} else if let (true, crate::features::functions::FunctionBehavior::Function { .. }) =
+				(under.is_equal_to("name"), &get_function_from_id.behavior)
+			{
+				todo!("get name")
 			} else {
 				None
 			}
@@ -155,13 +179,16 @@ pub(crate) fn get_property_unbound(
 				types,
 			);
 
-			// TODO throwaway if both Missing::None
-
-			Ok(Logical::Or {
-				condition: TypeId::BOOLEAN_TYPE,
-				left: Box::new(left),
-				right: Box::new(right),
-			})
+			if left.is_err() && right.is_err() {
+				crate::utilities::notify!("Getting property left={:?}, right={:?}", left, right);
+				Err(MissingOrToCalculate::Missing)
+			} else {
+				Ok(Logical::Or {
+					condition: TypeId::OPEN_BOOLEAN_TYPE,
+					left: Box::new(left),
+					right: Box::new(right),
+				})
+			}
 		}
 		Type::RootPolyType(_nature) => {
 			// Can assign to properties on parameters etc
@@ -302,6 +329,8 @@ pub(crate) fn get_property_unbound(
 				on_self
 			};
 
+			crate::utilities::notify!("{:?}", result);
+
 			result
 				.map(|result| {
 					if let Some(ref generics) = generics {
@@ -333,6 +362,7 @@ pub(crate) fn get_property_unbound(
 				Err(MissingOrToCalculate::Missing)
 			}
 		}),
+		Type::SpecialObject(SpecialObject::Null) => Err(MissingOrToCalculate::Missing),
 		Type::SpecialObject(SpecialObject::ClassConstructor { .. }) | Type::Class { .. } => {
 			resolver(
 				(on, on_type_arguments),
@@ -392,58 +422,9 @@ pub(crate) fn get_property_unbound(
 
 pub type Properties = Vec<(Publicity, PropertyKey<'static>, PropertyValue)>;
 
-/// Get properties on a type (for printing and other non-one property uses)
-///
-/// - TODO prototypes
-/// - TODO could this be an iterator
-/// - TODO return whether it is fixed
-/// - TODO doesn't evaluate properties
-pub fn get_properties_on_single_type(
-	base: TypeId,
-	types: &TypeStore,
-	info: &impl InformationChain,
-) -> Properties {
-	match types.get_type_by_id(base) {
-		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
-			let reversed_flattened_properties = info
-				.get_chain_of_info()
-				.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
-				.flatten();
-
-			let mut deleted_or_existing_properties =
-				std::collections::HashSet::<PropertyKey>::new();
-
-			// This retains ordering here
-
-			let mut properties = Vec::new();
-			for (publicity, key, prop) in reversed_flattened_properties {
-				if let PropertyValue::Deleted = prop {
-					// TODO doesn't cover constants :(
-					deleted_or_existing_properties.insert(key.clone());
-				} else if deleted_or_existing_properties.insert(key.clone()) {
-					properties.push((*publicity, key.to_owned(), prop.clone()));
-				}
-			}
-
-			properties.reverse();
-			properties
-		}
-		t @ (Type::SpecialObject(_)
-		| Type::Constructor(_)
-		| Type::RootPolyType(_)
-		| Type::Or(..)
-		| Type::PartiallyAppliedGenerics(_)
-		| Type::Constant(_)
-		| Type::AliasTo { .. }
-		| Type::FunctionReference(_)
-		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
-	}
-}
-
 #[derive(Debug, Clone, Copy, binary_serialize_derive::BinarySerializable)]
 pub enum AccessMode {
 	Regular,
-	Optional,
 	/// For destructuring
 	DoNotBindThis,
 }
@@ -470,6 +451,17 @@ pub(crate) fn get_property<E: CallCheckingBehavior>(
 	{
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
+
+	// TODO
+	// Ok(new_conditional_context(
+	// 	environment,
+	// 	(is_lhs_null, lhs.1),
+	// 	|env: &mut Environment, data: &mut CheckingData<T, A>| {
+	// 		A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+	// 	},
+	// 	Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
+	// 	checking_data,
+	// ))
 
 	if get_constraint(on, types).is_some() {
 		// // TODO temp fix for assigning to a poly type. What about unions etc
@@ -627,6 +619,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 							// TODO
 							max_inline: 0,
 						};
+						let getter = types.functions.get(&getter).unwrap().clone();
 						let call = getter.call(
 							(
 								ThisValue::Passed(on),
@@ -668,6 +661,15 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 						)?;
 						Some((kind, types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE)))
 					}
+					PropertyValue::Configured { on: value, .. } => resolve_property_on_logical(
+						Logical::Pure(*value),
+						on,
+						generics,
+						environment,
+						types,
+						behavior,
+						mode,
+					),
 				}
 			}
 			Logical::Or { left, right, condition } => {
@@ -697,7 +699,7 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 				}
 			}
 			Logical::Implies { on: log_on, antecedent } => {
-				crate::utilities::notify!("TypeId::UNIMPLEMENTED_ERROR_TYPE here");
+				crate::utilities::notify!("from=TypeId::UNIMPLEMENTED_ERROR_TYPE here");
 				let generics = GenericChainLink::append(
 					// TODO
 					TypeId::UNIMPLEMENTED_ERROR_TYPE,
@@ -852,7 +854,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						// } else {
 						// 	crate::utilities::notify!("TODO don't evaluate getter");
 						// }
-						// TODO : getter.return_type
+						let getter = types.functions.get(&getter).unwrap();
 						types.register_type(Type::Constructor(Constructor::Property {
 							on,
 							under: under.into_owned(),
@@ -875,6 +877,15 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						)?;
 						types.new_conditional_type(on, value, TypeId::UNDEFINED_TYPE)
 					}
+					PropertyValue::Configured { on: value, .. } => resolve_logical_with_poly(
+						Logical::Pure(*value),
+						on,
+						under.clone(),
+						generics,
+						environment,
+						types,
+						mode,
+					)?,
 				})
 			}
 			Logical::Or { condition, left, right } => {
@@ -968,4 +979,68 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	});
 
 	Some((PropertyKind::Direct, value))
+}
+
+/// Get properties on a type (for printing and other non-one property uses)
+///
+/// - TODO prototypes
+/// - TODO could this be an iterator
+/// - TODO not clone
+/// - TODO return whether it is fixed
+/// - TODO doesn't evaluate properties
+pub fn get_properties_on_single_type(
+	base: TypeId,
+	types: &TypeStore,
+	info: &impl InformationChain,
+) -> Properties {
+	match types.get_type_by_id(base) {
+		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
+			// Reversed needed for deleted
+			let reversed_flattened_properties = info
+				.get_chain_of_info()
+				.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
+				.flatten();
+
+			let mut deleted_or_existing_properties =
+				std::collections::HashSet::<PropertyKey>::new();
+
+			// This retains ordering here
+
+			let mut properties = Vec::new();
+			let mut numerical_properties = std::collections::BTreeMap::new();
+
+			for (publicity, key, prop) in reversed_flattened_properties {
+				if let PropertyValue::Deleted = prop {
+					// TODO doesn't cover constants :(
+					deleted_or_existing_properties.insert(key.clone());
+				} else if deleted_or_existing_properties.insert(key.clone()) {
+					let value = (*publicity, key.to_owned(), prop.clone());
+					if let Some(n) = key.as_number(types) {
+						numerical_properties.insert(n, value);
+					} else {
+						properties.push(value);
+					}
+				}
+			}
+
+			properties.reverse();
+
+			if numerical_properties.is_empty() {
+				properties
+			} else {
+				let mut new: Vec<_> = numerical_properties.into_values().collect();
+				new.append(&mut properties);
+				new
+			}
+		}
+		t @ (Type::SpecialObject(_)
+		| Type::Constructor(_)
+		| Type::RootPolyType(_)
+		| Type::Or(..)
+		| Type::PartiallyAppliedGenerics(_)
+		| Type::Constant(_)
+		| Type::AliasTo { .. }
+		| Type::FunctionReference(_)
+		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
+	}
 }

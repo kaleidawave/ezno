@@ -374,6 +374,7 @@ impl<'a> Environment<'a> {
 							expression,
 							checking_data,
 							self,
+							TypeId::ANY_TYPE,
 						)
 						.unwrap();
 
@@ -814,6 +815,24 @@ impl<'a> Environment<'a> {
 		site: SpanWithSource,
 		mode: AccessMode,
 	) -> Result<Instance, ()> {
+		// let get_property = if let AccessMode::Optional = mode {
+		// 	let is_lhs_null = evaluate_equality_inequality_operation(
+		// 		lhs.0,
+		// 		&EqualityAndInequality::StrictEqual,
+		// 		TypeId::NULL_TYPE,
+		// 		&mut checking_data.types,
+		// 		checking_data.options.strict_casts,
+		// 	)?;
+		// 	Ok(new_conditional_context(
+		// 		environment,
+		// 		(is_lhs_null, lhs.1),
+		// 		|env: &mut Environment, data: &mut CheckingData<T, A>| {
+		// 			A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
+		// 		},
+		// 		Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
+		// 		checking_data,
+		// 	))
+		// } else {
 		let get_property = self.get_property(
 			on,
 			publicity,
@@ -824,6 +843,7 @@ impl<'a> Environment<'a> {
 			&checking_data.options,
 			mode,
 		);
+		// };
 
 		if let Some((kind, result)) = get_property {
 			Ok(match kind {

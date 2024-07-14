@@ -27,7 +27,7 @@ use crate::{
 	events::RootReference,
 	features::functions::ClosedOverVariables,
 	types::{get_constraint, properties, PartiallyAppliedGenerics, TypeStore},
-	CheckingData, Environment, Type, TypeId,
+	CheckingData, Environment, Logical, PropertyValue, Type, TypeId,
 };
 
 use self::objects::SpecialObject;
@@ -48,16 +48,19 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 		};
 		// TODO could Cow or something to not allocate?
 		types.new_constant_type(crate::Constant::String(name.to_owned()))
+	} else if on == TypeId::UNDEFINED_TYPE {
+		return types.new_constant_type(crate::Constant::String("undefined".to_owned()));
+	} else if on == TypeId::UNDEFINED_TYPE {
+		return types.new_constant_type(crate::Constant::String("null".to_owned()));
 	} else {
 		let ty = types.get_type_by_id(on);
 		if let crate::Type::Constant(cst) = ty {
+			// TODO backing type
 			let name = match cst {
 				crate::Constant::NaN | crate::Constant::Number(_) => "number",
 				crate::Constant::String(_) => "string",
 				crate::Constant::Boolean(_) => "boolean",
 				crate::Constant::Symbol { key: _ } => "symbol",
-				crate::Constant::Undefined => "undefined",
-				crate::Constant::Null => "object",
 			};
 			// TODO could Cow or something to not allocate?
 			types.new_constant_type(crate::Constant::String(name.to_owned()))
@@ -302,10 +305,10 @@ pub fn delete_operator(
 				if let Ok(property_constraint) = property_constraint {
 					crate::utilities::notify!("property_constraint {:?}", property_constraint);
 					match property_constraint {
-						crate::Logical::Pure(n) => match n {
-							crate::PropertyValue::Value(_)
-							| crate::PropertyValue::Getter(_)
-							| crate::PropertyValue::Setter(_) => {
+						Logical::Pure(n) => match n {
+							PropertyValue::Value(_)
+							| PropertyValue::Getter(_)
+							| PropertyValue::Setter(_) => {
 								crate::utilities::notify!(
 									"Cannot delete property because of constraint"
 								);
@@ -317,16 +320,19 @@ pub fn delete_operator(
 								);
 								return Err(CannotDeleteFromError { constraint, position });
 							}
-							crate::PropertyValue::Deleted => {
+							PropertyValue::Deleted => {
 								crate::utilities::notify!("Here?");
 							}
-							crate::PropertyValue::ConditionallyExists { .. } => {
+							PropertyValue::ConditionallyExists { .. } => {
 								crate::utilities::notify!("OKAY!!!");
 							}
+							PropertyValue::Configured { on: _, descriptor } => {
+								crate::utilities::notify!("descriptor={:?}", descriptor);
+							}
 						},
-						crate::Logical::Or { .. } => todo!(),
-						crate::Logical::Implies { .. } => todo!(),
-						crate::Logical::BasedOnKey { .. } => todo!(),
+						Logical::Or { .. } => todo!(),
+						Logical::Implies { .. } => todo!(),
+						Logical::BasedOnKey { .. } => todo!(),
 					}
 				}
 			}

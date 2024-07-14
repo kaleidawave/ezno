@@ -14,6 +14,7 @@ use crate::{
 	subtyping::{State, SubTypingOptions},
 	types::{
 		generics::contributions::Contributions,
+		intrinsics::{self, distribute_tsc_string_intrinsic},
 		properties::{get_property_unbound, Publicity},
 		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	},
@@ -143,11 +144,11 @@ pub(crate) fn substitute(
 			let generic_arguments = structure_arguments.clone();
 
 			// Fold intrinsic type
-			if on.tsc_string_intrinsic() {
+			if intrinsics::tsc_string_intrinsic(on) {
 				let arg =
 					structure_arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
 				let value = substitute(arg, arguments, environment, types);
-				return convert_tsc_string_intrinsic(value, on, types);
+				return distribute_tsc_string_intrinsic(value, on, types);
 			}
 
 			let new_structure_arguments = match generic_arguments {
@@ -177,7 +178,8 @@ pub(crate) fn substitute(
 			SpecialObject::Proxy { .. } => todo!(),
 			SpecialObject::RegularExpression(_) => todo!(),
 			SpecialObject::Import(_) => todo!(),
-			_ => unreachable!(),
+			SpecialObject::Null => id,
+			SpecialObject::Function(..) | SpecialObject::ClassConstructor { .. } => unreachable!(),
 		},
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
@@ -194,10 +196,16 @@ pub(crate) fn substitute(
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) | PolyNature::Error(_) = nature {
 				id
-			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
-				nature
+			} else if let PolyNature::FunctionGeneric { .. }
+			| PolyNature::StructureGeneric { .. }
+			| PolyNature::InferGeneric { .. } = nature
 			{
-				crate::utilities::notify!("Could not find argument for explicit generic {:?}", id);
+				// Infer generic is fine for `type Index<T> = T extends Array<infer I> ? I : never`;
+				crate::utilities::notify!(
+					"Could not find argument for explicit generic {:?} (nature={:?})",
+					id,
+					nature
+				);
 				id
 			} else {
 				// Other root poly types cases handled by the early return
@@ -217,25 +225,20 @@ pub(crate) fn substitute(
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
-							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"
+							"Cannot {:?} {operator:?} {:?} (restriction or something failed)",
+							crate::types::printing::print_type(lhs, types, environment, true),
+							crate::types::printing::print_type(rhs, types, environment, true)
 						);
 					}
 				}
 			}
 			Constructor::UnaryOperator { operand, operator, .. } => {
 				let operand = substitute(operand, arguments, environment, types);
-				match evaluate_pure_unary_operator(
+				evaluate_pure_unary_operator(
 					operator, operand, types,
 					// Restrictions should have been made ahead of time
 					false,
-				) {
-					Ok(result) => result,
-					Err(()) => {
-						unreachable!(
-							"Cannot {operand:?} {operator:?} (restriction or something failed)"
-						);
-					}
-				}
+				)
 			}
 			Constructor::ConditionalResult {
 				condition,
@@ -243,16 +246,16 @@ pub(crate) fn substitute(
 				otherwise_result,
 				result_union: _,
 			} => {
-				// TSC behavior
+				// TSC behavior, use `compute_extends_rule` which does distribution
 				if let Type::Constructor(Constructor::TypeRelationOperator(
 					crate::types::TypeRelationOperator::Extends { item, extends },
 				)) = types.get_type_by_id(condition)
 				{
+					// crate::utilities::notify!("Here!");
+
 					let (item, extends) = (*item, *extends);
 					let item = substitute(item, arguments, environment, types);
-
-					// TODO pass generics down via other
-					// let extends = substitute(extends, arguments, environment, types);
+					let extends = substitute(extends, arguments, environment, types);
 
 					return compute_extends_rule(
 						extends,
@@ -423,14 +426,7 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false) {
-					Ok(result) => result,
-					Err(()) => {
-						unreachable!(
-							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"
-						);
-					}
-				}
+				evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false)
 			}
 			Constructor::TypeOperator(op) => match op {
 				crate::types::TypeOperator::TypeOf(ty) => {
@@ -446,19 +442,33 @@ pub(crate) fn substitute(
 			},
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { item, extends } => {
+					let before = item;
 					let item = substitute(item, arguments, environment, types);
 					let extends = substitute(extends, arguments, environment, types);
 
+					{
+						use crate::types::printing::print_type;
+
+						crate::utilities::notify!(
+							"Subtyping {} (prev {}) :>= {} ({:?})",
+							print_type(item, types, environment, true),
+							print_type(before, types, environment, true),
+							print_type(extends, types, environment, true),
+							&arguments.arguments
+						);
+					}
+
+					let mut state = crate::subtyping::State {
+						already_checked: Default::default(),
+						mode: Default::default(),
+						contributions: None,
+						object_constraints: None,
+						others: Default::default(),
+					};
 					let result = crate::subtyping::type_is_subtype(
 						extends,
 						item,
-						&mut crate::subtyping::State {
-							already_checked: Default::default(),
-							mode: Default::default(),
-							contributions: None,
-							object_constraints: None,
-							others: Default::default(),
-						},
+						&mut state,
 						environment,
 						types,
 					);
@@ -503,52 +513,6 @@ pub(crate) fn substitute(
 				types.new_key_of(on)
 			}
 		},
-	}
-}
-
-pub(crate) fn convert_tsc_string_intrinsic(
-	on: TypeId,
-	value: TypeId,
-	types: &mut TypeStore,
-) -> TypeId {
-	match types.get_type_by_id(value) {
-		Type::Constant(crate::Constant::String(s)) => {
-			if s.is_empty() {
-				return value;
-			}
-			let transformed = match on {
-				TypeId::STRING_UPPERCASE => s.to_uppercase(),
-				TypeId::STRING_LOWERCASE => s.to_lowercase(),
-				TypeId::STRING_CAPITALIZE => {
-					let mut chars = s.chars();
-					let mut s = chars.next().unwrap().to_uppercase().collect::<String>();
-					s.extend(chars);
-					s
-				}
-				TypeId::STRING_UNCAPITALIZE => {
-					let mut chars = s.chars();
-					let mut s = chars.next().unwrap().to_lowercase().collect::<String>();
-					s.extend(chars);
-					s
-				}
-				_ => unreachable!(),
-			};
-			types.new_constant_type(crate::Constant::String(transformed))
-		}
-		Type::AliasTo { to, .. } => convert_tsc_string_intrinsic(on, *to, types),
-		Type::Or(lhs, rhs) => {
-			let (lhs, rhs) = (*lhs, *rhs);
-			let lhs = convert_tsc_string_intrinsic(on, lhs, types);
-			let rhs = convert_tsc_string_intrinsic(on, rhs, types);
-			types.new_or_type(lhs, rhs)
-		}
-		_ => types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on,
-			arguments: GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
-				TypeId::STRING_GENERIC,
-				(value, SpanWithSource::NULL),
-			)])),
-		})),
 	}
 }
 

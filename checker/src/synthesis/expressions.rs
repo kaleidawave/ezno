@@ -26,6 +26,7 @@ use crate::{
 			synthesise_function, GetterSetter,
 		},
 		in_operator,
+		operations::is_null_or_undefined,
 		variables::VariableWithValue,
 	},
 	types::{
@@ -249,7 +250,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					&**rhs,
 					checking_data,
 					environment,
-					// TODO unwrap
+					expecting, // TODO unwrap
 				)
 				.unwrap();
 			}
@@ -346,15 +347,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						UnaryOperator::LogicalNot => PureUnary::LogicalNot,
 						_ => unreachable!(),
 					};
-					Instance::RValue(
-						evaluate_pure_unary_operator(
-							operator,
-							operand_type,
-							&mut checking_data.types,
-							checking_data.options.strict_casts,
-						)
-						.unwrap(),
-					)
+					Instance::RValue(evaluate_pure_unary_operator(
+						operator,
+						operand_type,
+						&mut checking_data.types,
+						checking_data.options.strict_casts,
+					))
 				}
 				UnaryOperator::Await => {
 					// TODO get promise T
@@ -607,46 +605,102 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				}
 			};
 
-			let mode = if *is_optional { AccessMode::Optional } else { AccessMode::Regular };
-
-			let result = environment.get_property_handle_errors(
-				on,
-				publicity,
-				&property,
-				checking_data,
-				position.with_source(environment.get_source()),
-				mode,
-			);
-
-			match result {
-				Ok(instance) => instance,
-				Err(()) => return TypeId::ERROR_TYPE,
+			let site = position.with_source(environment.get_source());
+			if *is_optional {
+				let null_or_undefined = is_null_or_undefined(on, &mut checking_data.types);
+				Instance::RValue(new_conditional_context(
+					environment,
+					(null_or_undefined, parent.get_position()),
+					|_env: &mut Environment, _data: &mut CheckingData<T, EznoParser>| {
+						TypeId::UNDEFINED_TYPE
+					},
+					Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
+						let result = env.get_property_handle_errors(
+							on,
+							publicity,
+							&property,
+							data,
+							site,
+							AccessMode::Regular,
+						);
+						match result {
+							Ok(i) => i.get_value(),
+							Err(_) => TypeId::ERROR_TYPE,
+						}
+					}),
+					checking_data,
+				))
+			} else {
+				let result = environment.get_property_handle_errors(
+					on,
+					publicity,
+					&property,
+					checking_data,
+					site,
+					AccessMode::Regular,
+				);
+				match result {
+					Ok(i) => Instance::RValue(i.get_value()),
+					Err(_) => {
+						return TypeId::ERROR_TYPE;
+					}
+				}
 			}
 		}
 		Expression::Index { indexee, indexer, position, is_optional, .. } => {
 			let being_indexed =
 				synthesise_expression(indexee, environment, checking_data, TypeId::ANY_TYPE);
-			let indexer = synthesise_multiple_expression(
-				indexer,
-				environment,
-				checking_data,
-				TypeId::ANY_TYPE,
-			);
-			let mode = if *is_optional { AccessMode::Optional } else { AccessMode::Regular };
+			let site = position.with_source(environment.get_source());
 
-			// TODO handle differently?
-			let result = environment.get_property_handle_errors(
-				being_indexed,
-				Publicity::Public,
-				&PropertyKey::from_type(indexer, &checking_data.types),
-				checking_data,
-				position.with_source(environment.get_source()),
-				mode,
-			);
-
-			match result {
-				Ok(instance) => instance,
-				Err(()) => return TypeId::ERROR_TYPE,
+			if *is_optional {
+				let null_or_undefined =
+					is_null_or_undefined(being_indexed, &mut checking_data.types);
+				Instance::RValue(new_conditional_context(
+					environment,
+					(null_or_undefined, indexee.get_position()),
+					|_env: &mut Environment, _data: &mut CheckingData<T, EznoParser>| {
+						TypeId::UNDEFINED_TYPE
+					},
+					Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
+						// Indexer is actually side effected here
+						let indexer =
+							synthesise_multiple_expression(indexer, env, data, TypeId::ANY_TYPE);
+						let result = env.get_property_handle_errors(
+							being_indexed,
+							Publicity::Public,
+							&PropertyKey::from_type(indexer, &data.types),
+							data,
+							site,
+							AccessMode::Regular,
+						);
+						match result {
+							Ok(i) => i.get_value(),
+							Err(_) => TypeId::ERROR_TYPE,
+						}
+					}),
+					checking_data,
+				))
+			} else {
+				let indexer = synthesise_multiple_expression(
+					indexer,
+					environment,
+					checking_data,
+					TypeId::ANY_TYPE,
+				);
+				let result = environment.get_property_handle_errors(
+					being_indexed,
+					Publicity::Public,
+					&PropertyKey::from_type(indexer, &checking_data.types),
+					checking_data,
+					site,
+					AccessMode::Regular,
+				);
+				match result {
+					Ok(i) => Instance::RValue(i.get_value()),
+					Err(_) => {
+						return TypeId::ERROR_TYPE;
+					}
+				}
 			}
 		}
 		Expression::ThisReference(pos) => Instance::RValue(

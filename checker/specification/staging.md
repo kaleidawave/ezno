@@ -98,17 +98,17 @@ const x: Required<{ a?: number }> = { a: 3 },
 
 ```ts
 type PrefixKeys<T> = {
-    [P in keyof T as `property_${T}`]: T[P];
+	[P in ((keyof T) & string) as `property_${P}`]: T[P];
 };
 
 interface X { a: number };
 
 declare let x: PrefixKeys<X>;
-print_type(x.property_a)
-print_type(x.property_b)
+x.property_a satisfies number;
+x.property_b
 ```
 
-- TODO
+- No property 'property_b' on { [string]: X[keyof X & string] }
 
 ### Readonly and `as const`
 
@@ -220,6 +220,24 @@ try { checkedLn(-5) } catch {}
 ```
 
 - Conditional '[Error] { message: \"Cannot log\" }' was thrown in function
+
+#### Throw through internal callback
+
+```ts
+try {
+	[1, 2, 3].map((x: number) => {
+		if (x === 2) {
+			throw "error"
+		}
+	});
+	console.log("unreachable")
+} catch (e) {
+	e satisfies number;
+}
+```
+
+- Unreachable statement
+- Expected number, found "error"
 
 ### Variables
 
@@ -411,14 +429,14 @@ type Tail<T> = T extends [any, ...infer Tail] ? Tail : [];
 #### String slice matching pattern
 
 ```ts
-type GetPrefix<P, S> = S extends `${P}${infer T}` ? T : S;
+type GetPrefix<P, S> = S extends `${P}${infer T}` ? T : false;
 
-declare let a: GetPrefix<"Hello ", "Ben">;
+declare let a: GetPrefix<"Hello ", "Hello Ben">;
 
-a satisfies boolean;
+a satisfies number;
 ```
 
-- Expected boolean, found "Ben"
+- Expected number, found "Ben"
 
 #### `infer ... extends ...`
 
@@ -434,6 +452,53 @@ b satisfies "hello";
 
 - Expected number, found string
 
+#### `Object.freeze`
+
+> TODO seal & preventExtensions
+
+```ts
+const obj = {}
+let result = Object.freeze(obj);
+(obj === result) satisfies true;
+obj.property = 2;
+Object.isFrozen(obj) satisfies true;
+```
+
+- Property not writeable
+
+#### `Object.defineProperty`
+
+> TODO defineProperties
+
+```ts
+const obj = {};
+Object.defineProperty(obj, 'prop', {
+  value: 42,
+  writable: false,
+});
+obj.prop satisfies string;
+obj.prop = 70;
+```
+
+- Expected string, found 42
+- Property not writeable
+
+#### `Object.getOwnPropertyDescriptor`
+
+> TODO getOwnPropertyDescriptors
+
+```ts
+const obj = { a: true };
+Object.defineProperty(obj, 'b', { value: 42, writable: false });
+
+Object.getOwnPropertyDescriptor(obj, 'a') satisfies string;
+Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
+```
+
+> Order is also important
+
+- Expected string, found { value: true, writable: true, enumerable: true, configurable: true }
+
 #### Properties on big or
 
 > TODO this creates a fat or type
@@ -441,14 +506,6 @@ b satisfies "hello";
 ```ts
 const array = [1, 2, 3, 4, 5, 6, 7, 8]
 array[Math.random()] satisfies 4;
-```
-
-- ?
-
-#### Array destructuring iterator
-
-```ts
-TODO
 ```
 
 - ?
@@ -498,7 +555,7 @@ delete y.a;
 #### TSC string intrinsics
 
 ```ts
-const a: Uppercase<"something" |"hi"> = "HI"
+const a: Uppercase<"something" |"hi"> = "HI";
 const b: Uppercase<string> = "hi"
 ```
 
@@ -507,11 +564,22 @@ const b: Uppercase<string> = "hi"
 #### Ezno intrinsics
 
 ```ts
-const a: MultipleOf<2> = 5
-const b: MultipleOf<2> = 4
+5 satisfies MultipleOf<2>;
+4 satisfies MultipleOf<2>;
 ```
 
-- Type 5 is not assignable to type MultipleOf\<2\>
+- Expected MultipleOf\<2\>, found 5
+
+#### Order of numerical properties
+
+> TODO test could be better using `for in` or `Object.keys` etc
+
+```ts
+let x = {}; x.something = null; x[4] = null; x["eight"] = null; x["2"] = null;
+x satisfies string;
+```
+
+- Expected string, found { 2: null, 4: null, something: null, eight: null }
 
 #### `NoInfer`
 
@@ -539,6 +607,21 @@ X.name satisfies "Y"
 
 - Expected "Y", found "X"
 
+#### Optional effect key
+
+```ts
+let i: number = 0;
+({ a: true})?.[i++, "a"] satisfies true;
+i satisfies 1;
+
+null?.[i++, "a"];
+i satisfies string;
+```
+
+- Expression is always false
+- Expression is always true
+- Expected string, found 1
+
 #### Effects across functions
 
 ```ts
@@ -562,15 +645,18 @@ value satisfies boolean;
 
 ```ts
 interface X {
-    possibly?: string
+    a: string
+    b: string
 }
 
-declare let x: X;
+declare let x: X | null;
 
-x?.possibly satisfies number;
+x.a;
+x?.b satisfies number;
 ```
 
-- Expected string, found string | undefined
+- Cannot get 'a' on null
+- Expected number, found string
 
 #### Destructuring using iterator
 
@@ -591,6 +677,32 @@ a satisfies 0; b satisfies string;
 
 - Expected string, found 1
 
+#### Always known math
+
+```ts
+function func(a: number) { return a ** 0 }
+
+print_type(func)
+
+declare let x: NotNotANumber;
+
+print_type(x ** 1 === x)
+```
+
+- Expected string, found 1
+- True
+
+#### Less than checks
+
+```ts
+function x(a: GreaterThan<4>) {
+	(a < 3) satisfies false;
+	(a < 10) satisfies string;
+}
+```
+
+- Expected string, found boolean
+
 ### Collections
 
 #### Mutation
@@ -607,140 +719,6 @@ fakeRead(array1)
 ```
 
 - Invalid assignment to parameter
-
-#### Array filter
-
-```ts
-
-```
-
-- ?
-
-#### Array slice
-
-```ts
-
-```
-
-- ?
-
-#### Array splice
-
-```ts
-
-```
-
-- ?
-
-#### Array shift and unshift
-
-```ts
-
-```
-
-- ?
-
-#### Array copying methods
-
-```ts
-toReversed
-with
-```
-
-- ?
-
-#### Array find & index of
-
-```ts
-indexOf
-lastIndexOf
-find
-findIndexOf
-```
-
-- ?
-
-#### Array constructor
-
-```ts
-new Array({})
-```
-
-- ?
-
-#### Array `concat` and spread push
-
-```ts
-concat()
-push(...x)
-```
-
-- ?
-
-#### Array values and entries
-
-> Iterators
-
-```ts
-```
-
-- ?
-
-#### Array flat
-
-```ts
-flatten
-flatMap
-```
-
-- ?
-
-#### Array reducers
-
-> May be hard bc reversed generics order
-
-```ts
-reduce
-reduceRight
-```
-
-- ?
-
-#### Map `set` and `get`
-
-```ts
-const x = new Map();
-x.set(4, 2);
-x.set(4, 3);
-x.get(4) satisfies 2;
-x.get(2) satisfies string;
-```
-
-- Expected 2, found 3
-- Expected string, found undefined
-
-#### Map `items`
-
-```ts
-const x = new Map();
-x.items()
-```
-
-- ?
-
-#### Map generics
-
-```ts
-const x: Map<number, string> = new Map();
-x.set(4, false);
-
-const y = new Map();
-y.set(6, 2);
-y.set(4, "hi");
-y satisfies string;
-```
-
-- Expected string, found Map<6 | 4, 2 | "hi">
 
 ### Inferred return types
 

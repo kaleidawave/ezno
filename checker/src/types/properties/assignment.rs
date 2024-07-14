@@ -27,13 +27,14 @@ pub fn set_property<E: CallCheckingBehavior>(
 	types: &mut TypeStore,
 	setter_position: SpanWithSource,
 ) -> Result<Option<TypeId>, SetPropertyError> {
-	// TODO
-	// if environment.is_not_writeable(on, under) {
-	// 	return Err(SetPropertyError::NotWriteable);
-	// }
+	// Frozen checks
+	{
+		if environment.info.frozen.contains(&on) {
+			return Err(SetPropertyError::NotWriteable);
+		}
+	}
 
 	// Doing this regardless of E::CHECK_PARAMETERS is how #18 works
-
 	{
 		let constraint =
 			environment.get_object_constraint(on).or_else(|| get_constraint(on, types));
@@ -117,6 +118,9 @@ pub fn set_property<E: CallCheckingBehavior>(
 					PropertyValue::ConditionallyExists { truthy: ref _truthy, .. } => {
 						crate::utilities::notify!("Here assigning to conditional. TODO recursive");
 					}
+					PropertyValue::Configured { .. } => {
+						crate::utilities::notify!("Here");
+					}
 				}
 			} else {
 				// TODO does not exist warning
@@ -185,38 +189,50 @@ pub fn set_property<E: CallCheckingBehavior>(
 					setter_position,
 				);
 				if let Err(result) = result {
-					// TODO temp
-					for error in result {
-						match error {
-							FunctionCallingError::InvalidArgumentType {
-								parameter_type,
-								argument_type: _,
-								argument_position: _,
-								parameter_position: _,
-								restriction: _,
-							} => {
-								return Err(SetPropertyError::DoesNotMeetConstraint {
-									property_constraint: parameter_type,
-									reason: crate::subtyping::NonEqualityReason::Mismatch,
-								})
+					match result {
+						SetterResult::NotWriteable => {
+							return Err(SetPropertyError::NotWriteable);
+						}
+						SetterResult::SetterErrors(errors) => {
+							// TODO temp
+							for error in errors {
+								match error {
+									FunctionCallingError::InvalidArgumentType {
+										parameter_type,
+										argument_type: _,
+										argument_position: _,
+										parameter_position: _,
+										restriction: _,
+									} => {
+										return Err(SetPropertyError::DoesNotMeetConstraint {
+											property_constraint: parameter_type,
+											reason: crate::subtyping::NonEqualityReason::Mismatch,
+										})
+									}
+									FunctionCallingError::DeleteConstraint {
+										constraint: _,
+										..
+									} => todo!(),
+									FunctionCallingError::NeedsToBeCalledWithNewKeyword(_)
+									| FunctionCallingError::NoLogicForIdentifier(..)
+									| FunctionCallingError::NotCallable { .. }
+									| FunctionCallingError::ExcessArguments { .. }
+									| FunctionCallingError::ExcessTypeArguments { .. }
+									| FunctionCallingError::MissingArgument { .. } => unreachable!(),
+									FunctionCallingError::ReferenceRestrictionDoesNotMatch {
+										..
+									} => {
+										todo!()
+									}
+									FunctionCallingError::CyclicRecursion(_, _) => todo!(),
+									FunctionCallingError::TDZ { .. } => todo!(),
+									FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
+									FunctionCallingError::MismatchedThis { .. } => {
+										todo!()
+									}
+									FunctionCallingError::CannotCatch { .. } => todo!(),
+								}
 							}
-							FunctionCallingError::DeleteConstraint { constraint: _, .. } => todo!(),
-							FunctionCallingError::NeedsToBeCalledWithNewKeyword(_)
-							| FunctionCallingError::NoLogicForIdentifier(..)
-							| FunctionCallingError::NotCallable { .. }
-							| FunctionCallingError::ExcessArguments { .. }
-							| FunctionCallingError::ExcessTypeArguments { .. }
-							| FunctionCallingError::MissingArgument { .. } => unreachable!(),
-							FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => {
-								todo!()
-							}
-							FunctionCallingError::CyclicRecursion(_, _) => todo!(),
-							FunctionCallingError::TDZ { .. } => todo!(),
-							FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
-							FunctionCallingError::MismatchedThis { .. } => {
-								todo!()
-							}
-							FunctionCallingError::CannotCatch { .. } => todo!(),
 						}
 					}
 				}
@@ -235,7 +251,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 					new,
 					under: under.into_owned(),
 					publicity,
-					initialization: false,
+					initialisation: false,
 					position: setter_position,
 				});
 			}
@@ -257,6 +273,11 @@ pub fn set_property<E: CallCheckingBehavior>(
 	Ok(None)
 }
 
+pub enum SetterResult {
+	NotWriteable,
+	SetterErrors(Vec<FunctionCallingError>),
+}
+
 /// `Vec<FunctionCallingError>` from calling setter
 #[allow(clippy::too_many_arguments)]
 fn run_setter_on_object<E: CallCheckingBehavior>(
@@ -269,7 +290,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 	new: PropertyValue,
 	types: &mut TypeStore,
 	setter_position: SpanWithSource,
-) -> Result<(), Vec<FunctionCallingError>> {
+) -> Result<(), SetterResult> {
 	match og {
 		PropertyValue::Deleted | PropertyValue::Value(..) => {
 			let info = behavior.get_latest_info(environment);
@@ -283,7 +304,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				new,
 				under: under.into_owned(),
 				publicity,
-				initialization: false,
+				initialisation: false,
 				position: setter_position,
 			});
 
@@ -293,20 +314,18 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 		PropertyValue::Setter(setter) => {
 			use crate::types::calling::{CalledWithNew, CallingInput};
 
-			let arg = SynthesisedArgument {
-				position: setter_position,
-				spread: false,
-				value: match new {
-					PropertyValue::Value(type_id) => type_id,
-					_ => todo!(),
-				},
+			let value = match new {
+				PropertyValue::Value(type_id) => type_id,
+				_ => todo!(),
 			};
+			let arg = SynthesisedArgument { position: setter_position, spread: false, value };
 			let input = CallingInput {
 				called_with_new: CalledWithNew::None,
 				call_site: setter_position,
 				// TODO
 				max_inline: 0,
 			};
+			let setter = types.functions.get(&setter).unwrap().clone();
 			let result = setter.call(
 				(
 					ThisValue::Passed(on),
@@ -322,14 +341,45 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 			);
 
 			match result {
-				// Ignore the result
+				// Ignore the returned result of the setter
 				Ok(_ok) => Ok(()),
-				Err(res) => Err(res.errors),
+				Err(res) => Err(SetterResult::SetterErrors(res.errors)),
 			}
 		}
-		PropertyValue::ConditionallyExists { .. } => {
-			crate::utilities::notify!("Here {:?} {:?}", og, new);
-			Ok(())
+		PropertyValue::ConditionallyExists { on: _condition, truthy } => {
+			crate::utilities::notify!("TODO conditionally");
+
+			run_setter_on_object(
+				*truthy,
+				behavior,
+				environment,
+				on,
+				publicity,
+				under,
+				new,
+				types,
+				setter_position,
+			)
+		}
+		PropertyValue::Configured { on: existing_value, descriptor } => {
+			if !matches!(descriptor.writable, TypeId::TRUE) {
+				return Err(SetterResult::NotWriteable);
+			}
+
+			crate::utilities::notify!("Carrying property");
+			let new = PropertyValue::Configured { on: Box::new(new), descriptor };
+
+			run_setter_on_object(
+				*existing_value,
+				behavior,
+				environment,
+				on,
+				publicity,
+				under,
+				new,
+				types,
+				setter_position,
+			)
 		}
 	}
 }

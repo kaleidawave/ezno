@@ -353,7 +353,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						let value = super::functions::build_overloaded_function(
 							crate::FunctionId(environment.get_source(), func.on.position.start),
 							crate::features::functions::FunctionBehavior::Function {
-								free_this_id: TypeId::ERROR_TYPE,
+								this_id: TypeId::ERROR_TYPE,
 								prototype: TypeId::ERROR_TYPE,
 								is_async: func.on.header.is_async(),
 								is_generator: func.on.header.is_generator(),

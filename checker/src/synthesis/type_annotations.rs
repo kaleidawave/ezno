@@ -3,8 +3,13 @@
 use std::convert::TryInto;
 
 use crate::{
-	synthesis::assignments::synthesise_access_to_reference, types::generics::ExplicitTypeArguments,
-	Map,
+	synthesis::assignments::synthesise_access_to_reference,
+	types::{
+		generics::ExplicitTypeArguments,
+		intrinsics::{self, distribute_tsc_string_intrinsic},
+		ArrayItem, Counter,
+	},
+	LocalInformation, Map,
 };
 use parser::{
 	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind, TupleLiteralElement},
@@ -155,7 +160,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			if let Some(inner_type_id) = environment.get_type_from_name(name) {
 				let inner_type = checking_data.types.get_type_by_id(inner_type_id);
-				let inner_type_alias =
+				let inner_type_alias_id =
 					if let Type::AliasTo { to, .. } = inner_type { Some(*to) } else { None };
 
 				// crate::utilities::notify!("{:?}", inner_type);
@@ -231,32 +236,44 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						type_arguments.insert(parameter, (argument, with_source));
 					}
 
-					if let Some(inner_type_alias) = inner_type_alias {
+					// Inline alias with arguments unless intrinsic
+					// crate::utilities::notify!(
+					// 	"{:?} and {:?}",
+					// 	inner_type_alias_id,
+					// 	inner_type_alias_id.is_some_and(intrinsics::tsc_string_intrinsic)
+					// );
+
+					if intrinsics::tsc_string_intrinsic(inner_type_id) {
+						distribute_tsc_string_intrinsic(
+							inner_type_id,
+							type_arguments.get(&TypeId::STRING_GENERIC).unwrap().0,
+							&mut checking_data.types,
+						)
+					} else if let (Some(inner_type_alias_id), false) =
+						(inner_type_alias_id, intrinsics::is_intrinsic(inner_type_id))
+					{
 						// Important that these wrappers are kept as there 'wrap' holds information
-						if inner_type_id.tsc_string_intrinsic() {
-							crate::types::convert_tsc_string_intrinsic(
+						{
+							use crate::types::printing::print_type;
+
+							let ty = print_type(
 								inner_type_id,
-								type_arguments.get(&TypeId::STRING_GENERIC).unwrap().0,
 								&mut checking_data.types,
-							)
-						} else if inner_type_id.is_intrinsic() {
-							let arguments = GenericArguments::ExplicitRestrictions(type_arguments);
-
-							let ty = Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-								on: inner_type_id,
-								arguments,
-							});
-
-							checking_data.types.register_type(ty)
-						} else {
-							crate::types::substitute(
-								inner_type_alias,
-								&ExplicitTypeArguments(type_arguments)
-									.into_substitution_arguments(),
 								environment,
-								&mut checking_data.types,
-							)
+								true,
+							);
+							crate::utilities::notify!("Here substituting alias eagerly {}", ty);
 						}
+
+						let substitution_arguments =
+							ExplicitTypeArguments(type_arguments).into_substitution_arguments();
+
+						crate::types::substitute(
+							inner_type_alias_id,
+							&substitution_arguments,
+							environment,
+							&mut checking_data.types,
+						)
 					} else {
 						let arguments = GenericArguments::ExplicitRestrictions(type_arguments);
 
@@ -364,6 +381,50 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			.0
 		}
 		TypeAnnotation::TupleLiteral(members, position) => {
+			let mut items = Vec::<(SpanWithSource, ArrayItem)>::with_capacity(members.len());
+
+			for TupleLiteralElement(spread, member, pos) in members.iter() {
+				// TODO store binder name...?
+				let type_annotation = match member {
+					AnnotationWithBinder::Annotated { ty, .. }
+					| AnnotationWithBinder::NoAnnotation(ty) => ty,
+				};
+
+				let annotation_ty =
+					synthesise_type_annotation(type_annotation, environment, checking_data);
+
+				let pos = pos.with_source(environment.get_source());
+
+				match spread {
+					TupleElementKind::Standard => {
+						items.push((pos, ArrayItem::Member(annotation_ty)));
+					}
+					TupleElementKind::Optional => {
+						items.push((pos, ArrayItem::Optional(annotation_ty)));
+					}
+					TupleElementKind::Spread => {
+						let slice = crate::types::as_slice(
+							annotation_ty,
+							&checking_data.types,
+							environment,
+						);
+
+						crate::utilities::notify!("slice = {:?}", slice);
+
+						// Flattening
+						match slice {
+							Ok(new_items) => {
+								// TODO position here?
+								items.extend(new_items.into_iter().map(|value| (pos, value)));
+							}
+							Err(_) => items.push((pos, ArrayItem::Wildcard(annotation_ty))),
+						}
+					}
+				}
+			}
+
+			let mut idx: Counter = 0.into();
+
 			// TODO maybe should be special type
 			let mut obj = ObjectBuilder::new(
 				Some(TypeId::ARRAY_TYPE),
@@ -372,54 +433,65 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				&mut environment.info,
 			);
 
-			for (idx, TupleLiteralElement(spread, member, pos)) in members.iter().enumerate() {
-				// TODO binder name under data...?
-				match spread {
-					TupleElementKind::Standard => {
-						let type_annotation = match member {
-							AnnotationWithBinder::Annotated { ty, .. }
-							| AnnotationWithBinder::NoAnnotation(ty) => ty,
-						};
+			for (ty_position, item) in items {
+				let value = match item {
+					crate::types::ArrayItem::Member(item_ty) => PropertyValue::Value(item_ty),
+					crate::types::ArrayItem::Optional(item_ty) => {
+						PropertyValue::ConditionallyExists {
+							on: TypeId::OPEN_BOOLEAN_TYPE,
+							truthy: Box::new(PropertyValue::Value(item_ty)),
+						}
+					}
+					crate::types::ArrayItem::Wildcard(on) => {
+						crate::utilities::notify!("found wildcard");
+						let after = idx.into_type(&mut checking_data.types);
 
-						let item_ty =
-							synthesise_type_annotation(type_annotation, environment, checking_data);
+						let key = checking_data
+							.types
+							.new_intrinsic(crate::types::intrinsics::Intrinsic::GreaterThan, after);
 
-						let ty_position =
-							type_annotation.get_position().with_source(environment.get_source());
+						let item_type = checking_data.types.register_type(Type::Constructor(
+							Constructor::Property {
+								on,
+								under: PropertyKey::Type(TypeId::OPEN_NUMBER_TYPE),
+								result: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+								mode: crate::types::properties::AccessMode::Regular,
+							},
+						));
 
 						obj.append(
 							environment,
 							Publicity::Public,
-							PropertyKey::from_usize(idx),
-							PropertyValue::Value(item_ty),
+							PropertyKey::Type(key),
+							PropertyValue::Value(item_type),
 							ty_position,
 						);
+						idx.increment(&mut checking_data.types);
+
+						continue;
 					}
-					TupleElementKind::Optional => {
-						checking_data.raise_unimplemented_error(
-							"optional tuple member",
-							pos.with_source(environment.get_source()),
-						);
-					}
-					TupleElementKind::Spread => {
-						checking_data.raise_unimplemented_error(
-							"spread tuple member",
-							pos.with_source(environment.get_source()),
-						);
-					}
+				};
+				{
+					obj.append(
+						environment,
+						Publicity::Public,
+						idx.into_property_key(),
+						value,
+						ty_position,
+					);
+					idx.increment(&mut checking_data.types);
 				}
 			}
 
-			let constant = Constant::Number((members.len() as f64).try_into().unwrap());
-			let length_value = checking_data.types.new_constant_type(constant);
+			let length_value = idx.into_type(&mut checking_data.types);
+			let position = annotation.get_position().with_source(environment.get_source());
 
-			// TODO: Does `constant` have a position? Or should it have one?
 			obj.append(
 				environment,
 				Publicity::Public,
 				PropertyKey::String("length".into()),
 				PropertyValue::Value(length_value),
-				annotation.get_position().with_source(environment.get_source()),
+				position,
 			);
 
 			// TODO this should be anonymous object type
@@ -465,7 +537,13 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					unreachable!()
 				};
 
-				environment.info.current_properties.extend(sub_environment.info.current_properties);
+				// TODO temp as object types use the same environment.properties representation
+				{
+					let LocalInformation { current_properties, prototypes, .. } =
+						sub_environment.info;
+					environment.info.current_properties.extend(current_properties);
+					environment.info.prototypes.extend(prototypes);
+				}
 
 				(condition, infer_parameters)
 			};

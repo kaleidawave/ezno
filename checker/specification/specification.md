@@ -149,7 +149,7 @@ const my_obj: { b: 3 } = { b: 4 }
 #### Getters
 
 ```ts
-let global = 0;
+let global: number = 0;
 const object = {
 	// This getter has an impure side effect
 	get value() {
@@ -895,13 +895,13 @@ const m = new MyClass();
 
 ```ts
 function myRestFunction(...r: string[]) {
-	return r[0] + r[1]
+	return r
 }
 
 myRestFunction("hello ", "world") satisfies number;
 ```
 
-- Expected number, found "hello world"
+- Expected number, found ["hello ", "world"]
 
 #### Default parameter
 
@@ -920,11 +920,11 @@ withDefault(3) satisfies 3;
 
 ```ts
 let b: number = 0
-function doThing(a = (b += 2)) {
+function doThing(a: number = (b += 2)) {
 	return a
 }
 
-doThing("hello");
+doThing(7);
 b satisfies 0;
 doThing();
 b satisfies 1;
@@ -963,20 +963,20 @@ optionally("hello world");
 #### Tagged template literal
 
 ```ts
-function myTag(static_parts: Array<string>, name: string) {
-	return static_parts[0] + name
+function myTag(static_parts: Array<string>, other: string) {
+	return { static_parts, other }
 }
 
 const name = "Ben";
-myTag`${name}Hello ` satisfies "Hi Ben"
+myTag`${name}Hello ` satisfies string
 ```
 
-- Expected "Hi Ben", found "Hello Ben"
+- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
 
 #### Default parameter side effect on parameter
 
 ```ts
-function doThing(a, b = (a += 2)) {
+function doThing(a: number, b: number = (a += 2)) {
 	return a
 }
 
@@ -1377,8 +1377,7 @@ stringIsHi(string) satisfies number;
 #### While loop unrolling
 
 ```ts
-let a = 1;
-let i = 0;
+let a: number = 1, i: number = 0;
 while (i < 5) {
 	a *= 2;
 	i++;
@@ -1392,8 +1391,7 @@ a satisfies 8;
 #### While loop event in the condition
 
 ```ts
-let a = 1;
-let i = 0;
+let a: number = 1, i: number = 0;
 while (i++ < 5) {
 	a *= 2;
 }
@@ -1406,7 +1404,7 @@ a satisfies 8;
 #### Do while loop
 
 ```ts
-let a = 0;
+let a: number = 0;
 do {
 	a++
 } while (a < 3)
@@ -1479,8 +1477,7 @@ loop(10, "!") satisfies number;
 #### Break in a while loop
 
 ```ts
-let a = 2;
-let i = 0;
+let a: number = 2, i: number = 0;
 while (i++ < 10) {
 	a *= 2;
 	if (a > 5) {
@@ -1498,8 +1495,7 @@ a satisfies 2;
 > With the continue the update to `a` only happens on even runs (5 times)
 
 ```ts
-let a = 2;
-let i = 0;
+let a: number = 2, i: number = 0;
 while (i++ < 10) {
 	if (i % 2) {
 		continue;
@@ -1649,9 +1645,9 @@ console.log("Error caught!")
 #### Array push
 
 ```ts
-const x = [1]
-x.push("hi")
-x[1] satisfies 3
+const x = [1];
+x.push("hi");
+x[1] satisfies 3;
 x.length satisfies 4;
 ```
 
@@ -2628,14 +2624,14 @@ func<never>() satisfies boolean;
 ```ts
 type ElementOf<T> = T extends Array<infer U> ? U : never;
 
-declare let y: ElementOf<Array<number>>;
-declare let z: ElementOf<Array<number> | string>;
+declare let elementOfNumber: ElementOf<Array<number>>;
+declare let elementOfNumberOrString: ElementOf<"not array" | Array<number>>;
 
-y satisfies number;
-z satisfies string;
+elementOfNumber satisfies number;
+elementOfNumberOrString satisfies string;
 
 declare let n: never;
-n satisfies ElementOf<number>;
+n satisfies ElementOf<"not array">;
 ```
 
 - Expected string, found number
@@ -2648,9 +2644,7 @@ interface X {
     b: string
 }
 
-"a" satisfies keyof X;
-"b" satisfies keyof X;
-"c" satisfies keyof X;
+"a" satisfies keyof X; "b" satisfies keyof X; "c" satisfies keyof X;
 ```
 
 - Expected keyof X, found "c"
@@ -2669,11 +2663,12 @@ const second: Introduction = "Hi Ben";
 #### Assigning to types as keys
 
 ```ts
-const x: { [s: string]: number } = { a: 1, b: 2, c: 3 }
-const y: { [s: string]: boolean } = { a: 1, b: 2, c: 3 };
+const obj = { a: 1, b: 2, c: 3 };
+obj satisfies { [s: string]: number };
+obj satisfies { [s: string]: boolean };
 ```
 
-- Type { a: 1, b: 2, c: 3 } is not assignable to type { [string]: boolean }
+- Expected { [string]?: boolean }, found { a: 1, b: 2, c: 3 }
 
 ### Generic types
 
@@ -3077,7 +3072,7 @@ incrementCounter();
 counter satisfies string;
 
 // in mutable.ts
-export let counter = 2;
+export let counter: number = 2;
 export function incrementCounter() {
 	counter++
 }

@@ -344,7 +344,7 @@ fn get_logical_callable_from_type(
 			let left = get_logical_callable_from_type(*left, on, from, types);
 			let right = get_logical_callable_from_type(*right, on, from, types);
 			Ok(Logical::Or {
-				condition: TypeId::BOOLEAN_TYPE,
+				condition: TypeId::OPEN_BOOLEAN_TYPE,
 				left: Box::new(left),
 				right: Box::new(right),
 			})
@@ -1070,37 +1070,31 @@ impl FunctionType {
 		}
 
 		// TODO what does super return?
-		if let CalledWithNew::New { .. } = input.called_with_new {
+		let result = if let CalledWithNew::New { .. } = input.called_with_new {
 			// TODO ridiculous early return primitive rule
-			match self.behavior {
-				FunctionBehavior::ArrowFunction { is_async: _ } => todo!(),
-				FunctionBehavior::Method { .. } => todo!(),
-				FunctionBehavior::Constructor { prototype: _, this_object_type }
-				| FunctionBehavior::Function {
-					is_async: _,
-					is_generator: _,
-					free_this_id: this_object_type,
-					..
-				} => {
-					let new_instance_type =
-						type_arguments.arguments.get(&this_object_type).expect("no this argument?");
-
-					// TODO if return type is primitive (or replace primitives with new_instance_type)
-					return Ok(CallingOutput {
-						result: Some(ApplicationResult::Return {
-							returned: *new_instance_type,
-							position: input.call_site,
-						}),
-						warnings: errors.warnings,
-						info: errors.info,
-						called: Some(self.id),
-						special: None,
-						result_was_const_computation: false,
-					});
+			let returned = match self.behavior {
+				FunctionBehavior::ArrowFunction { .. } | FunctionBehavior::Method { .. } => {
+					TypeId::ERROR_TYPE
 				}
-			}
-		}
-
+				FunctionBehavior::Constructor { prototype: _, this_object_type } => {
+					*type_arguments.arguments.get(&this_object_type).expect("no this argument?")
+				}
+				FunctionBehavior::Function { is_async: _, is_generator: _, this_id, .. } => {
+					if let Type::Constructor(Constructor::ConditionalResult {
+						truthy_result, ..
+					}) = types.get_type_by_id(this_id)
+					{
+						*type_arguments.arguments.get(truthy_result).expect("no this argument?")
+					} else {
+						unreachable!()
+					}
+				}
+			};
+			// TODO if return type is primitive (or replace primitives with new_instance_type)
+			Some(ApplicationResult::Return { returned, position: input.call_site })
+		} else {
+			result
+		};
 		Ok(CallingOutput {
 			result,
 			warnings: errors.warnings,
@@ -1176,54 +1170,49 @@ impl FunctionType {
 
 				type_arguments.insert(free_this_id, value_of_this);
 			}
-			FunctionBehavior::Function {
-				is_async: _,
-				is_generator: _,
-				free_this_id,
-				prototype,
-			} => {
+			FunctionBehavior::Function { is_async: _, is_generator: _, this_id, prototype } => {
 				match called_with_new {
 					CalledWithNew::New { on: _ } => {
-						let this_constraint = get_constraint(free_this_id, types);
+						{
+							let this_constraint = get_constraint(this_id, types);
 
-						crate::utilities::notify!("calling new, prototype={:?}", prototype);
+							// Check `this` has all prototype information
+							if let Some(this_constraint) = this_constraint {
+								let mut state = State {
+									already_checked: Default::default(),
+									mode: SubTypingMode::default(),
+									contributions: None,
+									object_constraints: None,
+									others: SubTypingOptions::default(),
+								};
 
-						// Check `this` has all prototype information
-						if let Some(this_constraint) = this_constraint {
-							let mut state = State {
-								already_checked: Default::default(),
-								mode: SubTypingMode::default(),
-								contributions: None,
-								object_constraints: None,
-								others: SubTypingOptions::default(),
-							};
+								let result = type_is_subtype(
+									this_constraint,
+									prototype,
+									&mut state,
+									environment,
+									types,
+								);
 
-							let result = type_is_subtype(
-								this_constraint,
-								prototype,
-								&mut state,
-								environment,
-								types,
-							);
+								// crate::utilities::notify!("result={:?}", result);
 
-							crate::utilities::notify!("result={:?}", result);
-
-							if let SubTypeResult::IsNotSubType(_reason) = result {
-								errors.errors.push(FunctionCallingError::MismatchedThis {
-									expected: TypeStringRepresentation::from_type_id(
-										this_constraint,
-										environment,
-										types,
-										behavior.debug_types(),
-									),
-									found: TypeStringRepresentation::from_type_id(
-										prototype,
-										environment,
-										types,
-										behavior.debug_types(),
-									),
-									call_site,
-								});
+								if let SubTypeResult::IsNotSubType(_reason) = result {
+									errors.errors.push(FunctionCallingError::MismatchedThis {
+										expected: TypeStringRepresentation::from_type_id(
+											this_constraint,
+											environment,
+											types,
+											behavior.debug_types(),
+										),
+										found: TypeStringRepresentation::from_type_id(
+											prototype,
+											environment,
+											types,
+											behavior.debug_types(),
+										),
+										call_site,
+									});
+								}
 							}
 						}
 
@@ -1236,16 +1225,30 @@ impl FunctionType {
 							is_under_dyn,
 						);
 
-						type_arguments.insert(free_this_id, value_of_this);
+						// crate::utilities::notify!("Calling new on regular function");
+						// crate::utilities::notify!("Set {:?} top {:?}", free_this_id, value_of_this);
+
+						// This condition is by creation
+						if let Type::Constructor(Constructor::ConditionalResult {
+							truthy_result,
+							..
+						}) = types.get_type_by_id(this_id)
+						{
+							type_arguments.insert(*truthy_result, value_of_this);
+						} else {
+							unreachable!()
+						}
 					}
 					CalledWithNew::Super { this_type } => {
-						type_arguments.insert(free_this_id, this_type);
+						crate::utilities::notify!("Super on regular function?");
+
+						type_arguments.insert(this_id, this_type);
 					}
 					CalledWithNew::None => {
 						// TODO
 						let value_of_this = this_value.get(environment, types, call_site);
 
-						type_arguments.insert(free_this_id, value_of_this);
+						type_arguments.insert(this_id, value_of_this);
 					}
 				}
 			}

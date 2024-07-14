@@ -1,5 +1,5 @@
 use source_map::SpanWithSource;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
 	events::{Event, RootReference},
@@ -29,10 +29,8 @@ pub struct LocalInformation {
 
 	pub(crate) closure_current_values: HashMap<(ClosureId, RootReference), TypeId>,
 
-	pub(crate) configurable: HashMap<(TypeId, TypeId), TypeId>,
-	pub(crate) enumerable: HashMap<(TypeId, TypeId), TypeId>,
-	pub(crate) writable: HashMap<(TypeId, TypeId), TypeId>,
-	pub(crate) frozen: HashMap<TypeId, TypeId>,
+	/// Not writeable, `TypeError: Cannot add property t, object is not extensible`. TODO conditional ?
+	pub(crate) frozen: HashSet<TypeId>,
 
 	/// Object type (LHS), must always be RHS
 	///
@@ -107,7 +105,7 @@ impl LocalInformation {
 				on,
 				under,
 				new: to,
-				initialization: true,
+				initialisation: true,
 				publicity,
 				position,
 			});
@@ -196,9 +194,6 @@ impl LocalInformation {
 		self.current_properties.extend(other.current_properties);
 		self.prototypes.extend(other.prototypes);
 		self.closure_current_values.extend(other.closure_current_values);
-		self.configurable.extend(other.configurable);
-		self.enumerable.extend(other.enumerable);
-		self.writable.extend(other.writable);
 		self.frozen.extend(other.frozen);
 	}
 
@@ -212,9 +207,6 @@ impl LocalInformation {
 			.extend(other.current_properties.iter().map(|(l, r)| (*l, r.clone())));
 		self.closure_current_values
 			.extend(other.closure_current_values.iter().map(|(l, r)| (l.clone(), *r)));
-		self.configurable.extend(other.configurable.iter().clone());
-		self.enumerable.extend(other.enumerable.iter().clone());
-		self.writable.extend(other.writable.iter().clone());
 		self.frozen.extend(other.frozen.iter().clone());
 	}
 

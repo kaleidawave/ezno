@@ -900,7 +900,7 @@ impl<T: ContextType> Context<T> {
 		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
 		// Doing this as may be a bit faster maybe?
-		let mut env = self.new_lexical_environment(Scope::TypeAlias);
+		let mut sub_environment = self.new_lexical_environment(Scope::TypeAlias);
 
 		let (parameters, to) = if let Some(parameters) = parameters {
 			let parameters = parameters
@@ -913,23 +913,25 @@ impl<T: ContextType> Context<T> {
 					});
 					let ty = checking_data.types.register_type(ty);
 					// TODO declare type
-					env.named_types.insert(name, ty);
+					sub_environment.named_types.insert(name, ty);
 					ty
 				})
 				.collect();
 
-			let to = A::synthesise_type_annotation(to, &mut env, checking_data);
+			let to = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
 			(Some(parameters), to)
 		} else {
 			// TODO should just use self
-			let to = A::synthesise_type_annotation(to, &mut env, checking_data);
+			let to = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
 			(None, to)
 		};
 
 		// TODO temp as object types use the same environment.properties representation
-		env.info.current_properties.into_iter().for_each(|(t, mut props)| {
-			self.info.current_properties.entry(t).or_default().append(&mut props);
-		});
+		{
+			let LocalInformation { current_properties, prototypes, .. } = sub_environment.info;
+			self.info.current_properties.extend(current_properties);
+			self.info.prototypes.extend(prototypes);
+		}
 
 		// Works as an alias
 		let ty = Type::AliasTo { to, name: name.to_owned(), parameters };

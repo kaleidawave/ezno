@@ -173,8 +173,16 @@ pub fn function_to_property(
 	is_declare: bool,
 ) -> PropertyValue {
 	match getter_setter {
-		GetterSetter::Getter => PropertyValue::Getter(Box::new(function)),
-		GetterSetter::Setter => PropertyValue::Setter(Box::new(function)),
+		GetterSetter::Getter => {
+			let id = function.id;
+			types.functions.insert(id, function);
+			PropertyValue::Getter(id)
+		}
+		GetterSetter::Setter => {
+			let id = function.id;
+			types.functions.insert(id, function);
+			PropertyValue::Setter(id)
+		}
 		GetterSetter::None => PropertyValue::Value(
 			if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
 				types.new_hoisted_function_type(function)
@@ -286,7 +294,7 @@ pub enum FunctionBehavior {
 		/// When calling with:
 		/// - `new`: an arguments should set with (`free_this_id`, *new object*)
 		/// - regularly: bound argument, else parent `this` (I think)
-		free_this_id: TypeId,
+		this_id: TypeId,
 		/// The function type. [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new)
 		prototype: TypeId,
 		is_async: bool,
@@ -571,7 +579,7 @@ where
 				behavior: FunctionBehavior::Function {
 					is_async,
 					is_generator,
-					free_this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::ERROR_TYPE,
 					prototype,
 				},
 				scope: FunctionScope::Function {
@@ -605,7 +613,7 @@ where
 					is_async,
 					is_generator,
 					prototype,
-					free_this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::ERROR_TYPE,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
@@ -766,20 +774,22 @@ where
 							(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
 						};
 
-					if let FunctionBehavior::Function { ref mut free_this_id, .. } = behavior {
-						// TODO set object as well
-						*free_this_id = this_free_variable;
-					}
-
 					let new_conditional_type = checking_data.types.new_conditional_type(
 						TypeId::NEW_TARGET_ARG,
 						this_constructed_object,
 						this_free_variable,
 					);
 
-					// TODO set super type as well
+					// TODO ahhhh
+					if let FunctionBehavior::Function { this_id: ref mut free_this_id, .. } =
+						behavior
+					{
+						*free_this_id = new_conditional_type;
+					}
 
+					// TODO set super type as well
 					// TODO what is the union, shouldn't it be the this_constraint?
+
 					*this_type = new_conditional_type;
 				}
 				FunctionScope::Constructor {

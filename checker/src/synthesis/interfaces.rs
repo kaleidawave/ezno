@@ -72,8 +72,16 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		};
 		let ty = match value {
 			InterfaceValue::Function(function, getter_setter) => match getter_setter {
-				GetterSetter::Getter => PropertyValue::Getter(Box::new(function)),
-				GetterSetter::Setter => PropertyValue::Setter(Box::new(function)),
+				GetterSetter::Getter => {
+					let id = function.id;
+					checking_data.types.functions.insert(id, function);
+					PropertyValue::Getter(id)
+				}
+				GetterSetter::Setter => {
+					let id = function.id;
+					checking_data.types.functions.insert(id, function);
+					PropertyValue::Setter(id)
+				}
 				GetterSetter::None => {
 					let function_id = function.id;
 					checking_data.types.functions.insert(function.id, function);
@@ -84,7 +92,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			InterfaceValue::Value(value) => PropertyValue::Value(value),
 			// optional properties (`?:`) is implemented here:
 			InterfaceValue::Optional(value) => PropertyValue::ConditionallyExists {
-				on: TypeId::BOOLEAN_TYPE,
+				on: TypeId::OPEN_BOOLEAN_TYPE,
 				truthy: PropertyValue::Value(value).into(),
 			},
 		};
@@ -223,8 +231,16 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					}
 
 					// TODO WIP
-					crate::utilities::notify!("Here for {}", name);
-					let value = InterfaceValue::Optional(value);
+					let value = if matches!(key, TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
+						crate::utilities::notify!(
+							"Special case for [number] or [string], making optional {}",
+							name
+						);
+						InterfaceValue::Optional(value)
+					} else {
+						// Not doing for generics + Symbols
+						InterfaceValue::Value(value)
+					};
 
 					interface_register_behavior.register(
 						InterfaceKey::Type(key),

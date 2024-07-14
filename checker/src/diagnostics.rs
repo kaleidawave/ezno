@@ -3,9 +3,11 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use crate::{
-	context::{environment::Label, information::InformationChain},
+	context::{environment::Label, information::InformationChain, AssignmentError},
 	diagnostics,
-	features::CannotDeleteFromError,
+	features::{
+		modules::CouldNotOpenFile, operations::MathematicalAndBitwise, CannotDeleteFromError,
+	},
 	types::{
 		calling::FunctionCallingError, printing::print_type_with_type_arguments, GenericChain,
 		GenericChainLink,
@@ -169,9 +171,7 @@ impl IntoIterator for DiagnosticsContainer {
 use crate::types::{printing::print_type, TypeId, TypeStore};
 
 /// TODO could be more things, for instance a property missing etc
-pub enum TypeStringRepresentation {
-	Type(String),
-}
+pub struct TypeStringRepresentation(String);
 
 pub enum PropertyRepresentation {
 	Type(String),
@@ -187,7 +187,7 @@ impl TypeStringRepresentation {
 		debug_mode: bool,
 	) -> Self {
 		let value = print_type(id, types, ctx, debug_mode);
-		Self::Type(value)
+		Self(value)
 	}
 
 	#[must_use]
@@ -199,7 +199,7 @@ impl TypeStringRepresentation {
 		debug_mode: bool,
 	) -> Self {
 		let value = print_type_with_type_arguments(id, type_arguments, types, ctx, debug_mode);
-		Self::Type(value)
+		Self(value)
 	}
 
 	/// TODO working it out
@@ -214,52 +214,40 @@ impl TypeStringRepresentation {
 			crate::context::Logical::Pure(constraint) => match constraint {
 				crate::PropertyValue::Value(v) => {
 					let value = print_type_with_type_arguments(v, generics, types, ctx, debug_mode);
-					Self::Type(value)
+					Self(value)
 				}
 				crate::PropertyValue::Getter(_) => todo!(),
 				crate::PropertyValue::Setter(_) => todo!(),
 				crate::PropertyValue::Deleted => todo!(),
 				crate::PropertyValue::ConditionallyExists { .. } => todo!(),
+				crate::PropertyValue::Configured { .. } => todo!(),
 			},
 			crate::context::Logical::Or { condition, left, right } => {
 				let left_right = (*left, *right);
 				if let (Ok(left), Ok(right)) = left_right {
-					let left = Self::from_property_constraint(left, None, ctx, types, debug_mode);
+					let mut left =
+						Self::from_property_constraint(left, None, ctx, types, debug_mode);
 					let right = Self::from_property_constraint(right, None, ctx, types, debug_mode);
 
-					#[allow(irrefutable_let_patterns)]
-					if let (
-						TypeStringRepresentation::Type(mut l),
-						TypeStringRepresentation::Type(r),
-					) = (left, right)
-					{
-						crate::utilities::notify!("Here?");
-						l.push_str(" | ");
-						l.push_str(&r);
-						TypeStringRepresentation::Type(l)
-					} else {
-						unreachable!()
-					}
+					crate::utilities::notify!("Here?");
+					left.0.push_str(" | ");
+					left.0.push_str(&right.0);
+					Self(left.0)
 				} else {
-					crate::utilities::notify!("Here {:?} base on {:?}", left_right, condition);
-					TypeStringRepresentation::Type("TODO".to_owned())
+					crate::utilities::notify!("Printing {:?} base on {:?}", left_right, condition);
+					Self("TODO".to_owned())
 				}
 			}
 			crate::context::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
 					todo!("chaining")
 				}
-				Self::from_property_constraint(
-					*on,
-					Some(GenericChainLink::Link {
-						parent_link: None,
-						value: &antecedent,
-						from: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-					}),
-					ctx,
-					types,
-					debug_mode,
-				)
+				let generics = Some(GenericChainLink::Link {
+					parent_link: None,
+					value: &antecedent,
+					from: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+				});
+				Self::from_property_constraint(*on, generics, ctx, types, debug_mode)
 			}
 			crate::Logical::BasedOnKey { .. } => todo!(),
 		}
@@ -268,9 +256,7 @@ impl TypeStringRepresentation {
 
 impl Display for TypeStringRepresentation {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TypeStringRepresentation::Type(ty) => f.write_str(ty),
-		}
+		f.write_str(&self.0)
 	}
 }
 
@@ -281,11 +267,6 @@ impl From<NoEnvironmentSpecified> for Diagnostic {
 		Diagnostic::Global { reason: "No environment".to_owned(), kind: DiagnosticKind::Error }
 	}
 }
-
-use crate::{
-	context::AssignmentError,
-	features::{modules::CouldNotOpenFile, operations::MathematicalAndBitwise},
-};
 
 /// Reasons for errors, intermediate type for generating [Diagnostic]s
 /// e.g. cannot Call, cannot equate, duplicate key etc

@@ -55,8 +55,9 @@ declare class Array<T> {
     length: number;
 
     push(item: T) {
-        this[this.length] = item;
-        return ++this.length
+        let at = this.length++;
+        this[at] = item;
+        return at + 1
     }
 
     pop(): T | undefined {
@@ -71,16 +72,16 @@ declare class Array<T> {
 
     // TODO this argument
     // map<U>(cb: (t: T, i?: number) => U): Array<U> {
-    // map<U>(cb: (t: T) => U): Array<U> {
-    //     const { length } = this, mapped: Array<U> = [];
-    //     let i: number = 0;
-    //     while (i < length) {
-    //         const value = this?.[i];
-    //         const newValue = cb(value) //, i++);
-    //         mapped.push(newValue)
-    //     }
-    //     return mapped;
-    // }
+    map<U>(cb: (t: T) => U): Array<U> {
+        const { length } = this, mapped: Array<U> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this?.[i];
+            const newValue = cb(value) //, i++);
+            mapped.push(newValue)
+        }
+        return mapped;
+    }
 
     // copy(): Array<T> {
     //     const { length } = this, mapped: Array<T> = [];
@@ -186,21 +187,21 @@ declare class Map<K, V> {
         this.#values = []
     }
 
-    get(key: K): V | undefined {
-        // return this.#keys;
-        const { length } = this.#keys;
-        for (let i = 0; i < length; i++) {
-            const s = length - 1 - i;
-            if (this.#keys[s] === key) {
-                return this.#values[s]
-            }
-        }
-    }
+    // get(key: K): V | undefined {
+    //     // return this.#keys;
+    //     const { length } = this.#keys;
+    //     for (let i = 0; i < length; i++) {
+    //         const s = length - 1 - i;
+    //         if (this.#keys[s] === key) {
+    //             return this.#values[s]
+    //         }
+    //     }
+    // }
 
-    set(key: K, value: V) {
-        this.#keys.push(key);
-        this.#values.push(value);
-    }
+    // set(key: K, value: V) {
+    //     this.#keys.push(key);
+    //     this.#values.push(value);
+    // }
 }
 
 type Record<K extends string, T> = { [P in K]: T }
@@ -237,6 +238,9 @@ declare class Math {
 
     static PI: 3.141592653589793
     static E: 2.718281828459045
+
+    @InputOutput
+    static random(): number;
 }
 
 @Primitive("string")
@@ -317,12 +321,37 @@ declare class Proxy {
         constructor(obj: any, cb: any);
 }
 
+// Copied from `es5.d.ts`. Could this be an or
+interface PropertyDescriptor {
+    value?: any;
+    // get?(): any;
+    // set?(v: any): void;
+
+    writable?: boolean;
+    configurable?: boolean;
+    enumerable?: boolean;
+}
+
 declare class Object {
     @Constant
     static setPrototypeOf(on: object, to: object): object;
 
     @Constant
     static getPrototypeOf(on: object): object | null;
+
+    @Constant
+    static freeze(on: object): object;
+
+    @Constant
+    static isFrozen(on: object): boolean;
+
+    // TODO defineProperties via body (not constant)
+    @Constant
+    static defineProperty(on: object, property: string, discriminator: PropertyDescriptor): boolean;
+
+    // TODO getOwnPropertyDescriptors via body (not constant)
+    @Constant
+    static getOwnPropertyDescriptor(on: object, property: string): PropertyDescriptor;
 
     // static create(prototype: object): object {
     //     const n = {};

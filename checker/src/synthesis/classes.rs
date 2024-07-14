@@ -548,7 +548,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 				// TODO WIP
 				crate::utilities::notify!("Here for {}", name);
 				let value = PropertyValue::ConditionallyExists {
-					on: TypeId::BOOLEAN_TYPE,
+					on: TypeId::OPEN_BOOLEAN_TYPE,
 					truthy: Box::new(PropertyValue::Value(value)),
 				};
 				environment.info.register_property(
