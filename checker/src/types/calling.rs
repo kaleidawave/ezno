@@ -960,6 +960,7 @@ impl FunctionType {
 
 		if !errors.errors.is_empty() {
 			return Err(BadCallOutput {
+				// TODO what about `new`
 				returned_type: types.new_error_type(self.return_type),
 				errors: errors.errors,
 			});
@@ -1064,6 +1065,7 @@ impl FunctionType {
 		if !errors.errors.is_empty() {
 			crate::utilities::notify!("Got {} application errors", errors.errors.len());
 			return Err(BadCallOutput {
+				// TODO what about `new`
 				returned_type: types.new_error_type(self.return_type),
 				errors: errors.errors,
 			});
@@ -1095,6 +1097,7 @@ impl FunctionType {
 		} else {
 			result
 		};
+
 		Ok(CallingOutput {
 			result,
 			warnings: errors.warnings,
@@ -1173,8 +1176,45 @@ impl FunctionType {
 			FunctionBehavior::Function { is_async: _, is_generator: _, this_id, prototype } => {
 				match called_with_new {
 					CalledWithNew::New { on: _ } => {
+						// This condition is by creation
+						// TODO THIS IS FRAGILE AND UNCLEAR
+						let (this_id, constraint) =
+							if let Type::Constructor(Constructor::ConditionalResult {
+								truthy_result: this_id,
+								otherwise_result: constraint,
+								..
+							}) = types.get_type_by_id(this_id)
+							{
+								(*this_id, *constraint)
+							} else {
+								unreachable!()
+							};
+
+						// {
+						// 	let debug = true;
+						// 	crate::utilities::notify!(
+						// 		"Checking against this constraint {}",
+						// 		crate::types::printing::print_type(
+						// 			this_id,
+						// 			types,
+						// 			environment,
+						// 			debug
+						// 		)
+						// 	);
+						// 	crate::utilities::notify!(
+						// 		"Other {}",
+						// 		crate::types::printing::print_type(
+						// 			constraint,
+						// 			types,
+						// 			environment,
+						// 			debug
+						// 		)
+						// 	);
+						// }
+
+						// Check `this` constraint
 						{
-							let this_constraint = get_constraint(this_id, types);
+							let this_constraint = get_constraint(constraint, types);
 
 							// Check `this` has all prototype information
 							if let Some(this_constraint) = this_constraint {
@@ -1216,27 +1256,21 @@ impl FunctionType {
 							}
 						}
 
-						// TODO think so
-						let is_under_dyn = true;
-						let value_of_this = environment.info.new_object(
-							Some(prototype),
-							types,
-							call_site,
-							is_under_dyn,
-						);
-
-						// crate::utilities::notify!("Calling new on regular function");
-						// crate::utilities::notify!("Set {:?} top {:?}", free_this_id, value_of_this);
-
-						// This condition is by creation
-						if let Type::Constructor(Constructor::ConditionalResult {
-							truthy_result,
-							..
-						}) = types.get_type_by_id(this_id)
+						// Set argument
 						{
-							type_arguments.insert(*truthy_result, value_of_this);
-						} else {
-							unreachable!()
+							// TODO think so
+							let is_under_dyn = true;
+							let value_of_this = environment.info.new_object(
+								Some(prototype),
+								types,
+								call_site,
+								is_under_dyn,
+							);
+
+							type_arguments.insert(this_id, value_of_this);
+
+							// crate::utilities::notify!("Calling new on regular function");
+							// crate::utilities::notify!("Set {:?} top {:?}", free_this_id, value_of_this);
 						}
 					}
 					CalledWithNew::Super { this_type } => {

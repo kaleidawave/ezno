@@ -56,19 +56,31 @@ print_type(mapper)
 
 - TODO
 
-#### Calling on or type
+#### Calling or
+
+> *Calling* is distributive `(A | B)()` -> `A() | B()`
 
 ```ts
-type Func1 = () => 3;
-type Func2 = () => 2;
-function callFunc<T, U>(func: (() => T) | (() => U)): 3 | 2 {
-	return func()
-}
+function a(p: string) { return 2 }
+function b(p: string) { return 4 }
 
-print_type(callFunc)
+function c(c: boolean) {
+	const func = c ? a : b;
+	const result = func()
+	result satisfies string;
+	return result
+}
 ```
 
-- Expected "a" | "b" | "c" found "d"
+- Expected string, found 2 | 4
+
+#### Setter or
+
+```ts
+TODO
+```
+
+- Expected string, found 2 | 4
 
 #### Getter and setter through function
 
@@ -788,3 +800,244 @@ if (b === "hi") {
 ```
 
 - Expected "hello", found "hi"
+
+#### Optional property access
+
+```ts
+interface X {
+    a: string
+    b: string
+}
+
+declare let x: X | null;
+
+x.a;
+x?.b satisfies number;
+```
+
+- Cannot get 'a' on null
+- Expected number, found string
+
+### Generics
+
+#### Out of order generics
+
+```ts
+function func<T>(cb: (t: T) => number, value: T) { }
+
+func(cb => { cb satisfies boolean }, "hi")
+```
+
+- Expected boolean, found "hi"
+
+### Broken
+
+> Was working, now broken (or removed)
+
+#### Readonly property
+
+> Should be working but parser current wraps `a` as `Readonly<string>` :(
+
+```ts
+function x(p: { readonly a: string, b: string }) {
+    p.a = "hi";
+	p.b = "hi";
+}
+```
+
+- Cannot write to property 'a'
+
+#### Destructuring using iterator
+
+```ts
+const [a, b, c] = {
+	[Symbol.iterator]() {
+		return {
+			count: 0,
+			next(this: { count: number }) {
+				return { value: this.count++, done: false }
+			}
+		}
+	}
+}
+
+a satisfies 0; b satisfies string;
+```
+
+- Expected string, found 1
+
+#### Always known math
+
+```ts
+function func(a: number) { return a ** 0 }
+
+print_type(func)
+
+declare let x: NotNotANumber;
+
+print_type(x ** 1 === x)
+```
+
+- Expected string, found 1
+- True
+
+#### Less than checks
+
+```ts
+function x(a: GreaterThan<4>) {
+	(a < 3) satisfies false;
+	(a < 10) satisfies string;
+}
+```
+
+- Expected string, found boolean
+
+#### Tagged template literal
+
+> Waiting for parser definition updated to make this easier
+
+```ts
+function myTag(static_parts: Array<string>, other: string) {
+	return { static_parts, other }
+}
+
+const name = "Ben";
+myTag`${name}Hello ` satisfies string
+```
+
+- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
+
+### Control flow
+
+#### Conditional break
+
+```ts
+function getNumber(a: number) {
+	for (let i = 0; i < 10; i++) {
+		if (i === a) {
+			return "found"
+		}
+	}
+	return "not-found"
+}
+
+getNumber(4) satisfies "found";
+getNumber(100) satisfies boolean;
+```
+
+- Expected boolean, found "not-found"
+
+#### *Inconclusive* conditional update
+
+```ts
+declare var value: string;
+let a: string | number = 0;
+
+function conditional(v: string) {
+	if (v === "value") {
+		a = "hi"
+	}
+}
+conditional(value);
+a satisfies string;
+```
+
+- Expected string, found "hi" | 0
+
+#### Break with label
+
+> Note the numbers here, if they are larger they break over the `max_inline` limit and get different results below
+
+```ts
+let a: number = 0;
+let result;
+
+top: while (a++ < 8) {
+	let b: number = 0;
+	while (b++ < 8) {
+		if (a === 3 && b === 2) {
+			result = a * b;
+			break top
+		}
+	}
+}
+
+a satisfies string;
+result satisfies boolean;
+```
+
+- Expected string, found 3
+- Expected boolean, found 6
+
+### Closures
+
+#### TDZ
+
+```ts
+function func() {
+    return function () { return closedOverVariable }
+    let closedOverVariable = 2;
+}
+```
+
+- Unreachable statement
+- Function contains unreachable closed over variable 'closedOverVariable'
+
+### Object constraints
+
+#### Mutation by a function with unknown effects
+
+> This is where the object loses its constant-ness
+> Effectively raises it to the parameter type
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 8);
+	return obj;
+}
+
+const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
+object.prop satisfies string;
+```
+
+- Expected 8, found number
+- Expected string, found 2
+
+#### Mutation negated via `readonly`
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 6);
+}
+```
+
+- Expected 6, found 8
+
+#### Possible mutation breaks object constraint
+
+> This unfortunately can flag up valid code, but handling those is too difficult atm
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
+	const obj: { prop: number } = { prop: 8 };
+	callback(obj);
+}
+```
+
+- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
+
+#### Possible mutation via anytime function
+
+```ts
+const x = { a: 2 }
+setTimeout(() => { Math.sin(x.a) })
+x.a = "hi"
+```
+
+- Cannot assign. Restricted to number

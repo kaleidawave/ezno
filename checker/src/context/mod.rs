@@ -15,7 +15,7 @@ use source_map::{Span, SpanWithSource};
 use crate::{
 	context::environment::ExpectedReturnType,
 	diagnostics::{
-		CannotRedeclareVariable, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ,
+		CannotRedeclareVariable, PropertyKeyRepresentation, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ
 	},
 	events::RootReference,
 	features::{
@@ -24,9 +24,10 @@ use crate::{
 		objects::{Proxy, SpecialObject},
 		variables::{VariableMutability, VariableOrImport},
 	},
+	subtyping::SliceArguments,
 	types::{
-		generics::generic_type_arguments::GenericArguments, properties::SliceArgument,
-		FunctionType, PolyNature, Type, TypeId, TypeStore,
+		generics::generic_type_arguments::GenericArguments, FunctionType, PolyNature, Type, TypeId,
+		TypeStore,
 	},
 	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 };
@@ -1189,7 +1190,7 @@ pub enum Logical<T> {
 	/// - Can this work for arrays
 	BasedOnKey {
 		on: Box<Self>,
-		key: SliceArgument,
+		key_arguments: SliceArguments,
 	},
 }
 
@@ -1220,7 +1221,7 @@ pub type PossibleLogical<T> = Result<Logical<T>, MissingOrToCalculate>;
 
 /// WIP
 pub enum SetPropertyError {
-	NotWriteable,
+	NotWriteable { property: PropertyKeyRepresentation },
 	Readonly,
 	AssigningToTuple,
 	DoesNotMeetConstraint {

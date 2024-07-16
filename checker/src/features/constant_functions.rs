@@ -96,7 +96,7 @@ pub(crate) fn call_constant_function(
 					let ty = types.new_constant_type(Constant::Number(try_into));
 					Ok(ConstantOutput::Value(ty))
 				}
-				Err(_) => Ok(ConstantOutput::Value(TypeId::NAN_TYPE)),
+				Err(_) => Ok(ConstantOutput::Value(TypeId::NAN)),
 			}
 		}
 		// String stuff. TODO could this be replaced by intrinsics

@@ -8,8 +8,8 @@ use crate::{
 	features::functions::{self, GetterSetter},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		properties::{PropertyKey, PropertyValue, Publicity},
-		FunctionType, Type,
+		properties::{Descriptor, PropertyKey, PropertyValue, Publicity},
+		references_key_of, FunctionType, Type,
 	},
 	CheckingData, Scope, TypeId,
 };
@@ -18,11 +18,29 @@ use super::{
 	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 };
 
+/// inverse of readonly. Closer to JS semantics
+pub struct Writable(pub TypeId);
+
+impl Writable {
+	fn from_readonly(is_readonly: bool) -> Self {
+		Self(if is_readonly { TypeId::FALSE } else { TypeId::TRUE })
+	}
+}
+
+/// inverse of optional. Closer to implementation
+pub struct IsDefined(pub TypeId);
+
+impl IsDefined {
+	fn from_optionality(is_optional: bool) -> Self {
+		Self(if is_optional { TypeId::OPEN_BOOLEAN_TYPE } else { TypeId::TRUE })
+	}
+}
+
 pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
 		key: InterfaceKey,
-		value: InterfaceValue,
+		value: (InterfaceValue, IsDefined, Writable),
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
 		position: SpanWithSource,
@@ -40,7 +58,6 @@ pub(crate) enum InterfaceKey<'a> {
 pub(crate) enum InterfaceValue {
 	Function(FunctionType, GetterSetter),
 	Value(TypeId),
-	Optional(TypeId),
 }
 
 pub(crate) struct OnToType(pub(crate) TypeId);
@@ -49,7 +66,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
 		key: InterfaceKey,
-		value: InterfaceValue,
+		(value, always_defined, writable): (InterfaceValue, IsDefined, Writable),
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
 		position: SpanWithSource,
@@ -70,7 +87,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			}
 			InterfaceKey::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
-		let ty = match value {
+		let value = match value {
 			InterfaceValue::Function(function, getter_setter) => match getter_setter {
 				GetterSetter::Getter => {
 					let id = function.id;
@@ -90,15 +107,26 @@ impl SynthesiseInterfaceBehavior for OnToType {
 				}
 			},
 			InterfaceValue::Value(value) => PropertyValue::Value(value),
-			// optional properties (`?:`) is implemented here:
-			InterfaceValue::Optional(value) => PropertyValue::ConditionallyExists {
-				on: TypeId::OPEN_BOOLEAN_TYPE,
-				truthy: PropertyValue::Value(value).into(),
-			},
+		};
+		let value = if let Writable(TypeId::TRUE) = writable {
+			value
+		} else {
+			let descriptor = Descriptor {
+				writable: writable.0,
+				enumerable: TypeId::TRUE,
+				configurable: TypeId::TRUE,
+			};
+			PropertyValue::Configured { on: Box::new(value), descriptor }
+		};
+		// optional properties (`?:`) is implemented here:
+		let value = if let IsDefined(TypeId::TRUE) = always_defined {
+			value
+		} else {
+			PropertyValue::ConditionallyExists { on: always_defined.0, truthy: Box::new(value) }
 		};
 
 		// None position should be fine here
-		environment.info.register_property(self.0, publicity, under, ty, false, position);
+		environment.info.register_property(self.0, publicity, under, value, false, position);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {
@@ -175,7 +203,11 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 
 					interface_register_behavior.register(
 						InterfaceKey::ClassProperty(name),
-						InterfaceValue::Function(function, getter),
+						(
+							InterfaceValue::Function(function, getter),
+							IsDefined::from_optionality(*is_optional),
+							Writable::from_readonly(false),
+						),
 						checking_data,
 						environment,
 						position_with_source,
@@ -188,32 +220,23 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					is_optional,
 					position,
 				} => {
-					if *is_readonly {
-						checking_data.raise_unimplemented_error(
-							"readonly interface property",
-							position.with_source(environment.get_source()),
-						);
-					}
-
 					let value =
 						synthesise_type_annotation(type_annotation, environment, checking_data);
 
-					let value = if *is_optional {
-						InterfaceValue::Optional(value)
-					} else {
-						InterfaceValue::Value(value)
-					};
-
 					interface_register_behavior.register(
 						InterfaceKey::ClassProperty(name),
-						value,
+						(
+							InterfaceValue::Value(value),
+							IsDefined::from_optionality(*is_optional),
+							Writable::from_readonly(*is_readonly),
+						),
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),
 					);
 				}
 				InterfaceMember::Indexer {
-					name,
+					name: _,
 					indexer_type,
 					return_type,
 					is_readonly,
@@ -223,28 +246,20 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
 
-					if *is_readonly {
-						checking_data.raise_unimplemented_error(
-							"readonly interface index",
-							position.with_source(environment.get_source()),
-						);
-					}
-
+					let value = InterfaceValue::Value(value);
 					// TODO WIP
-					let value = if matches!(key, TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
-						crate::utilities::notify!(
-							"Special case for [number] or [string], making optional {}",
-							name
-						);
-						InterfaceValue::Optional(value)
-					} else {
-						// Not doing for generics + Symbols
-						InterfaceValue::Value(value)
-					};
+					let always_defined = IsDefined::from_optionality(matches!(
+						key,
+						TypeId::NUMBER_TYPE | TypeId::STRING_TYPE
+					));
+					// crate::utilities::notify!(
+					// 	"Special case for [number] or [string], making optional {}",
+					// 	name
+					// );
 
 					interface_register_behavior.register(
 						InterfaceKey::Type(key),
-						value,
+						(value, always_defined, Writable::from_readonly(*is_readonly)),
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),
@@ -316,41 +331,47 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						(key, value)
 					};
 
-					let value = match optionality {
+					// wrg to `references_key_of`, it is TSC behavior for the conditionality and
+					// writable of the property to be based on the argument from keyof.
+					// if keyof is not present this argument is not set and so breaks things.
+					// This `keyof` could be collected during synthesising but doing here as easier
+					// + edge cases around alias and generics
+
+					let always_defined = match optionality {
 						parser::types::interface::Optionality::Default => {
-							InterfaceValue::Value(value)
+							if references_key_of(key, &checking_data.types) {
+								IsDefined(TypeId::NON_OPTIONAL_KEY_ARGUMENT)
+							} else {
+								IsDefined::from_optionality(false)
+							}
 						}
 						parser::types::interface::Optionality::Optional => {
-							InterfaceValue::Optional(value)
+							IsDefined::from_optionality(true)
 						}
 						parser::types::interface::Optionality::Required => {
-							let position = position.with_source(environment.get_source());
-							checking_data
-								.raise_unimplemented_error("mapped type required", position);
-							InterfaceValue::Value(value)
+							IsDefined::from_optionality(false)
 						}
 					};
 
-					match is_readonly {
+					let writable = match is_readonly {
 						parser::types::interface::MappedReadonlyKind::Negated => {
-							// Hmm this one is tricky
-							let position = position.with_source(environment.get_source());
-							checking_data.raise_unimplemented_error(
-								"mapped type negated readonly",
-								position,
-							);
+							Writable::from_readonly(false)
 						}
 						parser::types::interface::MappedReadonlyKind::Always => {
-							let position = position.with_source(environment.get_source());
-							checking_data
-								.raise_unimplemented_error("mapped type readonly", position);
+							Writable::from_readonly(true)
 						}
-						parser::types::interface::MappedReadonlyKind::False => {}
-					}
+						parser::types::interface::MappedReadonlyKind::False => {
+							if references_key_of(key, &checking_data.types) {
+								Writable(TypeId::WRITABLE_KEY_ARGUMENT)
+							} else {
+								Writable::from_readonly(false)
+							}
+						}
+					};
 
 					interface_register_behavior.register(
 						InterfaceKey::Type(key),
-						value,
+						(InterfaceValue::Value(value), always_defined, writable),
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),

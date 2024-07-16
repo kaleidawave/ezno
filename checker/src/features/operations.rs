@@ -7,8 +7,8 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::conditional::new_conditional_context,
 	types::{
-		cast_as_number, cast_as_string, intrinsics, is_type_truthy_falsy, new_logical_or_type,
-		Constructor, PartiallyAppliedGenerics, TypeStore,
+		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, Constructor,
+		PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
@@ -171,7 +171,7 @@ pub fn evaluate_mathematical_operation(
 					let value = ordered_float::NotNan::try_from(value);
 					let ty = match value {
 						Ok(value) => types.new_constant_type(Constant::Number(value)),
-						Err(_) => TypeId::NAN_TYPE,
+						Err(_) => TypeId::NAN,
 					};
 					Ok(ty)
 				}
@@ -225,7 +225,7 @@ pub fn evaluate_equality_inequality_operation(
 	strict_casts: bool,
 ) -> TypeId {
 	// `NaN == t` is always true
-	if lhs == TypeId::NAN_TYPE || rhs == TypeId::NAN_TYPE {
+	if lhs == TypeId::NAN || rhs == TypeId::NAN {
 		return TypeId::FALSE;
 	}
 
@@ -513,7 +513,7 @@ pub fn evaluate_pure_unary_operator(
 				let value = ordered_float::NotNan::try_from(value);
 				match value {
 					Ok(value) => types.new_constant_type(Constant::Number(value)),
-					Err(_) => TypeId::NAN_TYPE,
+					Err(_) => TypeId::NAN,
 				}
 			} else {
 				types.register_type(Type::Constructor(crate::types::Constructor::UnaryOperator {

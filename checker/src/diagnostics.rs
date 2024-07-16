@@ -9,8 +9,8 @@ use crate::{
 		modules::CouldNotOpenFile, operations::MathematicalAndBitwise, CannotDeleteFromError,
 	},
 	types::{
-		calling::FunctionCallingError, printing::print_type_with_type_arguments, GenericChain,
-		GenericChainLink,
+		calling::FunctionCallingError, printing::print_type_with_type_arguments,
+		properties::PropertyKey, GenericChain, GenericChainLink,
 	},
 };
 use source_map::{SourceId, SpanWithSource};
@@ -173,9 +173,24 @@ use crate::types::{printing::print_type, TypeId, TypeStore};
 /// TODO could be more things, for instance a property missing etc
 pub struct TypeStringRepresentation(String);
 
-pub enum PropertyRepresentation {
+pub enum PropertyKeyRepresentation {
 	Type(String),
 	StringKey(String),
+}
+
+impl PropertyKeyRepresentation {
+	pub fn new(
+		under: &PropertyKey,
+		environment: &impl InformationChain,
+		types: &TypeStore,
+	) -> PropertyKeyRepresentation {
+		match under.clone() {
+			PropertyKey::String(s) => PropertyKeyRepresentation::StringKey(s.to_string()),
+			PropertyKey::Type(t) => {
+				PropertyKeyRepresentation::Type(print_type(t, types, environment, false))
+			}
+		}
+	}
 }
 
 impl TypeStringRepresentation {
@@ -211,16 +226,17 @@ impl TypeStringRepresentation {
 		debug_mode: bool,
 	) -> TypeStringRepresentation {
 		match property_constraint {
-			crate::context::Logical::Pure(constraint) => match constraint {
+			crate::context::Logical::Pure(constraint) => match constraint.inner_simple() {
 				crate::PropertyValue::Value(v) => {
-					let value = print_type_with_type_arguments(v, generics, types, ctx, debug_mode);
+					let value =
+						print_type_with_type_arguments(*v, generics, types, ctx, debug_mode);
 					Self(value)
 				}
 				crate::PropertyValue::Getter(_) => todo!(),
 				crate::PropertyValue::Setter(_) => todo!(),
-				crate::PropertyValue::Deleted => todo!(),
-				crate::PropertyValue::ConditionallyExists { .. } => todo!(),
-				crate::PropertyValue::Configured { .. } => todo!(),
+				crate::PropertyValue::Deleted => Self("never".to_owned()),
+				crate::PropertyValue::ConditionallyExists { .. }
+				| crate::PropertyValue::Configured { .. } => unreachable!(),
 			},
 			crate::context::Logical::Or { condition, left, right } => {
 				let left_right = (*left, *right);
@@ -280,7 +296,7 @@ pub(crate) enum TypeCheckError<'a> {
 	/// When accessing
 	PropertyDoesNotExist {
 		on: TypeStringRepresentation,
-		property: PropertyRepresentation,
+		property: PropertyKeyRepresentation,
 		site: SpanWithSource,
 	},
 	NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
@@ -349,7 +365,10 @@ pub(crate) enum TypeCheckError<'a> {
 		argument: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
-	PropertyNotWriteable(SpanWithSource),
+	PropertyNotWriteable {
+		property: PropertyKeyRepresentation,
+		position: SpanWithSource,
+	},
 	NotTopLevelImport(SpanWithSource),
 	DoubleDefaultExport(SpanWithSource),
 	CannotOpenFile {
@@ -405,36 +424,38 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 	fn from(error: TypeCheckError<'_>) -> Self {
 		let kind = super::DiagnosticKind::Error;
 		match error {
-				TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
-					Diagnostic::Position {
-						reason: format!(
-							"Could not find variable '{variable}' in scope",
-							// possibles Consider '{:?}'
-						),
-						position,
-						kind,
-					}
-				}
-				TypeCheckError::CouldNotFindType(reference, pos) => Diagnostic::Position {
-					reason: format!("Could not find type '{reference}'"),
-					position: pos,
+			TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
+				Diagnostic::Position {
+					reason: format!(
+						"Could not find variable '{variable}' in scope",
+						// possibles Consider '{:?}'
+					),
+					position,
 					kind,
-				},
-				TypeCheckError::PropertyDoesNotExist { property, on, site } => {
-					Diagnostic::Position {
-						reason: match property {
-							PropertyRepresentation::Type(ty) => format!("No property of type {ty} on {on}"),
-							PropertyRepresentation::StringKey(property) => format!("No property '{property}' on {on}"),
-						},
-						position: site,
-						kind,
-					}
 				}
-				TypeCheckError::FunctionCallingError(error) => function_calling_error_diagnostic(error, kind, ""),
-				TypeCheckError::JSXCallingError(error) => function_calling_error_diagnostic(error, kind, " (in JSX)"),
-				TypeCheckError::TemplateLiteralError(error) => function_calling_error_diagnostic(error, kind, " (in template literal)"),
-				TypeCheckError::SuperCallError(error) => function_calling_error_diagnostic(error, kind, " (in super call)"),
-				TypeCheckError::AssignmentError(error) => match error {
+			}
+			TypeCheckError::CouldNotFindType(reference, pos) => Diagnostic::Position {
+				reason: format!("Could not find type '{reference}'"),
+				position: pos,
+				kind,
+			},
+			TypeCheckError::PropertyDoesNotExist { property, on, site } => {
+				Diagnostic::Position {
+					reason: match property {
+						PropertyKeyRepresentation::Type(ty) => format!("No property of type {ty} on {on}"),
+						PropertyKeyRepresentation::StringKey(property) => format!("No property '{property}' on {on}"),
+					},
+					position: site,
+					kind,
+				}
+			}
+			TypeCheckError::FunctionCallingError(error) => function_calling_error_diagnostic(error, kind, ""),
+			TypeCheckError::JSXCallingError(error) => function_calling_error_diagnostic(error, kind, " (in JSX)"),
+			TypeCheckError::TemplateLiteralError(error) => {
+				function_calling_error_diagnostic(error, kind, " (in template literal)")
+			},
+			TypeCheckError::SuperCallError(error) => function_calling_error_diagnostic(error, kind, " (in super call)"),
+			TypeCheckError::AssignmentError(error) => match error {
 					AssignmentError::DoesNotMeetConstraint {
 						variable_type,
 						variable_site,
@@ -482,14 +503,14 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						}
 					}
 				},
-				TypeCheckError::ReturnedTypeDoesNotMatch {
+			TypeCheckError::ReturnedTypeDoesNotMatch {
 					annotation_position,
 					returned_position,
 					expected_return_type,
 					returned_type,
 				} => Diagnostic::PositionWithAdditionalLabels {
 					reason: format!(
-						"Cannot return {returned_type} because the function is expected to return {expected_return_type}",
+						"Cannot return {returned_type} because the function is expected to return {expected_return_type}"
 					),
 					labels: vec![(
 						format!("Function annotated to return {expected_return_type} here"),
@@ -498,63 +519,61 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position: returned_position,
 					kind,
 				},
-        TypeCheckError::InvalidDefaultParameter {
+			TypeCheckError::InvalidDefaultParameter {
 					expected,
           found,
 					at,
 				} => Diagnostic::Position {
-					reason: format!(
-						"Cannot use a default value of type {found} for parameter of type {expected}",
-          ),
+					reason: format!( "Cannot use a default value of type {found} for parameter of type {expected}"),
 					position: at,
 					kind,
 				},
-        TypeCheckError::CatchTypeDoesNotMatch {
+	TypeCheckError::CatchTypeDoesNotMatch {
 					expected,
 					found,
 					at,
 				} => Diagnostic::Position {
 					reason: format!(
-             "Cannot catch type {found} because the try block throws {expected}",
+             "Cannot catch type {found} because the try block throws {expected}"
 					),
 					position: at,
 					kind,
 				},
-				TypeCheckError::TypeHasNoGenericParameters(name, position) => {
+			TypeCheckError::TypeHasNoGenericParameters(name, position) => {
 					Diagnostic::Position {
-						reason: format!("Type '{name}' has no generic parameters",),
+						reason: format!("Type '{name}' has no generic parameters"),
 						position,
 						kind,
 					}
 				}
-				TypeCheckError::InvalidComparison(_, _) => todo!(),
-				TypeCheckError::InvalidAddition(_, _) => todo!(),
-				TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
-				TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
+			TypeCheckError::InvalidComparison(_, _) => todo!(),
+			TypeCheckError::InvalidAddition(_, _) => todo!(),
+			TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
+			TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
 					reason: "Cannot export at not top level".to_owned(),
 					position,
 					kind,
 				},
-				TypeCheckError::FieldNotExported { file, importing, position } => {
+			TypeCheckError::FieldNotExported { file, importing, position } => {
 					Diagnostic::Position {
 						reason: format!("{importing} not exported from {file}"),
 						position,
 						kind,
 					}
 				}
-				TypeCheckError::RestParameterAnnotationShouldBeArrayType(pos) => {
+			TypeCheckError::RestParameterAnnotationShouldBeArrayType(pos) => {
 					Diagnostic::Position {
 						reason: "Rest parameter annotation should be array type".to_owned(),
 						position: pos,
 						kind,
 					}
 				}
-				TypeCheckError::Unsupported { thing, at } => Diagnostic::Position {
+			TypeCheckError::Unsupported { thing, at } => Diagnostic::Position {
 					reason: format!("Unsupported: {thing}"),
 					position: at,
 					kind,
 				},
-				TypeCheckError::FunctionDoesNotMeetConstraint {
+			TypeCheckError::FunctionDoesNotMeetConstraint {
 					function_constraint,
 					function_type,
 					position,
@@ -565,24 +584,27 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position,
 					kind,
 				},
-				TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
+			TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
 					reason: format!("Expected {expected}, found {found}"),
 					position: at,
 					kind,
 				},
-				TypeCheckError::CannotRedeclareVariable { name, position } => {
+			TypeCheckError::CannotRedeclareVariable { name, position } => {
 					Diagnostic::Position {
 						reason: format!("Cannot redeclare variable '{name}'"),
 						position,
 						kind,
 					}
 				}
-				TypeCheckError::PropertyNotWriteable(position) => Diagnostic::Position {
-					reason: "Property not writeable".into(),
+			TypeCheckError::PropertyNotWriteable { property, position } => Diagnostic::Position {
+					reason: match property {
+						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to property of type {ty}"),
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}'") 
+					},
 					position,
 					kind,
 				},
-				TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+			TypeCheckError::GenericArgumentDoesNotMeetRestriction {
 					argument,
 					parameter_restriction,
 					position,
@@ -593,13 +615,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position,
 					kind,
 				},
-				TypeCheckError::NotTopLevelImport(position) => Diagnostic::Position {
+			TypeCheckError::NotTopLevelImport(position) => Diagnostic::Position {
 					reason: "Import must be in the top of the scope".to_owned(),
 					position,
 					kind,
 				},
-				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-				TypeCheckError::CannotOpenFile { file, import_position } => if let Some(import_position) = import_position {
+			TypeCheckError::DoubleDefaultExport(_) => todo!(),
+			TypeCheckError::CannotOpenFile { file, import_position } => if let Some(import_position) = import_position {
 					Diagnostic::Position {
 						reason: "Cannot find file".to_owned(),
 						position: import_position,
@@ -608,7 +630,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				} else {
 					Diagnostic::Global { reason: format!("Cannot find file {}", file.0.display()), kind }
 				},
-				TypeCheckError::VariableNotDefinedInContext {
+			TypeCheckError::VariableNotDefinedInContext {
 					variable,
 					expected_context,
 					current_context,
@@ -618,45 +640,45 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position,
 					kind,
 				},
-				TypeCheckError::TypeNeedsTypeArguments(ty, position) => Diagnostic::Position {
+			TypeCheckError::TypeNeedsTypeArguments(ty, position) => Diagnostic::Position {
 					reason: format!("Type {ty} requires type arguments"),
 					position,
 					kind,
 				},
-				TypeCheckError::TypeAlreadyDeclared { name, position } => Diagnostic::Position {
+			TypeCheckError::TypeAlreadyDeclared { name, position } => Diagnostic::Position {
 					reason: format!("Type named '{name}' already declared"),
 					position,
 					kind,
 				},
-				TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
+			TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
 					reason: format!("Variable '{variable_name}' used before declaration"),
 					position,
 					kind,
 				},
-				TypeCheckError::InvalidMathematicalOrBitwiseOperation { operator, lhs, rhs, position } => Diagnostic::Position {
+			TypeCheckError::InvalidMathematicalOrBitwiseOperation { operator, lhs, rhs, position } => Diagnostic::Position {
 					// TODO temp
 					reason: format!("Cannot {lhs} {operator:?} {rhs}"),
 					position,
 					kind,
 				},
-				TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
-				TypeCheckError::InvalidCast { position, from, to } => {
+			TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
+			TypeCheckError::InvalidCast { position, from, to } => {
 					Diagnostic::Position {
 						reason: format!("Cannot cast {from} to {to}"),
 						position,
 						kind,
 					}
 				}
-				TypeCheckError::UnreachableVariableClosedOver(name, function_position) => {
+			TypeCheckError::UnreachableVariableClosedOver(name, function_position) => {
 					Diagnostic::Position {
 						reason: format!("Function contains unreachable closed over variable '{name}'"),
 						position: function_position,
 						kind,
 					}
 				}
-				TypeCheckError::IncompatibleOverloadParameter { parameter_position, overloaded_parameter_position, parameter, overloaded_parameter } => Diagnostic::PositionWithAdditionalLabels {
+			TypeCheckError::IncompatibleOverloadParameter { parameter_position, overloaded_parameter_position, parameter, overloaded_parameter } => Diagnostic::PositionWithAdditionalLabels {
 					reason: format!(
-						"Overload with parameter of {overloaded_parameter} does not meet base parameter {parameter}",
+						"Overload with parameter of {overloaded_parameter} does not meet base parameter {parameter}"
 					),
 					labels: vec![(
 						format!("Function has base type {parameter} here"),
@@ -665,9 +687,9 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position: overloaded_parameter_position,
 					kind,
 				},
-				TypeCheckError::IncompatibleOverloadReturnType { base_position, overload_position, base, overload } => Diagnostic::PositionWithAdditionalLabels {
+			TypeCheckError::IncompatibleOverloadReturnType { base_position, overload_position, base, overload } => Diagnostic::PositionWithAdditionalLabels {
 					reason: format!(
-						"Cannot return {overload} in overload because base function is expected to return {base}",
+						"Cannot return {overload} in overload because base function is expected to return {base}"
 					),
 					labels: vec![(
 						format!("Function annotated to return {base} here"),
@@ -676,14 +698,14 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position: overload_position,
 					kind,
 				},
-				TypeCheckError::FunctionWithoutBodyNotAllowedHere { position } => {
+			TypeCheckError::FunctionWithoutBodyNotAllowedHere { position } => {
 					Diagnostic::Position {
 						reason: "Function without body not allowed here".to_owned(),
 						position,
 						kind,
 					}
 				}
-				TypeCheckError::CannotDeleteProperty(CannotDeleteFromError { constraint, position }) => {
+			TypeCheckError::CannotDeleteProperty(CannotDeleteFromError { constraint, position }) => {
 					Diagnostic::Position {
 						reason: format!("Cannot delete from object constrained to {constraint}"),
 						position,

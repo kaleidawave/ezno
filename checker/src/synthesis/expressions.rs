@@ -1141,6 +1141,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							spread,
 							&checking_data.types,
 							environment,
+							true,
 						);
 
 						for (_, key, value) in get_properties_on_type {
@@ -1164,11 +1165,13 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							*truthy_result,
 							&checking_data.types,
 							environment,
+							true,
 						);
 						let otherwise_properties = get_properties_on_single_type(
 							*otherwise_result,
 							&checking_data.types,
 							environment,
+							true,
 						);
 						crate::utilities::notify!(
 							"Here {:?} {:?} {:?} {:?}",

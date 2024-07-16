@@ -12,7 +12,7 @@ pub type DoubleMap<T, U> = crate::Map<T, U>;
 pub type TriMap<T, U, V> = crate::Map<T, (U, V)>;
 
 /// How deep through the contribution is ()
-pub type Depth = u8;
+pub type ContributionDepth = u8;
 
 /// This is something that is generated inferred during subtyping
 #[derive(Debug, Clone)]
@@ -71,7 +71,7 @@ pub struct Contributions<'a> {
 	// pub existing_covariant: &'a mut X<TypeId, TypeId>,
 	/// Only for explicit generic parameters
 	pub staging_covariant: TriMap<TypeId, TypeId, SpanWithSource>,
-	pub staging_contravariant: TriMap<TypeId, CovariantContribution, Depth>,
+	pub staging_contravariant: TriMap<TypeId, CovariantContribution, ContributionDepth>,
 }
 
 impl<'a> Contributions<'a> {

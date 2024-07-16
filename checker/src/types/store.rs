@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{types::intrinsics::Intrinsic, Map as SmallMap};
+use crate::{types::intrinsics::Intrinsic, Constant, Map as SmallMap};
 use source_map::SpanWithSource;
 
 use crate::{
@@ -74,15 +74,17 @@ impl Default for TypeStore {
 			Type::Class { name: "RegExp".to_owned(), parameters: None },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
-			Type::Constant(crate::Constant::Boolean(true)),
+			Type::Constant(Constant::Boolean(true)),
 			// false
-			Type::Constant(crate::Constant::Boolean(false)),
+			Type::Constant(Constant::Boolean(false)),
 			// zero
-			Type::Constant(crate::Constant::Number(0.into())),
+			Type::Constant(Constant::Number(0.into())),
 			// one
-			Type::Constant(crate::Constant::Number(1.into())),
+			Type::Constant(Constant::Number(1.into())),
 			// NaN
-			Type::Constant(crate::Constant::NaN),
+			Type::Constant(Constant::NaN),
+			// ""
+			Type::Constant(Constant::String("".to_owned())),
 			// inferred this free variable shortcut
 			Type::RootPolyType(PolyNature::FreeVariable {
 				reference: crate::events::RootReference::This,
@@ -94,10 +96,10 @@ impl Default for TypeStore {
 				eager_fixed: TypeId::ANY_TYPE,
 			}),
 			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
-			Type::Constant(crate::Constant::Symbol { key: "iterator".to_owned() }),
-			Type::Constant(crate::Constant::Symbol { key: "asyncIterator".to_owned() }),
-			Type::Constant(crate::Constant::Symbol { key: "hasInstance".to_owned() }),
-			Type::Constant(crate::Constant::Symbol { key: "toPrimitive".to_owned() }),
+			Type::Constant(Constant::Symbol { key: "iterator".to_owned() }),
+			Type::Constant(Constant::Symbol { key: "asyncIterator".to_owned() }),
+			Type::Constant(Constant::Symbol { key: "hasInstance".to_owned() }),
+			Type::Constant(Constant::Symbol { key: "toPrimitive".to_owned() }),
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "S".into(),
 				// TODO to string...
@@ -134,6 +136,14 @@ impl Default for TypeStore {
 				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
+			Type::RootPolyType(PolyNature::MappedGeneric {
+				name: "NonOptional".into(),
+				eager_fixed: TypeId::BOOLEAN_TYPE,
+			}),
+			Type::RootPolyType(PolyNature::MappedGeneric {
+				name: "Writable".into(),
+				eager_fixed: TypeId::BOOLEAN_TYPE,
+			}),
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "T".into(),
 				// TODO to number...
@@ -193,19 +203,20 @@ impl Default for TypeStore {
 }
 
 impl TypeStore {
-	pub fn new_constant_type(&mut self, constant: crate::Constant) -> crate::TypeId {
+	pub fn new_constant_type(&mut self, constant: Constant) -> crate::TypeId {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
-			crate::Constant::Number(number) if number == 0f64 => TypeId::ZERO,
-			crate::Constant::Number(number) if number == 1f64 => TypeId::ONE,
-			crate::Constant::Boolean(value) => {
+			Constant::String(s) if s.len() == 0 => TypeId::EMPTY_STRING,
+			Constant::Number(number) if number == 0f64 => TypeId::ZERO,
+			Constant::Number(number) if number == 1f64 => TypeId::ONE,
+			Constant::Boolean(value) => {
 				if value {
 					TypeId::TRUE
 				} else {
 					TypeId::FALSE
 				}
 			}
-			crate::Constant::NaN => TypeId::NAN_TYPE,
+			Constant::NaN => TypeId::NAN,
 			_ => {
 				let ty = Type::Constant(constant);
 				// TODO maybe separate id
@@ -327,15 +338,15 @@ impl TypeStore {
 		truthy_result: TypeId,
 		otherwise_result: TypeId,
 	) -> TypeId {
-		// TODO raise warning
+		// TODO raise warning for the first 4 branches
 		if truthy_result == otherwise_result {
-			return truthy_result;
-		}
-
-		// TODO reverse as well
-		if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
+			truthy_result
+		} else if condition == TypeId::TRUE {
+			truthy_result
+		} else if condition == TypeId::FALSE {
+			otherwise_result
+		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
-		// self.new_logical_or_type(condition, otherwise_result)
 		} else {
 			// TODO on is negation then swap operands
 			let ty = Type::Constructor(super::Constructor::ConditionalResult {

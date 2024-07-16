@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
 	context::{get_on_ctx, information::ReturnState},
 	diagnostics::{
-		NotInLoopOrCouldNotFindLabel, PropertyRepresentation, TypeCheckError,
+		NotInLoopOrCouldNotFindLabel, PropertyKeyRepresentation, TypeCheckError,
 		TypeStringRepresentation, TDZ,
 	},
 	events::{Event, FinalEvent, RootReference},
@@ -536,9 +536,9 @@ impl<'a> Environment<'a> {
 							TypeCheckError::PropertyDoesNotExist {
 								property: match on {
 									PropertyKey::String(s) => {
-										PropertyRepresentation::StringKey(s.to_string())
+										PropertyKeyRepresentation::StringKey(s.to_string())
 									}
-									PropertyKey::Type(t) => PropertyRepresentation::Type(
+									PropertyKey::Type(t) => PropertyKeyRepresentation::Type(
 										printing::print_type(t, &checking_data.types, self, false),
 									),
 								},
@@ -857,8 +857,8 @@ impl<'a> Environment<'a> {
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
 				// TODO printing temp
 				property: match key {
-					PropertyKey::String(s) => PropertyRepresentation::StringKey(s.to_string()),
-					PropertyKey::Type(t) => PropertyRepresentation::Type(printing::print_type(
+					PropertyKey::String(s) => PropertyKeyRepresentation::StringKey(s.to_string()),
+					PropertyKey::Type(t) => PropertyKeyRepresentation::Type(printing::print_type(
 						*t,
 						&checking_data.types,
 						self,
@@ -1318,6 +1318,7 @@ impl<'a> Environment<'a> {
 	}
 }
 
+/// TODO remove
 fn set_property_error_to_type_check_error(
 	ctx: &impl InformationChain,
 	error: SetPropertyError,
@@ -1326,7 +1327,9 @@ fn set_property_error_to_type_check_error(
 	new: TypeId,
 ) -> TypeCheckError<'static> {
 	match error {
-		SetPropertyError::NotWriteable => TypeCheckError::PropertyNotWriteable(assignment_span),
+		SetPropertyError::NotWriteable { property } => {
+			TypeCheckError::PropertyNotWriteable { property, position: assignment_span }
+		}
 		SetPropertyError::DoesNotMeetConstraint { property_constraint, reason: _ } => {
 			TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
 				property_constraint,

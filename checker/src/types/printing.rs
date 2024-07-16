@@ -98,13 +98,16 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::FunctionGeneric { name, .. }
 			| PolyNature::StructureGeneric { name, constrained: _ } => {
+				if debug {
+					if let PolyNature::FunctionGeneric { .. } = nature {
+						write!(buf, "[fg {} {}] ", ty.0, name).unwrap();
+					}
+				}
 				if let Some(structure_args) =
 					args.and_then(|args| args.get_argument(ty, info, types))
 				{
 					if debug {
-						if let PolyNature::FunctionGeneric { .. } = nature {
-							write!(buf, "[fg {} {}]", ty.0, name).unwrap();
-						}
+						buf.push_str(" (specialised with) ");
 					}
 					for (more, arg) in structure_args.iter().nendiate() {
 						print_type_into_buf(*arg, buf, cycles, args, types, info, debug);
@@ -216,6 +219,10 @@ pub fn print_type_into_buf<C: InformationChain>(
 			} else if let Type::Class { .. } | Type::Interface { .. } | Type::AliasTo { .. } =
 				types.get_type_by_id(*on)
 			{
+				if debug {
+					write!(buf, "SG over ({:?})", types.get_type_by_id(*on)).unwrap();
+				}
+
 				// on can be sometimes be generic
 				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
 				match arguments {
@@ -233,6 +240,10 @@ pub fn print_type_into_buf<C: InformationChain>(
 					GenericArguments::Closure(..) | GenericArguments::LookUp { .. } => {}
 				}
 			} else {
+				if debug {
+					write!(buf, "SG over ({:?})", types.get_type_by_id(*on)).unwrap();
+				}
+
 				let new_arguments = arguments.clone();
 				let args = GenericChainLink::append(ty, args.as_ref(), &new_arguments);
 				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
@@ -314,6 +325,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 					let args = GenericChainLink::append(ty, args.as_ref(), &new_arguments);
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				} else {
+					if debug {
+						write!(buf, "(property on {:?}, result=->)", under).unwrap();
+					}
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}
 			}
@@ -548,7 +562,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 				} else {
 					// crate::utilities::notify!("no P on {:?} during print", id);
 				}
-				let properties = get_properties_on_single_type(ty, types, info);
+				// Important!
+				let filter_enumerable = false;
+				let properties = get_properties_on_single_type(ty, types, info, filter_enumerable);
 				if properties.is_empty() {
 					buf.push_str("{}");
 					return;
@@ -570,45 +586,47 @@ pub fn print_type_into_buf<C: InformationChain>(
 					// 	args
 					// };
 
-					match value {
+					let is_optional = value.is_optional_simple();
+					let is_readonly = value.is_writable_simple();
+
+					if is_readonly {
+						buf.push_str("readonly ");
+					}
+
+					// TODO methods here
+
+					match value.inner_simple() {
 						PropertyValue::Value(value) => {
 							print_property_key_into_buf(
 								&key, buf, cycles, args, types, info, debug,
 							);
-							buf.push_str(": ");
-							print_type_into_buf(value, buf, cycles, args, types, info, debug);
+							buf.push_str(if is_optional { "?: " } else { ": " });
+							print_type_into_buf(*value, buf, cycles, args, types, info, debug);
 						}
 						PropertyValue::Getter(_) => {
 							print_property_key_into_buf(
 								&key, buf, cycles, args, types, info, debug,
 							);
-							buf.push_str(": (getter)");
+							buf.push_str(if is_optional { "?: " } else { ": " });
+							buf.push_str("(getter)");
 						}
 						PropertyValue::Setter(_) => {
 							print_property_key_into_buf(
 								&key, buf, cycles, args, types, info, debug,
 							);
-							buf.push_str(": (setter)");
+							buf.push_str(if is_optional { "?: " } else { ": " });
+							buf.push_str("(setter)");
 						}
 						PropertyValue::Deleted => {
 							print_property_key_into_buf(
 								&key, buf, cycles, args, types, info, debug,
 							);
-							buf.push_str(": never");
+							buf.push_str(if is_optional { "?: " } else { ": " });
+							buf.push_str("never");
 						}
-						PropertyValue::ConditionallyExists { on: _, truthy } => {
-							if let PropertyValue::Value(value) = *truthy {
-								print_property_key_into_buf(
-									&key, buf, cycles, args, types, info, debug,
-								);
-								buf.push_str("?: ");
-								print_type_into_buf(value, buf, cycles, args, types, info, debug);
-							} else {
-								todo!()
-							}
-						}
-						PropertyValue::Configured { .. } => {
-							todo!()
+						PropertyValue::ConditionallyExists { .. }
+						| PropertyValue::Configured { .. } => {
+							unreachable!()
 						}
 					}
 

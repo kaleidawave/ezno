@@ -7,11 +7,13 @@ use crate::{
 	events::Event,
 	features::{functions::ThisValue, objects::Proxy},
 	types::{
-		generics::generic_type_arguments::GenericArguments, get_constraint, Constructor,
-		GenericChain, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, SpecialObject,
-		TypeStore,
+		generics::{
+			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
+		},
+		get_constraint, Constructor, GenericChain, GenericChainLink, ObjectNature,
+		PartiallyAppliedGenerics, SpecialObject, TypeRestrictions, TypeStore,
 	},
-	Constant, Environment, LocalInformation, Logical, Map, PropertyValue, Type, TypeId,
+	Constant, Environment, LocalInformation, Logical, PropertyValue, Type, TypeId,
 };
 
 use super::{PropertyKey, PropertyKind, Publicity};
@@ -56,11 +58,11 @@ pub(crate) fn get_property_unbound(
 						);
 
 						if key_matches {
+							crate::utilities::notify!("{:?} {:?}", (key, want_key), value);
 							// TODO if conditional then continue to find then logical or
 							let pure = Logical::Pure(value.clone());
-							return Some(if let Some(key) = key_arguments {
-								crate::utilities::notify!("Here BasedOnKey");
-								Logical::BasedOnKey { on: Box::new(pure), key }
+							return Some(if !key_arguments.is_empty() {
+								Logical::BasedOnKey { on: Box::new(pure), key_arguments }
 							} else {
 								pure
 							});
@@ -329,7 +331,7 @@ pub(crate) fn get_property_unbound(
 				on_self
 			};
 
-			crate::utilities::notify!("{:?}", result);
+			// crate::utilities::notify!("result={:?}", result);
 
 			result
 				.map(|result| {
@@ -650,6 +652,11 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					PropertyValue::Setter(_) => todo!(),
 					PropertyValue::Deleted => None,
 					PropertyValue::ConditionallyExists { on, truthy } => {
+						let on = generics
+							.as_ref()
+							.and_then(|link| link.get_single_argument(on))
+							.unwrap_or(on);
+
 						let (kind, value) = resolve_property_on_logical(
 							Logical::Pure(*truthy),
 							on,
@@ -716,11 +723,18 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 					mode,
 				)
 			}
-			Logical::BasedOnKey { on: log_on, key } => {
-				let value = key.1 .0.into_type(types);
-				let explicit_restrictions = GenericArguments::ExplicitRestrictions(Map::from_iter(
-					[(key.0, (value, SpanWithSource::NULL))],
-				));
+			Logical::BasedOnKey { on: log_on, key_arguments: key } => {
+				let collect = key
+					.into_iter()
+					.map(|(key, (value, _))| {
+						if let CovariantContribution::TypeId(ty) = value {
+							(key, (ty, SpanWithSource::NULL))
+						} else {
+							todo!("{:?}", value)
+						}
+					})
+					.collect::<TypeRestrictions>();
+				let explicit_restrictions = GenericArguments::ExplicitRestrictions(collect);
 
 				let generics = GenericChainLink::append(
 					TypeId::UNIMPLEMENTED_ERROR_TYPE,
@@ -807,16 +821,9 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						| Type::RootPolyType(_)
 						| Type::PartiallyAppliedGenerics(_)
 						| Type::Constructor(_)) => {
-							let result = if let Some(GenericChainLink::Link {
-								value: arguments,
-								parent_link,
-								..
-							}) = generics
-							{
-								let mut arguments = arguments.into_substitutable();
-								if let Some(parent_link) = parent_link {
-									parent_link.extend_arguments(&mut arguments);
-								}
+							let result = if let Some(link) = generics {
+								let arguments = link.into_substitutable(types);
+								crate::utilities::notify!("arguments={:?}", arguments.arguments);
 								crate::types::substitute(value, &arguments, environment, types)
 							} else {
 								crate::utilities::notify!("Here, getting property on {:?}", t);
@@ -918,7 +925,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 				}
 			}
 			Logical::Implies { on: log_on, antecedent } => {
-				crate::utilities::notify!("TypeId::UNIMPLEMENTED_ERROR_TYPE here");
+				crate::utilities::notify!("from=TypeId::UNIMPLEMENTED_ERROR_TYPE here");
 				let generics = GenericChainLink::append(
 					// TODO
 					TypeId::UNIMPLEMENTED_ERROR_TYPE,
@@ -936,23 +943,17 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					mode,
 				)
 			}
-			Logical::BasedOnKey { on: log_on, key } => {
-				let value = key.1 .0.into_type(types);
-				let explicit_restrictions = GenericArguments::ExplicitRestrictions(Map::from_iter(
-					[(key.0, (value, SpanWithSource::NULL))],
-				));
-
-				let generics = GenericChainLink::append(
-					TypeId::UNIMPLEMENTED_ERROR_TYPE,
-					generics.as_ref(),
-					&explicit_restrictions,
-				);
+			Logical::BasedOnKey { on: log_on, key_arguments } => {
+				let generics = GenericChainLink::MappedPropertyLink {
+					parent_link: generics.as_ref(),
+					value: &key_arguments,
+				};
 
 				resolve_logical_with_poly(
 					*log_on,
 					on,
 					under.clone(),
-					generics,
+					Some(generics),
 					environment,
 					types,
 					mode,
@@ -983,15 +984,15 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 
 /// Get properties on a type (for printing and other non-one property uses)
 ///
-/// - TODO prototypes
-/// - TODO could this be an iterator
-/// - TODO not clone
-/// - TODO return whether it is fixed
+/// - TODO prototypes?
+/// - TODO return whether it is fixed (conditional + conditional enumerable + non string keys)
 /// - TODO doesn't evaluate properties
+/// - `filter_enumerable` for printing vs `for in` loops
 pub fn get_properties_on_single_type(
 	base: TypeId,
 	types: &TypeStore,
 	info: &impl InformationChain,
+	filter_enumerable: bool,
 ) -> Properties {
 	match types.get_type_by_id(base) {
 		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
@@ -1009,12 +1010,25 @@ pub fn get_properties_on_single_type(
 			let mut properties = Vec::new();
 			let mut numerical_properties = std::collections::BTreeMap::new();
 
-			for (publicity, key, prop) in reversed_flattened_properties {
-				if let PropertyValue::Deleted = prop {
-					// TODO doesn't cover constants :(
-					deleted_or_existing_properties.insert(key.clone());
-				} else if deleted_or_existing_properties.insert(key.clone()) {
-					let value = (*publicity, key.to_owned(), prop.clone());
+			for (publicity, key, value) in reversed_flattened_properties {
+				let new_record = deleted_or_existing_properties.insert(key.clone());
+
+				if let PropertyValue::Configured { on: _, ref descriptor } = value {
+					// TODO what about if not `TypeId::TRUE | TypeId::FALSE`
+					crate::utilities::notify!("descriptor.enumerable={:?}", descriptor.enumerable);
+					if filter_enumerable && !matches!(descriptor.enumerable, TypeId::TRUE) {
+						continue;
+					}
+				}
+
+				if let PropertyValue::Deleted = value {
+					// TODO only covers constant keys :(
+					continue;
+				}
+
+				if new_record {
+					let value = (*publicity, key.to_owned(), value.clone());
+
 					if let Some(n) = key.as_number(types) {
 						numerical_properties.insert(n, value);
 					} else {

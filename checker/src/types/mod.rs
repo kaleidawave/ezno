@@ -25,7 +25,8 @@ use crate::{
 	context::information::InformationChain,
 	events::RootReference,
 	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
-	types::properties::AccessMode,
+	subtyping::SliceArguments,
+	types::{generics::contributions::CovariantContribution, properties::AccessMode},
 	Decidable, FunctionId, Logical,
 };
 
@@ -84,55 +85,62 @@ impl TypeId {
 	pub const FALSE: Self = Self(17);
 	pub const ZERO: Self = Self(18);
 	pub const ONE: Self = Self(19);
-	pub const NAN_TYPE: Self = Self(20);
+	pub const NAN: Self = Self(20);
+	pub const EMPTY_STRING: Self = Self(21);
 
 	/// Shortcut for inferred this
 	/// TODO remove
-	pub const ANY_INFERRED_FREE_THIS: Self = Self(21);
+	pub const ANY_INFERRED_FREE_THIS: Self = Self(22);
 
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
-	pub const NEW_TARGET_ARG: Self = Self(22);
+	pub const NEW_TARGET_ARG: Self = Self(23);
 
-	pub const IMPORT_META: Self = Self(23);
+	pub const IMPORT_META: Self = Self(24);
 
 	// known symbols
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator>
-	pub const SYMBOL_ITERATOR: Self = Self(24);
+	pub const SYMBOL_ITERATOR: Self = Self(25);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator>
-	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(25);
+	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(26);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance>
-	pub const SYMBOL_HAS_INSTANCE: Self = Self(26);
+	pub const SYMBOL_HAS_INSTANCE: Self = Self(27);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive>
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(27);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(28);
 
 	// TSC intrinsics
-	pub const STRING_GENERIC: Self = Self(28);
-	pub const STRING_UPPERCASE: Self = Self(29);
-	pub const STRING_LOWERCASE: Self = Self(30);
-	pub const STRING_CAPITALIZE: Self = Self(31);
-	pub const STRING_UNCAPITALIZE: Self = Self(32);
-	pub const NO_INFER: Self = Self(33);
+	pub const STRING_GENERIC: Self = Self(29);
+	pub const STRING_UPPERCASE: Self = Self(30);
+	pub const STRING_LOWERCASE: Self = Self(31);
+	pub const STRING_CAPITALIZE: Self = Self(32);
+	pub const STRING_UNCAPITALIZE: Self = Self(33);
+	pub const NO_INFER: Self = Self(34);
+
 	/// Might be a special type in TSC
-	pub const READONLY_RESTRICTION: Self = Self(34);
+	pub const READONLY_RESTRICTION: Self = Self(35);
+
+	/// For mapped types
+	pub const NON_OPTIONAL_KEY_ARGUMENT: Self = Self(36);
+	/// For mapped types
+	pub const WRITABLE_KEY_ARGUMENT: Self = Self(37);
 
 	// Ezno intrinsics
 
 	/// Used in [`Self::LESS_THAN`], [`Self::LESS_THAN`] and [`Self::MULTIPLE_OF`]
-	pub const NUMBER_GENERIC: Self = Self(35);
-	pub const LESS_THAN: Self = Self(36);
-	pub const GREATER_THAN: Self = Self(37);
-	pub const MULTIPLE_OF: Self = Self(38);
-	pub const NOT_NOT_A_NUMBER: Self = Self(39);
+	pub const NUMBER_GENERIC: Self = Self(38);
+	pub const LESS_THAN: Self = Self(39);
+	pub const GREATER_THAN: Self = Self(40);
+	pub const MULTIPLE_OF: Self = Self(41);
+	pub const NOT_NOT_A_NUMBER: Self = Self(42);
 
-	pub const LITERAL_RESTRICTION: Self = Self(40);
-	pub const EXCLUSIVE_RESTRICTION: Self = Self(41);
+	pub const LITERAL_RESTRICTION: Self = Self(43);
+	pub const EXCLUSIVE_RESTRICTION: Self = Self(44);
 
 	/// WIP
 	pub const OPEN_BOOLEAN_TYPE: Self = Self::BOOLEAN_TYPE;
 	pub const OPEN_NUMBER_TYPE: Self = Self::NUMBER_TYPE;
 
-	/// Above +1 (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 42;
+	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 45;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -465,9 +473,10 @@ pub enum GenericChainLink<'a> {
 		parent_link: GenericChainParent<'a>,
 		value: &'a GenericArguments,
 	},
-	SpecialLink {
+	/// WIP
+	MappedPropertyLink {
 		parent_link: GenericChainParent<'a>,
-		value: (),
+		value: &'a SliceArguments,
 	},
 	FunctionRoot {
 		parent_link: Option<&'a GenericArguments>,
@@ -494,20 +503,57 @@ impl<'a> GenericChainLink<'a> {
 		types: &TypeStore,
 	) -> Option<Vec<TypeId>> {
 		match self {
-			GenericChainLink::Link { parent_link: parent, value, from: _ } => value
+			GenericChainLink::Link { parent_link, value, from: _ } => value
 				.get_argument_as_list(on, info, types)
-				.or_else(|| parent.and_then(|parent| parent.get_argument(on, info, types))),
+				.or_else(|| parent_link.and_then(|parent| parent.get_argument(on, info, types))),
 			GenericChainLink::FunctionRoot {
-				parent_link: parent,
+				parent_link,
 				call_site_type_arguments,
 				type_arguments,
-			} => parent
+			} => parent_link
 				.and_then(|parent| parent.get_argument_as_list(on, info, types))
 				.or_else(|| {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
 				})
 				.or_else(|| type_arguments.get(&on).map(|a| vec![*a])),
-			GenericChainLink::SpecialLink { .. } => todo!(),
+			GenericChainLink::MappedPropertyLink { .. } => {
+				crate::utilities::notify!("TODO temp");
+				self.get_single_argument(on).map(|v| vec![v])
+			}
+		}
+	}
+
+	/// TODO WIP
+	///
+	/// between this and `extend_arguments` there needs to be something better
+	pub(crate) fn into_substitutable(
+		&self,
+		types: &mut TypeStore,
+	) -> SubstitutionArguments<'static> {
+		match self {
+			GenericChainLink::Link { from: _, parent_link, value } => {
+				let mut args = value.into_substitutable();
+				if let Some(parent_link) = parent_link {
+					parent_link.extend_arguments(&mut args);
+				}
+				args
+			}
+			GenericChainLink::MappedPropertyLink { parent_link, value } => {
+				crate::utilities::notify!("parent_link={:?}", parent_link);
+				let arguments = value
+					.iter()
+					.map(|(k, (contribution, _))| (*k, contribution.clone().into_type(types)))
+					.collect();
+				let mut args =
+					SubstitutionArguments { parent: None, arguments, closures: Default::default() };
+				if let Some(parent_link) = parent_link {
+					parent_link.extend_arguments(&mut args);
+				}
+				args
+			}
+			GenericChainLink::FunctionRoot { .. } => {
+				todo!()
+			}
 		}
 	}
 
@@ -533,20 +579,34 @@ impl<'a> GenericChainLink<'a> {
 	/// - (swaps `get_argument_as_list` with `get_structure_restriction`)
 	pub(crate) fn get_single_argument(&self, on: TypeId) -> Option<TypeId> {
 		match self {
-			GenericChainLink::Link { parent_link: parent, value, from: _ } => value
+			GenericChainLink::Link { parent_link, value, from: _ } => value
 				.get_structure_restriction(on)
-				.or_else(|| parent.and_then(|parent| parent.get_single_argument(on))),
+				.or_else(|| parent_link.and_then(|parent| parent.get_single_argument(on))),
 			GenericChainLink::FunctionRoot {
-				parent_link: parent,
+				parent_link,
 				call_site_type_arguments,
 				type_arguments,
-			} => parent
+			} => parent_link
 				.and_then(|parent| parent.get_structure_restriction(on))
 				.or_else(|| {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
 				})
 				.or_else(|| type_arguments.get(&on).copied()),
-			GenericChainLink::SpecialLink { .. } => todo!(),
+			GenericChainLink::MappedPropertyLink { parent_link, value } => value
+				.get(&on)
+				.cloned()
+				.and_then(|(c, _)| {
+					if let CovariantContribution::TypeId(t) = c {
+						Some(t)
+					} else {
+						crate::utilities::notify!(
+							"WARNING SKIPPING AS Contribution is {:?} (NOT TYPEID)",
+							c
+						);
+						None
+					}
+				})
+				.or_else(|| parent_link.and_then(|parent| parent.get_single_argument(on))),
 		}
 	}
 
@@ -583,7 +643,7 @@ impl<'a> GenericChainLink<'a> {
 					}
 				}
 			}
-			GenericChainLink::SpecialLink { .. } => todo!(),
+			GenericChainLink::MappedPropertyLink { .. } => todo!(),
 		}
 	}
 }
@@ -977,5 +1037,45 @@ impl Counter {
 			}
 			Counter::AddTo(ty) => ty,
 		}
+	}
+}
+
+/// To fill in for TSC behavior for mapped types
+pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
+	match types.get_type_by_id(id) {
+		Type::AliasTo { to, .. } => references_key_of(*to, types),
+		Type::Or(lhs, rhs) | Type::And(lhs, rhs) => {
+			references_key_of(*lhs, types) || references_key_of(*rhs, types)
+		}
+		Type::RootPolyType(c) => {
+			if let Some(c) = c.try_get_constraint() {
+				references_key_of(c, types)
+			} else {
+				false
+			}
+		}
+		Type::Constructor(c) => {
+			if let Constructor::KeyOf(..) = c {
+				true
+			} else if let Constructor::BinaryOperator { lhs, rhs, operator: _ } = c {
+				references_key_of(*lhs, types) || references_key_of(*rhs, types)
+			} else {
+				// TODO might have missed something here
+				false
+			}
+		}
+		Type::PartiallyAppliedGenerics(a) => {
+			if let GenericArguments::ExplicitRestrictions(ref e) = a.arguments {
+				e.0.iter().any(|(_, (lhs, _))| references_key_of(*lhs, types))
+			} else {
+				false
+			}
+		}
+		Type::Interface { .. }
+		| Type::Class { .. }
+		| Type::Constant(_)
+		| Type::FunctionReference(_)
+		| Type::Object(_)
+		| Type::SpecialObject(_) => false,
 	}
 }

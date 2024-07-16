@@ -2,14 +2,14 @@ use super::{get_property_unbound, PropertyKey, PropertyValue, Publicity};
 
 use crate::{
 	context::{CallCheckingBehavior, SetPropertyError},
-	diagnostics::TypeStringRepresentation,
+	diagnostics::{PropertyKeyRepresentation, TypeStringRepresentation},
 	events::Event,
 	features::{constant_functions::CallSiteTypeArguments, functions::ThisValue},
 	subtyping::{State, SubTypeResult},
 	types::{
 		calling::FunctionCallingError, generics::generic_type_arguments::GenericArguments,
-		get_constraint, tuple_like, Constructor, PartiallyAppliedGenerics, SynthesisedArgument,
-		TypeStore,
+		get_constraint, tuple_like, Constructor, GenericChain, PartiallyAppliedGenerics,
+		SynthesisedArgument, TypeStore,
 	},
 	Environment, Logical, Type, TypeId,
 };
@@ -19,6 +19,8 @@ use source_map::SpanWithSource;
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
+///
+/// This handles both poly objects and
 pub fn set_property<E: CallCheckingBehavior>(
 	on: TypeId,
 	(publicity, under, new): (Publicity, &PropertyKey, PropertyValue),
@@ -30,28 +32,32 @@ pub fn set_property<E: CallCheckingBehavior>(
 	// Frozen checks
 	{
 		if environment.info.frozen.contains(&on) {
-			return Err(SetPropertyError::NotWriteable);
+			return Err(SetPropertyError::NotWriteable {
+				property: PropertyKeyRepresentation::new(under, environment, types),
+			});
 		}
 	}
 
 	// Doing this regardless of E::CHECK_PARAMETERS is how #18 works
 	{
-		let constraint =
+		let object_constraint =
 			environment.get_object_constraint(on).or_else(|| get_constraint(on, types));
 
-		if let Some(constraint) = constraint {
+		if let Some(object_constraint) = object_constraint {
 			// crate::utilities::notify!("constraint={:?}", types.get_type_by_id(constraint));
 
 			if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 				on: TypeId::READONLY_RESTRICTION,
 				..
-			}) = types.get_type_by_id(constraint)
+			}) = types.get_type_by_id(object_constraint)
 			{
-				return Err(SetPropertyError::NotWriteable);
+				return Err(SetPropertyError::NotWriteable {
+					property: PropertyKeyRepresentation::new(under, environment, types),
+				});
 			}
 
 			let property_constraint = get_property_unbound(
-				(constraint, None),
+				(object_constraint, None),
 				(publicity, under, None),
 				environment,
 				types,
@@ -91,7 +97,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 						);
 						if let SubTypeResult::IsNotSubType(reason) = result {
 							let is_modifying_tuple_length = under.is_equal_to("length")
-								&& tuple_like(constraint, types, environment);
+								&& tuple_like(object_constraint, types, environment);
 
 							crate::utilities::notify!(
 								"is_modifying_tuple_length={:?}",
@@ -118,8 +124,13 @@ pub fn set_property<E: CallCheckingBehavior>(
 					PropertyValue::ConditionallyExists { truthy: ref _truthy, .. } => {
 						crate::utilities::notify!("Here assigning to conditional. TODO recursive");
 					}
-					PropertyValue::Configured { .. } => {
-						crate::utilities::notify!("Here");
+					PropertyValue::Configured { descriptor, .. } => {
+						crate::utilities::notify!("TODO nested");
+						if !matches!(descriptor.writable, TypeId::TRUE) {
+							return Err(SetPropertyError::NotWriteable {
+								property: PropertyKeyRepresentation::new(under, environment, types),
+							});
+						}
 					}
 				}
 			} else {
@@ -138,9 +149,6 @@ pub fn set_property<E: CallCheckingBehavior>(
 	// 	crate::types::printing::print_type(types, under, environment, true),
 	// 	crate::types::printing::print_type(types, new.as_get_type(), environment, true),
 	// );
-
-	let current_property =
-		get_property_unbound((on, None), (publicity, under, None), environment, types);
 
 	// crate::utilities::notify!("(2) Made it here assigning to {:?}", types.get_type_by_id(on));
 
@@ -174,88 +182,21 @@ pub fn set_property<E: CallCheckingBehavior>(
 		);
 	}
 
+	// IMPORTANT: THIS ALSO CAPTURES POLY CONSTRAINTS
+	let current_property =
+		get_property_unbound((on, None), (publicity, under, None), environment, types);
+
 	if let Ok(fact) = current_property {
-		match fact {
-			Logical::Pure(og) => {
-				let result = run_setter_on_object(
-					og,
-					behavior,
-					environment,
-					on,
-					publicity,
-					under,
-					new,
-					types,
-					setter_position,
-				);
-				if let Err(result) = result {
-					match result {
-						SetterResult::NotWriteable => {
-							return Err(SetPropertyError::NotWriteable);
-						}
-						SetterResult::SetterErrors(errors) => {
-							// TODO temp
-							for error in errors {
-								match error {
-									FunctionCallingError::InvalidArgumentType {
-										parameter_type,
-										argument_type: _,
-										argument_position: _,
-										parameter_position: _,
-										restriction: _,
-									} => {
-										return Err(SetPropertyError::DoesNotMeetConstraint {
-											property_constraint: parameter_type,
-											reason: crate::subtyping::NonEqualityReason::Mismatch,
-										})
-									}
-									FunctionCallingError::DeleteConstraint {
-										constraint: _,
-										..
-									} => todo!(),
-									FunctionCallingError::NeedsToBeCalledWithNewKeyword(_)
-									| FunctionCallingError::NoLogicForIdentifier(..)
-									| FunctionCallingError::NotCallable { .. }
-									| FunctionCallingError::ExcessArguments { .. }
-									| FunctionCallingError::ExcessTypeArguments { .. }
-									| FunctionCallingError::MissingArgument { .. } => unreachable!(),
-									FunctionCallingError::ReferenceRestrictionDoesNotMatch {
-										..
-									} => {
-										todo!()
-									}
-									FunctionCallingError::CyclicRecursion(_, _) => todo!(),
-									FunctionCallingError::TDZ { .. } => todo!(),
-									FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
-									FunctionCallingError::MismatchedThis { .. } => {
-										todo!()
-									}
-									FunctionCallingError::CannotCatch { .. } => todo!(),
-								}
-							}
-						}
-					}
-				}
-			}
-			Logical::Or { .. } => todo!(),
-			Logical::Implies { on: _implies_on, antecedent: _ } => {
-				crate::utilities::notify!("Check that `implies_on` could be a setter here");
-				let info = behavior.get_latest_info(environment);
-				info.current_properties.entry(on).or_default().push((
-					publicity,
-					under.into_owned(),
-					new.clone(),
-				));
-				info.events.push(Event::Setter {
-					on,
-					new,
-					under: under.into_owned(),
-					publicity,
-					initialisation: false,
-					position: setter_position,
-				});
-			}
-			Logical::BasedOnKey { .. } => todo!(),
+		if let Some(value) = set_on_logical(
+			fact,
+			behavior,
+			environment,
+			(on, None),
+			(publicity, under, new),
+			types,
+			setter_position,
+		) {
+			return value;
 		}
 	} else {
 		// TODO abstract
@@ -273,21 +214,134 @@ pub fn set_property<E: CallCheckingBehavior>(
 	Ok(None)
 }
 
+fn set_on_logical<E: CallCheckingBehavior>(
+	fact: Logical<PropertyValue>,
+	behavior: &mut E,
+	environment: &mut Environment,
+	(on, generics): (TypeId, GenericChain),
+	(publicity, under, new): (Publicity, &PropertyKey, PropertyValue),
+	types: &mut TypeStore,
+	setter_position: SpanWithSource,
+) -> Option<Result<Option<TypeId>, SetPropertyError>> {
+	match fact {
+		Logical::Pure(og) => {
+			let result = run_setter_on_object(
+				og,
+				behavior,
+				environment,
+				(on, generics),
+				(publicity, under, new),
+				types,
+				setter_position,
+			);
+			if let Err(result) = result {
+				Some(Err(produce_set_property_error(result, under, environment, types)))
+			} else {
+				None
+			}
+		}
+		Logical::Or { .. } => todo!(),
+		Logical::Implies { on: og, antecedent } => {
+			crate::utilities::notify!("antecedent={:?}", antecedent);
+			let generics = crate::types::GenericChainLink::FunctionRoot {
+				parent_link: Some(&antecedent),
+				call_site_type_arguments: None,
+				// TODO weird?
+				type_arguments: &crate::Map::default(),
+			};
+			set_on_logical(
+				*og,
+				behavior,
+				environment,
+				(on, Some(generics)),
+				(publicity, under, new),
+				types,
+				setter_position,
+			)
+		}
+		Logical::BasedOnKey { on: og, key_arguments } => {
+			let generics = crate::types::GenericChainLink::MappedPropertyLink {
+				parent_link: None,
+				value: &key_arguments,
+			};
+			set_on_logical(
+				*og,
+				behavior,
+				environment,
+				(on, Some(generics)),
+				(publicity, under, new),
+				types,
+				setter_position,
+			)
+		}
+	}
+}
+
+fn produce_set_property_error(
+	result: SetterResult,
+	under: &PropertyKey,
+	environment: &mut crate::context::Context<crate::context::Syntax>,
+	types: &mut TypeStore,
+) -> SetPropertyError {
+	match result {
+		SetterResult::NotWriteable => SetPropertyError::NotWriteable {
+			property: PropertyKeyRepresentation::new(under, environment, types),
+		},
+		SetterResult::SetterErrors(errors) => {
+			// TODO temp
+			for error in errors {
+				match error {
+					FunctionCallingError::InvalidArgumentType {
+						parameter_type,
+						argument_type: _,
+						argument_position: _,
+						parameter_position: _,
+						restriction: _,
+					} => {
+						return SetPropertyError::DoesNotMeetConstraint {
+							property_constraint: parameter_type,
+							reason: crate::subtyping::NonEqualityReason::Mismatch,
+						}
+					}
+					FunctionCallingError::DeleteConstraint { constraint: _, .. } => todo!(),
+					FunctionCallingError::NeedsToBeCalledWithNewKeyword(_)
+					| FunctionCallingError::NoLogicForIdentifier(..)
+					| FunctionCallingError::NotCallable { .. }
+					| FunctionCallingError::ExcessArguments { .. }
+					| FunctionCallingError::ExcessTypeArguments { .. }
+					| FunctionCallingError::MissingArgument { .. } => unreachable!(),
+					FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => {
+						todo!()
+					}
+					FunctionCallingError::CyclicRecursion(_, _) => todo!(),
+					FunctionCallingError::TDZ { .. } => todo!(),
+					FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
+					FunctionCallingError::MismatchedThis { .. } => {
+						todo!()
+					}
+					FunctionCallingError::CannotCatch { .. } => todo!(),
+				}
+			}
+			unreachable!()
+		}
+	}
+}
+
 pub enum SetterResult {
 	NotWriteable,
 	SetterErrors(Vec<FunctionCallingError>),
 }
 
 /// `Vec<FunctionCallingError>` from calling setter
+///
+/// `og` = current last value
 #[allow(clippy::too_many_arguments)]
 fn run_setter_on_object<E: CallCheckingBehavior>(
 	og: PropertyValue,
 	behavior: &mut E,
 	environment: &mut Environment,
-	on: TypeId,
-	publicity: Publicity,
-	under: &PropertyKey<'_>,
-	new: PropertyValue,
+	(on, generics): (TypeId, GenericChain),
+	(publicity, under, new): (Publicity, &PropertyKey<'_>, PropertyValue),
 	types: &mut TypeStore,
 	setter_position: SpanWithSource,
 ) -> Result<(), SetterResult> {
@@ -353,16 +407,22 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				*truthy,
 				behavior,
 				environment,
-				on,
-				publicity,
-				under,
-				new,
+				(on, generics),
+				(publicity, under, new),
 				types,
 				setter_position,
 			)
 		}
 		PropertyValue::Configured { on: existing_value, descriptor } => {
-			if !matches!(descriptor.writable, TypeId::TRUE) {
+			crate::utilities::notify!("descriptor={:?} {:?}", descriptor, generics);
+
+			let writable = generics
+				.as_ref()
+				.and_then(|link| link.get_single_argument(descriptor.writable))
+				.unwrap_or(descriptor.writable);
+
+			if !matches!(writable, TypeId::TRUE) {
+				crate::utilities::notify!("{:?}", writable);
 				return Err(SetterResult::NotWriteable);
 			}
 
@@ -373,10 +433,8 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				*existing_value,
 				behavior,
 				environment,
-				on,
-				publicity,
-				under,
-				new,
+				(on, generics),
+				(publicity, under, new),
 				types,
 				setter_position,
 			)

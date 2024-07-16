@@ -253,17 +253,17 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						(inner_type_alias_id, intrinsics::is_intrinsic(inner_type_id))
 					{
 						// Important that these wrappers are kept as there 'wrap' holds information
-						{
-							use crate::types::printing::print_type;
+						// {
+						// 	use crate::types::printing::print_type;
 
-							let ty = print_type(
-								inner_type_id,
-								&mut checking_data.types,
-								environment,
-								true,
-							);
-							crate::utilities::notify!("Here substituting alias eagerly {}", ty);
-						}
+						// 	let ty = print_type(
+						// 		inner_type_id,
+						// 		&mut checking_data.types,
+						// 		environment,
+						// 		true,
+						// 	);
+						// 	crate::utilities::notify!("Here substituting alias eagerly {}", ty);
+						// }
 
 						let substitution_arguments =
 							ExplicitTypeArguments(type_arguments).into_substitution_arguments();

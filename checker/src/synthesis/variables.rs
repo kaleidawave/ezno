@@ -9,11 +9,8 @@ use source_map::{Nullable, SpanWithSource};
 use super::expressions::synthesise_expression;
 use crate::{
 	context::{Context, ContextType, VariableRegisterArguments},
-	diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation},
-	features::{
-		iteration::IteratorHelper,
-		variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
-	},
+	diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation},
+	features::variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		get_larger_type, printing,
@@ -164,9 +161,12 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 
 				let space = if let Some(space) = argument.space {
 					let rest = checking_data.types.new_anonymous_interface_type();
-					for (publicity, key, property) in
-						get_properties_on_single_type(space, &checking_data.types, environment)
-					{
+					for (publicity, key, property) in get_properties_on_single_type(
+						space,
+						&checking_data.types,
+						environment,
+						true,
+					) {
 						if let PropertyKey::String(ref s) = key {
 							if taken_members.contains(s) {
 								continue;
@@ -318,48 +318,15 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		VariableField::Array { members, spread, position } => {
-			let position = position.with_source(environment.get_source());
-			let iterator =
-				IteratorHelper::from_type(value, environment, checking_data, position).unwrap();
+		VariableField::Array { members: _, spread: _, position } => {
+			checking_data.raise_unimplemented_error(
+				"array spread",
+				position.with_source(environment.get_source()),
+			);
+			// let position = position.with_source(environment.get_source());
 
-			for member in members {
-				match member.get_ast_ref() {
-					ArrayDestructuringField::Name(inner, _, default) => {
-						let position = inner.get_position().with_source(environment.get_source());
-						let value = iterator.next(environment, checking_data, position);
-						let value = if let (None, Some(expression)) = (value, default) {
-							synthesise_expression(
-								expression,
-								environment,
-								checking_data,
-								TypeId::ANY_TYPE,
-							)
-						} else if let Some(value) = value {
-							value
-						} else {
-							todo!("error")
-						};
-						assign_initial_to_fields(
-							inner,
-							environment,
-							checking_data,
-							value,
-							exported,
-						);
-					}
-					ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {
-						let _ = iterator.next(environment, checking_data, SpanWithSource::NULL);
-					}
-				}
-			}
-
-			if let Some(spread) = spread {
-				checking_data.raise_unimplemented_error(
-					"Spread array item",
-					spread.1.with_source(environment.get_source()),
-				);
-			}
+			// if let Some(spread) = spread {
+			// }
 		}
 		VariableField::Object { members, spread, .. } => {
 			for member in members {
@@ -400,10 +367,10 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 								} else {
 									let property = match key_ty {
 										PropertyKey::String(s) => {
-											PropertyRepresentation::StringKey(s.to_string())
+											PropertyKeyRepresentation::StringKey(s.to_string())
 										}
 										PropertyKey::Type(t) => {
-											PropertyRepresentation::Type(printing::print_type(
+											PropertyKeyRepresentation::Type(printing::print_type(
 												t,
 												&checking_data.types,
 												environment,
@@ -474,10 +441,10 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 								} else {
 									let property = match key_ty {
 										PropertyKey::String(s) => {
-											PropertyRepresentation::StringKey(s.to_string())
+											PropertyKeyRepresentation::StringKey(s.to_string())
 										}
 										PropertyKey::Type(t) => {
-											PropertyRepresentation::Type(printing::print_type(
+											PropertyKeyRepresentation::Type(printing::print_type(
 												t,
 												&checking_data.types,
 												environment,

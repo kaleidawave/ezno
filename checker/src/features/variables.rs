@@ -3,11 +3,10 @@
 use source_map::{Span, SpanWithSource};
 
 use crate::context::{environment::ContextLocation, AssignmentError, VariableRegisterArguments};
-use crate::diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation};
+use crate::diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation};
 use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
 	types::{
-		printing::print_type,
 		properties::{get_property_unbound, PropertyKey, Publicity},
 		TypeId,
 	},
@@ -154,15 +153,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 			}
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
-				property: match under.clone() {
-					PropertyKey::String(s) => PropertyRepresentation::StringKey(s.to_string()),
-					PropertyKey::Type(t) => PropertyRepresentation::Type(print_type(
-						t,
-						&checking_data.types,
-						environment,
-						false,
-					)),
-				},
+				property: PropertyKeyRepresentation::new(under, environment, &checking_data.types),
 				on: TypeStringRepresentation::from_type_id(
 					space,
 					environment,

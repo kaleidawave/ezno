@@ -2,53 +2,24 @@ Currently implementing:
 
 > This file is for work-in-progress and can help separating features that are being implemented to regressions
 
-### Broken
-
-> Was working, now not
-
-#### *Inconclusive* conditional update
-
-```ts
-declare var value: string;
-let a: string | number = 0;
-
-function conditional(v: string) {
-	if (v === "value") {
-		a = "hi"
-	}
-}
-conditional(value);
-a satisfies string;
-```
-
-- Expected string, found "hi" | 0
-
-#### Break with label
-
-> Note the numbers here, if they are larger they break over the `max_inline` limit and get different results below
-
-```ts
-let a: number = 0;
-let result;
-
-top: while (a++ < 8) {
-	let b: number = 0;
-	while (b++ < 8) {
-		if (a === 3 && b === 2) {
-			result = a * b;
-			break top
-		}
-	}
-}
-
-a satisfies string;
-result satisfies boolean;
-```
-
-- Expected string, found 3
-- Expected boolean, found 6
-
 ### Mapped types
+
+#### Readonly and optionality carries through
+
+```ts
+type Mapped<T> = {
+	[P in keyof T]: string
+}
+
+interface Y { readonly a: string, b?: number }
+declare let x: Mapped<Y>;
+
+x.a = "hi";
+x.b satisfies number;
+```
+
+- Cannot write to property 'a'
+- Expected number, found number | undefined
 
 #### Specialisation
 
@@ -81,18 +52,46 @@ const x: Partial<{ a: number, b: string }> = { a: 3 },
 
 - Cannot assign { a: "hi" }
 
-#### Negated
+#### Negated optionality
 
 ```ts
 type Required<T> = {
     [P in keyof T]-?: T[P];
 };
 
-const x: Required<{ a?: number }> = { a: 3 },
-      y: Required<{ a?: number }> = { };
+const x: Required<{ a?: number }> = { a: 3 }, y: Required<{ a?: number }> = { };
 ```
 
 - Cannot assign { } to required
+
+#### Readonly
+
+```ts
+type Mutable<T> = {
+    readonly [P in keyof T]: T[P];
+};
+
+interface Y { a: string }
+declare let x: Mutable<Y>;
+x.a = "hi";
+```
+
+- Cannot write to property 'a'
+
+#### Negated readonly
+
+```ts
+type Mutable<T> = {
+    -readonly [P in keyof T]-?: T[P];
+};
+
+interface Y { readonly a: string }
+declare let x: Mutable<Y>;
+x.a = "hi";
+x.a = 4
+```
+
+- Cannot assign 4, to type of string
 
 #### `as` rewrite
 
@@ -118,84 +117,11 @@ x.property_b
 
 ```ts
 function x(p: readonly { a: string }) {
-    p.a = 5;
+    p.a = "hi";
 }
 ```
 
-- Property not writeable
-
-### Closures
-
-#### TDZ
-
-```ts
-function func() {
-    return function () { return closedOverVariable }
-    let closedOverVariable = 2;
-}
-```
-
-- Unreachable statement
-- Function contains unreachable closed over variable 'closedOverVariable'
-
-### Object constraints
-
-#### Mutation by a function with unknown effects
-
-> This is where the object loses its constant-ness
-> Effectively raises it to the parameter type
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 8);
-	return obj;
-}
-
-const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
-object.prop satisfies string;
-```
-
-- Expected 8, found number
-- Expected string, found 2
-
-#### Mutation negated via `readonly`
-
-> This is where the object loses its constant-ness
-
-```ts
-function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 6);
-}
-```
-
-- Expected 6, found 8
-
-#### Possible mutation breaks object constraint
-
-> This unfortunately can flag up valid code, but handling those is too difficult atm
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
-	const obj: { prop: number } = { prop: 8 };
-	callback(obj);
-}
-```
-
-- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
-
-#### Possible mutation via anytime function
-
-```ts
-const x = { a: 2 }
-setTimeout(() => { Math.sin(x.a) })
-x.a = "hi"
-```
-
-- Cannot assign. Restricted to number
+- Cannot write to property 'a'
 
 ### Exceptions and `try-catch-finally`
 
@@ -341,52 +267,6 @@ class StringBuilder {
 
 - Expected number, found "Hello Ben"
 
-#### Calling or
-
-> *Calling* is distributive `(A | B)()` -> `A() | B()`
-
-```ts
-function a(p: string) { return 2 }
-function b(p: string) { return 4 }
-
-function c(c: boolean) {
-	const func = c ? a : b;
-	const result = func()
-	result satisfies string;
-	return result
-}
-```
-
-- Expected string, found 2 | 4
-
-#### Setter or
-
-```ts
-TODO
-```
-
-- Expected string, found 2 | 4
-
-### To sort
-
-#### Conditional break
-
-```ts
-function getNumber(a: number) {
-	for (let i = 0; i < 10; i++) {
-		if (i === a) {
-			return "found"
-		}
-	}
-	return "not-found"
-}
-
-getNumber(4) satisfies "found";
-getNumber(100) satisfies boolean;
-```
-
-- Expected boolean, found "not-found
-
 #### Dependent operations
 
 ```ts
@@ -429,14 +309,12 @@ type Tail<T> = T extends [any, ...infer Tail] ? Tail : [];
 #### String slice matching pattern
 
 ```ts
-type GetPrefix<P, S> = S extends `${P}${infer T}` ? T : false;
+type GetPrefix<S, End> = S extends `${infer T} ${End}` ? T : false;
 
-declare let a: GetPrefix<"Hello ", "Hello Ben">;
-
-a satisfies number;
+4 satisfies GetPrefix<"Hello Ben", "Ben">;
 ```
 
-- Expected number, found "Ben"
+- Expected "Hello", found 4
 
 #### `infer ... extends ...`
 
@@ -452,53 +330,6 @@ b satisfies "hello";
 
 - Expected number, found string
 
-#### `Object.freeze`
-
-> TODO seal & preventExtensions
-
-```ts
-const obj = {}
-let result = Object.freeze(obj);
-(obj === result) satisfies true;
-obj.property = 2;
-Object.isFrozen(obj) satisfies true;
-```
-
-- Property not writeable
-
-#### `Object.defineProperty`
-
-> TODO defineProperties
-
-```ts
-const obj = {};
-Object.defineProperty(obj, 'prop', {
-  value: 42,
-  writable: false,
-});
-obj.prop satisfies string;
-obj.prop = 70;
-```
-
-- Expected string, found 42
-- Property not writeable
-
-#### `Object.getOwnPropertyDescriptor`
-
-> TODO getOwnPropertyDescriptors
-
-```ts
-const obj = { a: true };
-Object.defineProperty(obj, 'b', { value: 42, writable: false });
-
-Object.getOwnPropertyDescriptor(obj, 'a') satisfies string;
-Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
-```
-
-> Order is also important
-
-- Expected string, found { value: true, writable: true, enumerable: true, configurable: true }
-
 #### Properties on big or
 
 > TODO this creates a fat or type
@@ -509,18 +340,6 @@ array[Math.random()] satisfies 4;
 ```
 
 - ?
-
-#### Out of order generics
-
-```ts
-function func<T>(cb: (t: T) => number, value: T) {
-
-}
-
-func(cb => { cb satisfies boolean }, "hi")
-```
-
-- Expected boolean, found "hi"
 
 #### Known symbol inference & checking
 
@@ -641,68 +460,6 @@ value satisfies boolean;
 
 - Expected boolean, found 8
 
-#### Optional property access
-
-```ts
-interface X {
-    a: string
-    b: string
-}
-
-declare let x: X | null;
-
-x.a;
-x?.b satisfies number;
-```
-
-- Cannot get 'a' on null
-- Expected number, found string
-
-#### Destructuring using iterator
-
-```ts
-const [a, b, c] = {
-	[Symbol.iterator]() {
-		return {
-			count: 0,
-			next(this: { count: number }) {
-				return { value: this.count++, done: false }
-			}
-		}
-	}
-}
-
-a satisfies 0; b satisfies string;
-```
-
-- Expected string, found 1
-
-#### Always known math
-
-```ts
-function func(a: number) { return a ** 0 }
-
-print_type(func)
-
-declare let x: NotNotANumber;
-
-print_type(x ** 1 === x)
-```
-
-- Expected string, found 1
-- True
-
-#### Less than checks
-
-```ts
-function x(a: GreaterThan<4>) {
-	(a < 3) satisfies false;
-	(a < 10) satisfies string;
-}
-```
-
-- Expected string, found boolean
-
 ### Collections
 
 #### Mutation
@@ -805,3 +562,70 @@ throwSomething satisfies string;
 - Expected string, found () => never
 
 > #TODO try-catch, Promise
+
+### Properties
+
+#### `enumerable` in for in
+
+```ts
+const obj = { n: 1, b: 2 };
+Object.defineProperty(obj, "c", { value: 3, enumerable: false });
+Object.defineProperty(obj, "d", { value: 4, enumerable: true });
+
+let keys: string = "";
+for (const key in obj) {
+	keys += key;
+}
+keys satisfies boolean
+```
+
+- Expected boolean, found "nbd"
+
+#### `Object.freeze`
+
+> TODO seal & preventExtensions
+
+```ts
+const obj = {}
+let result = Object.freeze(obj);
+(obj === result) satisfies true;
+obj.property = 2;
+Object.isFrozen(obj) satisfies true;
+```
+
+> TODO maybe error should say that whole object is frozen
+
+- Cannot write to property 'property'
+
+#### `Object.defineProperty`
+
+> TODO defineProperties
+
+```ts
+const obj = {};
+Object.defineProperty(obj, 'property', {
+  value: 42,
+  writable: false,
+});
+obj.property satisfies string;
+obj.property = 70;
+```
+
+- Expected string, found 42
+- Cannot write to property 'property'
+
+#### `Object.getOwnPropertyDescriptor`
+
+> TODO getOwnPropertyDescriptors
+
+```ts
+const obj = { a: true };
+Object.defineProperty(obj, 'b', { value: 42, writable: false });
+
+Object.getOwnPropertyDescriptor(obj, 'a') satisfies string;
+Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
+```
+
+> Order is also important
+
+- Expected string, found { value: true, writable: true, enumerable: true, configurable: true }

@@ -960,19 +960,6 @@ optionally("hello world");
 
 - Argument of type "hello world" is not assignable to parameter of type number | undefined
 
-#### Tagged template literal
-
-```ts
-function myTag(static_parts: Array<string>, other: string) {
-	return { static_parts, other }
-}
-
-const name = "Ben";
-myTag`${name}Hello ` satisfies string
-```
-
-- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
-
 #### Default parameter side effect on parameter
 
 ```ts

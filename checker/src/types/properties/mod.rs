@@ -7,11 +7,8 @@ pub use assignment::set_property;
 use super::{Type, TypeStore};
 use crate::{
 	context::information::InformationChain,
-	subtyping::{slice_matches_type, SubTypingOptions},
-	types::{
-		generics::contributions::{self, Contributions},
-		properties, GenericChain, PartiallyAppliedGenerics, PolyNature,
-	},
+	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
+	types::{generics::contributions::Contributions, properties, GenericChain, PolyNature},
 	Constant, Environment, FunctionId, Logical, TypeId,
 };
 use std::borrow::Cow;
@@ -248,10 +245,39 @@ impl PropertyValue {
 			PropertyValue::Configured { on, .. } => on.as_get_type(),
 		}
 	}
-}
 
-/// TODO can their be multiple contributions
-pub type SliceArgument = (TypeId, (contributions::CovariantContribution, u8));
+	// For printing and debugging
+	pub fn inner_simple(&self) -> &Self {
+		if let PropertyValue::ConditionallyExists { truthy: on, .. }
+		| PropertyValue::Configured { on, descriptor: _ } = self
+		{
+			on.inner_simple()
+		} else {
+			self
+		}
+	}
+
+	// For printing and debugging
+	pub fn is_optional_simple(&self) -> bool {
+		if let PropertyValue::ConditionallyExists { on, truthy: _ } = self {
+			crate::utilities::notify!("on={:?}", *on);
+			!matches!(*on, TypeId::NON_OPTIONAL_KEY_ARGUMENT)
+		} else {
+			false
+		}
+	}
+
+	// For printing and debugging
+	pub fn is_writable_simple(&self) -> bool {
+		if let PropertyValue::ConditionallyExists { on: _, truthy } = self {
+			truthy.is_writable_simple()
+		} else if let PropertyValue::Configured { on: _, descriptor } = self {
+			!matches!(descriptor.writable, TypeId::TRUE | TypeId::WRITABLE_KEY_ARGUMENT)
+		} else {
+			false
+		}
+	}
+}
 
 /// Does lhs equal want
 /// Aka is `want_key in { [lhs_key]: ... }`
@@ -262,115 +288,94 @@ pub(crate) fn key_matches(
 	(want, want_type_arguments): (&PropertyKey<'_>, GenericChain),
 	info_chain: &impl InformationChain,
 	types: &TypeStore,
-) -> (bool, Option<SliceArgument>) {
+) -> (bool, SliceArguments) {
 	match (key, want) {
-		(PropertyKey::String(left), PropertyKey::String(right)) => (left == right, None),
+		(PropertyKey::String(left), PropertyKey::String(right)) => {
+			(left == right, SliceArguments::default())
+		}
 		(PropertyKey::String(s), PropertyKey::Type(want)) => {
 			if let Some(substituted_key) =
 				want_type_arguments.and_then(|args| args.get_single_argument(*want))
 			{
-				return key_matches(
+				key_matches(
 					(key, key_type_arguments),
 					(&PropertyKey::Type(substituted_key), want_type_arguments),
 					info_chain,
 					types,
-				);
-			}
-			let want_ty = types.get_type_by_id(*want);
-			// crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
-			if let Type::Or(lhs, rhs) = want_ty {
-				// TODO
-				let matches = key_matches(
-					(key, key_type_arguments),
-					(&PropertyKey::Type(*lhs), key_type_arguments),
-					info_chain,
-					types,
 				)
-				.0 || key_matches(
-					(key, key_type_arguments),
-					(&PropertyKey::Type(*rhs), key_type_arguments),
-					info_chain,
-					types,
-				)
-				.0;
-				(matches, None)
-			} else if let Type::RootPolyType(PolyNature::MappedGeneric {
-				eager_fixed: to, ..
-			})
-			| Type::AliasTo { to, .. } = want_ty
-			{
-				key_matches(
-					(key, key_type_arguments),
-					(&PropertyKey::Type(*to), want_type_arguments),
-					info_chain,
-					types,
-				)
-			} else if let Type::Constant(c) = want_ty {
-				crate::utilities::notify!("{:?}", c);
-				// TODO
-				(*s == c.as_js_string(), None)
-			} else if *want == TypeId::NUMBER_TYPE {
-				(s.parse::<usize>().is_ok(), None)
-			} else if *want == TypeId::STRING_TYPE {
-				(s.parse::<usize>().is_err(), None)
 			} else {
-				(false, None)
+				let want_ty = types.get_type_by_id(*want);
+				// crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
+				if let Type::Or(lhs, rhs) = want_ty {
+					// TODO
+					let matches = key_matches(
+						(key, key_type_arguments),
+						(&PropertyKey::Type(*lhs), key_type_arguments),
+						info_chain,
+						types,
+					)
+					.0 || key_matches(
+						(key, key_type_arguments),
+						(&PropertyKey::Type(*rhs), key_type_arguments),
+						info_chain,
+						types,
+					)
+					.0;
+					(matches, SliceArguments::default())
+				} else if let Type::RootPolyType(PolyNature::MappedGeneric {
+					eager_fixed: to,
+					..
+				})
+				| Type::AliasTo { to, .. } = want_ty
+				{
+					key_matches(
+						(key, key_type_arguments),
+						(&PropertyKey::Type(*to), want_type_arguments),
+						info_chain,
+						types,
+					)
+				} else if let Type::Constant(c) = want_ty {
+					crate::utilities::notify!("{:?}", c);
+					// TODO
+					(*s == c.as_js_string(), SliceArguments::default())
+				} else if *want == TypeId::NUMBER_TYPE {
+					(s.parse::<usize>().is_ok(), SliceArguments::default())
+				} else if *want == TypeId::STRING_TYPE {
+					(s.parse::<usize>().is_err(), SliceArguments::default())
+				} else {
+					(false, SliceArguments::default())
+				}
 			}
 		}
 		(PropertyKey::Type(key), PropertyKey::String(s)) => {
-			crate::utilities::notify!(
-				"Key equality: have {:?} want {:?}",
-				(key, key_type_arguments),
-				(want, want_type_arguments)
-			);
+			// crate::utilities::notify!(
+			// 	"Key equality: have {:?} want {:?}",
+			// 	(key, key_type_arguments),
+			// 	(want, want_type_arguments)
+			// );
 
 			if let Some(substituted_key) =
 				key_type_arguments.and_then(|args| args.get_single_argument(*key))
 			{
-				return key_matches(
+				key_matches(
 					(&PropertyKey::Type(substituted_key), key_type_arguments),
 					(want, want_type_arguments),
 					info_chain,
 					types,
-				);
-			}
-
-			let key = *key;
-			// First some special bases just for property keys
-			if key == TypeId::ANY_TYPE {
-				(true, None)
-			} else if key == TypeId::BOOLEAN_TYPE {
-				(s == "true" || s == "false", None)
-			} else if key == TypeId::NUMBER_TYPE {
-				(s.parse::<usize>().is_ok(), None)
-			} else if key == TypeId::STRING_TYPE {
-				crate::utilities::notify!("Here!");
-				// TODO is this okay?
-				(s.parse::<usize>().is_err(), None)
-			} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-				on: on @ (TypeId::MULTIPLE_OF | TypeId::LESS_THAN | TypeId::GREATER_THAN),
-				arguments,
-			}) = types.get_type_by_id(key)
-			{
-				// Special behavior here to treat numerical property keys (which are strings) as numbers
-				// TODO unify with the subtyping
-				let value = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
-				if let (Type::Constant(Constant::Number(argument)), Ok(value)) =
-					(types.get_type_by_id(value), s.parse::<usize>())
-				{
-					let value: ordered_float::NotNan<f64> = (value as f64).try_into().unwrap();
-					let result = match *on {
-						TypeId::LESS_THAN => *argument < value,
-						TypeId::GREATER_THAN => *argument > value,
-						TypeId::MULTIPLE_OF => value % *argument == 0f64,
-						_ => unreachable!(),
-					};
-					(result, None)
-				} else {
-					(false, None)
-				}
+				)
 			} else {
-				slice_matches_type((key, key_type_arguments), s.as_ref(), info_chain, types)
+				let key = *key;
+				// First some special bases just for property keys
+				let mut contributions = SliceArguments::default();
+				let result = slice_matches_type(
+					(key, key_type_arguments),
+					s.as_ref(),
+					Some(&mut contributions),
+					info_chain,
+					types,
+					true,
+				);
+				(result, contributions)
 			}
 		}
 		(PropertyKey::Type(left), PropertyKey::Type(right)) => {
@@ -385,14 +390,13 @@ pub(crate) fn key_matches(
 				*left, *right, &mut state, info_chain, types,
 			);
 
-			let mut contributions = state.contributions.unwrap();
+			let contributions = state.contributions.unwrap();
 			crate::utilities::notify!(
-				"TODO contributions {:?}",
+				"Here contributions {:?}",
 				&contributions.staging_contravariant
 			);
 
-			let pop = contributions.staging_contravariant.0.pop();
-			(result.is_subtype(), pop)
+			(result.is_subtype(), contributions.staging_contravariant)
 		}
 	}
 }
