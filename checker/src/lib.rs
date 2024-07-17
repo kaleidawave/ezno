@@ -69,6 +69,8 @@ pub use source_map::{self, SourceId, Span};
 
 use crate::subtyping::State;
 
+use levenshtein::levenshtein;
+
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
 	/// Custom allocator etc
@@ -803,4 +805,15 @@ impl<K, V> std::iter::Extend<(K, V)> for Map<K, V> {
 	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
 		self.0.extend(iter);
 	}
+}
+
+pub fn get_closest<'a, 'b>(items: impl Iterator<Item=&'a str>, closest_one: &'b str) -> Option<Vec<&'a str>>
+{
+    const MIN_DISTANCE: usize = 2;
+    let candidates = items.filter(|item| levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
+    match candidates.len() {
+	0 => return None,
+	1.. => return Some(candidates)
+    }
+
 }
