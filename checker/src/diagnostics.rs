@@ -9,6 +9,7 @@ use crate::{
 		calling::FunctionCallingError, printing::print_type_with_type_arguments, GenericChain,
 		GenericChainLink,
 	},
+    get_closest
 };
 use source_map::{SourceId, SpanWithSource};
 use std::{
@@ -423,6 +424,15 @@ pub(crate) enum TypeCheckError<'a> {
 		base: TypeStringRepresentation,
 		overload: TypeStringRepresentation,
 	},
+}
+
+pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
+    match get_closest(possibles.into_iter(), reference).unwrap_or(vec![]).as_slice() {
+        [] => return format!(""),
+        [a,b] => return format!("Did you mean {a} or {b}?"),
+        [a,b,c] => return format!("Did you mean {a},{b} or {c}?"),
+        [a @ .., b] => return format!("Did you mean {items} or {b}?", items = a.join(", "))
+    };
 }
 
 impl From<TypeCheckError<'_>> for Diagnostic {
