@@ -460,6 +460,22 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied()
 	}
 
+        pub fn get_all_variable_names(&self) -> Vec<&str> {
+	    self.parents_iter()
+		.map(|env| get_on_ctx!(env.variables.keys()).collect::<Vec<&String>>())
+		.flatten()
+		.map(|x| x.as_str())
+		.collect::<Vec<&str>>()
+	}
+
+        pub fn get_all_named_types(&self) -> Vec<&str> {
+	    self.parents_iter()
+		.map(|env| get_on_ctx!(env.named_types.keys()).collect::<Vec<&String>>())
+		.flatten()
+		.map(|x| x.as_str())
+		.collect::<Vec<&str>>()
+	}
+
 	pub(crate) fn get_variable_name(&self, id: VariableId) -> &str {
 		match self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(&id))) {
 			Some(s) => s.as_str(),
@@ -698,6 +714,7 @@ impl<T: ContextType> Context<T> {
 			}
 		})
 	}
+        
 
 	pub fn new_explicit_type_parameter(
 		&mut self,
