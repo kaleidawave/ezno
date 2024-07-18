@@ -903,8 +903,7 @@ impl<'a> Environment<'a> {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::CouldNotFindVariable {
 						variable: name,
-						// TODO
-						possibles: Default::default(),
+						possibles: self.get_all_variable_names(),
 						position,
 					},
 				);

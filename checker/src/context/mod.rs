@@ -460,7 +460,7 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied()
 	}
 
-        pub fn get_all_variable_names(&self) -> Vec<&str> {
+    pub fn get_all_variable_names(&self) -> Vec<&str> {
 	    self.parents_iter()
 		.map(|env| get_on_ctx!(env.variables.keys()).collect::<Vec<&String>>())
 		.flatten()
@@ -468,7 +468,7 @@ impl<T: ContextType> Context<T> {
 		.collect::<Vec<&str>>()
 	}
 
-        pub fn get_all_named_types(&self) -> Vec<&str> {
+    pub fn get_all_named_types(&self) -> Vec<&str> {
 	    self.parents_iter()
 		.map(|env| get_on_ctx!(env.named_types.keys()).collect::<Vec<&String>>())
 		.flatten()
@@ -745,7 +745,7 @@ impl<T: ContextType> Context<T> {
 
 	pub fn get_type_by_name_handle_errors<U, A: crate::ASTImplementation>(
 		&self,
-		name: &str,
+	    name: &str,
 		pos: SpanWithSource,
 		checking_data: &mut CheckingData<U, A>,
 	) -> TypeId {
@@ -754,7 +754,8 @@ impl<T: ContextType> Context<T> {
 		} else {
 			checking_data
 				.diagnostics_container
-				.add_error(TypeCheckError::CouldNotFindType(name, pos));
+			.add_error(TypeCheckError::CouldNotFindType(name,
+								    self.get_all_named_types(), pos));
 
 			TypeId::ERROR_TYPE
 		}

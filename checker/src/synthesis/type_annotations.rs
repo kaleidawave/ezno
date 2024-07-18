@@ -99,7 +99,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					}
 				} else {
 					checking_data.diagnostics_container.add_error(TypeCheckError::CannotFindType(
-						name,
+					    name,
+					    environment.get_all_named_types(),
 						pos.with_source(environment.get_source()),
 					));
 					TypeId::ERROR_TYPE
@@ -165,7 +166,8 @@ pub(super) fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			let Some(inner_type_id) = environment.get_type_from_name(name) else {
 				checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
-					name,
+				    name,
+				    environment.get_all_named_types(),
 					position.with_source(environment.get_source()),
 				));
 				return TypeId::ERROR_TYPE;

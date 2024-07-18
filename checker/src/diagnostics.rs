@@ -296,7 +296,7 @@ pub(crate) enum TypeCheckError<'a> {
 		possibles: Vec<&'a str>,
 		position: SpanWithSource,
 	},
-	CouldNotFindType(&'a str, SpanWithSource),
+	CouldNotFindType(&'a str, Vec<&'a str>,SpanWithSource),
 	TypeHasNoGenericParameters(String, SpanWithSource),
 	AssignmentError(AssignmentError),
 	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
@@ -392,7 +392,7 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	TypeNeedsTypeArguments(&'a str, SpanWithSource),
-	CannotFindType(&'a str, SpanWithSource),
+	CannotFindType(&'a str, Vec<&'a str>,SpanWithSource),
 	TypeAlreadyDeclared {
 		name: String,
 		position: SpanWithSource,
@@ -429,8 +429,9 @@ pub(crate) enum TypeCheckError<'a> {
 pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
     match get_closest(possibles.into_iter(), reference).unwrap_or(vec![]).as_slice() {
         [] => return format!(""),
+	[a] => return format!("Did you mean {a}?"),
         [a,b] => return format!("Did you mean {a} or {b}?"),
-        [a,b,c] => return format!("Did you mean {a},{b} or {c}?"),
+        [a,b,c] => return format!("Did you mean {a}, {b} or {c}?"),
         [a @ .., b] => return format!("Did you mean {items} or {b}?", items = a.join(", "))
     };
 }
@@ -439,18 +440,16 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 	fn from(error: TypeCheckError<'_>) -> Self {
 		let kind = super::DiagnosticKind::Error;
 		match error {
-				TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
+				TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
 					Diagnostic::Position {
 						reason: format!(
-							"Could not find variable '{variable}' in scope",
-							// possibles Consider '{:?}'
-						),
+						    "Could not find variable '{variable}' in scope. {}", get_possibles_message(possibles, variable)),
 						position,
 						kind,
 					}
 				}
-				TypeCheckError::CouldNotFindType(reference, pos) => Diagnostic::Position {
-					reason: format!("Could not find type '{reference}'"),
+				TypeCheckError::CouldNotFindType(reference, possibles, pos) => Diagnostic::Position {
+				    reason: format!("Could not find type '{reference}'. {}", get_possibles_message(possibles, reference)),
 					position: pos,
 					kind,
 				},
@@ -693,8 +692,8 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position,
 					kind,
 				},
-				TypeCheckError::CannotFindType(ty, position) => Diagnostic::Position {
-					reason: format!("Cannot find type {ty}"),
+				TypeCheckError::CannotFindType(ty, possibles, position) => Diagnostic::Position {
+				    reason: format!("Cannot find type {ty}. {}",get_possibles_message(possibles,ty)),
 					position,
 					kind,
 				},
