@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{types::intrinsics::Intrinsic, Constant, Map as SmallMap};
-use source_map::SpanWithSource;
+use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	context::Logical,
@@ -164,11 +164,15 @@ impl Default for TypeStore {
 				name: "MultipleOf".into(),
 				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 			},
-			Type::AliasTo {
-				to: TypeId::NUMBER_TYPE,
-				name: "NotNotANumber".into(),
-				parameters: None,
-			},
+			// Intermediate for the below
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::NOT_RESTRICTION,
+				arguments: GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+					TypeId::T_TYPE,
+					(TypeId::NAN, SpanWithSource::NULL),
+				)])),
+			}),
+			Type::And(TypeId::NUMBER_TYPE, TypeId::NOT_NOT_A_NUMBER),
 			// TODO WIP
 			Type::AliasTo {
 				name: "Literal".into(),
@@ -179,6 +183,16 @@ impl Default for TypeStore {
 				name: "Exclusive".into(),
 				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "Not".into(),
+				to: TypeId::ANY_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "CaseInsensitive".into(),
+				to: TypeId::STRING_TYPE,
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
 			},
 		];
 
@@ -197,12 +211,17 @@ impl Default for TypeStore {
 			called_functions: Default::default(),
 			closure_counter: 0,
 			interface_extends: Default::default(),
+			// TODO for some of the above needs stuff
 			interface_type_parameter_extends: Default::default(),
 		}
 	}
 }
 
 impl TypeStore {
+	pub fn count_of_types(&self) -> usize {
+		self.types.len()
+	}
+
 	pub fn new_constant_type(&mut self, constant: Constant) -> crate::TypeId {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
@@ -429,6 +448,7 @@ impl TypeStore {
 				&PropertyKey::from_type(indexer, self),
 				None,
 			),
+			true,
 			environment,
 			self,
 		) {
@@ -442,13 +462,6 @@ impl TypeStore {
 			crate::utilities::notify!("Error: no index on type annotation");
 			TypeId::ERROR_TYPE
 		}
-	}
-
-	/// TODO flags
-	pub fn new_regex(&mut self, pattern: String) -> TypeId {
-		self.register_type(Type::SpecialObject(
-			crate::features::objects::SpecialObject::RegularExpression(pattern),
-		))
 	}
 
 	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {
@@ -512,19 +525,13 @@ impl TypeStore {
 		self.interface_extends.insert(interface_type, extends);
 	}
 
-	pub(crate) fn new_class_constructor_type(
-		&mut self,
-		name: String,
-		constructor: FunctionType,
-		constructs: TypeId,
-	) -> TypeId {
+	pub(crate) fn new_class_constructor_type(&mut self, constructor: FunctionType) -> TypeId {
 		let id = constructor.id;
 		self.functions.insert(id, constructor);
-		self.register_type(Type::SpecialObject(SpecialObject::ClassConstructor {
-			name,
-			constructor: id,
-			prototype: constructs,
-		}))
+		self.register_type(Type::SpecialObject(SpecialObject::Function(
+			id,
+			crate::features::functions::ThisValue::UseParent,
+		)))
 	}
 
 	pub(crate) fn create_this_object(&mut self) -> TypeId {
@@ -547,9 +554,7 @@ impl TypeStore {
 			Intrinsic::GreaterThan => (TypeId::GREATER_THAN, TypeId::NUMBER_GENERIC),
 			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
 			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::NotNotANumber => {
-				return TypeId::NOT_NOT_A_NUMBER;
-			}
+			Intrinsic::Not => (TypeId::NOT_RESTRICTION, TypeId::T_TYPE),
 		};
 		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
 			to_pair,

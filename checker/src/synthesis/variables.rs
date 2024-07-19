@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use parser::{
-	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField,
+	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField, Expression,
 	ObjectDestructuringField, SpreadDestructuringField, VariableField, VariableIdentifier,
 };
 use source_map::{Nullable, SpanWithSource};
@@ -10,7 +10,10 @@ use super::expressions::synthesise_expression;
 use crate::{
 	context::{Context, ContextType, VariableRegisterArguments},
 	diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation},
-	features::variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
+	features::{
+		self,
+		variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
+	},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		get_larger_type, printing,
@@ -229,18 +232,45 @@ pub(super) fn synthesise_variable_declaration_item<
 		.get(&(environment.get_source(), get_position.start))
 		.map(|(ty, pos)| (*ty, *pos));
 
-	let value_ty = if let Some(value) =
+	// let name =
+	// 	types.new_constant_type(crate::Constant::String(name_object.to_owned()));
+
+	let value_ty = if let Some(expression) =
 		U::as_option_expression_ref(&variable_declaration.expression)
 	{
-		let expecting = var_ty_and_pos.as_ref().map_or(TypeId::ANY_TYPE, |(var_ty, _)| *var_ty);
+		let expected: TypeId =
+			var_ty_and_pos.as_ref().map_or(TypeId::ANY_TYPE, |(var_ty, _)| *var_ty);
 
-		let value_ty =
-			super::expressions::synthesise_expression(value, environment, checking_data, expecting);
+		// Crazy JavaScript behavior!!!
+		let expected: TypeId = if let (
+			VariableField::Name(name),
+			Expression::ExpressionFunction(_) | Expression::ClassExpression(_),
+		) = (variable_declaration.name.get_ast_ref(), expression)
+		{
+			let name = checking_data.types.new_constant_type(crate::Constant::String(
+				name.as_option_str().unwrap_or_default().to_owned(),
+			));
+			features::functions::new_name_expected_object(
+				name,
+				expected,
+				&mut checking_data.types,
+				environment,
+			)
+		} else {
+			expected
+		};
+
+		let value_ty = super::expressions::synthesise_expression(
+			expression,
+			environment,
+			checking_data,
+			expected,
+		);
 
 		if let Some((var_ty, ta_pos)) = var_ty_and_pos {
 			let is_valid = crate::features::variables::check_variable_initialization(
 				(var_ty, ta_pos),
-				(value_ty, value.get_position().with_source(environment.get_source())),
+				(value_ty, expression.get_position().with_source(environment.get_source())),
 				environment,
 				checking_data,
 			);

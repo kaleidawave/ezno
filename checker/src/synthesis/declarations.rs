@@ -62,7 +62,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 			synthesise_variable_declaration(declaration, environment, checking_data, false, false);
 		}
 		Declaration::Class(class) => {
-			synthesise_class_declaration(&class.on, environment, checking_data);
+			synthesise_class_declaration(&class.on, TypeId::ANY_TYPE, environment, checking_data);
 		}
 		Declaration::DeclareVariable(_)
 		| Declaration::Function(_)
@@ -77,7 +77,12 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					// Skipped as this is done earlier
 					parser::declarations::export::Exportable::Class(class) => {
 						// TODO mark as exported
-						synthesise_class_declaration(class, environment, checking_data);
+						synthesise_class_declaration(
+							class,
+							TypeId::ANY_TYPE,
+							environment,
+							checking_data,
+						);
 					}
 					parser::declarations::export::Exportable::Variable(variable) => {
 						synthesise_variable_declaration(

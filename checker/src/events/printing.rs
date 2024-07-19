@@ -83,7 +83,7 @@ pub fn debug_effects<C: InformationChain>(
 					write!(buf, "{new:?}").unwrap();
 				}
 				if *initialisation {
-					buf.push_str("(initialisation)")
+					buf.push_str(" (initialisation)")
 				}
 			}
 			Event::CallsType {
@@ -119,13 +119,20 @@ pub fn debug_effects<C: InformationChain>(
 
 				buf.push_str("if ");
 				print_type_into_buf(*condition, buf, &mut HashSet::new(), args, types, info, debug);
-				buf.push_str(" then \n");
+				buf.push_str(" then\n");
+
 				let events_if_true = &events[(idx + 1)..=(idx + truthy_events)];
-				debug_effects(buf, events_if_true, types, info, depth + 1, debug);
+				if truthy_events != 0 {
+					debug_effects(buf, events_if_true, types, info, depth + 1, debug);
+				}
+
 				if otherwise_events != 0 {
 					let start = idx + truthy_events + 1;
 					let otherwise = &events[(start)..(start + otherwise_events)];
-					buf.push_str(" else \n");
+					for _ in 0..depth {
+						buf.push('\t');
+					}
+					buf.push_str("else\n");
 					debug_effects(buf, otherwise, types, info, depth + 1, debug);
 				}
 				idx += truthy_events + otherwise_events + 1;
@@ -156,8 +163,8 @@ pub fn debug_effects<C: InformationChain>(
 				print_type_into_buf(*returned, buf, &mut HashSet::new(), args, types, info, debug);
 			}
 			Event::ExceptionTrap { .. } => todo!(),
-			Event::RegisterVariable { .. } => {
-				buf.push_str("register variable");
+			Event::RegisterVariable { name, .. } => {
+				write!(buf, "register variable {name}").unwrap();
 			}
 			Event::EndOfControlFlow(_) => {
 				buf.push_str("end");

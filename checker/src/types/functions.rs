@@ -83,6 +83,7 @@ impl FunctionType {
 		function_id: FunctionId,
 		class_prototype: TypeId,
 		extends: Option<TypeId>,
+		name: TypeId,
 		properties: ClassPropertiesToRegister<A>,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
@@ -149,8 +150,11 @@ impl FunctionType {
 			},
 		);
 
-		let behavior =
-			FunctionBehavior::Constructor { prototype: class_prototype, this_object_type: on };
+		let behavior = FunctionBehavior::Constructor {
+			prototype: class_prototype,
+			this_object_type: on,
+			name,
+		};
 
 		let (info, _free_variables) = env_data.unwrap();
 		Self {

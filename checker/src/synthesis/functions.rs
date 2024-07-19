@@ -172,10 +172,9 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
-				environment.return_value(
-					&crate::context::environment::Returnable::ArrowFunctionBody(&**expression),
-					checking_data,
-				);
+				let arrow_function_body =
+					crate::context::environment::Returnable::ArrowFunctionBody(&**expression);
+				environment.return_value(&arrow_function_body, checking_data);
 			}
 			ExpressionOrBlock::Block(block) => {
 				block.synthesise_function_body(environment, checking_data);

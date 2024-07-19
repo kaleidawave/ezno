@@ -82,8 +82,8 @@ pub(crate) fn substitute(
 			id
 		}
 		// Closures for objects
-		Type::SpecialObject(SpecialObject::ClassConstructor { .. })
-		| Type::Object(ObjectNature::RealDeal) => {
+		// Type::SpecialObject(SpecialObject::ClassConstructor { .. })
+		Type::Object(ObjectNature::RealDeal) => {
 			// Apply curring
 			if arguments.closures.is_empty() {
 				id
@@ -97,20 +97,22 @@ pub(crate) fn substitute(
 		// Specialisation for object type annotation (todo could do per property in future)
 		// Can return functions from functions somehow as well
 		Type::FunctionReference(..) | Type::Object(ObjectNature::AnonymousTypeAnnotation) => {
+			crate::utilities::notify!("{:?}", arguments.arguments);
 			// Apply curring
 			if arguments.arguments.is_empty() {
 				id
 			} else {
+				let arguments = GenericArguments::ExplicitRestrictions(
+					arguments
+						.arguments
+						.iter()
+						.map(|(k, v)| (*k, (*v, SpanWithSource::NULL)))
+						.collect(),
+				);
 				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: id,
 					// TODO argument positions
-					arguments: GenericArguments::ExplicitRestrictions(
-						arguments
-							.arguments
-							.iter()
-							.map(|(k, v)| (*k, (*v, SpanWithSource::NULL)))
-							.collect(),
-					),
+					arguments,
 				}))
 			}
 		}
@@ -176,10 +178,10 @@ pub(crate) fn substitute(
 			SpecialObject::Promise { .. } => todo!(),
 			SpecialObject::Generator { .. } => todo!(),
 			SpecialObject::Proxy { .. } => todo!(),
-			SpecialObject::RegularExpression(_) => todo!(),
+			SpecialObject::RegularExpression { .. } => todo!(),
 			SpecialObject::Import(_) => todo!(),
 			SpecialObject::Null => id,
-			SpecialObject::Function(..) | SpecialObject::ClassConstructor { .. } => unreachable!(),
+			SpecialObject::Function(..) => unreachable!(),
 		},
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
@@ -206,6 +208,9 @@ pub(crate) fn substitute(
 					id,
 					nature
 				);
+				id
+			} else if let PolyNature::FreeVariable { .. } = nature {
+				crate::utilities::notify!("Could not find free variable");
 				id
 			} else {
 				// Other root poly types cases handled by the early return
@@ -318,8 +323,8 @@ pub(crate) fn substitute(
 			}
 			Constructor::Property { on, under, result, mode, .. } => {
 				let under = under.substitute(arguments, environment, types);
-
 				let on = substitute(on, arguments, environment, types);
+
 				let on_type = types.get_type_by_id(on);
 
 				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -363,6 +368,7 @@ pub(crate) fn substitute(
 					let get_property = get_property_unbound(
 						(on, None),
 						(Publicity::Public, &under, None),
+						true,
 						environment,
 						types,
 					);

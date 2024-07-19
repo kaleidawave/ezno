@@ -101,58 +101,26 @@ pub fn instance_of_operator(
 	if let Some(_constraint) = get_constraint(lhs, types) {
 		todo!()
 	} else {
-		let rhs_prototype =
-			if let Type::SpecialObject(SpecialObject::ClassConstructor { prototype, .. }) =
-				types.get_type_by_id(rhs)
-			{
-				*prototype
-			} else {
-				// TODO err
-				rhs
-			};
+		let rhs_prototype = if let Type::SpecialObject(SpecialObject::Function(func, _)) =
+			types.get_type_by_id(rhs)
+		{
+			let func = types.get_function_from_id(*func);
+			match &func.behavior {
+				functions::FunctionBehavior::ArrowFunction { .. }
+				| functions::FunctionBehavior::Method { .. } => TypeId::UNDEFINED_TYPE,
+				functions::FunctionBehavior::Function { prototype, .. }
+				| functions::FunctionBehavior::Constructor { prototype, .. } => *prototype,
+			}
+		} else {
+			// TODO err
+			rhs
+		};
 
 		if extends_prototype(lhs, rhs_prototype, information) {
 			TypeId::TRUE
 		} else {
 			TypeId::FALSE
 		}
-	}
-}
-
-/// Returns result of `*on* as *cast_to*`. Returns `Err(())` for invalid casts where invalid casts
-/// occur for casting a constant
-pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
-	use crate::types::{Constructor, PolyNature};
-
-	fn can_cast_type(ty: &Type) -> bool {
-		match ty {
-			// TODO some of these are more correct than the others
-			crate::Type::RootPolyType(_rpt) => true,
-			crate::Type::Constructor(constr) => match constr {
-				Constructor::CanonicalRelationOperator { .. }
-				| Constructor::UnaryOperator { .. }
-				| Constructor::BinaryOperator { .. } => false,
-				Constructor::TypeOperator(_) => todo!(),
-				Constructor::TypeRelationOperator(_) => todo!(),
-				Constructor::Awaited { .. }
-				| Constructor::KeyOf(..)
-				| Constructor::ConditionalResult { .. }
-				| Constructor::Image { .. }
-				| Constructor::Property { .. } => true,
-			},
-			_ => false,
-		}
-	}
-
-	let can_cast = on == TypeId::ERROR_TYPE || can_cast_type(types.get_type_by_id(on));
-
-	if can_cast {
-		// TSC compat around `any`
-		let cast_to = if cast_to == TypeId::ANY_TYPE { TypeId::ERROR_TYPE } else { cast_to };
-
-		Ok(types.register_type(Type::RootPolyType(PolyNature::Open(cast_to))))
-	} else {
-		Err(())
 	}
 }
 
@@ -298,6 +266,7 @@ pub fn delete_operator(
 				let property_constraint = properties::get_property_unbound(
 					(constraint, None),
 					(publicity, &under, None),
+					false,
 					environment,
 					types,
 				);
@@ -393,5 +362,133 @@ pub fn in_operator(
 		dependency
 	} else {
 		result
+	}
+}
+
+pub mod tsc {
+	use source_map::SpanWithSource;
+
+	use crate::{
+		diagnostics,
+		types::{subtyping, Constructor, PolyNature, TypeStore},
+		CheckingData, Environment, Type, TypeId,
+	};
+
+	/// Returns result of `*on* as *cast_to*`. Returns `Err(())` for invalid casts where invalid casts
+	/// occur for casting a constant
+	pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
+		fn can_cast_type(ty: &Type) -> bool {
+			match ty {
+				// TODO some of these are more correct than the others
+				Type::RootPolyType(_rpt) => true,
+				Type::Constructor(constr) => match constr {
+					Constructor::CanonicalRelationOperator { .. }
+					| Constructor::UnaryOperator { .. }
+					| Constructor::BinaryOperator { .. } => false,
+					Constructor::TypeOperator(_) => todo!(),
+					Constructor::TypeRelationOperator(_) => todo!(),
+					Constructor::Awaited { .. }
+					| Constructor::KeyOf(..)
+					| Constructor::ConditionalResult { .. }
+					| Constructor::Image { .. }
+					| Constructor::Property { .. } => true,
+				},
+				_ => false,
+			}
+		}
+
+		let can_cast = on == TypeId::ERROR_TYPE || can_cast_type(types.get_type_by_id(on));
+
+		if can_cast {
+			// TSC compat around `any`
+			let cast_to = if cast_to == TypeId::ANY_TYPE { TypeId::ERROR_TYPE } else { cast_to };
+
+			// TODO Type::Narrowed
+			Ok(types.register_type(Type::RootPolyType(PolyNature::Open(cast_to))))
+		} else {
+			Err(())
+		}
+	}
+
+	pub fn non_null_assertion(on: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
+		/// TODO recursive, or types etc
+		fn get_non_null_type(on: TypeId, types: &mut TypeStore) -> TypeId {
+			match types.get_type_by_id(on) {
+				Type::Constructor(Constructor::ConditionalResult {
+					condition: _,
+					truthy_result,
+					otherwise_result,
+					result_union: _,
+				}) => {
+					// TODO filter null as well
+					if *truthy_result == TypeId::UNDEFINED_TYPE {
+						*otherwise_result
+					} else if *otherwise_result == TypeId::UNDEFINED_TYPE {
+						*truthy_result
+					} else {
+						on
+					}
+				}
+				ty => {
+					crate::utilities::notify!("{:?}", ty);
+					on
+				}
+			}
+		}
+
+		let cast_to = get_non_null_type(on, types);
+
+		// TODO Type::Narrowed
+		Ok(types.register_type(Type::RootPolyType(PolyNature::Open(cast_to))))
+	}
+
+	pub fn check_satisfies<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		expr_ty: TypeId,
+		to_satisfy: TypeId,
+		at: SpanWithSource,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, A>,
+	) {
+		pub(crate) fn check_satisfies(
+			expr_ty: TypeId,
+			to_satisfy: TypeId,
+			types: &TypeStore,
+			environment: &mut Environment,
+		) -> bool {
+			// TODO `behavior.allow_error = true` would be better
+			if expr_ty == TypeId::ERROR_TYPE {
+				false
+			} else {
+				let mut state = subtyping::State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: subtyping::SubTypingOptions { allow_errors: false },
+					object_constraints: None,
+				};
+				let result =
+					subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, environment, types);
+
+				matches!(result, subtyping::SubTypeResult::IsSubType)
+			}
+		}
+
+		if !check_satisfies(expr_ty, to_satisfy, &checking_data.types, environment) {
+			let expected = diagnostics::TypeStringRepresentation::from_type_id(
+				to_satisfy,
+				environment,
+				&checking_data.types,
+				false,
+			);
+			let found = diagnostics::TypeStringRepresentation::from_type_id(
+				expr_ty,
+				environment,
+				&checking_data.types,
+				false,
+			);
+			checking_data
+				.diagnostics_container
+				.add_error(diagnostics::TypeCheckError::NotSatisfied { at, expected, found });
+		}
 	}
 }

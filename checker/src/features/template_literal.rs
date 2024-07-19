@@ -76,12 +76,12 @@ where
 				p @ TemplateLiteralPart::Static(_) => {
 					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
-						environment,
 						crate::types::properties::Publicity::Public,
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?
 						position,
+						&mut environment.info,
 					);
 					static_part_count += 1;
 				}
@@ -109,11 +109,11 @@ where
 
 			// TODO: Should there be a position here?
 			static_parts.append(
-				environment,
 				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
 				position,
+				&mut environment.info,
 			);
 		}
 

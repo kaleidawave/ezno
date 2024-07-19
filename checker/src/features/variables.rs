@@ -140,6 +140,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 		let property_constraint = get_property_unbound(
 			(space, None),
 			(Publicity::Public, under, None),
+			false,
 			environment,
 			&checking_data.types,
 		);

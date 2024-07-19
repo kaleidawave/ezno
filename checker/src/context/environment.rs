@@ -1174,7 +1174,6 @@ impl<'a> Environment<'a> {
 
 					// Add the expected return type instead here
 					// if it fell through to another then it could be bad
-					crate::utilities::notify!("Here {:?}", expected);
 					let expected_return = checking_data.types.new_error_type(expected);
 					let final_event = FinalEvent::Return {
 						returned: expected_return,

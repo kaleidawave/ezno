@@ -2145,6 +2145,17 @@ class X { }
 
 - Variable 'X' used before declaration
 
+#### Called without new
+
+> Declared same as `let` and `const`
+
+```ts
+class X { }
+const x = X();
+```
+
+- Class constructor must be called with new
+
 #### Class type `extends`
 
 ```ts
@@ -2348,6 +2359,19 @@ const y: (a: number | string) => string = (p: number) => "hi"
 ```
 
 - Type (p: number) => "hi" is not assignable to type (a: number | string) => string
+
+> I think reasons contains more information
+
+#### Function parameter excess allowed
+
+```ts
+// Perfectly fine
+const x: (a: number, b: string) => string = (p: number) => "hi"
+// Bad
+const y: (a: string) => string = (p: number, q: string) => "hi"
+```
+
+- Type (p: number, q: string) => "hi" is not assignable to type (a: string) => string
 
 > I think reasons contains more information
 

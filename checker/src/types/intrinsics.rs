@@ -34,8 +34,8 @@ pub enum Intrinsic {
 	GreaterThan,
 	/// This value `% arg === 0`. Also implies [`Intrinsic::NotNotANumber`]
 	MultipleOf,
-	/// `number \ { NaN }`
-	NotNotANumber,
+	/// `number \ T `
+	Not,
 }
 
 pub(crate) fn distribute_tsc_string_intrinsic(
@@ -68,7 +68,7 @@ pub(crate) fn distribute_tsc_string_intrinsic(
 	}
 }
 
-fn apply_string_intrinsic(on: TypeId, s: &str) -> String {
+pub(crate) fn apply_string_intrinsic(on: TypeId, s: &str) -> String {
 	match on {
 		TypeId::STRING_UPPERCASE => s.to_uppercase(),
 		TypeId::STRING_LOWERCASE => s.to_lowercase(),
@@ -107,6 +107,7 @@ pub fn is_intrinsic(id: TypeId) -> bool {
 				| TypeId::READONLY_RESTRICTION
 				| TypeId::NO_INFER
 				| TypeId::EXCLUSIVE_RESTRICTION
+				| TypeId::NOT_RESTRICTION
 		)
 }
 

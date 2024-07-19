@@ -47,6 +47,8 @@ pub struct TypeCheckOptions {
 	pub evaluate_exports: bool,
 
 	pub max_inline_count: u16,
+
+	pub measure_time: bool,
 }
 
 impl Default for TypeCheckOptions {
@@ -67,6 +69,7 @@ impl Default for TypeCheckOptions {
 			allow_type_casts: true,
 			evaluate_exports: false,
 			max_inline_count: 300,
+			measure_time: false,
 		}
 	}
 }

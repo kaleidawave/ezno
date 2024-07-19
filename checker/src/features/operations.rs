@@ -436,14 +436,14 @@ pub fn evaluate_logical_operation_with_expression<
 	rhs: &'a A::Expression<'a>,
 	checking_data: &mut CheckingData<T, A>,
 	environment: &mut Environment,
-	expected: TypeId,
+	expecting: TypeId,
 ) -> Result<TypeId, ()> {
 	match operator {
 		LogicalOperator::And => Ok(new_conditional_context(
 			environment,
 			lhs,
 			|env: &mut Environment, data: &mut CheckingData<T, A>| {
-				A::synthesise_expression(rhs, expected, env, data)
+				A::synthesise_expression(rhs, expecting, env, data)
 			},
 			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
 			checking_data,
@@ -453,7 +453,7 @@ pub fn evaluate_logical_operation_with_expression<
 			lhs,
 			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
 			Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
-				A::synthesise_expression(rhs, expected, env, data)
+				A::synthesise_expression(rhs, expecting, env, data)
 			}),
 			checking_data,
 		)),
@@ -464,7 +464,7 @@ pub fn evaluate_logical_operation_with_expression<
 				(null_or_undefined, lhs.1),
 				|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
 				Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
-					A::synthesise_expression(rhs, expected, env, data)
+					A::synthesise_expression(rhs, expecting, env, data)
 				}),
 				checking_data,
 			))

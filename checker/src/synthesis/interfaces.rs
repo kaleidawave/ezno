@@ -161,13 +161,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					is_optional,
 					position,
 				} => {
-					if *is_optional {
-						checking_data.raise_unimplemented_error(
-							"is_optional interface method",
-							position.with_source(environment.get_source()),
-						);
-					}
-
 					// Fix for performing const annotations. TODO want to do better
 					let behavior = if member
 						.decorators
@@ -181,6 +174,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 							is_generator: header.is_generator(),
 							// TODO ...
 							free_this_id: TypeId::ERROR_TYPE,
+							name: TypeId::EMPTY_STRING,
 						}
 					};
 					let getter = match header {

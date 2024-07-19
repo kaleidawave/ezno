@@ -141,6 +141,18 @@ impl<'a> PropertyKey<'a> {
 		}
 	}
 
+	pub fn into_name_type(&self, types: &mut TypeStore) -> TypeId {
+		match self {
+			PropertyKey::String(s) => {
+				types.new_constant_type(Constant::String(s.clone().into_owned()))
+			}
+			PropertyKey::Type(t) => {
+				crate::utilities::notify!("TODO Symbol has different printing here");
+				*t
+			}
+		}
+	}
+
 	pub(crate) fn substitute(
 		&self,
 		type_arguments: &super::SubstitutionArguments,
@@ -260,7 +272,7 @@ impl PropertyValue {
 	// For printing and debugging
 	pub fn is_optional_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { on, truthy: _ } = self {
-			crate::utilities::notify!("on={:?}", *on);
+			// crate::utilities::notify!("on={:?}", *on);
 			!matches!(*on, TypeId::NON_OPTIONAL_KEY_ARGUMENT)
 		} else {
 			false
@@ -289,9 +301,26 @@ pub(crate) fn key_matches(
 	info_chain: &impl InformationChain,
 	types: &TypeStore,
 ) -> (bool, SliceArguments) {
+	{
+		// crate::utilities::notify!(
+		// 	"{{ [{:?}({:?})]: ... }}[{:?}({:?})]",
+		// 	key,
+		// 	key_type_arguments,
+		// 	want,
+		// 	want_type_arguments
+		// );
+	}
+
 	match (key, want) {
 		(PropertyKey::String(left), PropertyKey::String(right)) => {
-			(left == right, SliceArguments::default())
+			let matches = if let Some(transform) =
+				key_type_arguments.and_then(|a| a.get_string_transform())
+			{
+				super::intrinsics::apply_string_intrinsic(transform, left).as_str() == right
+			} else {
+				left == right
+			};
+			(matches, SliceArguments::default())
 		}
 		(PropertyKey::String(s), PropertyKey::Type(want)) => {
 			if let Some(substituted_key) =
@@ -408,8 +437,13 @@ pub(crate) fn has_property(
 	information: &impl InformationChain,
 	types: &mut TypeStore,
 ) -> TypeId {
-	let result =
-		properties::get_property_unbound((rhs, None), (publicity, key, None), information, types);
+	let result = properties::get_property_unbound(
+		(rhs, None),
+		(publicity, key, None),
+		false,
+		information,
+		types,
+	);
 
 	crate::utilities::notify!("Has got {:?} on {:?}", result, rhs);
 

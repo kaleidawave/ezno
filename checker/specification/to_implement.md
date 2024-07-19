@@ -112,6 +112,20 @@ x = 1;
 
 - 1 is not assignable to { b: string }
 
+#### Known symbol inference & checking
+
+> #TODO extra
+
+```ts
+class X {
+	[Symbol.iterator]() {
+		return {}
+	}
+}
+```
+
+- ?
+
 ### Imports
 
 #### Import package with definition file

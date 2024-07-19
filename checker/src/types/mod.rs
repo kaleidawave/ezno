@@ -1,6 +1,7 @@
 pub mod calling;
 pub mod casts;
 pub mod classes;
+pub mod disjoint;
 pub mod functions;
 pub mod generics;
 pub mod intrinsics;
@@ -131,16 +132,21 @@ impl TypeId {
 	pub const GREATER_THAN: Self = Self(40);
 	pub const MULTIPLE_OF: Self = Self(41);
 	pub const NOT_NOT_A_NUMBER: Self = Self(42);
+	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(43);
 
-	pub const LITERAL_RESTRICTION: Self = Self(43);
-	pub const EXCLUSIVE_RESTRICTION: Self = Self(44);
+	pub const LITERAL_RESTRICTION: Self = Self(44);
+	pub const EXCLUSIVE_RESTRICTION: Self = Self(45);
+	pub const NOT_RESTRICTION: Self = Self(46);
+
+	/// This is needed for the TSC string intrinsics
+	pub const CASE_INSENSITIVE: Self = Self(47);
 
 	/// WIP
 	pub const OPEN_BOOLEAN_TYPE: Self = Self::BOOLEAN_TYPE;
 	pub const OPEN_NUMBER_TYPE: Self = Self::NUMBER_TYPE;
 
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 45;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 48;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -468,29 +474,72 @@ pub type GenericChainParent<'a> = Option<&'a GenericChainLink<'a>>;
 /// - Uses lifetimes because lifetimes
 #[derive(Clone, Copy, Debug)]
 pub enum GenericChainLink<'a> {
-	Link {
+	FunctionRoot {
+		/// From whatever the function was on
+		parent_arguments: Option<&'a GenericArguments>,
+		call_site_type_arguments: Option<&'a TypeRestrictions>,
+		type_arguments: &'a crate::Map<TypeId, TypeId>,
+	},
+	// For walking through [`Type::PartiallyAppliedGenerics`]
+	PartiallyAppliedGenericArgumentsLink {
 		from: TypeId,
 		parent_link: GenericChainParent<'a>,
 		value: &'a GenericArguments,
 	},
-	/// WIP
+	/// WIP. For the specialised arguments during property key lookup
 	MappedPropertyLink {
 		parent_link: GenericChainParent<'a>,
 		value: &'a SliceArguments,
 	},
-	FunctionRoot {
-		parent_link: Option<&'a GenericArguments>,
-		call_site_type_arguments: Option<&'a TypeRestrictions>,
-		type_arguments: &'a crate::Map<TypeId, TypeId>,
+	/// WIP. For TSC behavior around the checking the inner of `Uppercase` etc
+	CaseTransform {
+		parent_link: GenericChainParent<'a>,
+		/// This must be a TSC string intrinsic type
+		on: TypeId,
+	},
+	Exclusive {
+		parent_link: GenericChainParent<'a>,
 	},
 }
 
 impl<'a> GenericChainLink<'a> {
 	fn get_value(self) -> Option<&'a GenericArguments> {
-		if let Self::Link { value, .. } = self {
+		if let Self::PartiallyAppliedGenericArgumentsLink { value, .. } = self {
 			Some(value)
 		} else {
 			None
+		}
+	}
+
+	pub(crate) fn get_string_transform(&self) -> Option<TypeId> {
+		match self {
+			GenericChainLink::FunctionRoot { .. } => None,
+			GenericChainLink::Exclusive { parent_link, .. }
+			| GenericChainLink::PartiallyAppliedGenericArgumentsLink { parent_link, .. }
+			| GenericChainLink::MappedPropertyLink { parent_link, .. } => {
+				if let Some(parent_link) = parent_link {
+					parent_link.get_string_transform()
+				} else {
+					None
+				}
+			}
+			GenericChainLink::CaseTransform { parent_link: _, on } => Some(*on),
+		}
+	}
+
+	pub(crate) fn exclusive_mode(&self) -> bool {
+		match self {
+			GenericChainLink::FunctionRoot { .. } => false,
+			GenericChainLink::CaseTransform { parent_link, .. }
+			| GenericChainLink::PartiallyAppliedGenericArgumentsLink { parent_link, .. }
+			| GenericChainLink::MappedPropertyLink { parent_link, .. } => {
+				if let Some(parent_link) = parent_link {
+					parent_link.exclusive_mode()
+				} else {
+					false
+				}
+			}
+			GenericChainLink::Exclusive { .. } => true,
 		}
 	}
 
@@ -503,14 +552,18 @@ impl<'a> GenericChainLink<'a> {
 		types: &TypeStore,
 	) -> Option<Vec<TypeId>> {
 		match self {
-			GenericChainLink::Link { parent_link, value, from: _ } => value
+			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
+				parent_link,
+				value,
+				from: _,
+			} => value
 				.get_argument_as_list(on, info, types)
 				.or_else(|| parent_link.and_then(|parent| parent.get_argument(on, info, types))),
 			GenericChainLink::FunctionRoot {
-				parent_link,
+				parent_arguments,
 				call_site_type_arguments,
 				type_arguments,
-			} => parent_link
+			} => parent_arguments
 				.and_then(|parent| parent.get_argument_as_list(on, info, types))
 				.or_else(|| {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
@@ -519,6 +572,10 @@ impl<'a> GenericChainLink<'a> {
 			GenericChainLink::MappedPropertyLink { .. } => {
 				crate::utilities::notify!("TODO temp");
 				self.get_single_argument(on).map(|v| vec![v])
+			}
+			GenericChainLink::Exclusive { parent_link }
+			| GenericChainLink::CaseTransform { parent_link, on: _ } => {
+				parent_link.and_then(|f| f.get_argument(on, info, types))
 			}
 		}
 	}
@@ -531,7 +588,11 @@ impl<'a> GenericChainLink<'a> {
 		types: &mut TypeStore,
 	) -> SubstitutionArguments<'static> {
 		match self {
-			GenericChainLink::Link { from: _, parent_link, value } => {
+			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
+				from: _,
+				parent_link,
+				value,
+			} => {
 				let mut args = value.into_substitutable();
 				if let Some(parent_link) = parent_link {
 					parent_link.extend_arguments(&mut args);
@@ -554,6 +615,8 @@ impl<'a> GenericChainLink<'a> {
 			GenericChainLink::FunctionRoot { .. } => {
 				todo!()
 			}
+			GenericChainLink::Exclusive { parent_link }
+			| GenericChainLink::CaseTransform { parent_link, .. } => todo!("{:?}", parent_link.is_some()),
 		}
 	}
 
@@ -562,7 +625,7 @@ impl<'a> GenericChainLink<'a> {
 		parent: GenericChainParent<'a>,
 		value: &'a GenericArguments,
 	) -> GenericChainLink<'a> {
-		GenericChainLink::Link { parent_link: parent, value, from }
+		GenericChainLink::PartiallyAppliedGenericArgumentsLink { parent_link: parent, value, from }
 	}
 
 	#[allow(clippy::unnecessary_wraps)]
@@ -579,14 +642,18 @@ impl<'a> GenericChainLink<'a> {
 	/// - (swaps `get_argument_as_list` with `get_structure_restriction`)
 	pub(crate) fn get_single_argument(&self, on: TypeId) -> Option<TypeId> {
 		match self {
-			GenericChainLink::Link { parent_link, value, from: _ } => value
+			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
+				parent_link,
+				value,
+				from: _,
+			} => value
 				.get_structure_restriction(on)
 				.or_else(|| parent_link.and_then(|parent| parent.get_single_argument(on))),
 			GenericChainLink::FunctionRoot {
-				parent_link,
+				parent_arguments,
 				call_site_type_arguments,
 				type_arguments,
-			} => parent_link
+			} => parent_arguments
 				.and_then(|parent| parent.get_structure_restriction(on))
 				.or_else(|| {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
@@ -607,13 +674,21 @@ impl<'a> GenericChainLink<'a> {
 					}
 				})
 				.or_else(|| parent_link.and_then(|parent| parent.get_single_argument(on))),
+			GenericChainLink::Exclusive { parent_link }
+			| GenericChainLink::CaseTransform { parent_link, on: _ } => {
+				parent_link.and_then(|parent| parent.get_single_argument(on))
+			}
 		}
 	}
 
 	/// For building up [`SubstitutionArguments`] from a generic chain
 	pub(crate) fn extend_arguments(&self, arguments: &mut SubstitutionArguments<'static>) {
 		match self {
-			GenericChainLink::Link { from: _, parent_link, value } => {
+			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
+				from: _,
+				parent_link,
+				value,
+			} => {
 				match value {
 					GenericArguments::ExplicitRestrictions(n) => {
 						arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));
@@ -626,12 +701,12 @@ impl<'a> GenericChainLink<'a> {
 				}
 			}
 			GenericChainLink::FunctionRoot {
-				parent_link,
+				parent_arguments,
 				call_site_type_arguments: _,
 				type_arguments,
 			} => {
 				arguments.arguments.extend(type_arguments.iter().map(|(k, v)| (*k, *v)));
-				if let Some(value) = parent_link {
+				if let Some(value) = parent_arguments {
 					match value {
 						GenericArguments::ExplicitRestrictions(n) => {
 							arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));
@@ -643,7 +718,9 @@ impl<'a> GenericChainLink<'a> {
 					}
 				}
 			}
-			GenericChainLink::MappedPropertyLink { .. } => todo!(),
+
+			GenericChainLink::MappedPropertyLink { .. } => todo!("need &mut TypeStore"),
+			GenericChainLink::Exclusive { .. } | GenericChainLink::CaseTransform { .. } => todo!(),
 		}
 	}
 }
@@ -661,6 +738,7 @@ pub enum NonEqualityReason {
 	/// TODO more information
 	MissingParameter,
 	GenericParameterMismatch,
+	Excess,
 }
 
 #[derive(Debug)]
@@ -894,12 +972,12 @@ pub(crate) fn tuple_like(id: TypeId, types: &TypeStore, environment: &crate::Env
 	}
 }
 
-pub(crate) fn unfold_tuple(_ty: TypeId) -> TypeId {
+pub(crate) fn _unfold_tuple(_ty: TypeId) -> TypeId {
 	// return Type::PropertyOf()
 	todo!()
 }
 
-pub(crate) fn assign_to_tuple(_ty: TypeId) -> TypeId {
+pub(crate) fn _assign_to_tuple(_ty: TypeId) -> TypeId {
 	todo!()
 	// if let PropertyKey::Type(slice) =
 }
@@ -922,6 +1000,7 @@ fn get_simple_value(
 	properties::get_property_unbound(
 		(on, None),
 		(properties::Publicity::Public, property, None),
+		true,
 		ctx,
 		types,
 	)

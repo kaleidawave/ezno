@@ -8,7 +8,7 @@ use crate::{
 	types::{
 		functions::SynthesisedArgument,
 		printing::print_type,
-		properties::{get_property, key_matches, AccessMode, Descriptor, PropertyKey, Publicity},
+		properties::{key_matches, AccessMode, Descriptor, PropertyKey, Publicity},
 		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
 	Constant, Environment, PropertyValue, TypeId,
@@ -203,10 +203,7 @@ pub(crate) fn call_constant_function(
 				};
 
 			let get_type_by_id = types.get_type_by_id(ty);
-			if let Type::SpecialObject(
-				SpecialObject::Function(func, _)
-				| SpecialObject::ClassConstructor { constructor: func, .. },
-			)
+			if let Type::SpecialObject(SpecialObject::Function(func, _))
 			| Type::FunctionReference(func) = get_type_by_id
 			{
 				let function_type =
@@ -218,7 +215,7 @@ pub(crate) fn call_constant_function(
 				} else {
 					match effects {
 						FunctionEffect::SideEffects { events, .. } => {
-							let mut buf = String::new();
+							let mut buf = String::from("Effects:\n");
 							debug_effects(&mut buf, events, types, environment, 0, true);
 							Ok(ConstantOutput::Diagnostic(buf))
 						}
@@ -317,7 +314,7 @@ pub(crate) fn call_constant_function(
 
 				macro_rules! get_property {
 					($key:expr) => {
-						get_property(
+						crate::types::properties::get_property(
 							descriptor,
 							publicity,
 							&PropertyKey::String(std::borrow::Cow::Borrowed($key)),
@@ -341,7 +338,8 @@ pub(crate) fn call_constant_function(
 					{
 						PropertyValue::Getter(*func_id)
 					} else {
-						todo!()
+						crate::utilities::notify!("Here!!");
+						return Err(ConstantFunctionError::BadCall);
 					}
 				} else if let Some(setter) = get_property!("set") {
 					if let Type::SpecialObject(SpecialObject::Function(func_id, _)) =
@@ -349,7 +347,8 @@ pub(crate) fn call_constant_function(
 					{
 						PropertyValue::Setter(*func_id)
 					} else {
-						todo!()
+						crate::utilities::notify!("Here!!");
+						return Err(ConstantFunctionError::BadCall);
 					}
 				} else {
 					return Err(ConstantFunctionError::BadCall);
@@ -457,33 +456,33 @@ pub(crate) fn call_constant_function(
 							ObjectBuilder::new(None, types, call_site, &mut environment.info);
 
 						object.append(
-							environment,
 							Publicity::Public,
 							key,
 							PropertyValue::Value(value),
 							call_site,
+							&mut environment.info,
 						);
 
 						object.append(
-							environment,
 							Publicity::Public,
 							"writable".into(),
 							PropertyValue::Value(descriptor.writable),
 							call_site,
+							&mut environment.info,
 						);
 						object.append(
-							environment,
 							Publicity::Public,
 							"enumerable".into(),
 							PropertyValue::Value(descriptor.enumerable),
 							call_site,
+							&mut environment.info,
 						);
 						object.append(
-							environment,
 							Publicity::Public,
 							"configurable".into(),
 							PropertyValue::Value(descriptor.configurable),
 							call_site,
+							&mut environment.info,
 						);
 
 						Ok(ConstantOutput::Value(object.build_object()))
@@ -510,9 +509,14 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		"RegExp:constructor" => {
-			todo!()
-		}
+		// "RegExp:constructor" => {
+		// 	crate::utilities::notify!("TODO check argument");
+		// 	if let Some(arg) = arguments.first() {
+		// 		Ok(ConstantOutput::Value(features::regular_expressions::new_regexp(features::regular_expressions::TypeIdOrString::TypeId(arg), types, environment)))
+		// 	} else {
+		// 		Err(ConstantFunctionError::BadCall)
+		// 	}
+		// }
 		// TODO
 		"JSON:parse" => {
 			crate::utilities::notify!("TODO JSON:parse");

@@ -156,6 +156,10 @@ impl DiagnosticsContainer {
 			Ok(self)
 		}
 	}
+
+	pub fn count(&self) -> usize {
+		self.diagnostics.len()
+	}
 }
 
 impl IntoIterator for DiagnosticsContainer {
@@ -258,7 +262,7 @@ impl TypeStringRepresentation {
 				if generics.is_some() {
 					todo!("chaining")
 				}
-				let generics = Some(GenericChainLink::Link {
+				let generics = Some(GenericChainLink::PartiallyAppliedGenericArgumentsLink {
 					parent_link: None,
 					value: &antecedent,
 					from: TypeId::UNIMPLEMENTED_ERROR_TYPE,
@@ -956,12 +960,12 @@ fn function_calling_error_diagnostic(
 			kind,
 		},
 		FunctionCallingError::NoLogicForIdentifier(name, position) => Diagnostic::Position {
-			reason: format!("no logic for constant function {name}{context}"),
+			reason: format!("No logic for constant function {name}{context}"),
 			kind,
 			position,
 		},
 		FunctionCallingError::NeedsToBeCalledWithNewKeyword(position) => Diagnostic::Position {
-			reason: "class constructor must be called with new".to_owned(),
+			reason: "Class constructor must be called with new".to_owned(),
 			kind,
 			position,
 		},

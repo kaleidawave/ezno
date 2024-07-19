@@ -78,6 +78,8 @@ impl RootContext {
 			("GreaterThan".to_owned(), TypeId::GREATER_THAN),
 			("MultipleOf".to_owned(), TypeId::MULTIPLE_OF),
 			("NotNotANumber".to_owned(), TypeId::NOT_NOT_A_NUMBER),
+			("Not".to_owned(), TypeId::NOT_RESTRICTION),
+			("CaseInsensitive".to_owned(), TypeId::CASE_INSENSITIVE),
 		]);
 
 		let mut info = crate::LocalInformation::default();

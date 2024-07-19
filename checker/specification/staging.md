@@ -8,7 +8,7 @@ Currently implementing:
 
 ```ts
 type Mapped<T> = {
-	[P in keyof T]: string
+	[P in keyof T]: T[P]
 }
 
 interface Y { readonly a: string, b?: number }
@@ -59,10 +59,12 @@ type Required<T> = {
     [P in keyof T]-?: T[P];
 };
 
-const x: Required<{ a?: number }> = { a: 3 }, y: Required<{ a?: number }> = { };
+({ a: 3 } satisfies Required<{ a?: number }>);
+// Bad
+({ } satisfies Required<{ a?: number }>);
 ```
 
-- Cannot assign { } to required
+- Expected { [keyof { a?: number }]: { a?: number }[keyof { a?: number }] }, found {}
 
 #### Readonly
 
@@ -82,13 +84,13 @@ x.a = "hi";
 
 ```ts
 type Mutable<T> = {
-    -readonly [P in keyof T]-?: T[P];
+    -readonly [P in keyof T]: T[P];
 };
 
 interface Y { readonly a: string }
 declare let x: Mutable<Y>;
 x.a = "hi";
-x.a = 4
+x.a = 4;
 ```
 
 - Cannot assign 4, to type of string
@@ -341,20 +343,6 @@ array[Math.random()] satisfies 4;
 
 - ?
 
-#### Known symbol inference & checking
-
-> #TODO extra
-
-```ts
-class X {
-	[Symbol.iterator]() {
-		return {}
-	}
-}
-```
-
-- ?
-
 #### Un-delete-able property
 
 > TODO in a function as well
@@ -385,9 +373,17 @@ const b: Uppercase<string> = "hi"
 ```ts
 5 satisfies MultipleOf<2>;
 4 satisfies MultipleOf<2>;
+
+6 satisfies GreaterThan<2>;
+-4 satisfies GreaterThan<2>;
+
+6 satisfies LessThan<2>;
+-4 satisfies LessThan<2>;
 ```
 
 - Expected MultipleOf\<2\>, found 5
+- Expected GreaterThan\<2\>, found -4
+- Expected LessThan\<2\>, found 6
 
 #### Order of numerical properties
 
@@ -417,14 +413,16 @@ func("hi", "hello") satisfies number;
 > TODO should also check that it is readonly
 
 ```ts
-function x() { }
-class X { }
+function a() { }
+class B { }
+let c = class { }
 
-x.name satisfies "x"
-X.name satisfies "Y"
+a.name satisfies "a"
+B.name satisfies "B"
+c.name satisfies "sea"
 ```
 
-- Expected "Y", found "X"
+- Expected "sea", found "c"
 
 #### Optional effect key
 
@@ -565,6 +563,29 @@ throwSomething satisfies string;
 
 ### Properties
 
+#### Getters AND setter
+
+> This involves property lookup skipping setter and getters
+
+```ts
+let global: number = 0;
+const object = {
+	get value() {
+		return global
+	},
+	set value(newValue: number) {
+		global = newValue;
+	}
+}
+
+object.value satisfies string;
+object.value = 10;
+object.value satisfies 10;
+global satisfies 10
+```
+
+- Expected string, found 0
+
 #### `enumerable` in for in
 
 ```ts
@@ -597,7 +618,7 @@ Object.isFrozen(obj) satisfies true;
 
 - Cannot write to property 'property'
 
-#### `Object.defineProperty`
+#### `Object.defineProperty` writable
 
 > TODO defineProperties
 
@@ -614,6 +635,23 @@ obj.property = 70;
 - Expected string, found 42
 - Cannot write to property 'property'
 
+#### `Object.defineProperty` getter and setter
+
+> TODO setter
+
+```ts
+const obj = {};
+let b = 0;
+Object.defineProperty(obj, 'property', {
+  get: () => b,
+});
+obj.property satisfies 0;
+b++;
+obj.property satisfies string;
+```
+
+- Expected string, found 1
+
 #### `Object.getOwnPropertyDescriptor`
 
 > TODO getOwnPropertyDescriptors
@@ -629,3 +667,67 @@ Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
 > Order is also important
 
 - Expected string, found { value: true, writable: true, enumerable: true, configurable: true }
+
+#### And on properties
+
+> Note that it keeps it as a `and`. It does not union the properties
+
+```ts
+declare type U = { a: 2 } & { b: 3 }
+declare let x: U;
+x.b satisfies 3;
+
+({ a: 2, b: 3 } satisfies U); 
+({ b: 3 } satisfies U); 
+```
+
+- Expected U, found { b: 3 }
+
+#### Non null assertions
+
+> TODO this currently only works on conditionals
+
+```ts
+declare const global: { property?: string };
+
+global.property satisfies string | undefined;
+global.property! satisfies number;
+```
+
+- Expected number, found string
+
+### Extras
+
+#### `Not`
+
+```ts
+declare let a: number;
+4 satisfies Not<4>;
+6 satisfies Not<4>;
+a satisfies Not<8>;
+2 satisfies Not<string>;
+"hi" satisfies Not<string>;
+
+declare let b: Not<5> & number;
+b satisfies number;
+b satisfies string;
+b satisfies 5;
+```
+
+- Expected Not<4>, found 4
+- Expected Not<8>, found number
+- Expected Not\<string\>, found "hi"
+- Expected string, found Not<5> & number
+- Expected 5, found Not<5> & number
+
+#### `Exclusive`
+
+```ts
+interface X { a: number }
+const x = { a: 1, b: 2 };
+
+x satisfies Exclusive<X>;
+({ a: 6 } satisfies Exclusive<X>);
+```
+
+- Expected Exclusive\<X\>, found { a: 1, b: 2 }

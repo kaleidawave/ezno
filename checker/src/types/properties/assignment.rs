@@ -59,6 +59,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 			let property_constraint = get_property_unbound(
 				(object_constraint, None),
 				(publicity, under, None),
+				false,
 				environment,
 				types,
 			);
@@ -184,7 +185,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 
 	// IMPORTANT: THIS ALSO CAPTURES POLY CONSTRAINTS
 	let current_property =
-		get_property_unbound((on, None), (publicity, under, None), environment, types);
+		get_property_unbound((on, None), (publicity, under, None), false, environment, types);
 
 	if let Ok(fact) = current_property {
 		if let Some(value) = set_on_logical(
@@ -244,7 +245,7 @@ fn set_on_logical<E: CallCheckingBehavior>(
 		Logical::Implies { on: og, antecedent } => {
 			crate::utilities::notify!("antecedent={:?}", antecedent);
 			let generics = crate::types::GenericChainLink::FunctionRoot {
-				parent_link: Some(&antecedent),
+				parent_arguments: Some(&antecedent),
 				call_site_type_arguments: None,
 				// TODO weird?
 				type_arguments: &crate::Map::default(),

@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::hash_map::Entry};
 
-use source_map::{SourceId, SpanWithSource};
+use source_map::{Nullable, SourceId, SpanWithSource};
 
 use crate::{
 	context::{
@@ -11,7 +11,7 @@ use crate::{
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::RootReference,
-	features::create_closed_over_references,
+	features::{create_closed_over_references, objects::ObjectBuilder},
 	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
@@ -19,13 +19,13 @@ use crate::{
 		functions::SynthesisedParameters,
 		generics::GenericTypeParameters,
 		printing::print_type,
-		properties::{PropertyKey, PropertyValue},
+		properties::{get_property_unbound, PropertyKey, PropertyValue, Publicity},
 		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
 		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
 		SynthesisedRestParameter, TypeStore,
 	},
-	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, Map, ReadFromFS,
-	Scope, Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Logical,
+	Map, ReadFromFS, Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -81,21 +81,28 @@ pub fn register_arrow_function<T: crate::ReadFromFS, A: crate::ASTImplementation
 }
 
 pub fn register_expression_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	expecting: TypeId,
+	expected: TypeId,
 	is_async: bool,
 	is_generator: bool,
-	location: Option<String>,
+	location: ContextLocation,
+	name: Option<String>,
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId {
+	let name = if let Some(name) = name {
+		checking_data.types.new_constant_type(Constant::String(name))
+	} else {
+		extract_name(expected, &checking_data.types, environment)
+	};
 	let function_type = synthesise_function(
 		function,
 		FunctionRegisterBehavior::ExpressionFunction {
-			expecting,
+			expecting: expected,
 			is_async,
 			is_generator,
 			location,
+			name,
 		},
 		environment,
 		checking_data,
@@ -110,16 +117,19 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	is_async: bool,
 	is_generator: bool,
 	location: ContextLocation,
+	name: String,
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) {
+	let name = checking_data.types.new_constant_type(Constant::String(name));
 	let behavior = FunctionRegisterBehavior::StatementFunction {
-		hoisted: variable_id,
+		variable_id,
 		is_async,
 		is_generator,
 		location,
 		internal_marker: None,
+		name,
 	};
 
 	let function = synthesise_function(function, behavior, environment, checking_data);
@@ -145,18 +155,21 @@ pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::AST
 	_overloaded: bool,
 	is_async: bool,
 	is_generator: bool,
-	location: Option<String>,
+	location: ContextLocation,
+	name: String,
 	internal_marker: Option<InternalFunctionEffect>,
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) {
+	let name = checking_data.types.new_constant_type(Constant::String(name));
 	let behavior = FunctionRegisterBehavior::StatementFunction {
-		hoisted: variable_id,
+		variable_id,
 		is_async,
 		is_generator,
 		location,
 		internal_marker,
+		name,
 	};
 
 	let function = synthesise_function(function, behavior, environment, checking_data);
@@ -287,6 +300,7 @@ pub enum FunctionBehavior {
 		free_this_id: TypeId,
 		is_async: bool,
 		is_generator: bool,
+		name: TypeId,
 	},
 	/// Functions defined `function`. Extends above by allowing `new`
 	Function {
@@ -300,6 +314,8 @@ pub enum FunctionBehavior {
 		is_async: bool,
 		/// Cannot be called with `new` if true
 		is_generator: bool,
+		/// This is to implement <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/name>
+		name: TypeId,
 	},
 	/// Constructors, require new
 	Constructor {
@@ -307,12 +323,22 @@ pub enum FunctionBehavior {
 		prototype: TypeId,
 		/// The id of the generic that needs to be pulled out
 		this_object_type: TypeId,
+		name: TypeId,
 	},
 }
 
 impl FunctionBehavior {
 	pub(crate) fn can_be_bound(self) -> bool {
 		matches!(self, Self::Method { .. } | Self::Function { .. })
+	}
+
+	pub(crate) fn get_name(self) -> TypeId {
+		match self {
+			Self::ArrowFunction { .. } => TypeId::EMPTY_STRING,
+			Self::Method { name, .. }
+			| Self::Function { name, .. }
+			| Self::Constructor { name, .. } => name,
+		}
 	}
 }
 
@@ -396,20 +422,23 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		is_async: bool,
 		is_generator: bool,
 		location: ContextLocation,
+		name: TypeId,
 	},
 	StatementFunction {
-		hoisted: VariableId,
+		/// For hoisting cases
+		variable_id: VariableId,
 		is_async: bool,
 		is_generator: bool,
 		location: ContextLocation,
 		internal_marker: Option<InternalFunctionEffect>,
+		name: TypeId,
 	},
 	ObjectMethod {
 		// TODO this will take PartialFunction from hoisted?
 		expecting: TypeId,
 		is_async: bool,
 		is_generator: bool,
-		// location: ContextLocation,
+		name: TypeId, // location: ContextLocation,
 	},
 	ClassMethod {
 		// TODO this will take PartialFunction from hoisted?
@@ -420,6 +449,7 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		internal_marker: Option<InternalFunctionEffect>,
 		/// Used for shape of `this`
 		this_shape: TypeId,
+		name: TypeId,
 	},
 	Constructor {
 		prototype: TypeId,
@@ -427,6 +457,8 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		super_type: Option<TypeId>,
 		properties: ClassPropertiesToRegister<'a, A>,
 		internal_marker: Option<InternalFunctionEffect>,
+		/// Name of the class
+		name: TypeId,
 	},
 }
 
@@ -503,11 +535,13 @@ where
 			prototype,
 			properties,
 			internal_marker,
+			name,
 		} => {
 			FunctionKind {
 				behavior: FunctionBehavior::Constructor {
 					prototype,
 					this_object_type: TypeId::ERROR_TYPE,
+					name,
 				},
 				scope: FunctionScope::Constructor {
 					extends: super_type.is_some(),
@@ -564,6 +598,7 @@ where
 			is_async,
 			is_generator,
 			location,
+			name,
 		} => {
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
@@ -581,6 +616,7 @@ where
 					is_generator,
 					this_id: TypeId::ERROR_TYPE,
 					prototype,
+					name,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
@@ -598,11 +634,12 @@ where
 			}
 		}
 		FunctionRegisterBehavior::StatementFunction {
-			hoisted: _,
+			variable_id: _variable_id,
 			is_async,
 			is_generator,
 			location,
 			internal_marker,
+			name,
 		} => {
 			let prototype = checking_data
 				.types
@@ -614,6 +651,7 @@ where
 					is_generator,
 					prototype,
 					this_id: TypeId::ERROR_TYPE,
+					name,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
@@ -636,6 +674,7 @@ where
 			expecting,
 			internal_marker,
 			this_shape,
+			name,
 		} => {
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
@@ -648,6 +687,7 @@ where
 					is_async,
 					is_generator,
 					free_this_id: this_shape,
+					name,
 				},
 				scope: FunctionScope::MethodFunction {
 					free_this_type: this_shape,
@@ -661,7 +701,7 @@ where
 				this_shape: Some(this_shape),
 			}
 		}
-		FunctionRegisterBehavior::ObjectMethod { is_async, is_generator, expecting } => {
+		FunctionRegisterBehavior::ObjectMethod { is_async, is_generator, expecting, name } => {
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
 				&mut checking_data.types,
@@ -673,6 +713,7 @@ where
 					is_async,
 					is_generator,
 					free_this_id: TypeId::ERROR_TYPE,
+					name,
 				},
 				scope: FunctionScope::MethodFunction {
 					free_this_type: TypeId::ERROR_TYPE,
@@ -1076,5 +1117,50 @@ fn get_expected_parameters_from_type(
 		)
 	} else {
 		(None, None)
+	}
+}
+
+/// This is to implement <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/name>
+///
+/// Creates (expected & { name }) intersection object
+///
+/// Little bit complex ...
+pub fn new_name_expected_object(
+	name: TypeId,
+	expected: TypeId,
+	types: &mut TypeStore,
+	environment: &mut Environment,
+) -> TypeId {
+	let mut name_object =
+		ObjectBuilder::new(None, types, SpanWithSource::NULL, &mut environment.info);
+
+	name_object.append(
+		types::properties::Publicity::Public,
+		PropertyKey::String(Cow::Borrowed("name")),
+		PropertyValue::Value(name),
+		SpanWithSource::NULL,
+		&mut environment.info,
+	);
+
+	types.new_and_type(expected, name_object.build_object()).unwrap()
+}
+
+/// Reverse of the above
+pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environment) -> TypeId {
+	if let Type::And(_, rhs) = types.get_type_by_id(expecting) {
+		if let Ok(Logical::Pure(PropertyValue::Value(ty))) = get_property_unbound(
+			(*rhs, None),
+			(Publicity::Public, &PropertyKey::String(Cow::Borrowed("name")), None),
+			false,
+			environment,
+			types,
+		) {
+			ty
+		} else {
+			crate::utilities::notify!("Here");
+			TypeId::EMPTY_STRING
+		}
+	} else {
+		TypeId::EMPTY_STRING
 	}
 }

@@ -129,9 +129,6 @@ impl Exported {
 
 					crate::utilities::notify!("Call result as well");
 				}
-				Type::SpecialObject(SpecialObject::ClassConstructor { .. }) => {
-					todo!()
-				}
 				Type::Object(_d) => {
 					todo!()
 				}

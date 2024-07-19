@@ -15,7 +15,8 @@ use source_map::{Span, SpanWithSource};
 use crate::{
 	context::environment::ExpectedReturnType,
 	diagnostics::{
-		CannotRedeclareVariable, PropertyKeyRepresentation, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ
+		CannotRedeclareVariable, PropertyKeyRepresentation, TypeCheckError, TypeCheckWarning,
+		TypeStringRepresentation, TDZ,
 	},
 	events::RootReference,
 	features::{
@@ -1221,7 +1222,9 @@ pub type PossibleLogical<T> = Result<Logical<T>, MissingOrToCalculate>;
 
 /// WIP
 pub enum SetPropertyError {
-	NotWriteable { property: PropertyKeyRepresentation },
+	NotWriteable {
+		property: PropertyKeyRepresentation,
+	},
 	Readonly,
 	AssigningToTuple,
 	DoesNotMeetConstraint {

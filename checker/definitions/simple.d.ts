@@ -72,16 +72,16 @@ declare class Array<T> {
 
     // TODO this argument
     // map<U>(cb: (t: T, i?: number) => U): Array<U> {
-    map<U>(cb: (t: T) => U): Array<U> {
-        const { length } = this, mapped: Array<U> = [];
-        let i: number = 0;
-        while (i < length) {
-            const value = this?.[i];
-            const newValue = cb(value) //, i++);
-            mapped.push(newValue)
-        }
-        return mapped;
-    }
+    // map<U>(cb: (t: T) => U): Array<U> {
+    //     const { length } = this, mapped: Array<U> = [];
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this?.[i];
+    //         const newValue = cb(value) //, i++);
+    //         mapped.push(newValue)
+    //     }
+    //     return mapped;
+    // }
 
     // copy(): Array<T> {
     //     const { length } = this, mapped: Array<T> = [];
@@ -322,10 +322,11 @@ declare class Proxy {
 }
 
 // Copied from `es5.d.ts`. Could this be an or
+// TODO string keys temp because parser broke
 interface PropertyDescriptor {
     value?: any;
-    // get?(): any;
-    // set?(v: any): void;
+    ["get" ? (): any;
+    ["set" ? (v: any): void;
 
     writable?: boolean;
     configurable?: boolean;
@@ -359,29 +360,29 @@ declare class Object {
     //     return n
     // }
 
-    // static keys(on: { [s: string]: any }): Array<string> {
-    //     const keys: Array<string> = [];
-    //     for (const key in on) {
-    //         keys.push(key);
-    //     }
-    //     return keys
-    // }
+    static keys(on: { [s: string]: any }): Array<string> {
+        const keys: Array<string> = [];
+        for (const key in on) {
+            keys.push(key);
+        }
+        return keys
+    }
 
-    // static values(on: { [s: string]: any }): Array<any> {
-    //     const values: Array<any> = [];
-    //     for (const key in on) {
-    //         values.push(on[key]);
-    //     }
-    //     return values
-    // }
+    static values(on: { [s: string]: any }): Array<any> {
+        const values: Array<any> = [];
+        for (const key in on) {
+            values.push(on[key]);
+        }
+        return values
+    }
 
-    // static entries(on: { [s: string]: any }): Array<[string, any]> {
-    //     const entries: Array<[string, any]> = [];
-    //     for (const key in on) {
-    //         entries.push([key, on[key]]);
-    //     }
-    //     return entries
-    // }
+    static entries(on: { [s: string]: any }): Array<[string, any]> {
+        const entries: Array<[string, any]> = [];
+        for (const key in on) {
+            entries.push([key, on[key]]);
+        }
+        return entries
+    }
 
     // static fromEntries(iterator: any): object {
     //     const obj = {};

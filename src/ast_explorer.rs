@@ -8,7 +8,7 @@ use enum_variants_strings::EnumVariantsStrings;
 use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOptions};
 
 use crate::{
-	reporting::emit_diagnostics,
+	reporting::report_diagnostics_to_cli,
 	utilities::{print_to_cli, print_to_cli_without_newline},
 };
 
@@ -136,7 +136,7 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => emit_diagnostics(
+					Err(err) => report_diagnostics_to_cli(
 						std::iter::once((err, source_id).into()),
 						&fs,
 						false,
@@ -162,7 +162,7 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => emit_diagnostics(
+					Err(err) => report_diagnostics_to_cli(
 						std::iter::once((err, source_id).into()),
 						&fs,
 						false,
@@ -185,7 +185,7 @@ impl ExplorerSubCommand {
 						};
 						print_to_cli(format_args!("{}", module.to_string(&options)));
 					}
-					Err(err) => emit_diagnostics(
+					Err(err) => report_diagnostics_to_cli(
 						std::iter::once((err, source_id).into()),
 						&fs,
 						false,

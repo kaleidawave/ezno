@@ -1,7 +1,6 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	context::Environment,
 	types::{
 		properties::{PropertyKey, PropertyValue, Publicity},
 		TypeStore,
@@ -31,13 +30,13 @@ impl ObjectBuilder {
 
 	pub fn append(
 		&mut self,
-		environment: &mut Environment,
 		publicity: Publicity,
 		under: PropertyKey<'static>,
 		value: PropertyValue,
 		position: SpanWithSource,
+		info: &mut LocalInformation,
 	) {
-		environment.info.register_property(self.object, publicity, under, value, true, position);
+		info.register_property(self.object, publicity, under, value, true, position);
 	}
 
 	#[must_use]
@@ -62,18 +61,15 @@ pub enum SpecialObject {
 	/// Needs overrides for calling, getting etc
 	Proxy(Proxy),
 	/// Not a [Constant] as `typeof /hi/ === "object"` and it has state
-	RegularExpression(String),
+	RegularExpression {
+		content: TypeId,
+		// groups: Option<TypeId>,
+	},
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
-	/// Yeah here
+	/// Yeah here. Also for classes
+	/// TODO not all functions have `ThisValue`
 	Function(FunctionId, ThisValue),
-	/// Mainly for printing
-	ClassConstructor {
-		name: String,
-		constructor: FunctionId,
-		/// For `instanceof` thing
-		prototype: TypeId,
-	},
 	Null,
 }
 

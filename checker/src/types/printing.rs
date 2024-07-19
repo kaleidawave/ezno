@@ -5,7 +5,7 @@ use super::{GenericChain, PolyNature, Type, TypeId, TypeStore};
 use crate::{
 	context::information::{get_value_of_constant_import_variable, InformationChain},
 	features::{
-		functions::ThisValue,
+		functions::{FunctionBehavior, ThisValue},
 		objects::{Proxy, SpecialObject},
 	},
 	types::{
@@ -118,11 +118,6 @@ pub fn print_type_into_buf<C: InformationChain>(
 				} else {
 					if debug {
 						if let PolyNature::FunctionGeneric { eager_fixed, .. } = nature {
-							let key = match nature {
-								PolyNature::FunctionGeneric { .. } => "fg",
-								_ => "??",
-							};
-							write!(buf, "[{key} {}, @ ", ty.0).unwrap();
 							print_type_into_buf(
 								*eager_fixed,
 								buf,
@@ -326,7 +321,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				} else {
 					if debug {
-						write!(buf, "(property on {:?}, result=->)", under).unwrap();
+						write!(buf, "(property under {:?}, result=->)", under).unwrap();
 					}
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}
@@ -441,6 +436,20 @@ pub fn print_type_into_buf<C: InformationChain>(
 		Type::FunctionReference(func_id)
 		| Type::SpecialObject(SpecialObject::Function(func_id, _)) => {
 			let func = types.functions.get(func_id).unwrap();
+
+			if let FunctionBehavior::Constructor { ref name, prototype, .. } = func.behavior {
+				if let Type::Constant(crate::Constant::String(name)) = types.get_type_by_id(*name) {
+					if debug {
+						write!(buf, "constructor(for#{})@{name}#{}", prototype.0, ty.0).unwrap();
+					} else {
+						buf.push_str(name);
+						return;
+					}
+				} else {
+					buf.push_str("*class*");
+				}
+			}
+
 			if debug {
 				let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
 				write!(buf, "[func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
@@ -453,7 +462,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?} ")
 						.unwrap();
 				} else {
-					write!(buf, "{:?} ", func.effect).unwrap();
+					write!(buf, "{:?}", func.effect).unwrap();
 				}
 				if let Type::SpecialObject(SpecialObject::Function(_, ThisValue::Passed(p))) =
 					r#type
@@ -671,19 +680,17 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push_str(" }");
 			}
-			SpecialObject::RegularExpression(exp) => {
-				buf.push('/');
-				buf.push_str(exp);
-				buf.push('/');
-			}
-			SpecialObject::Function(..) => unreachable!(),
-			SpecialObject::ClassConstructor { name, prototype, constructor: _ } => {
-				if debug {
-					write!(buf, "constructor(for#{})@{name}#{}", prototype.0, ty.0).unwrap();
+			SpecialObject::RegularExpression { content, .. } => {
+				// TODO flags
+				if let Type::Constant(crate::Constant::String(name)) =
+					types.get_type_by_id(*content)
+				{
+					write!(buf, "/{name}/").unwrap();
 				} else {
-					buf.push_str(name);
+					buf.push_str("RegExp");
 				}
 			}
+			SpecialObject::Function(..) => unreachable!(),
 		},
 	}
 

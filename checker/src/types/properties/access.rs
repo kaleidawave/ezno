@@ -21,6 +21,7 @@ use super::{PropertyKey, PropertyKind, Publicity};
 pub(crate) fn get_property_unbound(
 	(on, on_type_arguments): (TypeId, GenericChain),
 	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
+	no_setters: bool,
 	info_chain: &impl InformationChain,
 	types: &TypeStore,
 ) -> PossibleLogical<PropertyValue> {
@@ -30,6 +31,7 @@ pub(crate) fn get_property_unbound(
 	fn resolver(
 		(on, on_type_arguments): (TypeId, GenericChain),
 		(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
+		no_setters: bool,
 		info_chain: &impl InformationChain,
 		types: &TypeStore,
 	) -> Option<Logical<PropertyValue>> {
@@ -49,6 +51,10 @@ pub(crate) fn get_property_unbound(
 						if *publicity != required_publicity {
 							continue;
 						}
+						if let (true, PropertyValue::Setter(_)) = (no_setters, value.inner_simple())
+						{
+							continue;
+						}
 
 						let (key_matches, key_arguments) = super::key_matches(
 							(key, on_type_arguments),
@@ -58,7 +64,7 @@ pub(crate) fn get_property_unbound(
 						);
 
 						if key_matches {
-							crate::utilities::notify!("{:?} {:?}", (key, want_key), value);
+							// crate::utilities::notify!("{:?} {:?}", (key, want_key), value);
 							// TODO if conditional then continue to find then logical or
 							let pure = Logical::Pure(value.clone());
 							return Some(if !key_arguments.is_empty() {
@@ -106,6 +112,7 @@ pub(crate) fn get_property_unbound(
 		Type::SpecialObject(SpecialObject::Function(function_id, _)) => resolver(
 			(on, on_type_arguments),
 			(publicity, under, under_type_arguments),
+			no_setters,
 			info_chain,
 			types,
 		)
@@ -117,10 +124,8 @@ pub(crate) fn get_property_unbound(
 			) = (under.is_equal_to("prototype"), &get_function_from_id.behavior)
 			{
 				Some(Logical::Pure(PropertyValue::Value(*prototype)))
-			} else if let (true, crate::features::functions::FunctionBehavior::Function { .. }) =
-				(under.is_equal_to("name"), &get_function_from_id.behavior)
-			{
-				todo!("get name")
+			} else if under.is_equal_to("name") {
+				Some(Logical::Pure(PropertyValue::Value(get_function_from_id.behavior.get_name())))
 			} else {
 				None
 			}
@@ -129,6 +134,7 @@ pub(crate) fn get_property_unbound(
 			resolver(
 				(TypeId::FUNCTION_TYPE, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			)
@@ -137,6 +143,7 @@ pub(crate) fn get_property_unbound(
 		Type::FunctionReference(_) => resolver(
 			(TypeId::FUNCTION_TYPE, on_type_arguments),
 			(publicity, under, under_type_arguments),
+			no_setters,
 			info_chain,
 			types,
 		)
@@ -145,6 +152,7 @@ pub(crate) fn get_property_unbound(
 			get_property_unbound(
 				(*to, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			)
@@ -156,6 +164,7 @@ pub(crate) fn get_property_unbound(
 		Type::And(left, right) => get_property_unbound(
 			(*left, on_type_arguments),
 			(publicity, under, under_type_arguments),
+			no_setters,
 			info_chain,
 			types,
 		)
@@ -163,6 +172,7 @@ pub(crate) fn get_property_unbound(
 			get_property_unbound(
 				(*right, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			)
@@ -171,12 +181,14 @@ pub(crate) fn get_property_unbound(
 			let left = get_property_unbound(
 				(*left, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			);
 			let right = get_property_unbound(
 				(*right, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			);
@@ -199,6 +211,7 @@ pub(crate) fn get_property_unbound(
 			resolver(
 				(on, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			)
@@ -207,6 +220,7 @@ pub(crate) fn get_property_unbound(
 				get_property_unbound(
 					(aliases, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					no_setters,
 					info_chain,
 					types,
 				)
@@ -220,6 +234,7 @@ pub(crate) fn get_property_unbound(
 				resolver(
 					(on, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					no_setters,
 					info_chain,
 					types,
 				)
@@ -240,6 +255,7 @@ pub(crate) fn get_property_unbound(
 				let get_property_unbound = get_property_unbound(
 					(*base, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					no_setters,
 					info_chain,
 					types,
 				);
@@ -259,12 +275,14 @@ pub(crate) fn get_property_unbound(
 			let left = get_property_unbound(
 				(*truthy_result, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			);
 			let right = get_property_unbound(
 				(*otherwise_result, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			);
@@ -277,6 +295,7 @@ pub(crate) fn get_property_unbound(
 			let on_constructor_type = resolver(
 				(on, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			)
@@ -288,6 +307,7 @@ pub(crate) fn get_property_unbound(
 				get_property_unbound(
 					(aliases, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					no_setters,
 					info_chain,
 					types,
 				)
@@ -316,6 +336,7 @@ pub(crate) fn get_property_unbound(
 			let on_self = resolver(
 				(on, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			);
@@ -324,6 +345,7 @@ pub(crate) fn get_property_unbound(
 				resolver(
 					(prototype, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					no_setters,
 					info_chain,
 					types,
 				)
@@ -347,6 +369,7 @@ pub(crate) fn get_property_unbound(
 		Type::Interface { .. } => resolver(
 			(on, on_type_arguments),
 			(publicity, under, under_type_arguments),
+			no_setters,
 			info_chain,
 			types,
 		)
@@ -357,6 +380,7 @@ pub(crate) fn get_property_unbound(
 				get_property_unbound(
 					(*extends, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					no_setters,
 					info_chain,
 					types,
 				)
@@ -365,32 +389,34 @@ pub(crate) fn get_property_unbound(
 			}
 		}),
 		Type::SpecialObject(SpecialObject::Null) => Err(MissingOrToCalculate::Missing),
-		Type::SpecialObject(SpecialObject::ClassConstructor { .. }) | Type::Class { .. } => {
-			resolver(
-				(on, on_type_arguments),
-				(publicity, under, under_type_arguments),
-				info_chain,
-				types,
-			)
-			.ok_or(MissingOrToCalculate::Missing)
-			.or_else(|_| {
-				if let Some(prototype) =
-					info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&on))
-				{
-					get_property_unbound(
-						(*prototype, on_type_arguments),
-						(publicity, under, under_type_arguments),
-						info_chain,
-						types,
-					)
-				} else {
-					Err(MissingOrToCalculate::Missing)
-				}
-			})
-		}
+		// Type::SpecialObject(SpecialObject::ClassConstructor { .. }) |
+		Type::Class { .. } => resolver(
+			(on, on_type_arguments),
+			(publicity, under, under_type_arguments),
+			no_setters,
+			info_chain,
+			types,
+		)
+		.ok_or(MissingOrToCalculate::Missing)
+		.or_else(|_| {
+			if let Some(prototype) =
+				info_chain.get_chain_of_info().find_map(|info| info.prototypes.get(&on))
+			{
+				get_property_unbound(
+					(*prototype, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					no_setters,
+					info_chain,
+					types,
+				)
+			} else {
+				Err(MissingOrToCalculate::Missing)
+			}
+		}),
 		Type::Constant(cst) => resolver(
 			(on, on_type_arguments),
 			(publicity, under, under_type_arguments),
+			no_setters,
 			info_chain,
 			types,
 		)
@@ -400,6 +426,7 @@ pub(crate) fn get_property_unbound(
 			get_property_unbound(
 				(backing_type, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				no_setters,
 				info_chain,
 				types,
 			)
@@ -416,9 +443,13 @@ pub(crate) fn get_property_unbound(
 		Type::SpecialObject(SpecialObject::Generator { .. }) => {
 			todo!()
 		}
-		Type::SpecialObject(SpecialObject::RegularExpression(..)) => {
-			todo!()
-		}
+		Type::SpecialObject(SpecialObject::RegularExpression { .. }) => get_property_unbound(
+			(TypeId::REGEXP_TYPE, None),
+			(publicity, under, under_type_arguments),
+			no_setters,
+			info_chain,
+			types,
+		),
 	}
 }
 
@@ -764,7 +795,8 @@ fn get_from_an_object<E: CallCheckingBehavior>(
 		}
 	}
 
-	let result = get_property_unbound((on, None), (publicity, under, None), environment, types);
+	let result =
+		get_property_unbound((on, None), (publicity, under, None), true, environment, types);
 
 	match result {
 		Ok(logical) => {
@@ -820,7 +852,10 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						| Type::Or(_, _)
 						| Type::RootPolyType(_)
 						| Type::PartiallyAppliedGenerics(_)
-						| Type::Constructor(_)) => {
+						| Type::Constructor(_)
+						// TODO not sure about these two?
+						| Type::FunctionReference(..)
+						| Type::Object(ObjectNature::AnonymousTypeAnnotation)) => {
 							let result = if let Some(link) = generics {
 								let arguments = link.into_substitutable(types);
 								crate::utilities::notify!("arguments={:?}", arguments.arguments);
@@ -841,9 +876,7 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 						}
 						// Don't need to set this here. It is picked up from `on` during lookup
 						Type::SpecialObject(SpecialObject::Function(..))
-						| Type::FunctionReference(..)
 						| Type::AliasTo { .. }
-						| Type::Object(ObjectNature::AnonymousTypeAnnotation)
 						| Type::Interface { .. }
 						| Type::Class { .. } => types.register_type(Type::Constructor(Constructor::Property {
 							on,
@@ -873,6 +906,11 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 					// Very important
 					PropertyValue::Deleted => return None,
 					PropertyValue::ConditionallyExists { on, truthy } => {
+						let on = generics
+							.as_ref()
+							.and_then(|link| link.get_single_argument(on))
+							.unwrap_or(on);
+
 						let value = resolve_logical_with_poly(
 							Logical::Pure(*truthy),
 							on,
@@ -963,7 +1001,8 @@ fn evaluate_get_on_poly<E: CallCheckingBehavior>(
 	}
 
 	let fact =
-		get_property_unbound((on, None), (publicity, &under, None), top_environment, types).ok()?;
+		get_property_unbound((on, None), (publicity, &under, None), true, top_environment, types)
+			.ok()?;
 
 	crate::utilities::notify!("unbound is is {:?}", fact);
 

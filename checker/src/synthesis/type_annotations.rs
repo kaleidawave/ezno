@@ -460,11 +460,11 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						));
 
 						obj.append(
-							environment,
 							Publicity::Public,
 							PropertyKey::Type(key),
 							PropertyValue::Value(item_type),
 							ty_position,
+							&mut environment.info,
 						);
 						idx.increment(&mut checking_data.types);
 
@@ -473,11 +473,11 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				};
 				{
 					obj.append(
-						environment,
 						Publicity::Public,
 						idx.into_property_key(),
 						value,
 						ty_position,
+						&mut environment.info,
 					);
 					idx.increment(&mut checking_data.types);
 				}
@@ -487,11 +487,11 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let position = annotation.get_position().with_source(environment.get_source());
 
 			obj.append(
-				environment,
 				Publicity::Public,
 				PropertyKey::String("length".into()),
 				PropertyValue::Value(length_value),
 				position,
+				&mut environment.info,
 			);
 
 			// TODO this should be anonymous object type

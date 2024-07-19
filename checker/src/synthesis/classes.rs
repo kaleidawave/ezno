@@ -38,6 +38,7 @@ pub(super) fn synthesise_class_declaration<
 	P: parser::ExpressionOrStatementPosition + super::StatementOrExpressionVariable,
 >(
 	class: &ClassDeclaration<P>,
+	expecting: TypeId,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
@@ -114,7 +115,7 @@ pub(super) fn synthesise_class_declaration<
 					Publicity::Public
 				};
 
-				let property_key = parser_property_key_to_checker_property_key(
+				let key = parser_property_key_to_checker_property_key(
 					method.name.get_ast_ref(),
 					environment,
 					checking_data,
@@ -151,6 +152,7 @@ pub(super) fn synthesise_class_declaration<
 					expecting: TypeId::ANY_TYPE,
 					internal_marker,
 					this_shape: class_prototype,
+					name: key.into_name_type(&mut checking_data.types),
 				};
 
 				let function = synthesise_function(method, behavior, environment, checking_data);
@@ -167,7 +169,7 @@ pub(super) fn synthesise_class_declaration<
 				environment.info.register_property(
 					class_prototype,
 					publicity,
-					property_key,
+					key,
 					property,
 					// Is dynamic environment
 					true,
@@ -211,6 +213,12 @@ pub(super) fn synthesise_class_declaration<
 		}
 	}
 
+	let name_as_type_id = if let Some(name) = class.name.as_option_str() {
+		checking_data.types.new_constant_type(crate::Constant::String(name.to_owned()))
+	} else {
+		crate::features::functions::extract_name(expecting, &checking_data.types, environment)
+	};
+
 	// TODO abstract
 	let constructor = if let Some((decorators, constructor)) = class_constructor {
 		let internal_marker = if is_declare {
@@ -224,6 +232,7 @@ pub(super) fn synthesise_class_declaration<
 			super_type: extends,
 			properties: ClassPropertiesToRegister { properties },
 			internal_marker,
+			name: name_as_type_id,
 		};
 		synthesise_function(constructor, behavior, environment, checking_data)
 	} else {
@@ -232,6 +241,7 @@ pub(super) fn synthesise_class_declaration<
 			function_id,
 			class_prototype,
 			extends,
+			name_as_type_id,
 			ClassPropertiesToRegister { properties },
 			environment,
 			checking_data,
@@ -239,8 +249,7 @@ pub(super) fn synthesise_class_declaration<
 		)
 	};
 
-	let class_variable_type =
-		checking_data.types.new_class_constructor_type(name, constructor, class_prototype);
+	let class_variable_type = checking_data.types.new_class_constructor_type(constructor);
 
 	{
 		// Static items and blocks
@@ -275,6 +284,8 @@ pub(super) fn synthesise_class_declaration<
 						}
 					};
 
+					let key = static_property_keys.pop().unwrap();
+
 					let behavior = FunctionRegisterBehavior::ClassMethod {
 						is_async,
 						is_generator,
@@ -285,6 +296,7 @@ pub(super) fn synthesise_class_declaration<
 						// Important that it points to the marker
 						this_shape: class_variable_type,
 						internal_marker,
+						name: key.into_name_type(&mut checking_data.types),
 					};
 
 					let function =
@@ -296,8 +308,6 @@ pub(super) fn synthesise_class_declaration<
 						&mut checking_data.types,
 						is_declare,
 					);
-
-					let key = static_property_keys.pop().unwrap();
 
 					environment.info.register_property(
 						class_variable_type,
@@ -407,7 +417,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	let get_type_by_id = checking_data.types.get_type_by_id(class_type);
 
 	let Type::Class { name: _, parameters } = get_type_by_id else {
-		unreachable!("expected class type {:?}", get_type_by_id)
+		unreachable!("expecting class type {:?}", get_type_by_id)
 	};
 
 	// TODO also remove
@@ -479,6 +489,8 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 						free_this_id: TypeId::ANY_TYPE,
 						is_async: method.header.is_async(),
 						is_generator: method.header.is_generator(),
+						// TODO
+						name: TypeId::ANY_TYPE,
 					},
 					overloads,
 					actual,

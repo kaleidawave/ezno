@@ -8,7 +8,7 @@ use source_map::{BaseSpan, Nullable, SpanWithSource};
 use crate::{
 	context::{
 		environment::Label, invocation::InvocationContext, CallCheckingBehavior,
-		ClosedOverReferencesInScope, Syntax,
+		ClosedOverReferencesInScope,
 	},
 	events::{
 		application::{ApplicationInput, CallingDiagnostics},
@@ -19,8 +19,7 @@ use crate::{
 		calling::add_diagnostics, properties::get_properties_on_single_type, substitute,
 		Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
 	},
-	CheckingData, Constant, Environment, GeneralContext, LocalInformation, Scope, Type, TypeId,
-	VariableId,
+	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
 };
 
 /// The type of iteration to synthesis
@@ -688,18 +687,20 @@ fn evaluate_unknown_iteration_for_loop(
 
 	// add event
 	{
-		let in_definition = top_environment.parents_iter().any(|env| {
-			matches!(
-				env,
-				GeneralContext::Syntax(crate::context::Context {
-					context_type: Syntax { scope: Scope::DefinitionModule { .. }, .. },
-					..
-				})
-			)
-		});
+		{
+			// let _in_definition = top_environment.parents_iter().any(|env| {
+			// 	matches!(
+			// 		env,
+			// 		GeneralContext::Syntax(crate::context::Context {
+			// 			context_type: Syntax { scope: Scope::DefinitionModule { .. }, .. },
+			// 			..
+			// 		})
+			// 	)
+			// });
 
-		if !in_definition {
-			crate::utilities::notify!("adding iteration events: {:#?}", events);
+			// if !in_definition {
+			// 	crate::utilities::notify!("adding iteration events: {:#?}", events);
+			// }
 		}
 
 		let get_latest_info = invocation_context.get_latest_info(top_environment);

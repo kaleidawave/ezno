@@ -59,11 +59,11 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
 		let attribute_position = attribute.get_position().with_source(environment.get_source());
 		attributes_object.append(
-			environment,
 			crate::types::properties::Publicity::Public,
 			name,
 			crate::PropertyValue::Value(attribute_value),
 			attribute_position,
+			&mut environment.info,
 		);
 
 		// let constraint = environment
@@ -160,11 +160,11 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			let child_position = child.get_position().with_source(environment.get_source());
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
-				environment,
 				crate::types::properties::Publicity::Public,
 				property,
 				crate::PropertyValue::Value(child),
 				child_position,
+				&mut environment.info,
 			);
 
 			// TODO spread ??
@@ -179,11 +179,11 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 			// TODO: Should there be a position here?
 			synthesised_child_nodes.append(
-				environment,
 				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
 				element.get_position().with_source(environment.get_source()),
+				&mut environment.info,
 			);
 		}
 		// }

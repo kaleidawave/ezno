@@ -158,8 +158,12 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	for declaration in definition.items {
 		match declaration {
 			StatementOrDeclaration::Declaration(Declaration::Class(class)) => {
-				let class_type =
-					synthesise_class_declaration(&class.on, &mut environment, checking_data);
+				let class_type = synthesise_class_declaration(
+					&class.on,
+					TypeId::ANY_TYPE,
+					&mut environment,
+					checking_data,
+				);
 				let variable_id = VariableId(
 					environment.get_source(),
 					class.on.name.identifier.get_position().start,
@@ -196,6 +200,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 					is_async,
 					is_generator,
 					location,
+					function.on.name.as_option_str().unwrap_or_default().to_owned(),
 					internal_marker,
 					&function.on,
 					&mut environment,

@@ -32,6 +32,7 @@ use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap
 use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
+	time::Duration,
 };
 
 use types::TypeStore;
@@ -67,7 +68,7 @@ where
 
 pub use source_map::{self, SourceId, Span};
 
-use crate::{context::information::ModuleInformation, subtyping::State};
+use crate::context::information::ModuleInformation;
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
@@ -161,15 +162,6 @@ pub trait ASTImplementation: Sized {
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
 
-	/// This is for inference
-	///
-	/// Return [`TypeId::ERROR_TYPE`] if cannot find
-	fn expression_quick_lookup<'a>(
-		expression: &'a Self::Expression<'a>,
-		environment: &Environment,
-		types: &TypeStore,
-	) -> TypeId;
-
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
 	fn type_annotation_position<'a>(annotation: &'a Self::TypeAnnotation<'a>) -> Span;
@@ -226,7 +218,11 @@ where
 		}
 	}
 
-	pub(crate) fn get_file(&mut self, path: &Path) -> Option<File> {
+	pub(crate) fn get_file(
+		&mut self,
+		path: &Path,
+		chronometer: Option<&mut Chronometer>,
+	) -> Option<File> {
 		// TODO only internal code should be able to do this
 		if let Some("bin") = path.extension().and_then(|s| s.to_str()) {
 			return self.file_reader.read_file(path).map(|s| File::Binary(s.clone()));
@@ -245,9 +241,12 @@ where
 			Some(File::Source(source, self.files.get_file_content(source)))
 		} else {
 			// Load into system
+			let current = chronometer.is_some().then(std::time::Instant::now);
 			let content = self.file_reader.read_file(path)?;
-			let content = String::from_utf8(content);
-			if let Ok(content) = content {
+			if let Ok(content) = String::from_utf8(content) {
+				if let Some(current) = current {
+					chronometer.unwrap().fs += current.elapsed();
+				}
 				let source_id = self.files.new_source_id(path.to_path_buf(), content);
 				Some(File::Source(source_id, self.files.get_file_content(source_id)))
 			} else {
@@ -286,6 +285,20 @@ pub trait GenericTypeParameter {
 	fn get_name(&self) -> &str;
 }
 
+#[derive(Default)]
+pub struct Chronometer {
+	/// In binary .d.ts files
+	pub cached: Duration,
+	/// read actions
+	pub fs: Duration,
+	/// parsing. (TODO only of first file)
+	pub parse: Duration,
+	/// type checking (inc binding). TODO this includes parsing of imports
+	pub check: Duration,
+	/// parsed and type checked lines
+	pub lines: usize,
+}
+
 /// Contains logic for **checking phase** (none of the later steps)
 /// All data is global, non local to current scope
 /// TODO some of these should be mutex / ref cell
@@ -304,6 +317,8 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 
 	// pub(crate) events: EventsStore,
 	pub types: TypeStore,
+
+	pub(crate) chronometer: Chronometer,
 
 	/// Do not repeat emitting unimplemented parts
 	unimplemented_items: HashSet<&'static str>,
@@ -327,11 +342,12 @@ where
 
 		Self {
 			options,
-			local_type_mappings: Default::default(),
-			diagnostics_container: Default::default(),
 			modules,
+			diagnostics_container: Default::default(),
+			local_type_mappings: Default::default(),
 			types: Default::default(),
 			unimplemented_items: Default::default(),
+			chronometer: Default::default(),
 		}
 	}
 
@@ -354,58 +370,6 @@ where
 	pub fn add_expression_mapping(&mut self, span: SpanWithSource, instance: Instance) {
 		self.local_type_mappings.expressions_to_instances.push(span, instance);
 	}
-
-	pub fn check_satisfies(
-		&mut self,
-		expr_ty: TypeId,
-		to_satisfy: TypeId,
-		at: SpanWithSource,
-		environment: &mut Environment,
-	) {
-		pub(crate) fn check_satisfies(
-			expr_ty: TypeId,
-			to_satisfy: TypeId,
-			types: &TypeStore,
-			environment: &mut Environment,
-		) -> bool {
-			// TODO `behavior.allow_error = true` would be better
-			if expr_ty == TypeId::ERROR_TYPE {
-				false
-			} else {
-				let mut state = State {
-					already_checked: Default::default(),
-					mode: Default::default(),
-					contributions: Default::default(),
-					others: subtyping::SubTypingOptions { allow_errors: false },
-					object_constraints: None,
-				};
-				let result =
-					subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, environment, types);
-
-				matches!(result, subtyping::SubTypeResult::IsSubType)
-			}
-		}
-
-		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {
-			let expected = diagnostics::TypeStringRepresentation::from_type_id(
-				to_satisfy,
-				environment,
-				&self.types,
-				false,
-			);
-			let found = diagnostics::TypeStringRepresentation::from_type_id(
-				expr_ty,
-				environment,
-				&self.types,
-				false,
-			);
-			self.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
-				at,
-				expected,
-				found,
-			});
-		}
-	}
 }
 
 /// Used for transformers and other things after checking!!!!
@@ -415,6 +379,7 @@ pub struct CheckOutput<A: crate::ASTImplementation> {
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
 	pub diagnostics: crate::DiagnosticsContainer,
 	pub top_level_information: crate::LocalInformation,
+	pub chronometer: crate::Chronometer,
 }
 
 impl<A: crate::ASTImplementation> CheckOutput<A> {
@@ -476,6 +441,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 			modules: Default::default(),
 			diagnostics: Default::default(),
 			top_level_information: Default::default(),
+			chronometer: Default::default(),
 		}
 	}
 }
@@ -508,6 +474,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			modules: Default::default(),
 			diagnostics: checking_data.diagnostics_container,
 			top_level_information: Default::default(),
+			chronometer: checking_data.chronometer,
 		};
 	}
 
@@ -560,6 +527,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		options: _,
 		types,
 		unimplemented_items: _,
+		chronometer,
 	} = checking_data;
 
 	CheckOutput {
@@ -568,6 +536,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		modules: modules.synthesised_modules,
 		diagnostics: diagnostics_container,
 		top_level_information: root.info,
+		chronometer,
 	}
 }
 
@@ -613,9 +582,12 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 ) {
 	let length = type_definition_files.len();
 	for path in type_definition_files {
+		let chronometer =
+			checking_data.options.measure_time.then_some(&mut checking_data.chronometer);
+
 		let file = if path == PathBuf::from(crate::INTERNAL_DEFINITION_FILE_PATH) {
 			File::Binary(crate::INTERNAL_DEFINITION_FILE.to_owned())
-		} else if let Some(file) = checking_data.modules.get_file(&path) {
+		} else if let Some(file) = checking_data.modules.get_file(&path, chronometer) {
 			file
 		} else {
 			checking_data.diagnostics_container.add_error(Diagnostic::Global {
@@ -627,19 +599,43 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 
 		match file {
 			File::Binary(content) => {
+				let current = checking_data.options.measure_time.then(std::time::Instant::now);
 				deserialize_cache(length, content, checking_data, root);
+				if let Some(current) = current {
+					checking_data.chronometer.cached += current.elapsed();
+				}
 			}
 			File::Source(source_id, content) => {
+				if checking_data.options.measure_time {
+					let code_lines = content
+						.lines()
+						.filter(|c| !(c.is_empty() || c.trim_start().starts_with('/')))
+						.count();
+					checking_data.chronometer.lines += code_lines;
+				}
+
+				let current = checking_data.options.measure_time.then(std::time::Instant::now);
 				let result = A::definition_module_from_string(
 					source_id,
 					content,
 					&mut checking_data.modules.parser_requirements,
 				);
+				if let Some(current) = current {
+					checking_data.chronometer.parse += current.elapsed();
+				}
 
 				match result {
 					Ok(tdm) => {
+						let current =
+							checking_data.options.measure_time.then(std::time::Instant::now);
+
 						let (names, info) =
 							A::synthesise_definition_file(tdm, source_id, root, checking_data);
+
+						// TODO bad. should be per file
+						if let Some(current) = current {
+							checking_data.chronometer.check += current.elapsed();
+						}
 
 						root.variables.extend(names.variables);
 						root.named_types.extend(names.named_types);
@@ -747,7 +743,7 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			.copy_from_slice(&(cache_len as u32).to_le_bytes());
 
 		// TODO not great
-		let Some(File::Source(source, content)) = checking_data.modules.get_file(on) else {
+		let Some(File::Source(source, content)) = checking_data.modules.get_file(on, None) else {
 			panic!()
 		};
 

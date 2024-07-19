@@ -369,13 +369,6 @@ fn get_logical_callable_from_type(
 			let from = Some(from.unwrap_or(ty));
 			Ok(Logical::Pure(FunctionLike { from, function: *f, this_value }))
 		}
-		Type::SpecialObject(SpecialObject::ClassConstructor { constructor, .. }) => {
-			Ok(Logical::Pure(FunctionLike {
-				from,
-				function: *constructor,
-				this_value: ThisValue::UseParent,
-			}))
-		}
 		Type::SpecialObject(so) => match so {
 			crate::features::objects::SpecialObject::Proxy { .. } => todo!(),
 			_ => Err(MissingOrToCalculate::Missing),
@@ -1055,7 +1048,11 @@ impl FunctionType {
 
 			crate::utilities::notify!(
 				"Substituting return type (no return) {:?}",
-				&type_arguments.arguments
+				type_arguments
+					.arguments
+					.iter()
+					.map(|(k, v)| (types.get_type_by_id(*k), types.get_type_by_id(*v)))
+					.collect::<Vec<_>>()
 			);
 
 			let returned = substitute(self.return_type, &type_arguments, environment, types);
@@ -1078,7 +1075,7 @@ impl FunctionType {
 				FunctionBehavior::ArrowFunction { .. } | FunctionBehavior::Method { .. } => {
 					TypeId::ERROR_TYPE
 				}
-				FunctionBehavior::Constructor { prototype: _, this_object_type } => {
+				FunctionBehavior::Constructor { prototype: _, this_object_type, name: _ } => {
 					*type_arguments.arguments.get(&this_object_type).expect("no this argument?")
 				}
 				FunctionBehavior::Function { is_async: _, is_generator: _, this_id, .. } => {
@@ -1173,7 +1170,13 @@ impl FunctionType {
 
 				type_arguments.insert(free_this_id, value_of_this);
 			}
-			FunctionBehavior::Function { is_async: _, is_generator: _, this_id, prototype } => {
+			FunctionBehavior::Function {
+				is_async: _,
+				is_generator: _,
+				this_id,
+				prototype,
+				name: _,
+			} => {
 				match called_with_new {
 					CalledWithNew::New { on: _ } => {
 						// This condition is by creation
@@ -1286,7 +1289,7 @@ impl FunctionType {
 					}
 				}
 			}
-			FunctionBehavior::Constructor { prototype, this_object_type } => {
+			FunctionBehavior::Constructor { prototype, this_object_type, name: _ } => {
 				crate::utilities::notify!("Here {:?}", called_with_new);
 				match called_with_new {
 					CalledWithNew::None => {
@@ -1352,7 +1355,7 @@ impl FunctionType {
 		&self,
 		arguments: &[SynthesisedArgument],
 		type_arguments: &mut SubstitutionArguments<'static>,
-		(call_site_type_arguments, parent): (
+		(call_site_type_arguments, parent_arguments): (
 			Option<CallSiteTypeArguments>,
 			Option<&GenericArguments>,
 		),
@@ -1378,7 +1381,7 @@ impl FunctionType {
 					let result = check_parameter_type(
 						parameter.ty,
 						call_site_type_arguments.as_ref(),
-						parent,
+						parent_arguments,
 						argument,
 						type_arguments,
 						environment,
@@ -1387,7 +1390,7 @@ impl FunctionType {
 
 					if let SubTypeResult::IsNotSubType(_reasons) = result {
 						let type_arguments = Some(GenericChainLink::FunctionRoot {
-							parent_link: parent,
+							parent_arguments,
 							call_site_type_arguments: call_site_type_arguments.as_ref(),
 							type_arguments: &type_arguments.arguments,
 						});
@@ -1448,7 +1451,7 @@ impl FunctionType {
 						let result = check_parameter_type(
 							rest_parameter.item_type,
 							call_site_type_arguments.as_ref(),
-							parent,
+							parent_arguments,
 							argument,
 							type_arguments,
 							environment,
@@ -1458,7 +1461,7 @@ impl FunctionType {
 						// TODO different diagnostic?
 						if let SubTypeResult::IsNotSubType(_reasons) = result {
 							let type_arguments = Some(GenericChainLink::FunctionRoot {
-								parent_link: parent,
+								parent_arguments,
 								call_site_type_arguments: call_site_type_arguments.as_ref(),
 								type_arguments: &type_arguments.arguments,
 							});
@@ -1490,11 +1493,11 @@ impl FunctionType {
 					if let Some(basis) = basis.as_mut() {
 						let key = PropertyKey::from_usize(count);
 						basis.append(
-							environment,
 							crate::types::properties::Publicity::Public,
 							key,
 							crate::types::properties::PropertyValue::Value(argument.value),
 							argument.position,
+							&mut environment.info,
 						);
 					}
 
@@ -1508,11 +1511,11 @@ impl FunctionType {
 					));
 
 					basis.append(
-						environment,
 						crate::types::properties::Publicity::Public,
 						PropertyKey::String("length".into()),
 						crate::types::properties::PropertyValue::Value(length),
 						rest_parameter.position,
+						&mut environment.info,
 					);
 
 					let rest_parameter_array_type = basis.build_object();

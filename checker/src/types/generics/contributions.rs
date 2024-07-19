@@ -1,8 +1,8 @@
-use source_map::SpanWithSource;
+use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	subtyping::{type_is_subtype_with_generics, State, SubTypeResult},
-	types::{GenericChain, TypeRestrictions, TypeStore},
+	types::{GenericChain, PartiallyAppliedGenerics, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
 
@@ -21,6 +21,7 @@ pub enum CovariantContribution {
 	TypeId(TypeId),
 	SliceOf(Box<Self>, (u32, u32)),
 	String(String),
+	CaseInsensitive(Box<Self>),
 }
 
 impl CovariantContribution {
@@ -40,6 +41,17 @@ impl CovariantContribution {
 			}
 			CovariantContribution::String(slice) => {
 				types.new_constant_type(crate::Constant::String(slice))
+			}
+			CovariantContribution::CaseInsensitive(on) => {
+				let inner = on.into_type(types);
+				types.register_type(crate::Type::PartiallyAppliedGenerics(
+					PartiallyAppliedGenerics {
+						on: TypeId::CASE_INSENSITIVE,
+						arguments: GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+							(TypeId::STRING_GENERIC, (inner, SpanWithSource::NULL)),
+						])),
+					},
+				))
 			}
 		}
 	}
