@@ -287,7 +287,8 @@ pub(crate) enum TypeCheckError<'a> {
 	PropertyDoesNotExist {
 		on: TypeStringRepresentation,
 		property: PropertyRepresentation,
-		site: SpanWithSource,
+	    site: SpanWithSource,
+	    possibles: Vec<&'a str>
 	},
 	NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
 	RestParameterAnnotationShouldBeArrayType(SpanWithSource),
@@ -382,8 +383,9 @@ pub(crate) enum TypeCheckError<'a> {
 	DoubleDefaultExport(SpanWithSource),
 	CannotOpenFile {
 		file: CouldNotOpenFile,
-		/// `None` if reading it from entry point (aka CLI args)
-		import_position: Option<SpanWithSource>,
+	    import_position: Option<SpanWithSource>,
+	    possibles: Vec<&'a str>,
+	    partial_import_path: &'a str,
 	},
 	VariableNotDefinedInContext {
 		variable: &'a str,
@@ -436,6 +438,16 @@ pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str
     };
 }
 
+
+pub fn get_property_does_not_exist_message(property: PropertyRepresentation, on: TypeStringRepresentation, possibles:Vec<&str>) -> String{
+    
+    match property {
+	PropertyRepresentation::Type(ty) => return format!("No property of type {ty} on {on}.  {}", get_possibles_message(possibles, &ty)),
+	PropertyRepresentation::StringKey(property) => return format!("No property '{property}' on {on}. {}", get_possibles_message(possibles, &property)),
+    };
+
+}
+
 impl From<TypeCheckError<'_>> for Diagnostic {
 	fn from(error: TypeCheckError<'_>) -> Self {
 		let kind = super::DiagnosticKind::Error;
@@ -453,12 +465,9 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position: pos,
 					kind,
 				},
-				TypeCheckError::PropertyDoesNotExist { property, on, site } => {
+				TypeCheckError::PropertyDoesNotExist { property, on, site, possibles } => {
 					Diagnostic::Position {
-						reason: match property {
-							PropertyRepresentation::Type(ty) => format!("No property of type {ty} on {on}"),
-							PropertyRepresentation::StringKey(property) => format!("No property '{property}' on {on}"),
-						},
+						reason: get_property_does_not_exist_message(property, on, possibles),
 						position: site,
 						kind,
 					}
@@ -668,11 +677,11 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				},
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-				TypeCheckError::CannotOpenFile { file, import_position } => if let Some(import_position) = import_position {
+				TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
 					Diagnostic::Position {
-						reason: "Cannot find file".to_owned(),
+					    reason: format!("Cannot find {partial_import_path}. {}", get_possibles_message(possibles, partial_import_path)),
 						position: import_position,
-						kind,
+					    kind,
 					}
 				} else {
 					Diagnostic::Global { reason: format!("Cannot find file {}", file.0.display()), kind }
