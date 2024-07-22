@@ -5,7 +5,7 @@ use crate::{
 		information::InformationChain, CallCheckingBehavior, Logical, PossibleLogical,
 		SetPropertyError,
 	},
-	diagnostics::TypeStringRepresentation,
+    diagnostics::TypeStringRepresentation,
 	events::Event,
 	features::{
 		functions::{FunctionBehavior, ThisValue},
@@ -15,7 +15,7 @@ use crate::{
 	types::{
 		calling::{self, FunctionCallingError},
 		generics::generic_type_arguments::GenericArguments,
-		get_constraint, get_larger_type, substitute, FunctionType, GenericChain, GenericChainLink,
+		get_constraint, get_larger_type, substitute, FunctionType, GenericChain, GenericChainLink, printing,
 		ObjectNature, PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
 	},
 	Constant, Environment, LocalInformation, TypeId,
@@ -839,21 +839,11 @@ pub(crate) fn set_property<E: CallCheckingBehavior>(
 		);
 	}
 
-	if let Ok(fact) = current_property {
-		match fact {
-			Logical::Pure(og) => {
-				let result = run_setter_on_object(
-					og,
-					behavior,
-					environment,
-					on,
-					publicity,
-					under,
-					new,
-					types,
-					setter_position,
-				);
-				if let Err(result) = result {
+	if let Ok(fact) = current_property { match fact {
+		Logical::Pure(og) => { let result =
+		run_setter_on_object( og, behavior, environment, on,
+		publicity, under, new, types, setter_position, ); if
+		let Err(result) = result {
 					// TODO temp
 					for error in result {
 						match error {
@@ -1575,4 +1565,31 @@ pub fn get_properties_on_single_type(
 		| Type::FunctionReference(_)
 		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
 	}
+}
+
+
+pub fn get_property_as_string(property: &PropertyKey, types: &mut TypeStore, environment: &mut Environment) -> String {
+
+    match property {
+	PropertyKey::String(s) => return s.to_string(),
+	PropertyKey::Type(t) => return printing::print_type(
+	    *t,
+	    types,
+	    environment,
+	    false,
+	),
+    }
+}
+
+pub fn get_property_key_names_on_a_single_type<'a>(
+	base: TypeId,
+	types: &mut TypeStore,
+    info: &impl InformationChain,
+    environment: &mut Environment
+) -> Vec<String> {
+    
+    get_properties_on_single_type(base, types, info).into_iter().map(|property| {
+	get_property_as_string(&property.1, types, environment)
+    }
+    ).collect()
 }
