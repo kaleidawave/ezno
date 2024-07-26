@@ -22,14 +22,10 @@ use crate::{
 	features::{
 		assignments::Reference,
 		functions::ClosureChain,
-		objects::{Proxy, SpecialObject},
+		objects::SpecialObject,
 		variables::{VariableMutability, VariableOrImport},
 	},
-	subtyping::SliceArguments,
-	types::{
-		generics::generic_type_arguments::GenericArguments, FunctionType, PolyNature, Type, TypeId,
-		TypeStore,
-	},
+	types::{FunctionType, PolyNature, Type, TypeId, TypeStore},
 	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 };
 
@@ -1168,57 +1164,6 @@ pub enum AssignmentError {
 	},
 	TDZ(TDZ),
 }
-
-/// Wraps logic
-#[derive(Debug, Clone)]
-pub enum Logical<T> {
-	Pure(T),
-	/// Note this uses [`PossibleLogical<T>`] rather than [`Logical<T>`].
-	/// Either `left` or `right` is [Ok]
-	Or {
-		/// This can be [`TypeId::BOOLEAN_TYPE`] for unknown left-right-ness
-		condition: TypeId,
-		left: Box<PossibleLogical<T>>,
-		right: Box<PossibleLogical<T>>,
-	},
-	/// Passes down [`GenericArguments`] found trying to get to source
-	Implies {
-		on: Box<Self>,
-		antecedent: GenericArguments,
-	},
-	/// WIP mainly for mapped type properties
-	/// TODO this is partially defined like [`Self::Or`] ???
-	/// - Can this work for arrays
-	BasedOnKey {
-		on: Box<Self>,
-		key_arguments: SliceArguments,
-	},
-}
-
-/// TODO split up
-#[derive(Debug, Clone)]
-pub enum MissingOrToCalculate {
-	/// Doesn't contain request
-	Missing,
-	/// From [`TypeId::ERROR_TYPE`]
-	Error,
-	/// From [`TypeId::ANY_TYPE`]
-	Infer { on: TypeId },
-	/// Proxies require extra work in some cases
-	Proxy(Proxy),
-}
-
-// #[derive(Debug, Clone)]
-// pub enum NeedsCalculation {
-// 	/// From [`TypeId::ANY_TYPE`]
-// 	Infer { on: TypeId },
-// 	/// Proxies require extra work in some cases
-// 	Proxy(Proxy),
-// }
-
-/// TODO explain
-pub type PossibleLogical<T> = Result<Logical<T>, MissingOrToCalculate>;
-// pub type PossibleLogical2<T> = Result<Logical<T>, ()>;
 
 /// WIP
 pub enum SetPropertyError {

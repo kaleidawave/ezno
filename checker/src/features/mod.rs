@@ -26,8 +26,12 @@ use crate::{
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	features::functions::ClosedOverVariables,
-	types::{get_constraint, properties, PartiallyAppliedGenerics, TypeStore},
-	CheckingData, Environment, Logical, PropertyValue, Type, TypeId,
+	types::{
+		get_constraint,
+		logical::{Logical, LogicalOrValid},
+		properties, PartiallyAppliedGenerics, TypeStore,
+	},
+	CheckingData, Environment, PropertyValue, Type, TypeId,
 };
 
 use self::objects::SpecialObject;
@@ -274,7 +278,7 @@ pub fn delete_operator(
 				if let Ok(property_constraint) = property_constraint {
 					crate::utilities::notify!("property_constraint {:?}", property_constraint);
 					match property_constraint {
-						Logical::Pure(n) => match n {
+						LogicalOrValid::Logical(Logical::Pure(n)) => match n {
 							PropertyValue::Value(_)
 							| PropertyValue::Getter(_)
 							| PropertyValue::Setter(_) => {
@@ -299,9 +303,11 @@ pub fn delete_operator(
 								crate::utilities::notify!("descriptor={:?}", descriptor);
 							}
 						},
-						Logical::Or { .. } => todo!(),
-						Logical::Implies { .. } => todo!(),
-						Logical::BasedOnKey { .. } => todo!(),
+						variant => {
+							crate::utilities::notify!("TODO variant={:?}", variant);
+						} // Logical::Or { .. } => todo!(),
+						  // Logical::Implies { .. } => todo!(),
+						  // Logical::BasedOnKey { .. } => todo!(),
 					}
 				}
 			}

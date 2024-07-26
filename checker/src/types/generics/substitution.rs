@@ -15,10 +15,11 @@ use crate::{
 	types::{
 		generics::contributions::Contributions,
 		intrinsics::{self, distribute_tsc_string_intrinsic},
+		logical::{Logical, LogicalOrValid},
 		properties::{get_property_unbound, Publicity},
 		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	},
-	Decidable, Environment, Logical, PropertyValue, TypeId,
+	Decidable, Environment, PropertyValue, TypeId,
 };
 
 use super::generic_type_arguments::GenericArguments;
@@ -97,7 +98,7 @@ pub(crate) fn substitute(
 		// Specialisation for object type annotation (todo could do per property in future)
 		// Can return functions from functions somehow as well
 		Type::FunctionReference(..) | Type::Object(ObjectNature::AnonymousTypeAnnotation) => {
-			crate::utilities::notify!("{:?}", arguments.arguments);
+			// crate::utilities::notify!("{:?}", arguments.arguments);
 			// Apply curring
 			if arguments.arguments.is_empty() {
 				id
@@ -374,7 +375,13 @@ pub(crate) fn substitute(
 					);
 
 					match get_property {
-						Ok(value) => resolve_logical_during_substitution(value),
+						Ok(LogicalOrValid::Logical(value)) => {
+							resolve_logical_during_substitution(value)
+						}
+						Ok(value) => {
+							crate::utilities::notify!("TODO {:?}", value);
+							TypeId::ERROR_TYPE
+						}
 						Err(err) => {
 							crate::utilities::notify!("{:?}", err);
 							TypeId::ERROR_TYPE

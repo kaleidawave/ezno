@@ -6,6 +6,7 @@ use crate::{
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
+		calling::Callable,
 		functions::SynthesisedArgument,
 		printing::print_type,
 		properties::{key_matches, AccessMode, Descriptor, PropertyKey, Publicity},
@@ -333,23 +334,9 @@ pub(crate) fn call_constant_function(
 				let value = if let Some(value) = get_property!("value") {
 					PropertyValue::Value(value)
 				} else if let Some(getter) = get_property!("get") {
-					if let Type::SpecialObject(SpecialObject::Function(func_id, _)) =
-						types.get_type_by_id(getter)
-					{
-						PropertyValue::Getter(*func_id)
-					} else {
-						crate::utilities::notify!("Here!!");
-						return Err(ConstantFunctionError::BadCall);
-					}
+					PropertyValue::Getter(Callable::from_type(getter, types))
 				} else if let Some(setter) = get_property!("set") {
-					if let Type::SpecialObject(SpecialObject::Function(func_id, _)) =
-						types.get_type_by_id(setter)
-					{
-						PropertyValue::Setter(*func_id)
-					} else {
-						crate::utilities::notify!("Here!!");
-						return Err(ConstantFunctionError::BadCall);
-					}
+					PropertyValue::Setter(Callable::from_type(setter, types))
 				} else {
 					return Err(ConstantFunctionError::BadCall);
 				};
@@ -417,18 +404,16 @@ pub(crate) fn call_constant_function(
 								PropertyValue::Value(id) => {
 									Ok(("value".into(), *id, Descriptor::default()))
 								}
-								PropertyValue::Getter(id) => {
-									let register_type = types.register_type(Type::SpecialObject(
-										SpecialObject::Function(*id, ThisValue::UseParent),
-									));
-									Ok(("get".into(), register_type, Descriptor::default()))
-								}
-								PropertyValue::Setter(id) => {
-									let register_type = types.register_type(Type::SpecialObject(
-										SpecialObject::Function(*id, ThisValue::UseParent),
-									));
-									Ok(("set".into(), register_type, Descriptor::default()))
-								}
+								PropertyValue::Getter(callable) => Ok((
+									"get".into(),
+									callable.into_type(types),
+									Descriptor::default(),
+								)),
+								PropertyValue::Setter(callable) => Ok((
+									"set".into(),
+									callable.into_type(types),
+									Descriptor::default(),
+								)),
 								PropertyValue::Deleted => {
 									return Err(Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE)))
 								}

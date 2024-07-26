@@ -2326,14 +2326,16 @@ const b: X = 2;
 #### Property on an or type
 
 ```ts
-function getProp(obj: { prop: 3 } | { prop: 2 }) {
+function getProp(obj: { prop: 3, prop2: 6 } | { prop: 2 }) {
+	obj.prop2;
 	return obj.prop
 }
 
 getProp satisfies string
 ```
 
-- Expected string, found (obj: { prop: 3 } | { prop: 2 }) => 3 | 2
+- No property 'prop2' on { prop: 3, prop2: 6 } | { prop: 2 }
+- Expected string, found (obj: { prop: 3, prop2: 6 } | { prop: 2 }) => 3 | 2
 
 #### Generic extends
 
@@ -2378,7 +2380,7 @@ const y: (a: string) => string = (p: number, q: string) => "hi"
 #### Function return type subtyping
 
 ```ts
-const x: (a: number) => number = p => 4
+const x: (a: number) => number = p => 4;
 const y: (a: number) => number = p => "a number"
 ```
 

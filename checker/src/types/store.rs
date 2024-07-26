@@ -4,12 +4,14 @@ use crate::{types::intrinsics::Intrinsic, Constant, Map as SmallMap};
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
-	context::Logical,
 	features::{
 		functions::{ClosureId, FunctionBehavior},
 		objects::SpecialObject,
 	},
-	types::{FunctionType, PolyNature, Type},
+	types::{
+		logical::{Logical, LogicalOrValid},
+		FunctionType, PolyNature, Type,
+	},
 	Environment, FunctionId, TypeId,
 };
 
@@ -244,7 +246,8 @@ impl TypeStore {
 		}
 	}
 
-	pub(crate) fn register_type(&mut self, ty: Type) -> TypeId {
+	// pub(crate) fn register_type(&mut self, ty: Type) -> TypeId {
+	pub fn register_type(&mut self, ty: Type) -> TypeId {
 		let id = TypeId(self.types.len().try_into().expect("too many types!"));
 		self.types.push(ty);
 		id
@@ -453,10 +456,13 @@ impl TypeStore {
 			self,
 		) {
 			match prop {
-				Logical::Pure(ty) => ty.as_get_type(),
-				Logical::Or { .. } => todo!(),
-				Logical::Implies { .. } => todo!(),
-				Logical::BasedOnKey { .. } => todo!(),
+				LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(),
+				value => {
+					crate::utilities::notify!("value={:?}", value);
+					TypeId::ERROR_TYPE
+				} // Logical::Or { .. } => todo!(),
+				  // Logical::Implies { .. } => todo!(),
+				  // Logical::BasedOnKey { .. } => todo!(),
 			}
 		} else {
 			crate::utilities::notify!("Error: no index on type annotation");

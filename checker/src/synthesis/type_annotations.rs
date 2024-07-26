@@ -438,7 +438,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					crate::types::ArrayItem::Member(item_ty) => PropertyValue::Value(item_ty),
 					crate::types::ArrayItem::Optional(item_ty) => {
 						PropertyValue::ConditionallyExists {
-							on: TypeId::OPEN_BOOLEAN_TYPE,
+							condition: TypeId::OPEN_BOOLEAN_TYPE,
 							truthy: Box::new(PropertyValue::Value(item_ty)),
 						}
 					}

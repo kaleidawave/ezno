@@ -15,17 +15,19 @@ use crate::{
 	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
+		calling::Callable,
 		classes::ClassValue,
 		functions::SynthesisedParameters,
 		generics::GenericTypeParameters,
+		logical::{Logical, LogicalOrValid},
 		printing::print_type,
 		properties::{get_property_unbound, PropertyKey, PropertyValue, Publicity},
 		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
 		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
 		SynthesisedRestParameter, TypeStore,
 	},
-	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Logical,
-	Map, ReadFromFS, Scope, Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Map,
+	ReadFromFS, Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -186,16 +188,8 @@ pub fn function_to_property(
 	is_declare: bool,
 ) -> PropertyValue {
 	match getter_setter {
-		GetterSetter::Getter => {
-			let id = function.id;
-			types.functions.insert(id, function);
-			PropertyValue::Getter(id)
-		}
-		GetterSetter::Setter => {
-			let id = function.id;
-			types.functions.insert(id, function);
-			PropertyValue::Setter(id)
-		}
+		GetterSetter::Getter => PropertyValue::Getter(Callable::new_from_function(function, types)),
+		GetterSetter::Setter => PropertyValue::Setter(Callable::new_from_function(function, types)),
 		GetterSetter::None => PropertyValue::Value(
 			if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
 				types.new_hoisted_function_type(function)
@@ -1148,13 +1142,14 @@ pub fn new_name_expected_object(
 /// Reverse of the above
 pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environment) -> TypeId {
 	if let Type::And(_, rhs) = types.get_type_by_id(expecting) {
-		if let Ok(Logical::Pure(PropertyValue::Value(ty))) = get_property_unbound(
-			(*rhs, None),
-			(Publicity::Public, &PropertyKey::String(Cow::Borrowed("name")), None),
-			false,
-			environment,
-			types,
-		) {
+		if let Ok(LogicalOrValid::Logical(Logical::Pure(PropertyValue::Value(ty)))) =
+			get_property_unbound(
+				(*rhs, None),
+				(Publicity::Public, &PropertyKey::String(Cow::Borrowed("name")), None),
+				false,
+				environment,
+				types,
+			) {
 			ty
 		} else {
 			crate::utilities::notify!("Here");

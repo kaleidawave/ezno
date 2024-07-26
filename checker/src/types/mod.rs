@@ -5,6 +5,7 @@ pub mod disjoint;
 pub mod functions;
 pub mod generics;
 pub mod intrinsics;
+pub mod logical;
 pub mod printing;
 pub mod properties;
 pub mod store;
@@ -14,10 +15,14 @@ mod terms;
 use derive_debug_extras::DebugExtras;
 
 use derive_enum_from_into::EnumFrom;
-pub(crate) use generics::substitution::*;
+pub(crate) use generics::{
+	chain::{GenericChain, GenericChainLink},
+	substitution::*,
+};
 
 pub use crate::features::objects::SpecialObject;
 pub(crate) use casts::*;
+pub use logical::*;
 use source_map::SpanWithSource;
 pub use store::TypeStore;
 pub use terms::Constant;
@@ -28,7 +33,7 @@ use crate::{
 	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	subtyping::SliceArguments,
 	types::{generics::contributions::CovariantContribution, properties::AccessMode},
-	Decidable, FunctionId, Logical,
+	Decidable, FunctionId,
 };
 
 pub use self::functions::*;
@@ -467,264 +472,6 @@ pub enum ArgumentOrLookup {
 	LookUpGeneric(LookUpGeneric),
 }
 
-pub type GenericChain<'a> = Option<GenericChainLink<'a>>;
-pub type GenericChainParent<'a> = Option<&'a GenericChainLink<'a>>;
-
-/// - Used for printing and subtyping. Handles nested restrictions
-/// - Uses lifetimes because lifetimes
-#[derive(Clone, Copy, Debug)]
-pub enum GenericChainLink<'a> {
-	FunctionRoot {
-		/// From whatever the function was on
-		parent_arguments: Option<&'a GenericArguments>,
-		call_site_type_arguments: Option<&'a TypeRestrictions>,
-		type_arguments: &'a crate::Map<TypeId, TypeId>,
-	},
-	// For walking through [`Type::PartiallyAppliedGenerics`]
-	PartiallyAppliedGenericArgumentsLink {
-		from: TypeId,
-		parent_link: GenericChainParent<'a>,
-		value: &'a GenericArguments,
-	},
-	/// WIP. For the specialised arguments during property key lookup
-	MappedPropertyLink {
-		parent_link: GenericChainParent<'a>,
-		value: &'a SliceArguments,
-	},
-	/// WIP. For TSC behavior around the checking the inner of `Uppercase` etc
-	CaseTransform {
-		parent_link: GenericChainParent<'a>,
-		/// This must be a TSC string intrinsic type
-		on: TypeId,
-	},
-	Exclusive {
-		parent_link: GenericChainParent<'a>,
-	},
-}
-
-impl<'a> GenericChainLink<'a> {
-	fn get_value(self) -> Option<&'a GenericArguments> {
-		if let Self::PartiallyAppliedGenericArgumentsLink { value, .. } = self {
-			Some(value)
-		} else {
-			None
-		}
-	}
-
-	pub(crate) fn get_string_transform(&self) -> Option<TypeId> {
-		match self {
-			GenericChainLink::FunctionRoot { .. } => None,
-			GenericChainLink::Exclusive { parent_link, .. }
-			| GenericChainLink::PartiallyAppliedGenericArgumentsLink { parent_link, .. }
-			| GenericChainLink::MappedPropertyLink { parent_link, .. } => {
-				if let Some(parent_link) = parent_link {
-					parent_link.get_string_transform()
-				} else {
-					None
-				}
-			}
-			GenericChainLink::CaseTransform { parent_link: _, on } => Some(*on),
-		}
-	}
-
-	pub(crate) fn exclusive_mode(&self) -> bool {
-		match self {
-			GenericChainLink::FunctionRoot { .. } => false,
-			GenericChainLink::CaseTransform { parent_link, .. }
-			| GenericChainLink::PartiallyAppliedGenericArgumentsLink { parent_link, .. }
-			| GenericChainLink::MappedPropertyLink { parent_link, .. } => {
-				if let Some(parent_link) = parent_link {
-					parent_link.exclusive_mode()
-				} else {
-					false
-				}
-			}
-			GenericChainLink::Exclusive { .. } => true,
-		}
-	}
-
-	/// TODO wip
-	#[allow(unused)]
-	pub(crate) fn get_argument(
-		&self,
-		on: TypeId,
-		info: &impl InformationChain,
-		types: &TypeStore,
-	) -> Option<Vec<TypeId>> {
-		match self {
-			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
-				parent_link,
-				value,
-				from: _,
-			} => value
-				.get_argument_as_list(on, info, types)
-				.or_else(|| parent_link.and_then(|parent| parent.get_argument(on, info, types))),
-			GenericChainLink::FunctionRoot {
-				parent_arguments,
-				call_site_type_arguments,
-				type_arguments,
-			} => parent_arguments
-				.and_then(|parent| parent.get_argument_as_list(on, info, types))
-				.or_else(|| {
-					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
-				})
-				.or_else(|| type_arguments.get(&on).map(|a| vec![*a])),
-			GenericChainLink::MappedPropertyLink { .. } => {
-				crate::utilities::notify!("TODO temp");
-				self.get_single_argument(on).map(|v| vec![v])
-			}
-			GenericChainLink::Exclusive { parent_link }
-			| GenericChainLink::CaseTransform { parent_link, on: _ } => {
-				parent_link.and_then(|f| f.get_argument(on, info, types))
-			}
-		}
-	}
-
-	/// TODO WIP
-	///
-	/// between this and `extend_arguments` there needs to be something better
-	pub(crate) fn into_substitutable(
-		&self,
-		types: &mut TypeStore,
-	) -> SubstitutionArguments<'static> {
-		match self {
-			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
-				from: _,
-				parent_link,
-				value,
-			} => {
-				let mut args = value.into_substitutable();
-				if let Some(parent_link) = parent_link {
-					parent_link.extend_arguments(&mut args);
-				}
-				args
-			}
-			GenericChainLink::MappedPropertyLink { parent_link, value } => {
-				crate::utilities::notify!("parent_link={:?}", parent_link);
-				let arguments = value
-					.iter()
-					.map(|(k, (contribution, _))| (*k, contribution.clone().into_type(types)))
-					.collect();
-				let mut args =
-					SubstitutionArguments { parent: None, arguments, closures: Default::default() };
-				if let Some(parent_link) = parent_link {
-					parent_link.extend_arguments(&mut args);
-				}
-				args
-			}
-			GenericChainLink::FunctionRoot { .. } => {
-				todo!()
-			}
-			GenericChainLink::Exclusive { parent_link }
-			| GenericChainLink::CaseTransform { parent_link, .. } => todo!("{:?}", parent_link.is_some()),
-		}
-	}
-
-	pub(crate) fn append_to_link(
-		from: TypeId,
-		parent: GenericChainParent<'a>,
-		value: &'a GenericArguments,
-	) -> GenericChainLink<'a> {
-		GenericChainLink::PartiallyAppliedGenericArgumentsLink { parent_link: parent, value, from }
-	}
-
-	#[allow(clippy::unnecessary_wraps)]
-	pub(crate) fn append(
-		from: TypeId,
-		parent: GenericChainParent<'a>,
-		value: &'a GenericArguments,
-	) -> GenericChain<'a> {
-		Some(GenericChainLink::append_to_link(from, parent, value))
-	}
-
-	/// Does not do 'lookup generics'. Which may be fine
-	///
-	/// - (swaps `get_argument_as_list` with `get_structure_restriction`)
-	pub(crate) fn get_single_argument(&self, on: TypeId) -> Option<TypeId> {
-		match self {
-			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
-				parent_link,
-				value,
-				from: _,
-			} => value
-				.get_structure_restriction(on)
-				.or_else(|| parent_link.and_then(|parent| parent.get_single_argument(on))),
-			GenericChainLink::FunctionRoot {
-				parent_arguments,
-				call_site_type_arguments,
-				type_arguments,
-			} => parent_arguments
-				.and_then(|parent| parent.get_structure_restriction(on))
-				.or_else(|| {
-					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
-				})
-				.or_else(|| type_arguments.get(&on).copied()),
-			GenericChainLink::MappedPropertyLink { parent_link, value } => value
-				.get(&on)
-				.cloned()
-				.and_then(|(c, _)| {
-					if let CovariantContribution::TypeId(t) = c {
-						Some(t)
-					} else {
-						crate::utilities::notify!(
-							"WARNING SKIPPING AS Contribution is {:?} (NOT TYPEID)",
-							c
-						);
-						None
-					}
-				})
-				.or_else(|| parent_link.and_then(|parent| parent.get_single_argument(on))),
-			GenericChainLink::Exclusive { parent_link }
-			| GenericChainLink::CaseTransform { parent_link, on: _ } => {
-				parent_link.and_then(|parent| parent.get_single_argument(on))
-			}
-		}
-	}
-
-	/// For building up [`SubstitutionArguments`] from a generic chain
-	pub(crate) fn extend_arguments(&self, arguments: &mut SubstitutionArguments<'static>) {
-		match self {
-			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
-				from: _,
-				parent_link,
-				value,
-			} => {
-				match value {
-					GenericArguments::ExplicitRestrictions(n) => {
-						arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));
-					}
-					GenericArguments::Closure(n) => arguments.closures.extend(n.iter().copied()),
-					GenericArguments::LookUp { .. } => todo!(),
-				}
-				if let Some(parent_link) = parent_link {
-					parent_link.extend_arguments(arguments);
-				}
-			}
-			GenericChainLink::FunctionRoot {
-				parent_arguments,
-				call_site_type_arguments: _,
-				type_arguments,
-			} => {
-				arguments.arguments.extend(type_arguments.iter().map(|(k, v)| (*k, *v)));
-				if let Some(value) = parent_arguments {
-					match value {
-						GenericArguments::ExplicitRestrictions(n) => {
-							arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));
-						}
-						GenericArguments::Closure(n) => {
-							arguments.closures.extend(n.iter().copied());
-						}
-						GenericArguments::LookUp { .. } => todo!(),
-					}
-				}
-			}
-
-			GenericChainLink::MappedPropertyLink { .. } => todo!("need &mut TypeStore"),
-			GenericChainLink::Exclusive { .. } | GenericChainLink::CaseTransform { .. } => todo!(),
-		}
-	}
-}
-
 // TODO maybe positions and extra information here
 // SomeLiteralMismatch
 // GenericParameterCollision
@@ -997,15 +744,20 @@ fn get_simple_value(
 		}
 	}
 
-	properties::get_property_unbound(
+	let value = properties::get_property_unbound(
 		(on, None),
 		(properties::Publicity::Public, property, None),
 		true,
 		ctx,
 		types,
 	)
-	.ok()
-	.and_then(get_logical)
+	.ok()?;
+
+	if let LogicalOrValid::Logical(value) = value {
+		get_logical(value)
+	} else {
+		None
+	}
 }
 
 fn get_array_length(
@@ -1156,5 +908,105 @@ pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 		| Type::FunctionReference(_)
 		| Type::Object(_)
 		| Type::SpecialObject(_) => false,
+	}
+}
+
+pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
+	if ty == TypeId::ERROR_TYPE {
+		true
+	} else if let Type::RootPolyType(PolyNature::Error(_)) = types.get_type_by_id(ty) {
+		true
+	} else {
+		false
+	}
+}
+
+// pub fn scan_type<T, R>(
+// 	(ty, ty_arguments): (TypeId, GenericChain),
+// 	types: &TypeStore,
+// 	information: &impl InformationChain,
+// 	data: &mut T,
+// 	cb: &impl Fn(TypeId, &TypeStore, &mut T) -> Option<R>
+// ) -> Option<R> {
+// 	match types.get_type_by_id(ty) {
+// 	    Type::AliasTo { to, name: _, parameters: _ } => scan_type(
+// 			(ty, ty_arguments),
+// 			types,
+// 			information,
+// 			data,
+// 			cb
+// 		),
+// 		Type::And(_,_) => {
+// 			todo!("filter")
+// 		},
+// 		Type::Or(l, r) => {
+// 			let left_result = scan_type(
+// 				(*l, ty_arguments),
+// 				types,
+// 				information,
+// 				data,
+// 				cb
+// 			);
+// 			if left_result.is_some() {
+// 				left_result
+// 			} else {
+// 				scan_type(
+// 					(*r, ty_arguments),
+// 					types,
+// 					information,
+// 					data,
+// 					cb
+// 				)
+// 			}
+// 		},
+// 		Type::RootPolyType(_) => {
+// 			if let Some(arg) = ty_arguments.and_then(|args| args.get_single_argument(ty)) {
+// 				scan_type(
+// 					(arg, ty_arguments),
+// 					types,
+// 					information,
+// 					data,
+// 					cb
+// 				)
+// 			} else {
+// 				cb(ty, types, data)
+// 			}
+// 		},
+// 		ty @ Type::Constructor(_) => {
+// 			todo!("{:?}", ty)
+// 		},
+// 		ty @ Type::PartiallyAppliedGenerics(_) => {
+// 			todo!("{:?}", ty)
+// 		},
+// 		Type::Interface { .. } |
+// 		Type::Class { .. } |
+// 		Type::Constant(_) |
+// 		Type::FunctionReference(_) |
+// 		Type::Object(_) |
+// 		Type::SpecialObject(_) => {
+// 			cb(ty, types, data)
+// 		}
+// 	}
+// }
+
+/// TODO want to skip mapped generics because that would break subtyping
+pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
+	match types.get_type_by_id(ty) {
+		Type::Constructor(crate::types::Constructor::ConditionalResult {
+			condition,
+			truthy_result,
+			otherwise_result,
+			result_union: _,
+		}) => Some((*condition, *truthy_result, *otherwise_result)),
+		Type::Or(left, right) => Some((TypeId::OPEN_BOOLEAN_TYPE, *left, *right)),
+		// For reasons !
+		Type::RootPolyType(PolyNature::MappedGeneric { .. }) => None,
+		_ => {
+			if let Some(constraint) = get_constraint(ty, types) {
+				get_conditional(constraint, types)
+			} else {
+				None
+			}
+		}
 	}
 }

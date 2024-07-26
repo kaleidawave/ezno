@@ -5,7 +5,7 @@ use crate::{
 	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	types::{
-		calling::{application_result_to_return_type, CallingInput},
+		calling::{application_result_to_return_type, Callable, CallingInput},
 		cast_as_string, SynthesisedArgument, TypeStore,
 	},
 	CheckingData, Constant, Environment, Type, TypeId,
@@ -134,14 +134,14 @@ where
 			call_site: position,
 			max_inline: checking_data.options.max_inline_count,
 		};
-		match crate::types::calling::call_type(
-			crate::types::calling::Callable::Type(tag),
+		let result = Callable::Type(tag).call(
 			arguments,
 			input,
 			environment,
 			&mut check_things,
 			&mut checking_data.types,
-		) {
+		);
+		match result {
 			Ok(res) => {
 				application_result_to_return_type(res.result, environment, &mut checking_data.types)
 			}

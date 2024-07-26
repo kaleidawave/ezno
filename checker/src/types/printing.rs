@@ -558,8 +558,19 @@ pub fn print_type_into_buf<C: InformationChain>(
 						} else {
 							crate::utilities::notify!("Printing array with no length");
 						}
+
+						if debug {
+							let properties = get_properties_on_single_type(
+								ty,
+								types,
+								info,
+								false,
+								TypeId::ANY_TYPE,
+							);
+							crate::utilities::notify!("Array {:?}", properties);
+						}
 						// TODO get property
-						write!(buf, "Array").unwrap();
+						write!(buf, "Array<*things*>").unwrap();
 					}
 				}
 			} else {
@@ -573,7 +584,13 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				// Important!
 				let filter_enumerable = false;
-				let properties = get_properties_on_single_type(ty, types, info, filter_enumerable);
+				let properties = get_properties_on_single_type(
+					ty,
+					types,
+					info,
+					filter_enumerable,
+					TypeId::ANY_TYPE,
+				);
 				if properties.is_empty() {
 					buf.push_str("{}");
 					return;

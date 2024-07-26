@@ -223,14 +223,14 @@ impl TypeStringRepresentation {
 
 	/// TODO working it out
 	pub(crate) fn from_property_constraint(
-		property_constraint: crate::context::Logical<crate::PropertyValue>,
+		property_constraint: crate::types::logical::Logical<crate::PropertyValue>,
 		generics: GenericChain,
 		ctx: &impl InformationChain,
 		types: &TypeStore,
 		debug_mode: bool,
 	) -> TypeStringRepresentation {
 		match property_constraint {
-			crate::context::Logical::Pure(constraint) => match constraint.inner_simple() {
+			crate::types::logical::Logical::Pure(constraint) => match constraint.inner_simple() {
 				crate::PropertyValue::Value(v) => {
 					let value =
 						print_type_with_type_arguments(*v, generics, types, ctx, debug_mode);
@@ -242,23 +242,23 @@ impl TypeStringRepresentation {
 				crate::PropertyValue::ConditionallyExists { .. }
 				| crate::PropertyValue::Configured { .. } => unreachable!(),
 			},
-			crate::context::Logical::Or { condition, left, right } => {
+			crate::types::logical::Logical::Or { condition, left, right } => {
 				let left_right = (*left, *right);
-				if let (Ok(left), Ok(right)) = left_right {
-					let mut left =
-						Self::from_property_constraint(left, None, ctx, types, debug_mode);
-					let right = Self::from_property_constraint(right, None, ctx, types, debug_mode);
+				// if let (Ok(left), Ok(right)) = left_right {
+				// 	let mut left =
+				// 		Self::from_property_constraint(left, None, ctx, types, debug_mode);
+				// 	let right = Self::from_property_constraint(right, None, ctx, types, debug_mode);
 
-					crate::utilities::notify!("Here?");
-					left.0.push_str(" | ");
-					left.0.push_str(&right.0);
-					Self(left.0)
-				} else {
-					crate::utilities::notify!("Printing {:?} base on {:?}", left_right, condition);
-					Self("TODO".to_owned())
-				}
+				// 	crate::utilities::notify!("Here?");
+				// 	left.0.push_str(" | ");
+				// 	left.0.push_str(&right.0);
+				// 	Self(left.0)
+				// } else {
+				crate::utilities::notify!("Printing {:?} base on {:?}", left_right, condition);
+				Self("TODO".to_owned())
+				// }
 			}
-			crate::context::Logical::Implies { on, antecedent } => {
+			crate::types::logical::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
 					todo!("chaining")
 				}
@@ -269,7 +269,7 @@ impl TypeStringRepresentation {
 				});
 				Self::from_property_constraint(*on, generics, ctx, types, debug_mode)
 			}
-			crate::Logical::BasedOnKey { .. } => todo!(),
+			crate::types::logical::Logical::BasedOnKey { .. } => todo!(),
 		}
 	}
 }

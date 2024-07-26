@@ -33,8 +33,6 @@ impl ContextType for Root {
 	}
 }
 
-const _CONTEXT_FILE_HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
-
 impl RootContext {
 	/// Merges two [`RootEnvironments`]. May be used for multiple `.d.ts` files
 	pub(crate) fn _union(&mut self, other: Self) {

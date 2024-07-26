@@ -7,11 +7,14 @@ use crate::{
 	features::{constant_functions::CallSiteTypeArguments, functions::ThisValue},
 	subtyping::{State, SubTypeResult},
 	types::{
-		calling::FunctionCallingError, generics::generic_type_arguments::GenericArguments,
-		get_constraint, tuple_like, Constructor, GenericChain, PartiallyAppliedGenerics,
-		SynthesisedArgument, TypeStore,
+		calling::FunctionCallingError,
+		generics::generic_type_arguments::GenericArguments,
+		get_constraint,
+		logical::{LeftRight, Logical, LogicalOrValid},
+		tuple_like, Constructor, GenericChain, PartiallyAppliedGenerics, SynthesisedArgument,
+		TypeStore,
 	},
-	Environment, Logical, Type, TypeId,
+	Environment, Type, TypeId,
 };
 
 use source_map::SpanWithSource;
@@ -73,7 +76,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 			// 	property_constraint
 			// );
 
-			if let Ok(property_constraint) = property_constraint {
+			if let Ok(LogicalOrValid::Logical(property_constraint)) = property_constraint {
 				// TODO ...?
 				let mut state = State {
 					already_checked: Default::default(),
@@ -187,7 +190,7 @@ pub fn set_property<E: CallCheckingBehavior>(
 	let current_property =
 		get_property_unbound((on, None), (publicity, under, None), false, environment, types);
 
-	if let Ok(fact) = current_property {
+	if let Ok(LogicalOrValid::Logical(fact)) = current_property {
 		if let Some(value) = set_on_logical(
 			fact,
 			behavior,
@@ -260,20 +263,34 @@ fn set_on_logical<E: CallCheckingBehavior>(
 				setter_position,
 			)
 		}
-		Logical::BasedOnKey { on: og, key_arguments } => {
-			let generics = crate::types::GenericChainLink::MappedPropertyLink {
-				parent_link: None,
-				value: &key_arguments,
-			};
-			set_on_logical(
-				*og,
-				behavior,
-				environment,
-				(on, Some(generics)),
-				(publicity, under, new),
-				types,
-				setter_position,
-			)
+		Logical::BasedOnKey(kind) => {
+			if let LeftRight::Left { value, key_arguments } = kind {
+				let generics = crate::types::GenericChainLink::MappedPropertyLink {
+					parent_link: None,
+					value: &key_arguments,
+				};
+				set_on_logical(
+					*value,
+					behavior,
+					environment,
+					(on, Some(generics)),
+					(publicity, under, new),
+					types,
+					setter_position,
+				)
+			} else {
+				crate::utilities::notify!("Here {:?}", kind);
+				// set_on_logical(
+				// 	*og,
+				// 	behavior,
+				// 	environment,
+				// 	(on, None),
+				// 	(publicity, under, new),
+				// 	types,
+				// 	setter_position,
+				// )
+				None
+			}
 		}
 	}
 }
@@ -380,20 +397,18 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				// TODO
 				max_inline: 0,
 			};
-			let setter = types.functions.get(&setter).unwrap().clone();
-			let result = setter.call(
-				(
-					ThisValue::Passed(on),
-					&[arg],
-					None::<CallSiteTypeArguments>,
-					// TODO structure generics
-					None::<GenericArguments>,
-				),
-				input,
-				environment,
-				behavior,
-				types,
-			);
+
+			let result = setter.call(vec![arg], input, environment, behavior, types);
+			// let setter = types.functions.get(&setter).unwrap().clone();
+			// let result = setter.call(
+			// 	(
+			// 		ThisValue::Passed(on),
+			// 		&[arg],
+			// 		None::<CallSiteTypeArguments>,
+			// 		// TODO structure generics
+			// 		None::<GenericArguments>,
+			// 	),
+			// 	input,
 
 			match result {
 				// Ignore the returned result of the setter
@@ -401,7 +416,7 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				Err(res) => Err(SetterResult::SetterErrors(res.errors)),
 			}
 		}
-		PropertyValue::ConditionallyExists { on: _condition, truthy } => {
+		PropertyValue::ConditionallyExists { condition: _condition, truthy } => {
 			crate::utilities::notify!("TODO conditionally");
 
 			run_setter_on_object(

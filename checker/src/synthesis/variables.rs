@@ -169,6 +169,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						&checking_data.types,
 						environment,
 						true,
+						TypeId::ANY_TYPE,
 					) {
 						if let PropertyKey::String(ref s) = key {
 							if taken_members.contains(s) {

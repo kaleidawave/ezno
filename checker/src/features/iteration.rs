@@ -541,7 +541,13 @@ pub(crate) fn run_iteration_block(
 		IterationKind::Properties { on, variable } => {
 			// Or exact ...?. TODO split ors
 			if let Type::Object(ObjectNature::RealDeal) = types.get_type_by_id(on) {
-				let properties = get_properties_on_single_type(on, types, top_environment, true);
+				let properties = get_properties_on_single_type(
+					on,
+					types,
+					top_environment,
+					true,
+					TypeId::ANY_TYPE,
+				);
 				let mut n = 0;
 				run_iteration_loop(
 					invocation_context,

@@ -200,24 +200,27 @@ pub(crate) fn apply_events(
 				} else {
 					let under = under.substitute(type_arguments, top_environment, types);
 
-					let new = match new {
-						PropertyValue::Value(new) => PropertyValue::Value(substitute(
-							*new,
-							type_arguments,
-							top_environment,
-							types,
-						)),
-						// For declare property
-						PropertyValue::Getter(_) => todo!(),
-						PropertyValue::Setter(_) => todo!(),
-						// TODO this might be a different thing at some point
-						PropertyValue::Deleted | PropertyValue::ConditionallyExists { .. } => {
-							unreachable!()
-						}
-						PropertyValue::Configured { .. } => {
-							todo!()
-						}
-					};
+					let new =
+						match new {
+							PropertyValue::Value(new) => PropertyValue::Value(substitute(
+								*new,
+								type_arguments,
+								top_environment,
+								types,
+							)),
+							PropertyValue::Getter(_) => {
+								todo!("Expand to callable if they contain things")
+							}
+							PropertyValue::Setter(_) => {
+								todo!("Expand to callable if they contain things")
+							}
+							PropertyValue::Deleted | PropertyValue::ConditionallyExists { .. } => {
+								unreachable!("This should be handled by Event::DeleteProperty (not Event::Setter)")
+							}
+							PropertyValue::Configured { .. } => {
+								unreachable!("This should be handled by Event::Reconfigure (not Event::Setter)")
+							}
+						};
 
 					{
 						crate::utilities::notify!(
@@ -331,14 +334,7 @@ pub(crate) fn apply_events(
 							max_inline: input.max_inline,
 							call_site: *call_site,
 						};
-						let result = crate::types::calling::call_type(
-							on,
-							with,
-							input,
-							top_environment,
-							target,
-							types,
-						);
+						let result = on.call(with, input, top_environment, target, types);
 						match result {
 							Ok(mut result) => {
 								errors.info.append(&mut result.info);

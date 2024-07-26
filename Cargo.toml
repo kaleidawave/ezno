@@ -92,3 +92,6 @@ module_name_repetitions = "allow"
 too_many_lines = "allow"
 new_without_default = "allow"
 result_unit_err = "allow"
+
+[profile.dev]
+debug = false

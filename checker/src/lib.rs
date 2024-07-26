@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![allow(deprecated, clippy::new_without_default, clippy::too_many_lines, clippy::result_unit_err)]
 #![warn(clippy::must_use_candidate)]
+#![allow(unused)]
 
 pub mod context;
 pub mod diagnostics;
@@ -35,17 +36,15 @@ use std::{
 	time::Duration,
 };
 
-use types::TypeStore;
-
 pub use context::{
-	information::LocalInformation, Environment, GeneralContext, Logical, RootContext, Scope,
+	information::LocalInformation, Environment, GeneralContext, RootContext, Scope,
 	VariableRegisterArguments,
 };
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
 pub use types::{
 	calling::call_type_handle_errors, generics::GenericTypeParameters, properties::PropertyValue,
-	subtyping, Constant, Type, TypeId,
+	subtyping, Constant, Type, TypeId, TypeStore,
 };
 
 pub use type_mappings::*;
@@ -796,10 +795,21 @@ where
 	pub fn insert(&mut self, id: K, value: V) {
 		self.0.push((id, value));
 	}
+
 	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		self.0.is_empty()
 	}
+
+	#[must_use]
+	pub fn into_some(self) -> Option<Self> {
+		if self.0.is_empty() {
+			None
+		} else {
+			Some(self)
+		}
+	}
+
 	#[must_use]
 	pub fn len(&self) -> usize {
 		self.0.len()

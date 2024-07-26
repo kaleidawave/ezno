@@ -7,7 +7,7 @@ use crate::{
 	context::{environment::FunctionScope, invocation::CheckThings},
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
-	types::calling::{call_type, CallingInput},
+	types::calling::CallingInput,
 	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
 
@@ -118,8 +118,7 @@ impl FunctionType {
 						called_with_new,
 						max_inline: checking_data.options.max_inline_count,
 					};
-					let result = call_type(
-						crate::types::calling::Callable::Type(extends),
+					let result = crate::types::calling::Callable::Type(extends).call(
 						Vec::new(),
 						input,
 						environment,

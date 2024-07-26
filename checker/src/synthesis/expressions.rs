@@ -16,7 +16,6 @@ use parser::{
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
-	context::Logical,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
 		self, await_expression,
@@ -32,6 +31,7 @@ use crate::{
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
 		get_larger_type,
+		logical::{Logical, LogicalOrValid},
 		printing::{print_property_key, print_type},
 		properties::{
 			get_properties_on_single_type, get_property_unbound, AccessMode, PropertyKey,
@@ -1154,6 +1154,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							&checking_data.types,
 							environment,
 							true,
+							TypeId::ANY_TYPE,
 						);
 
 						for (_, key, value) in get_properties_on_type {
@@ -1178,12 +1179,14 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							&checking_data.types,
 							environment,
 							true,
+							TypeId::ANY_TYPE,
 						);
 						let otherwise_properties = get_properties_on_single_type(
 							*otherwise_result,
 							&checking_data.types,
 							environment,
 							true,
+							TypeId::ANY_TYPE,
 						);
 						crate::utilities::notify!(
 							"Here {:?} {:?} {:?} {:?}",
@@ -1238,7 +1241,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 									Publicity::Public,
 									key,
 									PropertyValue::ConditionallyExists {
-										on: *condition,
+										condition: *condition,
 										truthy: Box::new(value),
 									},
 									member_position,
@@ -1253,7 +1256,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 									Publicity::Public,
 									key,
 									PropertyValue::ConditionallyExists {
-										on: negation,
+										condition: negation,
 										truthy: Box::new(value),
 									},
 									member_position,
@@ -1355,9 +1358,14 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				// TODO needs improvement
 				let property_expecting = maybe_property_expecting
 					.ok()
-					.and_then(
-						|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None },
-					)
+					.and_then(|l| {
+						if let LogicalOrValid::Logical(Logical::Pure(l)) = l {
+							Some(l.as_get_type())
+						} else {
+							crate::utilities::notify!("TODO {:?}", l);
+							None
+						}
+					})
 					.unwrap_or(TypeId::ANY_TYPE);
 
 				let value =
@@ -1408,7 +1416,14 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					&checking_data.types,
 				)
 				.ok()
-				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
+				.and_then(|l| {
+					if let LogicalOrValid::Logical(Logical::Pure(l)) = l {
+						Some(l.as_get_type())
+					} else {
+						crate::utilities::notify!("TODO {:?}", l);
+						None
+					}
+				})
 				.unwrap_or(TypeId::ANY_TYPE);
 
 				let behavior = crate::features::functions::FunctionRegisterBehavior::ObjectMethod {

@@ -8,6 +8,7 @@ use crate::{
 	features::functions::{self, GetterSetter},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
+		calling::Callable,
 		properties::{Descriptor, PropertyKey, PropertyValue, Publicity},
 		references_key_of, FunctionType, Type,
 	},
@@ -89,16 +90,14 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		};
 		let value = match value {
 			InterfaceValue::Function(function, getter_setter) => match getter_setter {
-				GetterSetter::Getter => {
-					let id = function.id;
-					checking_data.types.functions.insert(id, function);
-					PropertyValue::Getter(id)
-				}
-				GetterSetter::Setter => {
-					let id = function.id;
-					checking_data.types.functions.insert(id, function);
-					PropertyValue::Setter(id)
-				}
+				GetterSetter::Getter => PropertyValue::Getter(Callable::new_from_function(
+					function,
+					&mut checking_data.types,
+				)),
+				GetterSetter::Setter => PropertyValue::Setter(Callable::new_from_function(
+					function,
+					&mut checking_data.types,
+				)),
 				GetterSetter::None => {
 					let function_id = function.id;
 					checking_data.types.functions.insert(function.id, function);
@@ -122,7 +121,10 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		let value = if let IsDefined(TypeId::TRUE) = always_defined {
 			value
 		} else {
-			PropertyValue::ConditionallyExists { on: always_defined.0, truthy: Box::new(value) }
+			PropertyValue::ConditionallyExists {
+				condition: always_defined.0,
+				truthy: Box::new(value),
+			}
 		};
 
 		// None position should be fine here
@@ -241,19 +243,14 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
 
 					let value = InterfaceValue::Value(value);
-					// TODO WIP
-					let always_defined = IsDefined::from_optionality(matches!(
-						key,
-						TypeId::NUMBER_TYPE | TypeId::STRING_TYPE
-					));
-					// crate::utilities::notify!(
-					// 	"Special case for [number] or [string], making optional {}",
-					// 	name
-					// );
 
 					interface_register_behavior.register(
 						InterfaceKey::Type(key),
-						(value, always_defined, Writable::from_readonly(*is_readonly)),
+						(
+							value,
+							IsDefined::from_optionality(false),
+							Writable::from_readonly(*is_readonly),
+						),
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),

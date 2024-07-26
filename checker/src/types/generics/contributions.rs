@@ -2,7 +2,7 @@ use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	subtyping::{type_is_subtype_with_generics, State, SubTypeResult},
-	types::{GenericChain, PartiallyAppliedGenerics, TypeRestrictions, TypeStore},
+	types::{GenericChain, PartiallyAppliedGenerics, PropertyKey, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
 
@@ -19,8 +19,9 @@ pub type ContributionDepth = u8;
 pub enum CovariantContribution {
 	/// Note this can reference array
 	TypeId(TypeId),
-	SliceOf(Box<Self>, (u32, u32)),
+	/// This can be set by property keys in mapped types
 	String(String),
+	SliceOf(Box<Self>, (u32, u32)),
 	CaseInsensitive(Box<Self>),
 }
 
@@ -52,6 +53,22 @@ impl CovariantContribution {
 						])),
 					},
 				))
+			}
+		}
+	}
+
+	// TODO maybe return modifier for generic chain
+	pub(crate) fn as_property_key(self) -> PropertyKey<'static> {
+		match self {
+			CovariantContribution::TypeId(ty) => PropertyKey::Type(ty),
+			CovariantContribution::SliceOf(inner, (start, end)) => {
+				todo!("{:?}", (inner, (start, end)));
+			}
+			CovariantContribution::String(slice) => {
+				PropertyKey::String(std::borrow::Cow::Owned(slice.to_owned()))
+			}
+			CovariantContribution::CaseInsensitive(on) => {
+				todo!("{:?}", on)
 			}
 		}
 	}

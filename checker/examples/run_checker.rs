@@ -17,21 +17,26 @@ fn main() {
 	let use_simple = args.iter().any(|item| item == "--simple-dts");
 	let no_cache = args.iter().any(|item| item == "--no-cache");
 	let debug_types = args.iter().any(|item| item == "--debug-types");
+	let no_lib = args.iter().any(|item| item == "--no-lib");
 
 	let now = Instant::now();
 
 	let resolver = |path: &std::path::Path| fs::read(path).ok();
 
-	let definition_file = if use_simple {
-		simple_dts_path.clone()
-	} else if no_cache {
-		overrides_dts_path.clone()
+	let type_definition_files = if no_lib {
+		Vec::new()
 	} else {
-		ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()
+		let definition_file = if use_simple {
+			simple_dts_path.clone()
+		} else if no_cache {
+			overrides_dts_path.clone()
+		} else {
+			ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()
+		};
+		vec![definition_file]
 	};
 
 	let entry_points = vec![path.to_path_buf()];
-	let type_definition_files = vec![definition_file];
 
 	let options = TypeCheckOptions {
 		debug_types,

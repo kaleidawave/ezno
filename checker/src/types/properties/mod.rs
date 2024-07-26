@@ -8,8 +8,11 @@ use super::{Type, TypeStore};
 use crate::{
 	context::information::InformationChain,
 	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
-	types::{generics::contributions::Contributions, properties, GenericChain, PolyNature},
-	Constant, Environment, FunctionId, Logical, TypeId,
+	types::{
+		calling::Callable, generics::contributions::Contributions, logical::*, properties,
+		GenericChain, PolyNature,
+	},
+	Constant, Environment, FunctionId, TypeId,
 };
 use std::borrow::Cow;
 
@@ -184,19 +187,24 @@ impl<'a> PropertyKey<'a> {
 	}
 }
 
-/// TODO getter, setting need a closure id
+/// TODO getter, setter need a closure id (or implement using `Callable::Type`)
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PropertyValue {
 	Value(TypeId),
-	Getter(FunctionId),
-	Setter(FunctionId),
-	/// TODO doesn't exist Deleted | Optional
+	/// These need to be [`Callable`], because the getter can be a type via `Object.defineProperty`
+	Getter(Callable),
+	/// These need to be [`Callable`], because the getter can be a type via `Object.defineProperty`
+	Setter(Callable),
+	/// TODO this could have a bit more information. Whether it came from a `delete` or from TS Optional annotation
 	Deleted,
+	/// This is the solution for ors. Can be a getter added, a value removed.
 	ConditionallyExists {
-		on: TypeId,
+		/// If `condition == TypeId::TRUE` then truthy is the value
+		condition: TypeId,
 		/// Should be always Value | Getter | Setter | Deleted
 		truthy: Box<Self>,
 	},
+	/// TODO while this works it does mean that there can be long linked lists via Box<Self> (I think)
 	Configured {
 		/// This points to the previous. Can be conditionally via [`PropertyValue::ConditionallyExists`]
 		on: Box<Self>,
@@ -204,6 +212,7 @@ pub enum PropertyValue {
 	},
 }
 
+/// TODO link to MDN
 #[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct Descriptor {
 	pub writable: TypeId,
@@ -271,9 +280,9 @@ impl PropertyValue {
 
 	// For printing and debugging
 	pub fn is_optional_simple(&self) -> bool {
-		if let PropertyValue::ConditionallyExists { on, truthy: _ } = self {
-			// crate::utilities::notify!("on={:?}", *on);
-			!matches!(*on, TypeId::NON_OPTIONAL_KEY_ARGUMENT)
+		if let PropertyValue::ConditionallyExists { condition, truthy: _ } = self {
+			// crate::utilities::notify!("condition={:?}", *condition);
+			!matches!(*condition, TypeId::NON_OPTIONAL_KEY_ARGUMENT)
 		} else {
 			false
 		}
@@ -281,7 +290,7 @@ impl PropertyValue {
 
 	// For printing and debugging
 	pub fn is_writable_simple(&self) -> bool {
-		if let PropertyValue::ConditionallyExists { on: _, truthy } = self {
+		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
 			truthy.is_writable_simple()
 		} else if let PropertyValue::Configured { on: _, descriptor } = self {
 			!matches!(descriptor.writable, TypeId::TRUE | TypeId::WRITABLE_KEY_ARGUMENT)
@@ -291,10 +300,9 @@ impl PropertyValue {
 	}
 }
 
-/// Does lhs equal want
-/// Aka is `want_key in { [lhs_key]: ... }`
+/// Does lhs equal want. Aka is `want_key in { [lhs_key]: ... }`
 ///
-/// This is very much like [`type_is_subtype`] but for keys
+/// This is very much like [`type_is_subtype`] but for [`PropertyKey`]
 pub(crate) fn key_matches(
 	(key, key_type_arguments): (&PropertyKey<'_>, GenericChain),
 	(want, want_type_arguments): (&PropertyKey<'_>, GenericChain),
@@ -363,8 +371,26 @@ pub(crate) fn key_matches(
 						info_chain,
 						types,
 					)
+				} else if let Type::Constructor(crate::types::Constructor::KeyOf(on)) = want_ty {
+					let matches = access::get_properties_on_single_type2(
+						(*on, want_type_arguments),
+						types,
+						info_chain,
+						TypeId::ANY_TYPE,
+					)
+					.iter()
+					.all(|(rhs_key, _, _)| {
+						key_matches(
+							(key, key_type_arguments),
+							(rhs_key, want_type_arguments),
+							info_chain,
+							types,
+						)
+						.0
+					});
+					(matches, Default::default())
 				} else if let Type::Constant(c) = want_ty {
-					crate::utilities::notify!("{:?}", c);
+					// crate::utilities::notify!("{:?}", c);
 					// TODO
 					(*s == c.as_js_string(), SliceArguments::default())
 				} else if *want == TypeId::NUMBER_TYPE {
@@ -448,7 +474,7 @@ pub(crate) fn has_property(
 	crate::utilities::notify!("Has got {:?} on {:?}", result, rhs);
 
 	match result {
-		Ok(result) => match result {
+		Ok(LogicalOrValid::Logical(result)) => match result {
 			Logical::Pure(_) => TypeId::TRUE,
 			Logical::Or { .. } => {
 				crate::utilities::notify!("or or implies `in`");
@@ -463,21 +489,24 @@ pub(crate) fn has_property(
 				TypeId::ERROR_TYPE
 			}
 		},
-		Err(err) => match err {
-			crate::context::MissingOrToCalculate::Missing => {
-				crate::utilities::notify!("If on poly this could be conditional");
-				TypeId::FALSE
-			}
-			crate::context::MissingOrToCalculate::Error => {
-				types.new_error_type(TypeId::BOOLEAN_TYPE)
-			}
-			crate::context::MissingOrToCalculate::Infer { .. } => {
-				types.new_error_type(TypeId::BOOLEAN_TYPE)
-			}
-			crate::context::MissingOrToCalculate::Proxy(_) => {
-				crate::utilities::notify!("`has` on proxy");
-				types.new_error_type(TypeId::BOOLEAN_TYPE)
-			}
-		},
+		Ok(LogicalOrValid::NeedsCalculation(result)) => {
+			crate::utilities::notify!("TODO {:?}", result);
+			TypeId::ERROR_TYPE
+		}
+		Err(err) => {
+			crate::utilities::notify!("TODO {:?}", err);
+			TypeId::ERROR_TYPE
+		} // match err {
+		  // 	MissingOrToCalculate::Missing => {
+		  // 		crate::utilities::notify!("If on poly this could be conditional");
+		  // 		TypeId::FALSE
+		  // 	}
+		  // 	MissingOrToCalculate::Error => types.new_error_type(TypeId::BOOLEAN_TYPE),
+		  // 	MissingOrToCalculate::Infer { .. } => types.new_error_type(TypeId::BOOLEAN_TYPE),
+		  // 	MissingOrToCalculate::Proxy(_) => {
+		  // 		crate::utilities::notify!("`has` on proxy");
+		  // 		types.new_error_type(TypeId::BOOLEAN_TYPE)
+		  // 	}
+		  // },
 	}
 }

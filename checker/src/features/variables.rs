@@ -7,12 +7,13 @@ use crate::diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRe
 use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
 	types::{
+		logical::{Logical, LogicalOrValid},
 		properties::{get_property_unbound, PropertyKey, Publicity},
 		TypeId,
 	},
 	CheckingData, VariableId,
 };
-use crate::{Environment, Instance, Logical};
+use crate::{Environment, Instance};
 use std::fmt::Debug;
 
 /// A variable, that can be referenced. Can be a including class (prototypes) and functions
@@ -145,12 +146,16 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 			&checking_data.types,
 		);
 		if let Ok(value) = property_constraint {
-			match value {
-				Logical::Pure(crate::PropertyValue::Value(value)) => value,
-				Logical::Pure(_) => todo!(),
-				Logical::Or { .. } => todo!(),
-				Logical::Implies { .. } => todo!(),
-				Logical::BasedOnKey { .. } => todo!(),
+			if let LogicalOrValid::Logical(value) = value {
+				match value {
+					Logical::Pure(crate::PropertyValue::Value(value)) => value,
+					Logical::Pure(_) => todo!(),
+					Logical::Or { .. } => todo!(),
+					Logical::Implies { .. } => todo!(),
+					Logical::BasedOnKey { .. } => todo!(),
+				}
+			} else {
+				TypeId::ERROR_TYPE
 			}
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {

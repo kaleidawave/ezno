@@ -60,15 +60,15 @@ declare class Array<T> {
         return at + 1
     }
 
-    pop(): T | undefined {
-        if (this.length === 0) {
-            return undefined
-        } else {
-            const value = this[--this.length];
-            delete this[this.length];
-            return value
-        }
-    }
+    // pop(): T | undefined {
+    //     if (this.length === 0) {
+    //         return undefined
+    //     } else {
+    //         const value = this[--this.length];
+    //         delete this[this.length];
+    //         return value
+    //     }
+    // }
 
     // TODO this argument
     // map<U>(cb: (t: T, i?: number) => U): Array<U> {
@@ -360,29 +360,29 @@ declare class Object {
     //     return n
     // }
 
-    static keys(on: { [s: string]: any }): Array<string> {
-        const keys: Array<string> = [];
-        for (const key in on) {
-            keys.push(key);
-        }
-        return keys
-    }
+    // static keys(on: { [s: string]: any }): Array<string> {
+    //     const keys: Array<string> = [];
+    //     for (const key in on) {
+    //         keys.push(key);
+    //     }
+    //     return keys
+    // }
 
-    static values(on: { [s: string]: any }): Array<any> {
-        const values: Array<any> = [];
-        for (const key in on) {
-            values.push(on[key]);
-        }
-        return values
-    }
+    // static values(on: { [s: string]: any }): Array<any> {
+    //     const values: Array<any> = [];
+    //     for (const key in on) {
+    //         values.push(on[key]);
+    //     }
+    //     return values
+    // }
 
-    static entries(on: { [s: string]: any }): Array<[string, any]> {
-        const entries: Array<[string, any]> = [];
-        for (const key in on) {
-            entries.push([key, on[key]]);
-        }
-        return entries
-    }
+    // static entries(on: { [s: string]: any }): Array<[string, any]> {
+    //     const entries: Array<[string, any]> = [];
+    //     for (const key in on) {
+    //         entries.push([key, on[key]]);
+    //     }
+    //     return entries
+    // }
 
     // static fromEntries(iterator: any): object {
     //     const obj = {};

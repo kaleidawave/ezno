@@ -1,3 +1,4 @@
+use super::PartiallyAppliedGenerics;
 use crate::{context::information::InformationChain, types::TypeStore, Type, TypeId};
 
 /// For equality + [`crate::intrinsics::Intrinsics::Not`]
@@ -44,6 +45,23 @@ pub fn types_are_disjoint(
 		} else if let Type::And(right_left, right_right) = right_ty {
 			types_are_disjoint(left, *right_left, already_checked, information, types)
 				|| types_are_disjoint(left, *right_right, already_checked, information, types)
+		} else if let (
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::ARRAY_TYPE,
+				arguments,
+			}),
+			Type::Object(super::ObjectNature::RealDeal),
+		) = (left_ty, right_ty)
+		{
+			let rhs_prototype = information
+				.get_chain_of_info()
+				.find_map(|info| info.prototypes.get(&right).copied());
+			// {
+			// 		if let Some(lhs_prototype) = info.prototypes.get(&lhs).copied() {
+			// 	let rhs_prototype = information.get_prototype_of(right);
+
+			// TODO leaving arguments out of picture for now
+			rhs_prototype != Some(TypeId::ARRAY_TYPE)
 		} else if let (Type::Object(super::ObjectNature::RealDeal), _)
 		| (_, Type::Object(super::ObjectNature::RealDeal)) = (left_ty, right_ty)
 		{

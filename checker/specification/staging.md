@@ -30,13 +30,18 @@ type Pick<T, K extends keyof T> = {
 
 interface X { a: number, b: string, c: string }
 
-const x: Pick<X, "a"> = { a: 5 };
+({ a: 5 } satisfies Pick<X, "a">);
+({ a: 5 } satisfies Pick<X, "a" | "b">);
+({ a: 5, b: "hi" } satisfies Pick<X, "a" | "b">);
+({ a: 5, b: 6 } satisfies Pick<X, "a" | "b">);
 
 declare let y: Pick<X, "b" | "c">;
 y.b satisfies string;
 y.a;
 ```
 
+- Expected { ["a" | "b"]: X["a" | "b"] }, found { a: 5 }
+- Expected { ["a" | "b"]: X["a" | "b"] }, found { a: 5, b: 6 }
 - No property 'a' on { ["b" | "c"]: X["b" | "c"] }
 
 #### Optional
@@ -46,11 +51,11 @@ type Partial<T> = {
     [P in keyof T]?: T[P];
 };
 
-const x: Partial<{ a: number, b: string }> = { a: 3 },
-      y: Partial<{ a: number, b: string }> = { a: "hi" }
+({ a: 3 } satisfies Partial<{ a: number, b: string }>);
+({ a: "hi" } satisfies Partial<{ a: number, b: string }>)
 ```
 
-- Cannot assign { a: "hi" }
+- Expected { [keyof { a: number, b: string }]?: { a: number, b: string }[keyof { a: number, b: string }] }, found { a: \"hi\" }
 
 #### Negated optionality
 
@@ -301,12 +306,15 @@ new RegExp("<string>x").group.string
 #### Array slice matching pattern
 
 ```ts
-type Head<T> = T extends [infer H, ...Array<any>] ? H : null;
+type Head<T> = T extends [infer H, ...Array<any>] ? H : never;
 
 type Tail<T> = T extends [any, ...infer Tail] ? Tail : [];
+
+2 satisfies Head<[1, 2, 3, 4, 5]>;
+[2, 3, 4, 5] satisfies Tail<[1, 2, 3, 4, 5]>;
 ```
 
-- ?
+- Expected 1, found 2
 
 #### String slice matching pattern
 
@@ -332,16 +340,27 @@ b satisfies "hello";
 
 - Expected number, found string
 
+#### Properties on or
+
+```ts
+declare let key: "a" | "b";
+
+const object = { a: "apple", b: "banana" };
+object[key] satisfies boolean;
+```
+
+- Expected boolean, found "apple" | "banana"
+
 #### Properties on big or
 
 > TODO this creates a fat or type
 
 ```ts
-const array = [1, 2, 3, 4, 5, 6, 7, 8]
-array[Math.random()] satisfies 4;
+const array = [1, 2, 3];
+array[Math.random()] satisfies string;
 ```
 
-- ?
+- Expected string, found 1 | 2 | 3 | undefined
 
 #### Un-delete-able property
 
@@ -585,6 +604,34 @@ global satisfies 10
 ```
 
 - Expected string, found 0
+
+#### Getters AND setter can be Type via Object.defineProperty
+
+> TODO parameter checking as well
+
+```ts
+function func(get: () => number) {
+	const obj = {};
+	Object.defineProperty("value", { get });
+	obj.value satisfies string
+}
+```
+
+- Expected string, found number
+
+#### Getters closures
+
+```ts
+function Closure(n: string) {
+	return { get value() { return n }, set value() { n = newValue;  } };
+}
+
+let b = Closure("hi");
+b.value = "something";
+b.value satisfies number;
+```
+
+- Expected number, found something
 
 #### `enumerable` in for in
 

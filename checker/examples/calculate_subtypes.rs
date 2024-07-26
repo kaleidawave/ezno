@@ -77,11 +77,11 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 			&mut environment.info,
 		);
 		basis.append(
-			environment,
 			Publicity::Public,
 			inner,
 			PropertyValue::Value(five),
 			source_map::SpanWithSource::NULL,
+			&mut environment.info,
 		);
 		basis.build_object()
 	};

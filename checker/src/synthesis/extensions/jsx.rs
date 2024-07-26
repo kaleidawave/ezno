@@ -10,7 +10,7 @@ use crate::{
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{
-		calling::{call_type, CallingInput},
+		calling::{application_result_to_return_type, Callable, CalledWithNew, CallingInput},
 		properties::PropertyKey,
 		SynthesisedArgument,
 	},
@@ -228,23 +228,21 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
 
 	let calling_input = CallingInput {
-		called_with_new: crate::types::calling::CalledWithNew::None,
+		called_with_new: CalledWithNew::None,
 		call_site: position,
 		max_inline: checking_data.options.max_inline_count,
 	};
-	match call_type(
-		crate::types::calling::Callable::Type(jsx_function),
+	let result = Callable::Type(jsx_function).call(
 		args,
 		calling_input,
 		environment,
 		&mut check_things,
 		&mut checking_data.types,
-	) {
-		Ok(res) => crate::types::calling::application_result_to_return_type(
-			res.result,
-			environment,
-			&mut checking_data.types,
-		),
+	);
+	match result {
+		Ok(res) => {
+			application_result_to_return_type(res.result, environment, &mut checking_data.types)
+		}
 		Err(error) => {
 			error.errors.into_iter().for_each(|error| {
 				checking_data
