@@ -429,6 +429,7 @@ pub(crate) enum TypeCheckError<'a> {
 }
 
 pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
+    println!("{:?}{:?}",possibles, reference);
     match get_closest(possibles.into_iter(), reference).unwrap_or(vec![]).as_slice() {
         [] => return format!(""),
 	[a] => return format!("Did you mean {a}?"),

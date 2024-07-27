@@ -8,7 +8,7 @@ use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
 	types::{
 		printing::print_type,
-		properties::{get_property_unbound, PropertyKey, Publicity},
+		properties::{get_property_unbound, get_property_key_names_on_a_single_type, PropertyKey, Publicity},
 		TypeId,
 	},
 	CheckingData, VariableId,
@@ -167,7 +167,8 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 					&checking_data.types,
 					false,
 				),
-				site: position,
+			    site: position,
+			    possibles: get_property_key_names_on_a_single_type(space, &mut checking_data.types, environment).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
 			});
 			TypeId::ERROR_TYPE
 		}

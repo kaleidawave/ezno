@@ -24,7 +24,7 @@ use crate::{
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
 		printing,
-		properties::{PropertyKey, PropertyKind, PropertyValue, Publicity},
+		properties::{PropertyKey, PropertyKind, PropertyValue, Publicity, get_property_key_names_on_a_single_type},
 		PolyNature, Type, TypeStore,
 	},
 	CheckingData, Instance, RootContext, TypeCheckOptions, TypeId,
@@ -535,7 +535,8 @@ impl<'a> Environment<'a> {
 									&checking_data.types,
 									false,
 								),
-								site: position,
+							    site: position,
+							    possibles: get_property_key_names_on_a_single_type(rhs, &mut checking_data.types, self).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
 							},
 						);
 
@@ -882,7 +883,8 @@ impl<'a> Environment<'a> {
 					&checking_data.types,
 					false,
 				),
-				site,
+			    site,
+			    possibles: get_property_key_names_on_a_single_type(on, &mut checking_data.types, self).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
 			});
 			Err(())
 		}

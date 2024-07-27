@@ -527,7 +527,9 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		} else {
 			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
 				file: CouldNotOpenFile(point.clone()),
-				import_position: None,
+			    import_position: None,
+			    possibles: checking_data.modules.files.get_paths().keys().filter(|path| path.to_str().is_some()).map(|path| path.to_str().unwrap()).collect(),
+			    partial_import_path: point.to_str().unwrap_or("")
 			});
 			continue;
 		}

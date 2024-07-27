@@ -1584,11 +1584,10 @@ pub fn get_property_as_string(property: &PropertyKey, types: &mut TypeStore, env
 pub fn get_property_key_names_on_a_single_type<'a>(
 	base: TypeId,
 	types: &mut TypeStore,
-    info: &impl InformationChain,
     environment: &mut Environment
 ) -> Vec<String> {
     
-    get_properties_on_single_type(base, types, info).into_iter().map(|property| {
+    get_properties_on_single_type(base, types, environment).into_iter().map(|property| {
 	get_property_as_string(&property.1, types, environment)
     }
     ).collect()

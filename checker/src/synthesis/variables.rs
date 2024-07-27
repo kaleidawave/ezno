@@ -13,7 +13,7 @@ use crate::{
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		printing,
-		properties::{PropertyKey, Publicity},
+		properties::{PropertyKey, Publicity, get_property_key_names_on_a_single_type},
 	},
 	CheckingData, Environment, TypeId,
 };
@@ -345,7 +345,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												&checking_data.types,
 												false,
 											),
-											site: position,
+										    site: position,
+										    possibles: get_property_key_names_on_a_single_type(value, &mut checking_data.types, environment).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
 										},
 									);
 
@@ -418,7 +419,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												&checking_data.types,
 												false,
 											),
-											site: position.with_source(environment.get_source()),
+										    site: position.with_source(environment.get_source()),
+										    possibles: get_property_key_names_on_a_single_type(value, &mut checking_data.types, environment).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
 										},
 									);
 
