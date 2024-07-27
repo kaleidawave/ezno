@@ -474,17 +474,7 @@ impl<T: ContextType> Context<T> {
 		.flatten()
 		.map(|x| x.as_str())
 		.collect::<Vec<&str>>()
-    }
-
-    pub fn get_all_imports(&self) -> Vec<&str> {
-	    self.parents_iter()
-	    .map(|env| get_on_ctx!(env.variables.iter()))
-	    .flatten()
-	    .filter(|(_,variable)| matches!(variable, VariableOrImport::ConstantImport{..} | VariableOrImport::MutableImport{..}))
-	    .map(|(name, _)| name.as_str())
-	    .collect::<Vec<&str>>()
-    }
-
+	}
 
 	pub(crate) fn get_variable_name(&self, id: VariableId) -> &str {
 		match self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(&id))) {
