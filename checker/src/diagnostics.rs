@@ -429,7 +429,6 @@ pub(crate) enum TypeCheckError<'a> {
 }
 
 pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
-    println!("{:?}{:?}",possibles, reference);
     match get_closest(possibles.into_iter(), reference).unwrap_or(vec![]).as_slice() {
         [] => return format!(""),
 	[a] => return format!("Did you mean {a}?"),
@@ -439,6 +438,18 @@ pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str
     };
 }
 
+pub fn get_possibles_message_for_imports<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
+
+    let candidates = possibles.iter().filter(|file| !file.ends_with(".d.ts"))	
+	.map(|file| file.strip_suffix(".ts"))
+	.filter(|file| file.is_some())
+	.map(|file| file.unwrap())	
+	.map(|file| if file.starts_with("./") || file.starts_with("../") {file.to_string()} else {"./".to_string() + file})
+	.collect::<Vec<String>>();
+    
+    get_possibles_message(candidates.iter().map(|import| import.as_str()).collect::<Vec<&str>>(), reference)
+	
+}
 
 pub fn get_property_does_not_exist_message(property: PropertyRepresentation, on: TypeStringRepresentation, possibles:Vec<&str>) -> String{
     
@@ -680,7 +691,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
 				TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
 					Diagnostic::Position {
-					    reason: format!("Cannot find {partial_import_path}. {}", get_possibles_message(possibles, partial_import_path)),
+					    reason: format!("Cannot find {partial_import_path}. {}", get_possibles_message_for_imports(possibles, partial_import_path)),
 						position: import_position,
 					    kind,
 					}
