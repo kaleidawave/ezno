@@ -13,7 +13,7 @@ use crate::{
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		printing,
-		properties::{PropertyKey, Publicity, get_property_key_names_on_a_single_type},
+		properties::{get_property_key_names_on_a_single_type, PropertyKey, Publicity},
 	},
 	CheckingData, Environment, TypeId,
 };
@@ -345,9 +345,15 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												&checking_data.types,
 												false,
 											),
-										    site: position,
-										    possibles: get_property_key_names_on_a_single_type(value, &mut checking_data.types, environment)
-											.iter().map(AsRef::as_ref).collect::<Vec<&str>>()
+											site: position,
+											possibles: get_property_key_names_on_a_single_type(
+												value,
+												&mut checking_data.types,
+												environment,
+											)
+											.iter()
+											.map(AsRef::as_ref)
+											.collect::<Vec<&str>>(),
 										},
 									);
 
@@ -420,9 +426,15 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												&checking_data.types,
 												false,
 											),
-										    site: position.with_source(environment.get_source()),
-										    possibles: get_property_key_names_on_a_single_type(value, &mut checking_data.types, environment).iter()
-											.map(AsRef::as_ref).collect::<Vec<&str>>()
+											site: position.with_source(environment.get_source()),
+											possibles: get_property_key_names_on_a_single_type(
+												value,
+												&mut checking_data.types,
+												environment,
+											)
+											.iter()
+											.map(AsRef::as_ref)
+											.collect::<Vec<&str>>(),
 										},
 									);
 

@@ -31,5 +31,8 @@ fn type_mappings() {
 
 	let diagnostics: Vec<_> = result.diagnostics.into_iter().collect();
 	assert_eq!(diagnostics.len(), 1);
-	assert_eq!(diagnostics.first().unwrap().reason(), "Could not find variable 'b' in scope. Did you mean x, y or z?");
+	assert_eq!(
+		diagnostics.first().unwrap().reason(),
+		"Could not find variable 'b' in scope. Did you mean x, y or z?"
+	);
 }
