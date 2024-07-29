@@ -168,7 +168,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 					false,
 				),
 			    site: position,
-			    possibles: get_property_key_names_on_a_single_type(space, &mut checking_data.types, environment).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
+			    possibles: get_property_key_names_on_a_single_type(space, &mut checking_data.types, environment).iter().map(AsRef::as_ref).collect::<Vec<&str>>()
 			});
 			TypeId::ERROR_TYPE
 		}

@@ -1571,8 +1571,8 @@ pub fn get_properties_on_single_type(
 pub fn get_property_as_string(property: &PropertyKey, types: &mut TypeStore, environment: &mut Environment) -> String {
 
     match property {
-	PropertyKey::String(s) => return s.to_string(),
-	PropertyKey::Type(t) => return printing::print_type(
+	PropertyKey::String(s) => s.to_string(),
+	PropertyKey::Type(t) => printing::print_type(
 	    *t,
 	    types,
 	    environment,
@@ -1581,9 +1581,9 @@ pub fn get_property_as_string(property: &PropertyKey, types: &mut TypeStore, env
     }
 }
 
-pub fn special_type(base: TypeId, types: &mut TypeStore,) -> bool {
+pub fn special_type(base: TypeId, types: &mut TypeStore) -> bool {
     
-    match types.get_type_by_id(base) {
+    matches!(types.get_type_by_id(base), 
 	Type::SpecialObject(_)
 		| Type::Constructor(_)
 		| Type::RootPolyType(_)
@@ -1592,16 +1592,15 @@ pub fn special_type(base: TypeId, types: &mut TypeStore,) -> bool {
 		| Type::Constant(_)
 		| Type::AliasTo { .. }
 		| Type::FunctionReference(_)
-	     | Type::And(_, _) => return true,
+	     | Type::And(_, _))
 	
-	_ => return false
 	
         
-    }
+    
 
 }
 
-pub fn get_property_key_names_on_a_single_type<'a>(
+pub fn get_property_key_names_on_a_single_type(
 	base: TypeId,
 	types: &mut TypeStore,
     environment: &mut Environment

@@ -460,19 +460,21 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied()
 	}
 
+    #[allow(clippy::map_flatten)]
     pub fn get_all_variable_names(&self) -> Vec<&str> {
 	    self.parents_iter()
 		.map(|env| get_on_ctx!(env.variables.keys()).collect::<Vec<&String>>())
 		.flatten()
-		.map(|x| x.as_str())
+		.map(AsRef::as_ref)
 		.collect::<Vec<&str>>()
-	}
+    }
 
+    #[allow(clippy::map_flatten)]
     pub fn get_all_named_types(&self) -> Vec<&str> {
 	    self.parents_iter()
 		.map(|env| get_on_ctx!(env.named_types.keys()).collect::<Vec<&String>>())
 		.flatten()
-		.map(|x| x.as_str())
+		.map(AsRef::as_ref)
 		.collect::<Vec<&str>>()
 	}
 

@@ -528,7 +528,8 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
 				file: CouldNotOpenFile(point.clone()),
 			    import_position: None,
-			    possibles: checking_data.modules.files.get_paths().keys().filter(|path| path.to_str().is_some()).map(|path| path.to_str().unwrap()).collect(),
+			    possibles: checking_data.modules.files.get_paths().keys()
+				.filter_map(|path| path.to_str()).collect(),
 			    partial_import_path: point.to_str().unwrap_or("")
 			});
 			continue;
@@ -814,8 +815,8 @@ pub fn get_closest<'a, 'b>(items: impl Iterator<Item=&'a str>, closest_one: &'b 
     const MIN_DISTANCE: usize = 2;
     let candidates = items.filter(|item| levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
     match candidates.len() {
-	0 => return None,
-	1.. => return Some(candidates)
+	0 => None,
+	1.. => Some(candidates)
     }
 
 }

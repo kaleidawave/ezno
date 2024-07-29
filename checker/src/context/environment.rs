@@ -536,7 +536,7 @@ impl<'a> Environment<'a> {
 									false,
 								),
 							    site: position,
-							    possibles: get_property_key_names_on_a_single_type(rhs, &mut checking_data.types, self).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
+							    possibles: get_property_key_names_on_a_single_type(rhs, &mut checking_data.types, self).iter().map(AsRef::as_ref).collect::<Vec<&str>>()
 							},
 						);
 
@@ -884,7 +884,7 @@ impl<'a> Environment<'a> {
 					false,
 				),
 			    site,
-			    possibles: get_property_key_names_on_a_single_type(on, &mut checking_data.types, self).iter().map(|prop| prop.as_str()).collect::<Vec<&str>>()
+			    possibles: get_property_key_names_on_a_single_type(on, &mut checking_data.types, self).iter().map(AsRef::as_ref).collect::<Vec<&str>>()
 			});
 			Err(())
 		}

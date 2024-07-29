@@ -428,39 +428,38 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 }
 
-pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
+#[allow(clippy::useless_format)]
+pub fn get_possibles_message(possibles: Vec<&str>, reference: &str) -> String {
     
     let mut binding = get_closest(possibles.into_iter(), reference).unwrap_or(vec![]);
     let candidates: &mut [&str] = binding.as_mut_slice();
-    candidates.sort();
+    candidates.sort_unstable();
     match candidates {
-        [] => return format!(""),
-	[a] => return format!("Did you mean {a}?"),
-        [a,b] => return format!("Did you mean {a} or {b}?"),
-        [a,b,c] => return format!("Did you mean {a}, {b} or {c}?"),
-        [a @ .., b] => return format!("Did you mean {items} or {b}?", items = a.join(", "))
-    };
+        [] => format!(""),
+	[a] => format!("Did you mean {a}?"),
+        [a,b] => format!("Did you mean {a} or {b}?"),
+        [a,b,c] => format!("Did you mean {a}, {b} or {c}?"),
+        [a @ .., b] => format!("Did you mean {items} or {b}?", items = a.join(", "))
+    }
 }
 
-pub fn get_possibles_message_for_imports<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
+pub fn get_possibles_message_for_imports(possibles: &[&str], reference: &str) -> String {
 
     let candidates = possibles.iter().filter(|file| !file.ends_with(".d.ts"))	
-	.map(|file| file.strip_suffix(".ts"))
-	.filter(|file| file.is_some())
-	.map(|file| file.unwrap())	
+	.filter_map(|file| file.strip_suffix(".ts"))
 	.map(|file| if file.starts_with("./") || file.starts_with("../") {file.to_string()} else {"./".to_string() + file})
 	.collect::<Vec<String>>();
     
-    get_possibles_message(candidates.iter().map(|import| import.as_str()).collect::<Vec<&str>>(), reference)
+    get_possibles_message(candidates.iter().map(AsRef::as_ref).collect::<Vec<&str>>(), reference)
 	
 }
 
-pub fn get_property_does_not_exist_message(property: PropertyRepresentation, on: TypeStringRepresentation, possibles:Vec<&str>) -> String{
+pub fn get_property_does_not_exist_message(property: PropertyRepresentation, on: &TypeStringRepresentation, possibles:Vec<&str>) -> String{
     
     match property {
-	PropertyRepresentation::Type(ty) => return format!("No property of type {ty} on {on}.  {}", get_possibles_message(possibles, &ty)),
-	PropertyRepresentation::StringKey(property) => return format!("No property '{property}' on {on}. {}", get_possibles_message(possibles, &property)),
-    };
+	PropertyRepresentation::Type(ty) => format!("No property of type {ty} on {on}.  {}", get_possibles_message(possibles, &ty)),
+	PropertyRepresentation::StringKey(property) => format!("No property '{property}' on {on}. {}", get_possibles_message(possibles, &property)),
+    }
 
 }
 
@@ -483,7 +482,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				},
 				TypeCheckError::PropertyDoesNotExist { property, on, site, possibles } => {
 					Diagnostic::Position {
-						reason: get_property_does_not_exist_message(property, on, possibles),
+						reason: get_property_does_not_exist_message(property, &on, possibles),
 						position: site,
 						kind,
 					}
@@ -695,7 +694,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
 				TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
 					Diagnostic::Position {
-					    reason: format!("Cannot find {partial_import_path}. {}", get_possibles_message_for_imports(possibles, partial_import_path)),
+					    reason: format!("Cannot find {partial_import_path}. {}", get_possibles_message_for_imports(possibles.as_slice(), partial_import_path)),
 						position: import_position,
 					    kind,
 					}
