@@ -429,7 +429,11 @@ pub(crate) enum TypeCheckError<'a> {
 }
 
 pub fn get_possibles_message<'a, 'b>(possibles: Vec<&'a str>, reference: &'b str) -> String {
-    match get_closest(possibles.into_iter(), reference).unwrap_or(vec![]).as_slice() {
+    
+    let mut binding = get_closest(possibles.into_iter(), reference).unwrap_or(vec![]);
+    let candidates: &mut [&str] = binding.as_mut_slice();
+    candidates.sort();
+    match candidates {
         [] => return format!(""),
 	[a] => return format!("Did you mean {a}?"),
         [a,b] => return format!("Did you mean {a} or {b}?"),
