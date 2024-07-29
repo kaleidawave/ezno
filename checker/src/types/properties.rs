@@ -1581,11 +1581,35 @@ pub fn get_property_as_string(property: &PropertyKey, types: &mut TypeStore, env
     }
 }
 
+pub fn special_type(base: TypeId, types: &mut TypeStore,) -> bool {
+    
+    match types.get_type_by_id(base) {
+	Type::SpecialObject(_)
+		| Type::Constructor(_)
+		| Type::RootPolyType(_)
+		| Type::Or(..)
+		| Type::PartiallyAppliedGenerics(_)
+		| Type::Constant(_)
+		| Type::AliasTo { .. }
+		| Type::FunctionReference(_)
+	     | Type::And(_, _) => return true,
+	
+	_ => return false
+	
+        
+    }
+
+}
+
 pub fn get_property_key_names_on_a_single_type<'a>(
 	base: TypeId,
 	types: &mut TypeStore,
     environment: &mut Environment
 ) -> Vec<String> {
+
+    if special_type(base, types){
+	return vec![];
+    }
     
     get_properties_on_single_type(base, types, environment).into_iter().map(|property| {
 	get_property_as_string(&property.1, types, environment)
