@@ -49,7 +49,7 @@ a satisfies number
 const a = c
 ```
 
-- Could not find variable 'c' in scope
+- Could not find variable 'c' in scope. Did you mean a?
 
 #### Assigning before declaration
 
@@ -117,7 +117,7 @@ const a = my_obj.a
 const b = my_obj.b
 ```
 
-- No property 'b' on { a: 3 }
+- No property 'b' on { a: 3 }. Did you mean a?
 
 #### Reading property (via accessor)
 
@@ -273,7 +273,7 @@ delete x.b;
 const b = x.b;
 ```
 
-- No property 'b' on { a: 2 }
+- No property 'b' on { a: 2 }. Did you mean a?
 
 #### `Object.keys`, `Object.values`, `Object.entries`
 
@@ -611,7 +611,7 @@ function createObject2<T, U>(a: T, b: U): { a: U, b: U } {
 const x: (a: string) => number = a => a.to;
 ```
 
-- No property 'to' on string
+- No property 'to' on string. 
 
 #### Expected argument from parameter declaration
 
@@ -623,7 +623,7 @@ function map(a: (a: number) => number) {}
 map(a => a.t)
 ```
 
-- No property 't' on number
+- No property 't' on number. 
 
 #### Assignment to parameter
 
@@ -1856,7 +1856,7 @@ y.not_a_key
 ```
 
 - Expected 3, found 7
-- No property 'not_a_key' on { ezno: 7 }
+- No property 'not_a_key' on { ezno: 7 }. 
 
 #### Shorthand object literal
 
@@ -2300,7 +2300,7 @@ type X = number;
 const a: Y = 2;
 ```
 
-- Cannot find type Y
+- Cannot find type Y. Did you mean T, U or X?
 
 #### Type shadowing
 
@@ -2531,7 +2531,7 @@ function get(obj: {a: 2} | { b: 3 }) {
 
 > `Cannot read property "a" from { b: 3 }`
 
-- No property 'a' on { a: 2 } | { b: 3 }
+- No property 'a' on { a: 2 } | { b: 3 }. 
 
 #### Optional interface member
 
@@ -2811,7 +2811,7 @@ myRecord.hello;
 ```
 
 - Expected string, found number
-- No property 'hello' on { [\"hi\"]: number }
+- No property 'hello' on { [\"hi\"]: number }. 
 
 #### Assignment
 
@@ -2840,8 +2840,8 @@ obj2.fine satisfies boolean;
 obj2[2];
 ```
 
-- No property 'bye' on { ["hi" | "hello"]: boolean }
-- No property '2' on { [string]: boolean }
+- No property 'bye' on { ["hi" | "hello"]: boolean }. 
+- No property '2' on { [string]: boolean }. 
 
 ### Forward inference
 
@@ -3119,7 +3119,7 @@ console.log(a.prop);
 export const a = 2;
 ```
 
-- Cannot find file
+- Cannot find ./two. 
 
 #### Import where export does not exist
 
@@ -3190,7 +3190,7 @@ export const x = 2;
 const y = "122LH"
 ```
 
-- Could not find variable 'y' in scope
+- Could not find variable 'y' in scope. Did you mean x?
 
 #### Import side effect
 
@@ -3260,7 +3260,7 @@ const z: number = getString(2);
 
 - Cannot return number because the function is expected to return string
 - Type 5 is not assignable to type string
-- Could not find variable 'h' in scope
+- Could not find variable 'h' in scope. Did you mean x, y or z?
 - Type (error) string is not assignable to type number
 
 #### Unconditional throw
@@ -3353,5 +3353,5 @@ function x() {
 x().nothing
 ```
 
-- Could not find variable 'y' in scope
-- No property 'a' on { prop: 2 }
+- Could not find variable 'y' in scope. Did you mean x?
+- No property 'a' on { prop: 2 }. 
