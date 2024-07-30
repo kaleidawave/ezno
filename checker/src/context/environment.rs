@@ -24,6 +24,8 @@ use crate::{
 		properties::{
 			assignment::{SetPropertyError, SetPropertyResult},
 			AccessMode, PropertyKey, PropertyKind, PropertyValue, Publicity,
+			get_property_key_names_on_a_single_type, PropertyKey, PropertyKind, PropertyValue,
+			Publicity,
 		},
 		PolyNature, Type, TypeStore,
 	},
@@ -500,6 +502,14 @@ impl<'a> Environment<'a> {
 									false,
 								),
 								site: position,
+								possibles: get_property_key_names_on_a_single_type(
+									rhs,
+									&mut checking_data.types,
+									self,
+								)
+								.iter()
+								.map(AsRef::as_ref)
+								.collect::<Vec<&str>>(),
 							},
 						);
 
@@ -785,6 +795,14 @@ impl<'a> Environment<'a> {
 					false,
 				),
 				site: position,
+				possibles: get_property_key_names_on_a_single_type(
+					on,
+					&mut checking_data.types,
+					self,
+				)
+				.iter()
+				.map(AsRef::as_ref)
+				.collect::<Vec<&str>>(),
 			});
 			Err(())
 		}
@@ -805,8 +823,7 @@ impl<'a> Environment<'a> {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::CouldNotFindVariable {
 						variable: name,
-						// TODO
-						possibles: Default::default(),
+						possibles: self.get_all_variable_names(),
 						position,
 					},
 				);

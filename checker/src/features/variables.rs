@@ -9,6 +9,10 @@ use crate::{
 	types::{
 		logical::{Logical, LogicalOrValid},
 		properties::{get_property_unbound, PropertyKey, Publicity},
+		printing::print_type,
+		properties::{
+			get_property_key_names_on_a_single_type, get_property_unbound, PropertyKey, Publicity,
+		},
 		TypeId,
 	},
 	CheckingData, VariableId,
@@ -166,6 +170,14 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 					false,
 				),
 				site: position,
+				possibles: get_property_key_names_on_a_single_type(
+					space,
+					&mut checking_data.types,
+					environment,
+				)
+				.iter()
+				.map(AsRef::as_ref)
+				.collect::<Vec<&str>>(),
 			});
 			TypeId::ERROR_TYPE
 		}

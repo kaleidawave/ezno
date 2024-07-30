@@ -88,12 +88,11 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						ty
 					}
 				} else {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::CouldNotFindType(
-							name,
-							pos.with_source(environment.get_source()),
-						),
-					);
+					checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
+						name,
+						environment.get_all_named_types(),
+						pos.with_source(environment.get_source()),
+					));
 					TypeId::ERROR_TYPE
 				}
 			}
@@ -293,6 +292,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			} else {
 				checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
 					name,
+					environment.get_all_named_types(),
 					position.with_source(environment.get_source()),
 				));
 				TypeId::ERROR_TYPE

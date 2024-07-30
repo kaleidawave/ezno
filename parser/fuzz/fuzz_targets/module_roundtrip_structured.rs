@@ -30,8 +30,11 @@ fn do_fuzz(data: common::FuzzSource) -> Corpus {
 
 	let output1 = module1.to_string(&to_string_options);
 
-	let Ok(module2) = Module::from_string(output1.to_owned(), parse_options) else {
-		panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above");
+	let module2 = match Module::from_string(output1.to_owned(), parse_options) {
+		Ok(module2) => module2,
+		Err(error) => {
+			panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above. \nerror: `{:?}`", error);
+		}
 	};
 
 	let output2 = module2.to_string(&to_string_options);

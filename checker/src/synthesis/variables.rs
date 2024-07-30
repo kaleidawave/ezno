@@ -18,6 +18,8 @@ use crate::{
 	types::{
 		get_larger_type, printing,
 		properties::{get_properties_on_single_type, PropertyKey, Publicity},
+		printing,
+		properties::{get_property_key_names_on_a_single_type, PropertyKey, Publicity},
 	},
 	CheckingData, Environment, TypeId,
 };
@@ -387,6 +389,51 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							position,
 							crate::types::properties::AccessMode::DoNotBindThis,
 						);
+						let value = match property {
+							Some((_, value)) => value,
+							None => {
+								if let Some(else_expression) = default_value {
+									synthesise_expression(
+										else_expression,
+										environment,
+										checking_data,
+										TypeId::ANY_TYPE,
+									)
+								} else {
+									checking_data.diagnostics_container.add_error(
+										TypeCheckError::PropertyDoesNotExist {
+											property: match key_ty {
+												PropertyKey::String(s) => {
+													PropertyRepresentation::StringKey(s.to_string())
+												}
+												PropertyKey::Type(t) => {
+													PropertyRepresentation::Type(
+														printing::print_type(
+															t,
+															&checking_data.types,
+															environment,
+															false,
+														),
+													)
+												}
+											},
+											on: TypeStringRepresentation::from_type_id(
+												value,
+												environment,
+												&checking_data.types,
+												false,
+											),
+											site: position,
+											possibles: get_property_key_names_on_a_single_type(
+												value,
+												&mut checking_data.types,
+												environment,
+											)
+											.iter()
+											.map(AsRef::as_ref)
+											.collect::<Vec<&str>>(),
+										},
+									);
 
 						let value = match property {
 							Ok(instance) => instance.get_value(),
@@ -420,8 +467,54 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 						);
 
 						let value = match property_value {
-							Ok(instance) => instance.get_value(),
-							Err(()) => TypeId::ERROR_TYPE,
+							Some((_, value)) => value,
+							None => {
+								if let Some(default_value) = default_value {
+									synthesise_expression(
+										default_value,
+										environment,
+										checking_data,
+										TypeId::ANY_TYPE,
+									)
+								} else {
+									checking_data.diagnostics_container.add_error(
+										TypeCheckError::PropertyDoesNotExist {
+											property: match key_ty {
+												PropertyKey::String(s) => {
+													PropertyRepresentation::StringKey(s.to_string())
+												}
+												PropertyKey::Type(t) => {
+													PropertyRepresentation::Type(
+														printing::print_type(
+															t,
+															&checking_data.types,
+															environment,
+															false,
+														),
+													)
+												}
+											},
+											on: TypeStringRepresentation::from_type_id(
+												value,
+												environment,
+												&checking_data.types,
+												false,
+											),
+											site: position.with_source(environment.get_source()),
+											possibles: get_property_key_names_on_a_single_type(
+												value,
+												&mut checking_data.types,
+												environment,
+											)
+											.iter()
+											.map(AsRef::as_ref)
+											.collect::<Vec<&str>>(),
+										},
+									);
+
+									TypeId::ERROR_TYPE
+								}
+							}
 						};
 
 						assign_initial_to_fields(

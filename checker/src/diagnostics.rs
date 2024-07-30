@@ -306,6 +306,7 @@ pub(crate) enum TypeCheckError<'a> {
 		on: TypeStringRepresentation,
 		property: PropertyKeyRepresentation,
 		site: SpanWithSource,
+		possibles: Vec<&'a str>,
 	},
 	NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
 	RestParameterAnnotationShouldBeArrayType(SpanWithSource),
@@ -314,7 +315,7 @@ pub(crate) enum TypeCheckError<'a> {
 		possibles: Vec<&'a str>,
 		position: SpanWithSource,
 	},
-	CouldNotFindType(&'a str, SpanWithSource),
+	CouldNotFindType(&'a str, Vec<&'a str>, SpanWithSource),
 	TypeHasNoGenericParameters(String, SpanWithSource),
 	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
@@ -378,8 +379,9 @@ pub(crate) enum TypeCheckError<'a> {
 	DoubleDefaultExport(SpanWithSource),
 	CannotOpenFile {
 		file: CouldNotOpenFile,
-		/// `None` if reading it from entry point (aka CLI args)
 		import_position: Option<SpanWithSource>,
+		possibles: Vec<&'a str>,
+		partial_import_path: &'a str,
 	},
 	VariableNotDefinedInContext {
 		variable: &'a str,
@@ -423,6 +425,53 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CannotDeleteProperty(CannotDeleteFromError),
+}
+
+#[allow(clippy::useless_format)]
+pub fn get_possibles_message(possibles: Vec<&str>, reference: &str) -> String {
+	let mut binding = get_closest(possibles.into_iter(), reference).unwrap_or(vec![]);
+	let candidates: &mut [&str] = binding.as_mut_slice();
+	candidates.sort_unstable();
+	match candidates {
+		[] => format!(""),
+		[a] => format!("Did you mean {a}?"),
+		[a, b] => format!("Did you mean {a} or {b}?"),
+		[a, b, c] => format!("Did you mean {a}, {b} or {c}?"),
+		[a @ .., b] => format!("Did you mean {items} or {b}?", items = a.join(", ")),
+	}
+}
+
+pub fn get_possibles_message_for_imports(possibles: &[&str], reference: &str) -> String {
+	let candidates = possibles
+		.iter()
+		.filter(|file| !file.ends_with(".d.ts"))
+		.filter_map(|file| file.strip_suffix(".ts"))
+		.map(|file| {
+			if file.starts_with("./") || file.starts_with("../") {
+				file.to_string()
+			} else {
+				"./".to_string() + file
+			}
+		})
+		.collect::<Vec<String>>();
+
+	get_possibles_message(candidates.iter().map(AsRef::as_ref).collect::<Vec<&str>>(), reference)
+}
+
+pub fn get_property_does_not_exist_message(
+	property: PropertyRepresentation,
+	on: &TypeStringRepresentation,
+	possibles: Vec<&str>,
+) -> String {
+	match property {
+		PropertyRepresentation::Type(ty) => {
+			format!("No property of type {ty} on {on}.  {}", get_possibles_message(possibles, &ty))
+		}
+		PropertyRepresentation::StringKey(property) => format!(
+			"No property '{property}' on {on}. {}",
+			get_possibles_message(possibles, &property)
+		),
+	}
 }
 
 impl From<TypeCheckError<'_>> for Diagnostic {
