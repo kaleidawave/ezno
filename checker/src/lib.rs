@@ -69,6 +69,8 @@ pub use source_map::{self, SourceId, Span};
 
 use crate::subtyping::State;
 
+use levenshtein::levenshtein;
+
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
 	/// Custom allocator etc
@@ -526,6 +528,14 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
 				file: CouldNotOpenFile(point.clone()),
 				import_position: None,
+				possibles: checking_data
+					.modules
+					.files
+					.get_paths()
+					.keys()
+					.filter_map(|path| path.to_str())
+					.collect(),
+				partial_import_path: point.to_str().unwrap_or(""),
 			});
 			continue;
 		}
@@ -802,5 +812,18 @@ impl<K, V> std::iter::FromIterator<(K, V)> for Map<K, V> {
 impl<K, V> std::iter::Extend<(K, V)> for Map<K, V> {
 	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
 		self.0.extend(iter);
+	}
+}
+
+pub fn get_closest<'a, 'b>(
+	items: impl Iterator<Item = &'a str>,
+	closest_one: &'b str,
+) -> Option<Vec<&'a str>> {
+	const MIN_DISTANCE: usize = 2;
+	let candidates =
+		items.filter(|item| levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
+	match candidates.len() {
+		0 => None,
+		1.. => Some(candidates),
 	}
 }

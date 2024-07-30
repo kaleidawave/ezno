@@ -15,8 +15,8 @@ use crate::{
 	types::{
 		calling::{self, FunctionCallingError},
 		generics::generic_type_arguments::GenericArguments,
-		get_constraint, get_larger_type, substitute, FunctionType, GenericChain, GenericChainLink,
-		ObjectNature, PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
+		get_constraint, get_larger_type, printing, substitute, FunctionType, GenericChain,
+		GenericChainLink, ObjectNature, PartiallyAppliedGenerics, PolyNature, SynthesisedArgument,
 	},
 	Constant, Environment, LocalInformation, TypeId,
 };
@@ -1575,4 +1575,45 @@ pub fn get_properties_on_single_type(
 		| Type::FunctionReference(_)
 		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
 	}
+}
+
+pub fn get_property_as_string(
+	property: &PropertyKey,
+	types: &mut TypeStore,
+	environment: &mut Environment,
+) -> String {
+	match property {
+		PropertyKey::String(s) => s.to_string(),
+		PropertyKey::Type(t) => printing::print_type(*t, types, environment, false),
+	}
+}
+
+pub fn special_type(base: TypeId, types: &mut TypeStore) -> bool {
+	matches!(
+		types.get_type_by_id(base),
+		Type::SpecialObject(_)
+			| Type::Constructor(_)
+			| Type::RootPolyType(_)
+			| Type::Or(..)
+			| Type::PartiallyAppliedGenerics(_)
+			| Type::Constant(_)
+			| Type::AliasTo { .. }
+			| Type::FunctionReference(_)
+			| Type::And(_, _)
+	)
+}
+
+pub fn get_property_key_names_on_a_single_type(
+	base: TypeId,
+	types: &mut TypeStore,
+	environment: &mut Environment,
+) -> Vec<String> {
+	if special_type(base, types) {
+		return vec![];
+	}
+
+	get_properties_on_single_type(base, types, environment)
+		.into_iter()
+		.map(|property| get_property_as_string(&property.1, types, environment))
+		.collect()
 }

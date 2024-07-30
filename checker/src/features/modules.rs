@@ -131,6 +131,14 @@ pub fn import_items<
 			crate::diagnostics::TypeCheckError::CannotOpenFile {
 				file: err.clone(),
 				import_position: Some(import_position.with_source(environment.get_source())),
+				possibles: checking_data
+					.modules
+					.files
+					.get_paths()
+					.keys()
+					.filter_map(|path| path.to_str())
+					.collect(),
+				partial_import_path,
 			},
 		);
 	}

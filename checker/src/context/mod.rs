@@ -460,6 +460,24 @@ impl<T: ContextType> Context<T> {
 		self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).copied()
 	}
 
+	#[allow(clippy::map_flatten)]
+	pub fn get_all_variable_names(&self) -> Vec<&str> {
+		self.parents_iter()
+			.map(|env| get_on_ctx!(env.variables.keys()).collect::<Vec<&String>>())
+			.flatten()
+			.map(AsRef::as_ref)
+			.collect::<Vec<&str>>()
+	}
+
+	#[allow(clippy::map_flatten)]
+	pub fn get_all_named_types(&self) -> Vec<&str> {
+		self.parents_iter()
+			.map(|env| get_on_ctx!(env.named_types.keys()).collect::<Vec<&String>>())
+			.flatten()
+			.map(AsRef::as_ref)
+			.collect::<Vec<&str>>()
+	}
+
 	pub(crate) fn get_variable_name(&self, id: VariableId) -> &str {
 		match self.parents_iter().find_map(|env| get_on_ctx!(env.variable_names.get(&id))) {
 			Some(s) => s.as_str(),
@@ -735,9 +753,11 @@ impl<T: ContextType> Context<T> {
 		if let Some(val) = self.get_type_from_name(name) {
 			val
 		} else {
-			checking_data
-				.diagnostics_container
-				.add_error(TypeCheckError::CouldNotFindType(name, pos));
+			checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
+				name,
+				self.get_all_named_types(),
+				pos,
+			));
 
 			TypeId::ERROR_TYPE
 		}

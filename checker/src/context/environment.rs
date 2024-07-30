@@ -24,7 +24,10 @@ use crate::{
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
 		printing,
-		properties::{PropertyKey, PropertyKind, PropertyValue, Publicity},
+		properties::{
+			get_property_key_names_on_a_single_type, PropertyKey, PropertyKind, PropertyValue,
+			Publicity,
+		},
 		PolyNature, Type, TypeStore,
 	},
 	CheckingData, Instance, RootContext, TypeCheckOptions, TypeId,
@@ -536,6 +539,14 @@ impl<'a> Environment<'a> {
 									false,
 								),
 								site: position,
+								possibles: get_property_key_names_on_a_single_type(
+									rhs,
+									&mut checking_data.types,
+									self,
+								)
+								.iter()
+								.map(AsRef::as_ref)
+								.collect::<Vec<&str>>(),
 							},
 						);
 
@@ -883,6 +894,14 @@ impl<'a> Environment<'a> {
 					false,
 				),
 				site,
+				possibles: get_property_key_names_on_a_single_type(
+					on,
+					&mut checking_data.types,
+					self,
+				)
+				.iter()
+				.map(AsRef::as_ref)
+				.collect::<Vec<&str>>(),
 			});
 			Err(())
 		}
@@ -903,8 +922,7 @@ impl<'a> Environment<'a> {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::CouldNotFindVariable {
 						variable: name,
-						// TODO
-						possibles: Default::default(),
+						possibles: self.get_all_variable_names(),
 						position,
 					},
 				);

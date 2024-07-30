@@ -4,7 +4,7 @@
 
 use crate::{
 	context::{environment::Label, information::InformationChain},
-	diagnostics,
+	diagnostics, get_closest,
 	types::{
 		calling::FunctionCallingError, printing::print_type_with_type_arguments, GenericChain,
 		GenericChainLink,
@@ -287,6 +287,7 @@ pub(crate) enum TypeCheckError<'a> {
 		on: TypeStringRepresentation,
 		property: PropertyRepresentation,
 		site: SpanWithSource,
+		possibles: Vec<&'a str>,
 	},
 	NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
 	RestParameterAnnotationShouldBeArrayType(SpanWithSource),
@@ -295,7 +296,7 @@ pub(crate) enum TypeCheckError<'a> {
 		possibles: Vec<&'a str>,
 		position: SpanWithSource,
 	},
-	CouldNotFindType(&'a str, SpanWithSource),
+	CouldNotFindType(&'a str, Vec<&'a str>, SpanWithSource),
 	TypeHasNoGenericParameters(String, SpanWithSource),
 	AssignmentError(AssignmentError),
 	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
@@ -381,8 +382,9 @@ pub(crate) enum TypeCheckError<'a> {
 	DoubleDefaultExport(SpanWithSource),
 	CannotOpenFile {
 		file: CouldNotOpenFile,
-		/// `None` if reading it from entry point (aka CLI args)
 		import_position: Option<SpanWithSource>,
+		possibles: Vec<&'a str>,
+		partial_import_path: &'a str,
 	},
 	VariableNotDefinedInContext {
 		variable: &'a str,
@@ -391,7 +393,7 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	TypeNeedsTypeArguments(&'a str, SpanWithSource),
-	CannotFindType(&'a str, SpanWithSource),
+	CannotFindType(&'a str, Vec<&'a str>, SpanWithSource),
 	TypeAlreadyDeclared {
 		name: String,
 		position: SpanWithSource,
@@ -425,31 +427,73 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 }
 
+#[allow(clippy::useless_format)]
+pub fn get_possibles_message(possibles: Vec<&str>, reference: &str) -> String {
+	let mut binding = get_closest(possibles.into_iter(), reference).unwrap_or(vec![]);
+	let candidates: &mut [&str] = binding.as_mut_slice();
+	candidates.sort_unstable();
+	match candidates {
+		[] => format!(""),
+		[a] => format!("Did you mean {a}?"),
+		[a, b] => format!("Did you mean {a} or {b}?"),
+		[a, b, c] => format!("Did you mean {a}, {b} or {c}?"),
+		[a @ .., b] => format!("Did you mean {items} or {b}?", items = a.join(", ")),
+	}
+}
+
+pub fn get_possibles_message_for_imports(possibles: &[&str], reference: &str) -> String {
+	let candidates = possibles
+		.iter()
+		.filter(|file| !file.ends_with(".d.ts"))
+		.filter_map(|file| file.strip_suffix(".ts"))
+		.map(|file| {
+			if file.starts_with("./") || file.starts_with("../") {
+				file.to_string()
+			} else {
+				"./".to_string() + file
+			}
+		})
+		.collect::<Vec<String>>();
+
+	get_possibles_message(candidates.iter().map(AsRef::as_ref).collect::<Vec<&str>>(), reference)
+}
+
+pub fn get_property_does_not_exist_message(
+	property: PropertyRepresentation,
+	on: &TypeStringRepresentation,
+	possibles: Vec<&str>,
+) -> String {
+	match property {
+		PropertyRepresentation::Type(ty) => {
+			format!("No property of type {ty} on {on}.  {}", get_possibles_message(possibles, &ty))
+		}
+		PropertyRepresentation::StringKey(property) => format!(
+			"No property '{property}' on {on}. {}",
+			get_possibles_message(possibles, &property)
+		),
+	}
+}
+
 impl From<TypeCheckError<'_>> for Diagnostic {
 	fn from(error: TypeCheckError<'_>) -> Self {
 		let kind = super::DiagnosticKind::Error;
 		match error {
-				TypeCheckError::CouldNotFindVariable { variable, possibles: _, position } => {
+				TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
 					Diagnostic::Position {
 						reason: format!(
-							"Could not find variable '{variable}' in scope",
-							// possibles Consider '{:?}'
-						),
+						    "Could not find variable '{variable}' in scope. {}", get_possibles_message(possibles, variable)),
 						position,
 						kind,
 					}
 				}
-				TypeCheckError::CouldNotFindType(reference, pos) => Diagnostic::Position {
-					reason: format!("Could not find type '{reference}'"),
+				TypeCheckError::CouldNotFindType(reference, possibles, pos) => Diagnostic::Position {
+				    reason: format!("Could not find type '{reference}'. {}", get_possibles_message(possibles, reference)),
 					position: pos,
 					kind,
 				},
-				TypeCheckError::PropertyDoesNotExist { property, on, site } => {
+				TypeCheckError::PropertyDoesNotExist { property, on, site, possibles } => {
 					Diagnostic::Position {
-						reason: match property {
-							PropertyRepresentation::Type(ty) => format!("No property of type {ty} on {on}"),
-							PropertyRepresentation::StringKey(property) => format!("No property '{property}' on {on}"),
-						},
+						reason: get_property_does_not_exist_message(property, &on, possibles),
 						position: site,
 						kind,
 					}
@@ -659,11 +703,11 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				},
 				TypeCheckError::DoubleDefaultExport(_) => todo!(),
-				TypeCheckError::CannotOpenFile { file, import_position } => if let Some(import_position) = import_position {
+				TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
 					Diagnostic::Position {
-						reason: "Cannot find file".to_owned(),
+					    reason: format!("Cannot find {partial_import_path}. {}", get_possibles_message_for_imports(possibles.as_slice(), partial_import_path)),
 						position: import_position,
-						kind,
+					    kind,
 					}
 				} else {
 					Diagnostic::Global { reason: format!("Cannot find file {}", file.0.display()), kind }
@@ -683,8 +727,8 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position,
 					kind,
 				},
-				TypeCheckError::CannotFindType(ty, position) => Diagnostic::Position {
-					reason: format!("Cannot find type {ty}"),
+				TypeCheckError::CannotFindType(ty, possibles, position) => Diagnostic::Position {
+				    reason: format!("Cannot find type {ty}. {}",get_possibles_message(possibles,ty)),
 					position,
 					kind,
 				},
