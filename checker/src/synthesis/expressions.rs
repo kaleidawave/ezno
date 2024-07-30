@@ -5,7 +5,8 @@ use parser::{
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		operators::{
-			BinaryOperator, IncrementOrDecrement, UnaryOperator, UnaryPrefixAssignmentOperator,
+			BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
+			UnaryPrefixAssignmentOperator,
 		},
 		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
 		TemplateLiteral,
@@ -16,45 +17,42 @@ use parser::{
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	context::Environment,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
-		self, await_expression,
+		self,
+		assignments::{AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement},
+		await_expression,
 		conditional::new_conditional_context,
 		functions::{
 			function_to_property, register_arrow_function, register_expression_function,
 			synthesise_function, GetterSetter,
 		},
 		in_operator,
-		operations::is_null_or_undefined,
-		variables::VariableWithValue,
-	},
-	types::{
-		calling::{CallingInput, UnsynthesisedArgument},
-		get_larger_type,
-		logical::{Logical, LogicalOrValid},
-		printing::{print_property_key, print_type},
-		properties::{
-			get_properties_on_single_type, get_property_unbound, AccessMode, PropertyKey,
-		},
-		Constructor,
-	},
-	Decidable, PropertyValue,
-};
-
-use crate::{
-	features::{
 		objects::ObjectBuilder,
+		operations::is_null_or_undefined,
 		operations::{
 			evaluate_logical_operation_with_expression,
 			evaluate_pure_binary_operation_handle_errors, evaluate_pure_unary_operator,
 			EqualityAndInequality, MathematicalAndBitwise, PureUnary,
 		},
 		template_literal::synthesise_template_literal_expression,
+		variables::VariableWithValue,
 	},
-	types::calling::CalledWithNew,
-	types::properties::Publicity,
-	types::{Constant, TypeId},
-	CheckingData, Environment, Instance, SpecialExpressions,
+	types::{
+		calling::CalledWithNew,
+		properties::Publicity,
+		{Constant, TypeId},
+	},
+	types::{
+		calling::{CallingInput, UnsynthesisedArgument},
+		get_larger_type,
+		logical::{Logical, LogicalOrValid},
+		printing::{print_property_key, print_type},
+		properties::{get_properties_on_single_type, get_some_property, AccessMode, PropertyKey},
+		Constructor,
+	},
+	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
 };
 
 use super::{
@@ -489,9 +487,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let lhs =
 				SynthesiseToAssignable::synthesise_to_assignable(lhs, environment, checking_data);
 
-			return environment.assign_to_assignable_handle_errors(
+			return environment.assign_handle_errors(
 				lhs,
-				crate::features::assignments::AssignmentKind::Assign,
+				AssignmentKind::Assign,
 				Some(&**rhs),
 				*position,
 				checking_data,
@@ -501,7 +499,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let lhs =
 				SynthesiseToAssignable::synthesise_to_assignable(lhs, environment, checking_data);
 
-			return environment.assign_to_assignable_handle_errors(
+			return environment.assign_handle_errors(
 				lhs,
 				operator_to_assignment_kind(*operator),
 				Some(&**rhs),
@@ -525,18 +523,18 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					return TypeId::ERROR_TYPE;
 				}
 				UnaryPrefixAssignmentOperator::IncrementOrDecrement(direction) => {
-					return environment.assign_to_assignable_handle_errors(
+					return environment.assign_handle_errors(
 						lhs,
-						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
+						AssignmentKind::IncrementOrDecrement(
 							match direction {
-								IncrementOrDecrement::Increment => {
-									crate::features::assignments::IncrementOrDecrement::Increment
+								ParserIncrementOrDecrement::Increment => {
+									IncrementOrDecrement::Increment
 								}
-								IncrementOrDecrement::Decrement => {
-									crate::features::assignments::IncrementOrDecrement::Decrement
+								ParserIncrementOrDecrement::Decrement => {
+									IncrementOrDecrement::Decrement
 								}
 							},
-							crate::features::assignments::AssignmentReturnStatus::New,
+							AssignmentReturnStatus::New,
 						),
 						None::<&Expression>,
 						*position,
@@ -554,20 +552,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			match operator {
 				parser::expressions::operators::UnaryPostfixAssignmentOperator(direction) => {
 					let direction = match direction {
-						IncrementOrDecrement::Increment => {
-							crate::features::assignments::IncrementOrDecrement::Increment
-						}
-						IncrementOrDecrement::Decrement => {
-							crate::features::assignments::IncrementOrDecrement::Decrement
-						}
+						ParserIncrementOrDecrement::Increment => IncrementOrDecrement::Increment,
+						ParserIncrementOrDecrement::Decrement => IncrementOrDecrement::Decrement,
 					};
-					let operator =
-						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
-							direction,
-							crate::features::assignments::AssignmentReturnStatus::Previous,
-						);
+					let operator = AssignmentKind::IncrementOrDecrement(
+						direction,
+						AssignmentReturnStatus::Previous,
+					);
 
-					return environment.assign_to_assignable_handle_errors(
+					return environment.assign_handle_errors(
 						lhs,
 						operator,
 						None::<&Expression>,
@@ -1005,8 +998,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 fn operator_to_assignment_kind(
 	operator: parser::expressions::operators::BinaryAssignmentOperator,
-) -> crate::features::assignments::AssignmentKind {
-	use crate::features::assignments::AssignmentKind;
+) -> AssignmentKind {
 	use parser::expressions::operators::BinaryAssignmentOperator;
 
 	match operator {
@@ -1324,10 +1316,9 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				let position_with_source = position.with_source(environment.get_source());
 
-				let maybe_property_expecting = get_property_unbound(
+				let maybe_property_expecting = get_some_property(
 					(expecting, None),
 					(Publicity::Public, &key, None),
-					false,
 					environment,
 					&checking_data.types,
 				);
@@ -1360,7 +1351,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					.ok()
 					.and_then(|l| {
 						if let LogicalOrValid::Logical(Logical::Pure(l)) = l {
-							Some(l.as_get_type())
+							Some(l.as_get_type(&checking_data.types))
 						} else {
 							crate::utilities::notify!("TODO {:?}", l);
 							None
@@ -1408,17 +1399,16 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				);
 
 				// TODO needs improvement
-				let property_expecting = get_property_unbound(
+				let property_expecting = get_some_property(
 					(expecting, None),
 					(Publicity::Public, &key, None),
-					false,
 					environment,
 					&checking_data.types,
 				)
 				.ok()
 				.and_then(|l| {
 					if let LogicalOrValid::Logical(Logical::Pure(l)) = l {
-						Some(l.as_get_type())
+						Some(l.as_get_type(&checking_data.types))
 					} else {
 						crate::utilities::notify!("TODO {:?}", l);
 						None

@@ -3,11 +3,11 @@ use std::collections::HashMap;
 
 use source_map::{BaseSpan, Nullable, SpanWithSource};
 
+use super::calling::{Callable, CallingInput, CallingContext};
 use crate::{
 	context::{environment::FunctionScope, invocation::CheckThings},
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
-	types::calling::CallingInput,
 	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
 
@@ -118,22 +118,22 @@ impl FunctionType {
 						called_with_new,
 						max_inline: checking_data.options.max_inline_count,
 					};
-					let result = crate::types::calling::Callable::Type(extends).call(
+					let mut diagnostics = Default::default();
+					let result = Callable::Type(extends).call(
 						Vec::new(),
 						input,
 						environment,
-						&mut CheckThings { debug_types: checking_data.options.debug_types },
+						(
+							&mut CheckThings { debug_types: checking_data.options.debug_types },
+							&mut diagnostics,
+						),
 						&mut checking_data.types,
 					);
+
+					diagnostics.append_to(CallingContext::Super, &mut checking_data.diagnostics_container);
 					match result {
 						Ok(_) => {}
-						Err(error) => {
-							error.errors.into_iter().for_each(|error| {
-								checking_data.diagnostics_container.add_error(
-									crate::diagnostics::TypeCheckError::SuperCallError(error),
-								);
-							});
-						}
+						Err(_error) => {}
 					}
 				}
 

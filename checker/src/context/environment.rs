@@ -9,10 +9,7 @@ use crate::{
 	},
 	events::{Event, FinalEvent, RootReference},
 	features::{
-		assignments::{
-			Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
-			AssignmentKind, Reference,
-		},
+		assignments::*,
 		modules::Exported,
 		objects::SpecialObject,
 		operations::{
@@ -24,16 +21,18 @@ use crate::{
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
 		printing,
-		properties::{AccessMode, PropertyKey, PropertyKind, PropertyValue, Publicity},
+		properties::{
+			assignment::{SetPropertyError, SetPropertyResult},
+			AccessMode, PropertyKey, PropertyKind, PropertyValue, Publicity,
+		},
 		PolyNature, Type, TypeStore,
 	},
 	CheckingData, Instance, RootContext, TypeCheckOptions, TypeId,
 };
 
 use super::{
-	get_value_of_variable, information::InformationChain, invocation::CheckThings, AssignmentError,
-	ClosedOverReferencesInScope, Context, ContextType, Environment, GeneralContext,
-	SetPropertyError,
+	get_value_of_variable, invocation::CheckThings, AssignmentError, ClosedOverReferencesInScope,
+	Context, ContextType, Environment, GeneralContext, InformationChain,
 };
 
 pub type ContextLocation = Option<String>;
@@ -236,19 +235,13 @@ impl<'a> Environment<'a> {
 	/// Handles all assignments, including updates and destructuring
 	///
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
-	///
-	/// TODO finish operator. Unify increment and decrement. The RHS span should be fine with [`Span::NULL ...?`] Maybe RHS type could be None to accommodate
-	pub fn assign_to_assignable_handle_errors<
-		'b,
-		T: crate::ReadFromFS,
-		A: crate::ASTImplementation,
-	>(
+	pub fn assign_handle_errors<'b, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		lhs: Assignable<A>,
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
 		expression: Option<&'b A::Expression<'b>>,
-		assignment_span: Span,
+		assignment_position: Span,
 		checking_data: &mut CheckingData<T, A>,
 	) -> TypeId {
 		match lhs {
@@ -262,12 +255,15 @@ impl<'a> Environment<'a> {
 							checking_data,
 						);
 
-						self.assign_to_reference_assign_handle_errors(
+						let assignment_position =
+							assignment_position.with_source(self.get_source());
+						self.set_reference_handle_errors(
 							reference,
 							rhs,
+							assignment_position,
 							checking_data,
-							assignment_span,
-						)
+						);
+						rhs
 					}
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
@@ -295,26 +291,20 @@ impl<'a> Environment<'a> {
 							checking_data,
 							self,
 						);
-						let result = self.set_reference(reference, new, checking_data);
-						match result {
-							Ok(ty) => ty,
-							Err(error) => {
-								let error = set_property_error_to_type_check_error(
-									self,
-									error,
-									assignment_span.with_source(self.get_source()),
-									&checking_data.types,
-									new,
-								);
-								checking_data.diagnostics_container.add_error(error);
-								TypeId::ERROR_TYPE
-							}
-						}
+						let assignment_position =
+							assignment_position.with_source(self.get_source());
+						self.set_reference_handle_errors(
+							reference,
+							new,
+							assignment_position,
+							checking_data,
+						);
+						new
 					}
 					AssignmentKind::IncrementOrDecrement(direction, return_kind) => {
 						// let value =
-						// 	self.get_variable_or_error(&name, &assignment_span, checking_data);
-						let span = reference.get_position();
+						// 	self.get_variable_or_error(&name, &assignment_position, checking_data);
+						let position = reference.get_position();
 						let existing = self.get_reference(
 							reference.clone(),
 							checking_data,
@@ -324,14 +314,10 @@ impl<'a> Environment<'a> {
 						// TODO existing needs to be cast to number!!
 
 						let new = evaluate_pure_binary_operation_handle_errors(
-							(existing, span),
+							(existing, position),
 							match direction {
-								crate::features::assignments::IncrementOrDecrement::Increment => {
-									MathematicalAndBitwise::Add
-								}
-								crate::features::assignments::IncrementOrDecrement::Decrement => {
-									MathematicalAndBitwise::Subtract
-								}
+								IncrementOrDecrement::Increment => MathematicalAndBitwise::Add,
+								IncrementOrDecrement::Decrement => MathematicalAndBitwise::Subtract,
 							}
 							.into(),
 							(TypeId::ONE, source_map::Nullable::NULL),
@@ -339,26 +325,18 @@ impl<'a> Environment<'a> {
 							self,
 						);
 
-						let result = self.set_reference(reference, new, checking_data);
+						let assignment_position =
+							assignment_position.with_source(self.get_source());
+						self.set_reference_handle_errors(
+							reference,
+							new,
+							assignment_position,
+							checking_data,
+						);
 
-						match result {
-							Ok(new) => match return_kind {
-								crate::features::assignments::AssignmentReturnStatus::Previous => {
-									existing
-								}
-								crate::features::assignments::AssignmentReturnStatus::New => new,
-							},
-							Err(error) => {
-								let error = set_property_error_to_type_check_error(
-									self,
-									error,
-									assignment_span.with_source(self.get_source()),
-									&checking_data.types,
-									new,
-								);
-								checking_data.diagnostics_container.add_error(error);
-								TypeId::ERROR_TYPE
-							}
+						match return_kind {
+							AssignmentReturnStatus::Previous => existing,
+							AssignmentReturnStatus::New => new,
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {
@@ -378,22 +356,15 @@ impl<'a> Environment<'a> {
 						)
 						.unwrap();
 
-						let result = self.set_reference(reference, new, checking_data);
-
-						match result {
-							Ok(new) => new,
-							Err(error) => {
-								let error = set_property_error_to_type_check_error(
-									self,
-									error,
-									assignment_span.with_source(self.get_source()),
-									&checking_data.types,
-									new,
-								);
-								checking_data.diagnostics_container.add_error(error);
-								TypeId::ERROR_TYPE
-							}
-						}
+						let assignment_position =
+							assignment_position.with_source(self.get_source());
+						self.set_reference_handle_errors(
+							reference,
+							new,
+							assignment_position,
+							checking_data,
+						);
+						new
 					}
 				}
 			}
@@ -410,9 +381,11 @@ impl<'a> Environment<'a> {
 				self.assign_to_object_destructure_handle_errors(
 					members,
 					rhs,
-					assignment_span,
+					assignment_position.with_source(self.get_source()),
 					checking_data,
-				)
+				);
+
+				rhs
 			}
 			Assignable::ArrayDestructuring(members, _spread) => {
 				debug_assert!(matches!(operator, AssignmentKind::Assign));
@@ -427,67 +400,38 @@ impl<'a> Environment<'a> {
 				self.assign_to_array_destructure_handle_errors(
 					members,
 					rhs,
-					assignment_span,
+					assignment_position.with_source(self.get_source()),
 					checking_data,
-				)
-			}
-		}
-	}
-
-	fn assign_to_reference_assign_handle_errors<
-		T: crate::ReadFromFS,
-		A: crate::ASTImplementation,
-	>(
-		&mut self,
-		reference: Reference,
-		rhs: TypeId,
-		checking_data: &mut CheckingData<T, A>,
-		assignment_span: source_map::BaseSpan<()>,
-	) -> TypeId {
-		let result = self.set_reference(reference, rhs, checking_data);
-
-		match result {
-			Ok(ty) => ty,
-			Err(error) => {
-				let error = set_property_error_to_type_check_error(
-					self,
-					error,
-					assignment_span.with_source(self.get_source()),
-					&checking_data.types,
-					rhs,
 				);
-				checking_data.diagnostics_container.add_error(error);
-				TypeId::ERROR_TYPE
+
+				rhs
 			}
 		}
 	}
 
-	fn assign_to_assign_only_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+	fn assign_to_assignable_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		lhs: Assignable<A>,
 		rhs: TypeId,
-		assignment_span: Span,
+		assignment_position: SpanWithSource,
 		checking_data: &mut CheckingData<T, A>,
-	) -> TypeId {
+	) {
 		match lhs {
-			Assignable::Reference(reference) => self.assign_to_reference_assign_handle_errors(
-				reference,
-				rhs,
-				checking_data,
-				assignment_span,
-			),
+			Assignable::Reference(reference) => {
+				self.set_reference_handle_errors(reference, rhs, assignment_position, checking_data)
+			}
 			Assignable::ObjectDestructuring(assignments, _spread) => self
 				.assign_to_object_destructure_handle_errors(
 					assignments,
 					rhs,
-					assignment_span,
+					assignment_position,
 					checking_data,
 				),
 			Assignable::ArrayDestructuring(assignments, _spread) => self
 				.assign_to_array_destructure_handle_errors(
 					assignments,
 					rhs,
-					assignment_span,
+					assignment_position,
 					checking_data,
 				),
 		}
@@ -500,29 +444,36 @@ impl<'a> Environment<'a> {
 		&mut self,
 		assignments: Vec<AssignableObjectDestructuringField<A>>,
 		rhs: TypeId,
-		assignment_span: Span,
+		assignment_position: SpanWithSource,
 		checking_data: &mut CheckingData<T, A>,
-	) -> TypeId {
+	) {
 		for assignment in assignments {
 			match assignment {
 				AssignableObjectDestructuringField::Mapped {
-					on,
+					key,
 					name,
 					default_value,
 					position,
 				} => {
-					let value = self.get_property(
+					// TODO conditionaly
+					let mut diagnostics = Default::default();
+					let result = crate::types::properties::get_property(
 						rhs,
 						Publicity::Public,
-						&on,
-						&mut checking_data.types,
+						&key,
 						None,
+						self,
+						(
+							&mut CheckThings { debug_types: checking_data.options.debug_types },
+							&mut diagnostics,
+						),
+						&mut checking_data.types,
 						position,
-						&checking_data.options,
 						AccessMode::DoNotBindThis,
 					);
+					diagnostics.append_to(crate::types::calling::CallingContext::Getter, &mut checking_data.diagnostics_container);
 
-					let rhs_value = if let Some((_, value)) = value {
+					let rhs_value = if let Some((_, value)) = result {
 						value
 					} else if let Some(default_value) = default_value {
 						A::synthesise_expression(
@@ -534,7 +485,7 @@ impl<'a> Environment<'a> {
 					} else {
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::PropertyDoesNotExist {
-								property: match on {
+								property: match key {
 									PropertyKey::String(s) => {
 										PropertyKeyRepresentation::StringKey(s.to_string())
 									}
@@ -555,17 +506,15 @@ impl<'a> Environment<'a> {
 						TypeId::ERROR_TYPE
 					};
 
-					self.assign_to_assign_only_handle_errors(
+					self.assign_to_assignable_handle_errors(
 						name,
 						rhs_value,
-						assignment_span,
+						assignment_position,
 						checking_data,
 					);
 				}
 			}
 		}
-
-		rhs
 	}
 
 	#[allow(clippy::needless_pass_by_value)]
@@ -576,15 +525,11 @@ impl<'a> Environment<'a> {
 		&mut self,
 		_assignments: Vec<AssignableArrayDestructuringField<A>>,
 		_rhs: TypeId,
-		assignment_span: Span,
+		assignment_position: SpanWithSource,
 		checking_data: &mut CheckingData<T, A>,
-	) -> TypeId {
-		checking_data.raise_unimplemented_error(
-			"destructuring array (needs iterator)",
-			assignment_span.with_source(self.get_source()),
-		);
-
-		TypeId::ERROR_TYPE
+	) {
+		checking_data
+			.raise_unimplemented_error("destructuring array (needs iterator)", assignment_position);
 	}
 
 	fn get_reference<U: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -597,13 +542,13 @@ impl<'a> Environment<'a> {
 			Reference::Variable(name, position) => {
 				self.get_variable_handle_error(&name, position, checking_data).unwrap().1
 			}
-			Reference::Property { on, with, publicity, span } => {
+			Reference::Property { on, with, publicity, position } => {
 				let get_property_handle_errors = self.get_property_handle_errors(
 					on,
 					publicity,
 					&with,
 					checking_data,
-					span,
+					position,
 					mode,
 				);
 				match get_property_handle_errors {
@@ -614,30 +559,20 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	fn set_reference<U: crate::ReadFromFS, A: crate::ASTImplementation>(
+	fn set_reference_handle_errors<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		reference: Reference,
 		rhs: TypeId,
+		position: SpanWithSource,
 		checking_data: &mut CheckingData<U, A>,
-	) -> Result<TypeId, SetPropertyError> {
+	) {
 		match reference {
-			Reference::Variable(name, position) => Ok(self.assign_to_variable_handle_errors(
-				name.as_str(),
-				position,
-				rhs,
-				checking_data,
-			)),
-			Reference::Property { on, with, publicity, span } => Ok(self
-				.set_property(
-					on,
-					publicity,
-					&with,
-					rhs,
-					&mut checking_data.types,
-					span,
-					&checking_data.options,
-				)?
-				.unwrap_or(rhs)),
+			Reference::Variable(name, position) => {
+				self.assign_to_variable_handle_errors(name.as_str(), position, rhs, checking_data);
+			}
+			Reference::Property { on, with, publicity, position } => {
+				self.set_property_handle_errors(on, publicity, &with, rhs, position, checking_data);
+			}
 		}
 	}
 
@@ -647,7 +582,7 @@ impl<'a> Environment<'a> {
 		assignment_position: SpanWithSource,
 		new_type: TypeId,
 		checking_data: &mut CheckingData<T, A>,
-	) -> TypeId {
+	) {
 		let result = self.assign_to_variable(
 			variable_name,
 			assignment_position,
@@ -655,12 +590,11 @@ impl<'a> Environment<'a> {
 			&mut checking_data.types,
 		);
 		match result {
-			Ok(ok) => ok,
+			Ok(()) => {}
 			Err(error) => {
 				checking_data
 					.diagnostics_container
 					.add_error(TypeCheckError::AssignmentError(error));
-				TypeId::ERROR_TYPE
 			}
 		}
 	}
@@ -672,7 +606,7 @@ impl<'a> Environment<'a> {
 		assignment_position: SpanWithSource,
 		new_type: TypeId,
 		types: &mut TypeStore,
-	) -> Result<TypeId, AssignmentError> {
+	) -> Result<(), AssignmentError> {
 		// Get without the effects
 		let variable_in_map = self.get_variable_unbound(variable_name);
 
@@ -733,7 +667,7 @@ impl<'a> Environment<'a> {
 						));
 						self.info.variable_current_value.insert(variable_id, new_type);
 
-						Ok(new_type)
+						Ok(())
 					}
 				},
 				VariableOrImport::MutableImport { .. }
@@ -781,38 +715,13 @@ impl<'a> Environment<'a> {
 		}
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn get_property(
-		&mut self,
-		on: TypeId,
-		publicity: Publicity,
-		property: &PropertyKey,
-		types: &mut TypeStore,
-		with: Option<TypeId>,
-		position: SpanWithSource,
-		options: &TypeCheckOptions,
-		mode: AccessMode,
-	) -> Option<(PropertyKind, TypeId)> {
-		crate::types::properties::get_property(
-			on,
-			publicity,
-			property,
-			with,
-			self,
-			&mut CheckThings { debug_types: options.debug_types },
-			types,
-			position,
-			mode,
-		)
-	}
-
 	pub fn get_property_handle_errors<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
 		key: &PropertyKey,
 		checking_data: &mut CheckingData<U, A>,
-		site: SpanWithSource,
+		position: SpanWithSource,
 		mode: AccessMode,
 	) -> Result<Instance, ()> {
 		// let get_property = if let AccessMode::Optional = mode {
@@ -833,16 +742,20 @@ impl<'a> Environment<'a> {
 		// 		checking_data,
 		// 	))
 		// } else {
-		let get_property = self.get_property(
+		let mut diagnostics = Default::default();
+		let get_property = crate::types::properties::get_property(
 			on,
 			publicity,
 			key,
-			&mut checking_data.types,
 			None,
-			site,
-			&checking_data.options,
+			self,
+			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			&mut checking_data.types,
+			position,
 			mode,
 		);
+		diagnostics.append_to(crate::types::calling::CallingContext::Getter, &mut checking_data.diagnostics_container);
+
 		// };
 
 		if let Some((kind, result)) = get_property {
@@ -871,7 +784,7 @@ impl<'a> Environment<'a> {
 					&checking_data.types,
 					false,
 				),
-				site,
+				site: position,
 			});
 			Err(())
 		}
@@ -1243,24 +1156,35 @@ impl<'a> Environment<'a> {
 	///
 	/// Returns the result of the setter... TODO could return new else
 	#[allow(clippy::too_many_arguments)]
-	pub fn set_property(
+	pub fn set_property_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
 		under: &PropertyKey,
 		new: TypeId,
-		types: &mut TypeStore,
 		setter_position: SpanWithSource,
-		options: &TypeCheckOptions,
-	) -> Result<Option<TypeId>, SetPropertyError> {
-		crate::types::properties::set_property(
+		checking_data: &mut CheckingData<T, A>,
+	) {
+		/// For setters
+		let mut diagnostics = Default::default();
+		let result = crate::types::properties::set_property(
 			on,
 			(publicity, under, PropertyValue::Value(new)),
-			self,
-			&mut CheckThings { debug_types: options.debug_types },
-			types,
 			setter_position,
-		)
+			self,
+			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			&mut checking_data.types,
+		);
+		diagnostics.append_to(crate::types::calling::CallingContext::Setter, &mut checking_data.diagnostics_container);
+
+		match result {
+			Ok(()) => {}
+			Err(error) => {
+				checking_data
+					.diagnostics_container
+					.add_error(TypeCheckError::SetPropertyError(error));
+			}
+		}
 	}
 
 	/// `continue` has different behavior to `break` right?
@@ -1314,29 +1238,5 @@ impl<'a> Environment<'a> {
 			}
 		}
 		None
-	}
-}
-
-/// TODO remove
-fn set_property_error_to_type_check_error(
-	ctx: &impl InformationChain,
-	error: SetPropertyError,
-	assignment_span: SpanWithSource,
-	types: &TypeStore,
-	new: TypeId,
-) -> TypeCheckError<'static> {
-	match error {
-		SetPropertyError::NotWriteable { property } => {
-			TypeCheckError::PropertyNotWriteable { property, position: assignment_span }
-		}
-		SetPropertyError::DoesNotMeetConstraint { property_constraint, reason: _ } => {
-			TypeCheckError::AssignmentError(AssignmentError::PropertyConstraint {
-				property_constraint,
-				value_type: TypeStringRepresentation::from_type_id(new, ctx, types, false),
-				assignment_position: assignment_span,
-			})
-		}
-		SetPropertyError::Readonly => todo!(),
-		SetPropertyError::AssigningToTuple => todo!(),
 	}
 }

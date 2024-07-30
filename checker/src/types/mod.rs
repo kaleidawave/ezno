@@ -28,7 +28,7 @@ pub use store::TypeStore;
 pub use terms::Constant;
 
 use crate::{
-	context::information::InformationChain,
+	context::InformationChain,
 	events::RootReference,
 	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	subtyping::SliceArguments,
@@ -322,7 +322,7 @@ impl Type {
 
 	#[must_use]
 	pub fn is_operator(&self) -> bool {
-		matches!(self, Self::And(..) | Self::Or(..))
+		matches!(self, Self::And(..) | Self::Or(..) | Self::Constructor(Constructor::ConditionalResult { .. }))
 	}
 
 	#[must_use]
@@ -618,7 +618,12 @@ pub enum LookUpGeneric {
 
 impl LookUpGeneric {
 	#[allow(unreachable_patterns)]
-	pub(crate) fn calculate_lookup(&self, info: &impl InformationChain, on: TypeId) -> Vec<TypeId> {
+	pub(crate) fn calculate_lookup(
+		&self,
+		info: &impl InformationChain,
+		types: &TypeStore,
+		on: TypeId,
+	) -> Vec<TypeId> {
 		match self {
 			LookUpGeneric::NumberPropertyOfSelf => {
 				info.get_chain_of_info()
@@ -629,7 +634,7 @@ impl LookUpGeneric {
 						if matches!(key, PropertyKey::String(s) if s == "length") {
 							None
 						} else {
-							Some(value.as_get_type())
+							Some(value.as_get_type(types))
 						}
 					})
 					.collect()
@@ -747,7 +752,6 @@ fn get_simple_value(
 	let value = properties::get_property_unbound(
 		(on, None),
 		(properties::Publicity::Public, property, None),
-		true,
 		ctx,
 		types,
 	)
@@ -801,12 +805,12 @@ pub(crate) fn as_slice(
 						crate::utilities::notify!("key (should be incremental) {:?}", key);
 						if let Some(_) = key.as_number(types) {
 							if let crate::PropertyValue::ConditionallyExists { .. } = value {
-								ArrayItem::Optional(value.as_get_type())
+								ArrayItem::Optional(value.as_get_type(types))
 							} else {
-								ArrayItem::Member(value.as_get_type())
+								ArrayItem::Member(value.as_get_type(types))
 							}
 						} else {
-							ArrayItem::Wildcard(value.as_get_type())
+							ArrayItem::Wildcard(value.as_get_type(types))
 						}
 					})
 				})
@@ -1007,6 +1011,28 @@ pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId,
 			} else {
 				None
 			}
+		}
+	}
+}
+
+/// TODO wip
+pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeStore) -> bool {
+	if let TypeId::NUMBER_TYPE | TypeId::STRING_TYPE = ty {
+		true
+	} else if let Some(arg) = generics.as_ref().and_then(|args| args.get_single_argument(ty)) {
+		is_pseudo_continous((arg, generics), types)
+	} else {
+		let ty = types.get_type_by_id(ty);
+		if let Type::Or(left, right) = ty {
+			is_pseudo_continous((*left, generics), types)
+				|| is_pseudo_continous((*right, generics), types)
+		} else if let Type::And(left, right) = ty {
+			is_pseudo_continous((*left, generics), types)
+				&& is_pseudo_continous((*right, generics), types)
+		} else if let Type::RootPolyType(PolyNature::MappedGeneric { eager_fixed, .. }) = ty {
+			is_pseudo_continous((*eager_fixed, generics), types)
+		} else {
+			false
 		}
 	}
 }

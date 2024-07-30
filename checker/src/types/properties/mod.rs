@@ -1,12 +1,14 @@
-mod access;
-mod assignment;
+pub mod access;
+pub mod assignment;
+pub mod list;
 
 pub use access::*;
 pub use assignment::set_property;
+pub use list::*;
 
 use super::{Type, TypeStore};
 use crate::{
-	context::information::InformationChain,
+	context::InformationChain,
 	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
 	types::{
 		calling::Callable, generics::contributions::Contributions, logical::*, properties,
@@ -195,6 +197,11 @@ pub enum PropertyValue {
 	Getter(Callable),
 	/// These need to be [`Callable`], because the getter can be a type via `Object.defineProperty`
 	Setter(Callable),
+	/// These need to be [`Callable`], because the getter can be a type via `Object.defineProperty`
+	GetterAndSetter {
+		getter: Callable,
+		setter: Callable,
+	},
 	/// TODO this could have a bit more information. Whether it came from a `delete` or from TS Optional annotation
 	Deleted,
 	/// This is the solution for ors. Can be a getter added, a value removed.
@@ -228,42 +235,43 @@ impl Default for Descriptor {
 }
 
 impl PropertyValue {
-	/// TODO wip
 	#[must_use]
-	pub fn as_get_type(&self) -> TypeId {
+	pub fn as_get_type(&self, types: &TypeStore) -> TypeId {
 		match self {
 			PropertyValue::Value(value) => *value,
-			PropertyValue::Getter(_getter) => {
+			PropertyValue::GetterAndSetter { getter, setter: _ }
+			| PropertyValue::Getter(getter) => {
 				crate::utilities::notify!("Here. Should pass down types");
-				TypeId::ERROR_TYPE
+				getter.get_return_type(types)
 			}
 			// TODO unsure about these two
 			PropertyValue::Setter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
 			PropertyValue::ConditionallyExists { truthy, .. } => {
 				// TODO temp
-				truthy.as_get_type()
+				truthy.as_get_type(types)
 			}
-			PropertyValue::Configured { on, .. } => on.as_get_type(),
+			PropertyValue::Configured { on, .. } => on.as_get_type(types),
 		}
 	}
 
 	#[must_use]
-	pub fn as_set_type(&self) -> TypeId {
+	pub fn as_set_type(&self, types: &TypeStore) -> TypeId {
 		match self {
 			PropertyValue::Value(value) => *value,
-			PropertyValue::Setter(_setter) => {
+			PropertyValue::Getter(_) => TypeId::UNDEFINED_TYPE,
+			PropertyValue::GetterAndSetter { getter: _, setter }
+			| PropertyValue::Setter(setter) => {
 				crate::utilities::notify!("Here. Should pass down types");
-				TypeId::ERROR_TYPE
+				setter.get_first_argument(types)
 			}
 			// TODO unsure about these two
-			PropertyValue::Getter(_) => TypeId::UNDEFINED_TYPE,
 			PropertyValue::Deleted => TypeId::NEVER_TYPE,
 			PropertyValue::ConditionallyExists { truthy, .. } => {
 				// TODO temp
-				truthy.as_get_type()
+				truthy.as_set_type(types)
 			}
-			PropertyValue::Configured { on, .. } => on.as_get_type(),
+			PropertyValue::Configured { on, .. } => on.as_set_type(types),
 		}
 	}
 
@@ -330,78 +338,6 @@ pub(crate) fn key_matches(
 			};
 			(matches, SliceArguments::default())
 		}
-		(PropertyKey::String(s), PropertyKey::Type(want)) => {
-			if let Some(substituted_key) =
-				want_type_arguments.and_then(|args| args.get_single_argument(*want))
-			{
-				key_matches(
-					(key, key_type_arguments),
-					(&PropertyKey::Type(substituted_key), want_type_arguments),
-					info_chain,
-					types,
-				)
-			} else {
-				let want_ty = types.get_type_by_id(*want);
-				// crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
-				if let Type::Or(lhs, rhs) = want_ty {
-					// TODO
-					let matches = key_matches(
-						(key, key_type_arguments),
-						(&PropertyKey::Type(*lhs), key_type_arguments),
-						info_chain,
-						types,
-					)
-					.0 || key_matches(
-						(key, key_type_arguments),
-						(&PropertyKey::Type(*rhs), key_type_arguments),
-						info_chain,
-						types,
-					)
-					.0;
-					(matches, SliceArguments::default())
-				} else if let Type::RootPolyType(PolyNature::MappedGeneric {
-					eager_fixed: to,
-					..
-				})
-				| Type::AliasTo { to, .. } = want_ty
-				{
-					key_matches(
-						(key, key_type_arguments),
-						(&PropertyKey::Type(*to), want_type_arguments),
-						info_chain,
-						types,
-					)
-				} else if let Type::Constructor(crate::types::Constructor::KeyOf(on)) = want_ty {
-					let matches = access::get_properties_on_single_type2(
-						(*on, want_type_arguments),
-						types,
-						info_chain,
-						TypeId::ANY_TYPE,
-					)
-					.iter()
-					.all(|(rhs_key, _, _)| {
-						key_matches(
-							(key, key_type_arguments),
-							(rhs_key, want_type_arguments),
-							info_chain,
-							types,
-						)
-						.0
-					});
-					(matches, Default::default())
-				} else if let Type::Constant(c) = want_ty {
-					// crate::utilities::notify!("{:?}", c);
-					// TODO
-					(*s == c.as_js_string(), SliceArguments::default())
-				} else if *want == TypeId::NUMBER_TYPE {
-					(s.parse::<usize>().is_ok(), SliceArguments::default())
-				} else if *want == TypeId::STRING_TYPE {
-					(s.parse::<usize>().is_err(), SliceArguments::default())
-				} else {
-					(false, SliceArguments::default())
-				}
-			}
-		}
 		(PropertyKey::Type(key), PropertyKey::String(s)) => {
 			// crate::utilities::notify!(
 			// 	"Key equality: have {:?} want {:?}",
@@ -433,6 +369,82 @@ pub(crate) fn key_matches(
 				(result, contributions)
 			}
 		}
+		(PropertyKey::String(s), PropertyKey::Type(want)) => {
+			// This is a special branch because it can refer to many properties
+			if let Some(substituted_key) =
+				want_type_arguments.and_then(|args| args.get_single_argument(*want))
+			{
+				key_matches(
+					(key, key_type_arguments),
+					(&PropertyKey::Type(substituted_key), want_type_arguments),
+					info_chain,
+					types,
+				)
+			} else {
+				let want_ty = types.get_type_by_id(*want);
+				// crate::utilities::notify!("{:?} key_ty={:?}", s, want_ty);
+				if let Type::Or(lhs, rhs) = want_ty {
+					// TODO
+					if let matched @ (true, _) = key_matches(
+						(key, key_type_arguments),
+						(&PropertyKey::Type(*lhs), key_type_arguments),
+						info_chain,
+						types,
+					) {
+						matched
+					} else {
+						key_matches(
+							(key, key_type_arguments),
+							(&PropertyKey::Type(*rhs), key_type_arguments),
+							info_chain,
+							types,
+						)
+					}
+				} else if let Type::RootPolyType(PolyNature::MappedGeneric {
+					eager_fixed: to,
+					..
+				})
+				| Type::AliasTo { to, .. } = want_ty
+				{
+					key_matches(
+						(key, key_type_arguments),
+						(&PropertyKey::Type(*to), want_type_arguments),
+						info_chain,
+						types,
+					)
+				} else if let Type::Constructor(crate::types::Constructor::KeyOf(on)) = want_ty {
+					let matches = get_properties_on_single_type2(
+						(*on, want_type_arguments),
+						types,
+						info_chain,
+						TypeId::ANY_TYPE,
+					)
+					.iter()
+					.all(|(rhs_key, _, _)| {
+						// TODO what about keys here
+						key_matches(
+							(key, key_type_arguments),
+							(rhs_key, want_type_arguments),
+							info_chain,
+							types,
+						)
+						.0
+					});
+					(matches, Default::default())
+				} else if let Type::Constant(c) = want_ty {
+					// crate::utilities::notify!("{:?}", c);
+					// TODO
+					(*s == c.as_js_string(), SliceArguments::default())
+				} else if *want == TypeId::NUMBER_TYPE {
+					(s.parse::<usize>().is_ok(), SliceArguments::default())
+				} else if *want == TypeId::STRING_TYPE {
+					// Nuance about symbol here. TODO
+					(true, SliceArguments::default())
+				} else {
+					(false, SliceArguments::default())
+				}
+			}
+		}
 		(PropertyKey::Type(left), PropertyKey::Type(right)) => {
 			let mut state = crate::types::subtyping::State {
 				already_checked: Default::default(),
@@ -453,60 +465,5 @@ pub(crate) fn key_matches(
 
 			(result.is_subtype(), contributions.staging_contravariant)
 		}
-	}
-}
-
-/// WIP
-pub(crate) fn has_property(
-	(publicity, key): (properties::Publicity, &properties::PropertyKey<'_>),
-	rhs: TypeId,
-	information: &impl InformationChain,
-	types: &mut TypeStore,
-) -> TypeId {
-	let result = properties::get_property_unbound(
-		(rhs, None),
-		(publicity, key, None),
-		false,
-		information,
-		types,
-	);
-
-	crate::utilities::notify!("Has got {:?} on {:?}", result, rhs);
-
-	match result {
-		Ok(LogicalOrValid::Logical(result)) => match result {
-			Logical::Pure(_) => TypeId::TRUE,
-			Logical::Or { .. } => {
-				crate::utilities::notify!("or or implies `in`");
-				TypeId::ERROR_TYPE
-			}
-			Logical::Implies { .. } => {
-				crate::utilities::notify!("or or implies `in`");
-				TypeId::ERROR_TYPE
-			}
-			Logical::BasedOnKey { .. } => {
-				crate::utilities::notify!("mapped in");
-				TypeId::ERROR_TYPE
-			}
-		},
-		Ok(LogicalOrValid::NeedsCalculation(result)) => {
-			crate::utilities::notify!("TODO {:?}", result);
-			TypeId::ERROR_TYPE
-		}
-		Err(err) => {
-			crate::utilities::notify!("TODO {:?}", err);
-			TypeId::ERROR_TYPE
-		} // match err {
-		  // 	MissingOrToCalculate::Missing => {
-		  // 		crate::utilities::notify!("If on poly this could be conditional");
-		  // 		TypeId::FALSE
-		  // 	}
-		  // 	MissingOrToCalculate::Error => types.new_error_type(TypeId::BOOLEAN_TYPE),
-		  // 	MissingOrToCalculate::Infer { .. } => types.new_error_type(TypeId::BOOLEAN_TYPE),
-		  // 	MissingOrToCalculate::Proxy(_) => {
-		  // 		crate::utilities::notify!("`has` on proxy");
-		  // 		types.new_error_type(TypeId::BOOLEAN_TYPE)
-		  // 	}
-		  // },
 	}
 }

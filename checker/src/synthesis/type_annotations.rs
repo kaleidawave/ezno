@@ -2,33 +2,30 @@
 
 use std::convert::TryInto;
 
+use super::{
+	assignments::synthesise_access_to_reference, functions::synthesise_function_annotation,
+};
 use crate::{
-	synthesis::assignments::synthesise_access_to_reference,
+	context::{Environment, LocalInformation, Scope},
+	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
+	features::objects::ObjectBuilder,
+	types::{
+		generics::generic_type_arguments::GenericArguments,
+		properties::{PropertyKey, PropertyValue, Publicity},
+		Constant, Constructor, PartiallyAppliedGenerics, Type, TypeId,
+	},
 	types::{
 		generics::ExplicitTypeArguments,
 		intrinsics::{self, distribute_tsc_string_intrinsic},
 		ArrayItem, Counter,
 	},
-	LocalInformation, Map,
+	CheckingData, Map,
 };
 use parser::{
 	type_annotations::{AnnotationWithBinder, CommonTypes, TupleElementKind, TupleLiteralElement},
 	ASTNode, TypeAnnotation,
 };
 use source_map::SpanWithSource;
-
-use crate::{
-	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	features::objects::ObjectBuilder,
-	synthesis::functions::synthesise_function_annotation,
-	types::properties::Publicity,
-	types::{
-		generics::generic_type_arguments::GenericArguments,
-		properties::{PropertyKey, PropertyValue},
-		Constant, Constructor, PartiallyAppliedGenerics, Type, TypeId,
-	},
-	CheckingData, Environment, Scope,
-};
 
 /// Turns a [`parser::TypeAnnotation`] into [`TypeId`]
 ///

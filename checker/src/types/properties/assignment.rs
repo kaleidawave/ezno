@@ -1,42 +1,64 @@
 use super::{get_property_unbound, PropertyKey, PropertyValue, Publicity};
 
 use crate::{
-	context::{CallCheckingBehavior, SetPropertyError},
+	context::CallCheckingBehavior,
 	diagnostics::{PropertyKeyRepresentation, TypeStringRepresentation},
 	events::Event,
 	features::{constant_functions::CallSiteTypeArguments, functions::ThisValue},
 	subtyping::{State, SubTypeResult},
 	types::{
-		calling::FunctionCallingError,
+		calling::{CallingDiagnostics, CallingOutput},
 		generics::generic_type_arguments::GenericArguments,
 		get_constraint,
 		logical::{LeftRight, Logical, LogicalOrValid},
-		tuple_like, Constructor, GenericChain, PartiallyAppliedGenerics, SynthesisedArgument,
-		TypeStore,
+		tuple_like, Constructor, GenericChain, NeedsCalculation, PartiallyAppliedGenerics,
+		SynthesisedArgument, TypeStore,
 	},
 	Environment, Type, TypeId,
 };
 
 use source_map::SpanWithSource;
 
+pub enum SetPropertyError {
+	/// Both readonly readonly modifier (TS), readonly property (TS), frozen and not writable
+	NotWriteable { property: PropertyKeyRepresentation, position: SpanWithSource },
+	DoesNotMeetConstraint {
+		property_constraint: TypeStringRepresentation,
+		value_type: TypeStringRepresentation,
+		reason: crate::types::subtyping::NonEqualityReason,
+		position: SpanWithSource,
+	},
+	/// I  Has no effect but doesn't throw an error
+	///
+	/// [Although only a strict mode issue][https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Getter_only] it can break the type syetem
+	AssigningToGetter { property: PropertyKeyRepresentation, position: SpanWithSource },
+	// TODO #170
+	// AssigningToTuple,
+}
+
+pub type SetPropertyResult = Result<(), SetPropertyError>;
+
 /// Aka a assignment to a property, **INCLUDING initialization of a new one**
 ///
 /// Evaluates setters
 ///
-/// This handles both poly objects and
-pub fn set_property<E: CallCheckingBehavior>(
+/// This handles both objects and poly types
+///
+/// TODO merge calling diagnostics with behavior;
+pub fn set_property<B: CallCheckingBehavior>(
 	on: TypeId,
 	(publicity, under, new): (Publicity, &PropertyKey, PropertyValue),
+	position: SpanWithSource,
 	environment: &mut Environment,
-	behavior: &mut E,
+	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
 	types: &mut TypeStore,
-	setter_position: SpanWithSource,
-) -> Result<Option<TypeId>, SetPropertyError> {
+) -> SetPropertyResult {
 	// Frozen checks
 	{
 		if environment.info.frozen.contains(&on) {
 			return Err(SetPropertyError::NotWriteable {
 				property: PropertyKeyRepresentation::new(under, environment, types),
+				position,
 			});
 		}
 	}
@@ -56,13 +78,13 @@ pub fn set_property<E: CallCheckingBehavior>(
 			{
 				return Err(SetPropertyError::NotWriteable {
 					property: PropertyKeyRepresentation::new(under, environment, types),
+					position,
 				});
 			}
 
 			let property_constraint = get_property_unbound(
 				(object_constraint, None),
 				(publicity, under, None),
-				false,
 				environment,
 				types,
 			);
@@ -77,21 +99,20 @@ pub fn set_property<E: CallCheckingBehavior>(
 			// );
 
 			if let Ok(LogicalOrValid::Logical(property_constraint)) = property_constraint {
-				// TODO ...?
-				let mut state = State {
-					already_checked: Default::default(),
-					mode: Default::default(),
-					contributions: Default::default(),
-					others: Default::default(),
-					object_constraints: Default::default(),
-				};
-
 				// TODO property value is readonly
 				// TODO state is writeable etc?
 				// TODO document difference with context.writeable
 
 				match new {
 					PropertyValue::Value(value) => {
+						// TODO ...?
+						let mut state = State {
+							already_checked: Default::default(),
+							mode: Default::default(),
+							contributions: Default::default(),
+							others: Default::default(),
+							object_constraints: Default::default(),
+						};
 						let result = crate::subtyping::type_is_subtype_of_property(
 							(&property_constraint, None),
 							value,
@@ -116,23 +137,34 @@ pub fn set_property<E: CallCheckingBehavior>(
 									types,
 									false,
 								);
+							let value_type = TypeStringRepresentation::from_type_id(
+								value,
+								environment,
+								types,
+								false,
+							);
 							return Err(SetPropertyError::DoesNotMeetConstraint {
 								property_constraint,
+								value_type,
 								reason,
+								position,
 							});
 						}
 					}
-					PropertyValue::Getter(_) => todo!(),
-					PropertyValue::Setter(_) => todo!(),
-					PropertyValue::Deleted => todo!(),
+					PropertyValue::Getter(_)
+					| PropertyValue::Setter(_)
+					| PropertyValue::GetterAndSetter { .. }
+					| PropertyValue::Deleted => {}
 					PropertyValue::ConditionallyExists { truthy: ref _truthy, .. } => {
 						crate::utilities::notify!("Here assigning to conditional. TODO recursive");
 					}
 					PropertyValue::Configured { descriptor, .. } => {
 						crate::utilities::notify!("TODO nested");
+						// TODO doesn't account for other types here
 						if !matches!(descriptor.writable, TypeId::TRUE) {
 							return Err(SetPropertyError::NotWriteable {
 								property: PropertyKeyRepresentation::new(under, environment, types),
+								position,
 							});
 						}
 					}
@@ -167,42 +199,52 @@ pub fn set_property<E: CallCheckingBehavior>(
 		let truthy = *truthy_result;
 		let otherwise_result = *otherwise_result;
 
-		// TODO under conditionals
+		// TODO under conditionals for side effected setter
 		set_property(
 			truthy,
 			(publicity, under, new.clone()),
+			position,
 			environment,
-			behavior,
+			(behavior, diagnostics),
 			types,
-			setter_position,
 		)?;
 		return set_property(
 			otherwise_result,
 			(publicity, under, new),
+			position,
 			environment,
-			behavior,
+			(behavior, diagnostics),
 			types,
-			setter_position,
 		);
 	}
 
 	// IMPORTANT: THIS ALSO CAPTURES POLY CONSTRAINTS
 	let current_property =
-		get_property_unbound((on, None), (publicity, under, None), false, environment, types);
+		get_property_unbound((on, None), (publicity, under, None), environment, types);
 
-	if let Ok(LogicalOrValid::Logical(fact)) = current_property {
-		if let Some(value) = set_on_logical(
-			fact,
-			behavior,
-			environment,
-			(on, None),
-			(publicity, under, new),
-			types,
-			setter_position,
-		) {
-			return value;
+	if let Ok(value) = current_property {
+		crate::utilities::notify!("Got {:?}", value);
+		match value {
+			LogicalOrValid::Logical(fact) => {
+				return set_on_logical(
+					fact,
+					(behavior, diagnostics),
+					environment,
+					(on, None),
+					(publicity, under, new),
+					types,
+					position,
+				);
+			}
+			LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }) => {
+				crate::utilities::notify!("TODO add assignment request on {:?}", on);
+			}
+			LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(proxy)) => {
+				crate::utilities::notify!("TODO call {:?}", proxy);
+			}
 		}
 	} else {
+		crate::utilities::notify!("No property, assigning anyway");
 		// TODO abstract
 		// TODO only if dependent?
 		let register_setter_event = true;
@@ -212,39 +254,55 @@ pub fn set_property<E: CallCheckingBehavior>(
 			under.into_owned(),
 			new,
 			register_setter_event,
-			setter_position,
+			position,
 		);
 	}
-	Ok(None)
+	Ok(())
 }
 
-fn set_on_logical<E: CallCheckingBehavior>(
+fn set_on_logical<B: CallCheckingBehavior>(
 	fact: Logical<PropertyValue>,
-	behavior: &mut E,
+	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
 	environment: &mut Environment,
 	(on, generics): (TypeId, GenericChain),
 	(publicity, under, new): (Publicity, &PropertyKey, PropertyValue),
 	types: &mut TypeStore,
-	setter_position: SpanWithSource,
-) -> Option<Result<Option<TypeId>, SetPropertyError>> {
+	position: SpanWithSource,
+) -> SetPropertyResult {
 	match fact {
-		Logical::Pure(og) => {
-			let result = run_setter_on_object(
-				og,
-				behavior,
-				environment,
-				(on, generics),
-				(publicity, under, new),
-				types,
-				setter_position,
-			);
-			if let Err(result) = result {
-				Some(Err(produce_set_property_error(result, under, environment, types)))
+		Logical::Pure(og) => run_setter_on_object(
+			og,
+			(behavior, diagnostics),
+			environment,
+			(on, generics),
+			(publicity, under, new),
+			types,
+			position,
+		),
+		Logical::Or { condition, left, right } => {
+			if types.get_type_by_id(on).is_dependent() {
+				{
+					let info = behavior.get_latest_info(environment);
+					// TODO cannot do because if substituted property is getter then the following is not true
+					// info.current_properties.entry(on).or_default().push((
+					// 	publicity,
+					// 	under.into_owned(),
+					// 	new.clone(),
+					// ));
+					info.events.push(Event::Setter {
+						on,
+						new,
+						under: under.into_owned(),
+						publicity,
+						initialisation: false,
+						position: position,
+					});
+				}
 			} else {
-				None
+				crate::utilities::notify!("TODO ");
 			}
+			Ok(())
 		}
-		Logical::Or { .. } => todo!(),
 		Logical::Implies { on: og, antecedent } => {
 			crate::utilities::notify!("antecedent={:?}", antecedent);
 			let generics = crate::types::GenericChainLink::FunctionRoot {
@@ -255,31 +313,49 @@ fn set_on_logical<E: CallCheckingBehavior>(
 			};
 			set_on_logical(
 				*og,
-				behavior,
+				(behavior, diagnostics),
 				environment,
 				(on, Some(generics)),
 				(publicity, under, new),
 				types,
-				setter_position,
+				position,
 			)
 		}
 		Logical::BasedOnKey(kind) => {
 			if let LeftRight::Left { value, key_arguments } = kind {
 				let generics = crate::types::GenericChainLink::MappedPropertyLink {
-					parent_link: None,
+					parent_link: generics.as_ref(),
 					value: &key_arguments,
 				};
 				set_on_logical(
 					*value,
-					behavior,
+					(behavior, diagnostics),
 					environment,
 					(on, Some(generics)),
 					(publicity, under, new),
 					types,
-					setter_position,
+					position,
 				)
 			} else {
 				crate::utilities::notify!("Here {:?}", kind);
+
+				{
+					let info = behavior.get_latest_info(environment);
+					info.current_properties.entry(on).or_default().push((
+						publicity,
+						under.into_owned(),
+						new.clone(),
+					));
+					info.events.push(Event::Setter {
+						on,
+						new,
+						under: under.into_owned(),
+						publicity,
+						initialisation: false,
+						position: position,
+					});
+				}
+
 				// set_on_logical(
 				// 	*og,
 				// 	behavior,
@@ -287,84 +363,77 @@ fn set_on_logical<E: CallCheckingBehavior>(
 				// 	(on, None),
 				// 	(publicity, under, new),
 				// 	types,
-				// 	setter_position,
+				// 	position,
 				// )
-				None
+				Ok(())
 			}
 		}
 	}
-}
-
-fn produce_set_property_error(
-	result: SetterResult,
-	under: &PropertyKey,
-	environment: &mut crate::context::Context<crate::context::Syntax>,
-	types: &mut TypeStore,
-) -> SetPropertyError {
-	match result {
-		SetterResult::NotWriteable => SetPropertyError::NotWriteable {
-			property: PropertyKeyRepresentation::new(under, environment, types),
-		},
-		SetterResult::SetterErrors(errors) => {
-			// TODO temp
-			for error in errors {
-				match error {
-					FunctionCallingError::InvalidArgumentType {
-						parameter_type,
-						argument_type: _,
-						argument_position: _,
-						parameter_position: _,
-						restriction: _,
-					} => {
-						return SetPropertyError::DoesNotMeetConstraint {
-							property_constraint: parameter_type,
-							reason: crate::subtyping::NonEqualityReason::Mismatch,
-						}
-					}
-					FunctionCallingError::DeleteConstraint { constraint: _, .. } => todo!(),
-					FunctionCallingError::NeedsToBeCalledWithNewKeyword(_)
-					| FunctionCallingError::NoLogicForIdentifier(..)
-					| FunctionCallingError::NotCallable { .. }
-					| FunctionCallingError::ExcessArguments { .. }
-					| FunctionCallingError::ExcessTypeArguments { .. }
-					| FunctionCallingError::MissingArgument { .. } => unreachable!(),
-					FunctionCallingError::ReferenceRestrictionDoesNotMatch { .. } => {
-						todo!()
-					}
-					FunctionCallingError::CyclicRecursion(_, _) => todo!(),
-					FunctionCallingError::TDZ { .. } => todo!(),
-					FunctionCallingError::SetPropertyConstraint { .. } => todo!(),
-					FunctionCallingError::MismatchedThis { .. } => {
-						todo!()
-					}
-					FunctionCallingError::CannotCatch { .. } => todo!(),
-				}
-			}
-			unreachable!()
-		}
-	}
-}
-
-pub enum SetterResult {
-	NotWriteable,
-	SetterErrors(Vec<FunctionCallingError>),
 }
 
 /// `Vec<FunctionCallingError>` from calling setter
 ///
-/// `og` = current last value
+/// `og` = current last value, `position` = assignment position
 #[allow(clippy::too_many_arguments)]
-fn run_setter_on_object<E: CallCheckingBehavior>(
+fn run_setter_on_object<B: CallCheckingBehavior>(
 	og: PropertyValue,
-	behavior: &mut E,
+	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
 	environment: &mut Environment,
 	(on, generics): (TypeId, GenericChain),
 	(publicity, under, new): (Publicity, &PropertyKey<'_>, PropertyValue),
 	types: &mut TypeStore,
-	setter_position: SpanWithSource,
-) -> Result<(), SetterResult> {
+	position: SpanWithSource,
+) -> SetPropertyResult {
 	match og {
 		PropertyValue::Deleted | PropertyValue::Value(..) => {
+			if let (Some(constraint), PropertyValue::Value(value)) = (get_constraint(on, types), og)
+			{
+				{
+					crate::utilities::notify!(
+						"{:?} {:?}",
+						(constraint, types.get_type_by_id(constraint)),
+						generics
+					);
+				}
+				// TODO ...?
+				let mut state = State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: Default::default(),
+					object_constraints: Default::default(),
+				};
+				let new_value = new.as_get_type(types);
+				let result = crate::subtyping::type_is_subtype_with_generics(
+					(value, generics),
+					(new_value, None),
+					&mut state,
+					environment,
+					types,
+				);
+				if let SubTypeResult::IsNotSubType(reason) = result {
+					let property_constraint = TypeStringRepresentation::from_property_constraint(
+						Logical::Pure(PropertyValue::Value(value)),
+						generics,
+						environment,
+						types,
+						false,
+					);
+					let value_type = TypeStringRepresentation::from_type_id(
+						new_value,
+						environment,
+						types,
+						false,
+					);
+					return Err(SetPropertyError::DoesNotMeetConstraint {
+						property_constraint,
+						value_type,
+						reason,
+						position,
+					});
+				}
+			}
+
 			let info = behavior.get_latest_info(environment);
 			info.current_properties.entry(on).or_default().push((
 				publicity,
@@ -377,43 +446,42 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 				under: under.into_owned(),
 				publicity,
 				initialisation: false,
-				position: setter_position,
+				position: position,
 			});
-
 			Ok(())
 		}
-		PropertyValue::Getter(_) => todo!(),
-		PropertyValue::Setter(setter) => {
+		PropertyValue::Getter(_) => Err(SetPropertyError::AssigningToGetter {
+			property: PropertyKeyRepresentation::new(under, environment, types),
+			position,
+		}),
+		PropertyValue::GetterAndSetter { setter, getter: _ } | PropertyValue::Setter(setter) => {
 			use crate::types::calling::{CalledWithNew, CallingInput};
 
 			let value = match new {
 				PropertyValue::Value(type_id) => type_id,
 				_ => todo!(),
 			};
-			let arg = SynthesisedArgument { position: setter_position, spread: false, value };
+			let arg = SynthesisedArgument { position: position, spread: false, value };
+			let this_type = generics.and_then(|arg| arg.get_origin()).unwrap_or(on);
 			let input = CallingInput {
-				called_with_new: CalledWithNew::None,
-				call_site: setter_position,
+				called_with_new: CalledWithNew::GetterOrSetter { this_type: on },
+				call_site: position,
 				// TODO
 				max_inline: 0,
 			};
 
-			let result = setter.call(vec![arg], input, environment, behavior, types);
-			// let setter = types.functions.get(&setter).unwrap().clone();
-			// let result = setter.call(
-			// 	(
-			// 		ThisValue::Passed(on),
-			// 		&[arg],
-			// 		None::<CallSiteTypeArguments>,
-			// 		// TODO structure generics
-			// 		None::<GenericArguments>,
-			// 	),
-			// 	input,
+			let result = setter.call(vec![arg], input, environment, (behavior, diagnostics), types);
+
+			// TODO add event if dependent
 
 			match result {
-				// Ignore the returned result of the setter
-				Ok(_ok) => Ok(()),
-				Err(res) => Err(SetterResult::SetterErrors(res.errors)),
+				Ok(CallingOutput {
+					result: _,
+					called: _,
+					special: _,
+					result_was_const_computation: _,
+				}) => Ok(()),
+				Err(_errors) => Ok(()),
 			}
 		}
 		PropertyValue::ConditionallyExists { condition: _condition, truthy } => {
@@ -421,12 +489,12 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 
 			run_setter_on_object(
 				*truthy,
-				behavior,
+				(behavior, diagnostics),
 				environment,
 				(on, generics),
 				(publicity, under, new),
 				types,
-				setter_position,
+				position,
 			)
 		}
 		PropertyValue::Configured { on: existing_value, descriptor } => {
@@ -439,7 +507,10 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 
 			if !matches!(writable, TypeId::TRUE) {
 				crate::utilities::notify!("{:?}", writable);
-				return Err(SetterResult::NotWriteable);
+				return Err(SetPropertyError::NotWriteable {
+					property: PropertyKeyRepresentation::new(under, environment, types),
+					position,
+				});
 			}
 
 			crate::utilities::notify!("Carrying property");
@@ -447,12 +518,12 @@ fn run_setter_on_object<E: CallCheckingBehavior>(
 
 			run_setter_on_object(
 				*existing_value,
-				behavior,
+				(behavior, diagnostics),
 				environment,
 				(on, generics),
 				(publicity, under, new),
 				types,
-				setter_position,
+				position,
 			)
 		}
 	}

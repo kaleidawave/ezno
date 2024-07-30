@@ -94,7 +94,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 				if debug {
 					write!(buf, "[mg {} {}] ", ty.0, name).unwrap();
 				}
-				print_type_into_buf(*eager_fixed, buf, cycles, args, types, info, debug);
+				crate::utilities::notify!("args={:?}", args);
+				if let Some(crate::types::CovariantContribution::String(property)) = args.and_then(|arg| arg.get_argument_covariant(ty, info, types)) {
+					write!(buf, "{property}").unwrap();
+				} else {
+					print_type_into_buf(*eager_fixed, buf, cycles, args, types, info, debug);
+				}
 			}
 			PolyNature::FunctionGeneric { name, .. }
 			| PolyNature::StructureGeneric { name, constrained: _ } => {
@@ -459,7 +464,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					closed_over_variables,
 				} = &func.effect
 				{
-					write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?} ")
+					write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?}")
 						.unwrap();
 				} else {
 					write!(buf, "{:?}", func.effect).unwrap();
@@ -629,19 +634,63 @@ pub fn print_type_into_buf<C: InformationChain>(
 							buf.push_str(if is_optional { "?: " } else { ": " });
 							print_type_into_buf(*value, buf, cycles, args, types, info, debug);
 						}
-						PropertyValue::Getter(_) => {
+						PropertyValue::Getter(getter) => {
 							print_property_key_into_buf(
 								&key, buf, cycles, args, types, info, debug,
 							);
 							buf.push_str(if is_optional { "?: " } else { ": " });
-							buf.push_str("(getter)");
+							buf.push_str("(getter) ");
+							print_type_into_buf(
+								getter.get_return_type(types),
+								buf,
+								cycles,
+								args,
+								types,
+								info,
+								debug,
+							);
 						}
-						PropertyValue::Setter(_) => {
+						PropertyValue::GetterAndSetter { getter, setter } => {
 							print_property_key_into_buf(
 								&key, buf, cycles, args, types, info, debug,
 							);
 							buf.push_str(if is_optional { "?: " } else { ": " });
-							buf.push_str("(setter)");
+							buf.push_str("(getter) ");
+							print_type_into_buf(
+								getter.get_return_type(types),
+								buf,
+								cycles,
+								args,
+								types,
+								info,
+								debug,
+							);
+							buf.push_str(" + (setter) ");
+							print_type_into_buf(
+								setter.get_first_argument(types),
+								buf,
+								cycles,
+								args,
+								types,
+								info,
+								debug,
+							);
+						}
+						PropertyValue::Setter(setter) => {
+							print_property_key_into_buf(
+								&key, buf, cycles, args, types, info, debug,
+							);
+							buf.push_str(if is_optional { "?: " } else { ": " });
+							buf.push_str("(setter) ");
+							print_type_into_buf(
+								setter.get_first_argument(types),
+								buf,
+								cycles,
+								args,
+								types,
+								info,
+								debug,
+							);
 						}
 						PropertyValue::Deleted => {
 							print_property_key_into_buf(
@@ -652,7 +701,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						}
 						PropertyValue::ConditionallyExists { .. }
 						| PropertyValue::Configured { .. } => {
-							unreachable!()
+							unreachable!("should be unreachable by `inner_simple`")
 						}
 					}
 
@@ -690,7 +739,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						crate::features::variables::VariableMutability::Mutable {
 							reassignment_constraint: _,
 						} => todo!(),
-					};
+					}
 					if not_at_end {
 						buf.push_str(", ");
 					}

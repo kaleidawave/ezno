@@ -86,61 +86,6 @@ impl Exported {
 
 		(variable, r#type)
 	}
-
-	/// For tree shaking
-	pub(crate) fn evaluate_generally(
-		&self,
-		root: &crate::RootContext,
-		types: &mut crate::types::TypeStore,
-	) {
-		use crate::source_map::{Nullable, SpanWithSource};
-		use crate::types::{SpecialObject, SynthesisedArgument, Type};
-
-		// TODO might need special
-		let mut environment = root.new_lexical_environment(Scope::Block {});
-
-		if let Some(default) = &self.default {
-			match types.get_type_by_id(*default) {
-				Type::SpecialObject(SpecialObject::Function(func, this_value)) => {
-					let func = types.get_function_from_id(*func);
-					let mut arguments = Vec::new();
-					for parameter in &func.parameters.parameters {
-						arguments.push(SynthesisedArgument {
-							// TODO get_constraint + open
-							value: parameter.ty,
-							spread: false,
-							position: SpanWithSource::NULL,
-						});
-					}
-					let input = CallingInput {
-						called_with_new: crate::types::calling::CalledWithNew::None,
-						call_site: SpanWithSource::NULL,
-						max_inline: 0,
-					};
-
-					let this_value = *this_value;
-					let _result = func.clone().call(
-						(this_value, &arguments, None, None),
-						input,
-						&mut environment,
-						&mut InvocationContext::new_empty(),
-						types,
-					);
-
-					crate::utilities::notify!("Call result as well");
-				}
-				Type::Object(_d) => {
-					todo!()
-				}
-				ty => {
-					crate::utilities::notify!("Cannot call {:?}", ty);
-				}
-			}
-		}
-		for (_name, (_variable_id, _)) in &self.named {
-			todo!("call like type")
-		}
-	}
 }
 
 /// After a syntax error

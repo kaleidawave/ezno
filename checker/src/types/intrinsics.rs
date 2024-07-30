@@ -24,6 +24,8 @@ pub enum Intrinsic {
 	Uncapitalize,
 	/// Doesn't add to `Contributions` (TSC)
 	NoInfer,
+	/// (EZNO)
+	CaseInsensitive,
 	/// Has to be a known constant
 	Literal,
 	/// Cannot contain excess properties
@@ -108,6 +110,7 @@ pub fn is_intrinsic(id: TypeId) -> bool {
 				| TypeId::NO_INFER
 				| TypeId::EXCLUSIVE_RESTRICTION
 				| TypeId::NOT_RESTRICTION
+				| TypeId::CASE_INSENSITIVE
 		)
 }
 

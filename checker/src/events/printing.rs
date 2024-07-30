@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::{Event, FinalEvent};
 use crate::{
-	context::information::InformationChain,
+	context::InformationChain,
 	events::CallingTiming,
 	types::{
 		calling::Callable,

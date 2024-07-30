@@ -8,18 +8,18 @@ use source_map::{BaseSpan, Nullable, SpanWithSource};
 use crate::{
 	context::{
 		environment::Label, invocation::InvocationContext, CallCheckingBehavior,
-		ClosedOverReferencesInScope,
+		ClosedOverReferencesInScope, Environment, LocalInformation, Scope,
 	},
 	events::{
-		application::{ApplicationInput, CallingDiagnostics},
-		apply_events, ApplicationResult, Event, FinalEvent, RootReference,
+		application::ApplicationInput, apply_events, ApplicationResult, Event, FinalEvent,
+		RootReference,
 	},
 	features::{functions::ClosedOverVariables, operations::CanonicalEqualityAndInequality},
 	types::{
-		calling::add_diagnostics, properties::get_properties_on_single_type, substitute,
+		calling::{CallingDiagnostics, CallingContext}, properties::get_properties_on_single_type, substitute,
 		Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
 	},
-	CheckingData, Constant, Environment, LocalInformation, Scope, Type, TypeId, VariableId,
+	CheckingData, Constant, Type, TypeId, VariableId,
 };
 
 /// The type of iteration to synthesis
@@ -118,11 +118,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			add_diagnostics(
-				diagnostics.info,
-				diagnostics.warnings,
-				&mut checking_data.diagnostics_container,
-			);
+			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	crate::utilities::notify!("Loop returned {:?}", early_return);
@@ -189,11 +185,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			add_diagnostics(
-				diagnostics.info,
-				diagnostics.warnings,
-				&mut checking_data.diagnostics_container,
-			);
+			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -325,11 +317,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			add_diagnostics(
-				diagnostics.info,
-				diagnostics.warnings,
-				&mut checking_data.diagnostics_container,
-			);
+			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
 			// }
@@ -380,11 +368,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			add_diagnostics(
-				diagnostics.info,
-				diagnostics.warnings,
-				&mut checking_data.diagnostics_container,
-			);
+			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")

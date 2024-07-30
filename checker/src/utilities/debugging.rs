@@ -1,19 +1,41 @@
-static IS_DEBUG_MODE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
+use std::cell::Cell;
+
+/// For `notify!` macro below. This caches the value looked up by std::env::var(...)
+thread_local! {
+	static IS_DEBUG_MODE: Cell<Option<bool>> = Cell::new(None);
+	static DEBUG_MODE_PAUSED: Cell<bool> = Cell::new(false);
+}
 
 #[allow(clippy::manual_is_variant_and)]
 pub(crate) fn is_debug_mode() -> bool {
 	if cfg!(all(debug_assertions, not(target_arch = "wasm32"))) {
-		*IS_DEBUG_MODE.lock().unwrap().get_or_insert_with(|| {
-			std::env::var("EZNO_DEBUG").map(|value| !value.is_empty()).unwrap_or_default()
-		})
+		if DEBUG_MODE_PAUSED.get() {
+			return false;
+		}
+		let value = IS_DEBUG_MODE.get();
+		if let Some(value) = value {
+			value
+		} else {
+			let new_value = std::env::var("EZNO_DEBUG")
+				.map(|value| !value.is_empty() || value == "0")
+				.unwrap_or_default();
+			IS_DEBUG_MODE.set(Some(new_value));
+			new_value
+		}
 	} else {
 		false
 	}
 }
 
-pub(crate) fn _set_debug_mode(value: bool) {
+pub(crate) fn pause_debug_mode() {
 	if cfg!(all(debug_assertions, not(target_arch = "wasm32"))) {
-		let _ = *IS_DEBUG_MODE.lock().unwrap().insert(value);
+		DEBUG_MODE_PAUSED.set(true);
+	}
+}
+
+pub(crate) fn unpause_debug_mode() {
+	if cfg!(all(debug_assertions, not(target_arch = "wasm32"))) {
+		DEBUG_MODE_PAUSED.set(false);
 	}
 }
 

@@ -3,10 +3,7 @@ use source_map::SpanWithSource;
 use super::{CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference};
 
 use crate::{
-	context::{
-		get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior,
-		SetPropertyError,
-	},
+	context::{get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior},
 	diagnostics::{TypeStringRepresentation, TDZ},
 	events::ApplicationResult,
 	features::{
@@ -16,23 +13,16 @@ use crate::{
 	},
 	subtyping::type_is_subtype,
 	types::{
-		calling::{self, FunctionCallingError},
+		calling::{self, CallingDiagnostics, FunctionCallingError},
 		functions::SynthesisedArgument,
 		generics::substitution::SubstitutionArguments,
 		is_type_truthy_falsy,
 		printing::print_type,
-		properties::{get_property, set_property, PropertyValue},
+		properties::{assignment::SetPropertyError, get_property, set_property, PropertyValue},
 		substitute, PartiallyAppliedGenerics, TypeId, TypeStore,
 	},
 	Decidable, Environment, Type,
 };
-
-#[derive(Default)]
-pub struct CallingDiagnostics {
-	pub errors: Vec<crate::types::calling::FunctionCallingError>,
-	pub warnings: Vec<crate::diagnostics::TypeCheckWarning>,
-	pub info: Vec<crate::diagnostics::InfoDiagnostic>,
-}
 
 pub(crate) struct ApplicationInput {
 	pub(crate) this_value: ThisValue,
@@ -53,7 +43,7 @@ pub(crate) fn apply_events(
 	top_environment: &mut Environment,
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
-	mut errors: &mut CallingDiagnostics,
+	mut diagnostics: &mut CallingDiagnostics,
 ) -> Option<ApplicationResult> {
 	let mut trailing = None::<(TypeId, ApplicationResult)>;
 
@@ -70,6 +60,10 @@ pub(crate) fn apply_events(
 
 		match &event {
 			Event::ReadsReference { reference, reflects_dependency, position } => {
+				// if B::CHECK_PARAMETERS {
+				// TODO check free variables from inference
+				// }
+
 				if let Some(id) = reflects_dependency {
 					if unknown_mode {
 						if let RootReference::Variable(variable) = reference {
@@ -98,7 +92,7 @@ pub(crate) fn apply_events(
 								if let Some(ty) = value {
 									ty
 								} else {
-									errors.errors.push(
+									diagnostics.errors.push(
 										crate::types::calling::FunctionCallingError::TDZ {
 											error: TDZ {
 												variable_name: top_environment
@@ -162,7 +156,7 @@ pub(crate) fn apply_events(
 					&under,
 					None,
 					top_environment,
-					target,
+					(target, diagnostics),
 					types,
 					*position,
 					*mode,
@@ -208,11 +202,11 @@ pub(crate) fn apply_events(
 								top_environment,
 								types,
 							)),
-							PropertyValue::Getter(_) => {
-								todo!("Expand to callable if they contain things")
-							}
-							PropertyValue::Setter(_) => {
-								todo!("Expand to callable if they contain things")
+							value @ (PropertyValue::Getter(_)
+							| PropertyValue::Setter(_)
+							| PropertyValue::GetterAndSetter { .. }) => {
+								crate::utilities::notify!("Setting with getter/setter");
+								value.clone()
 							}
 							PropertyValue::Deleted | PropertyValue::ConditionallyExists { .. } => {
 								unreachable!("This should be handled by Event::DeleteProperty (not Event::Setter)")
@@ -255,39 +249,33 @@ pub(crate) fn apply_events(
 						let result = set_property(
 							on,
 							(*publicity, &under, new.clone()),
-							top_environment,
-							target,
-							types,
 							*position,
+							top_environment,
+							(target, diagnostics),
+							types,
 						);
 
-						if let Err(err) = result {
-							if let SetPropertyError::DoesNotMeetConstraint {
-								property_constraint,
-								reason: _,
-							} = err
-							{
-								let value_type = if let PropertyValue::Value(id) = new {
-									TypeStringRepresentation::from_type_id(
-										id,
-										top_environment,
-										types,
-										false,
-									)
-								} else {
-									todo!()
-								};
-
-								errors.errors.push(
-								crate::types::calling::FunctionCallingError::SetPropertyConstraint {
-									property_type: property_constraint,
+						match result {
+							Ok(()) => {}
+							Err(err) => {
+								if let SetPropertyError::DoesNotMeetConstraint {
+									property_constraint,
 									value_type,
-									assignment_position: *position,
-									call_site: input.call_site,
-								},
-							);
-							} else {
-								unreachable!()
+									reason: _,
+									position: _,
+								} = err
+								{
+									diagnostics.errors.push(
+										crate::types::calling::FunctionCallingError::SetPropertyConstraint {
+											property_type: property_constraint,
+											value_type,
+											assignment_position: *position,
+											call_site: input.call_site,
+										},
+									);
+								} else {
+									unreachable!("set property check failed")
+								}
 							}
 						}
 					}
@@ -334,12 +322,10 @@ pub(crate) fn apply_events(
 							max_inline: input.max_inline,
 							call_site: *call_site,
 						};
-						let result = on.call(with, input, top_environment, target, types);
+						let result =
+							on.call(with, input, top_environment, (target, diagnostics), types);
 						match result {
 							Ok(mut result) => {
-								errors.info.append(&mut result.info);
-								errors.warnings.append(&mut result.warnings);
-
 								if let Some(ApplicationResult::Throw { .. }) = result.result {
 									// TODO conditional here
 									return result.result;
@@ -364,11 +350,10 @@ pub(crate) fn apply_events(
 								// 	// .into();
 								// }
 							}
-							Err(mut other_errors) => {
+							Err(_) => {
 								crate::utilities::notify!(
 									"inference and or checking failed at function"
 								);
-								errors.errors.append(&mut other_errors.errors);
 								if let Some(reflects_dependency) = reflects_dependency {
 									type_arguments.set_during_application(
 										*reflects_dependency,
@@ -433,7 +418,7 @@ pub(crate) fn apply_events(
 									top_environment,
 									target,
 									types,
-									errors,
+									diagnostics,
 								)
 							});
 
@@ -456,9 +441,9 @@ pub(crate) fn apply_events(
 								types,
 								(condition, *position),
 								(truthy_events_slice, otherwise_events_slice),
-								(type_arguments, errors),
+								(type_arguments, diagnostics),
 								|top_environment, types, target, events, data| {
-									let (type_arguments, errors) = data;
+									let (type_arguments, diagnostics) = data;
 									apply_events(
 										events,
 										input,
@@ -466,12 +451,12 @@ pub(crate) fn apply_events(
 										top_environment,
 										target,
 										types,
-										errors,
+										diagnostics,
 									)
 								},
 							);
 
-						(type_arguments, errors) = data;
+						(type_arguments, diagnostics) = data;
 
 						match (truthy_result, otherwise_result) {
 							(Some(truthy_result), Some(otherwise_result)) => {
@@ -617,7 +602,7 @@ pub(crate) fn apply_events(
 						type_arguments,
 						top_environment,
 						target,
-						errors,
+						diagnostics,
 						types,
 					)
 				});
@@ -642,7 +627,7 @@ pub(crate) fn apply_events(
 					top_environment,
 					target,
 					types,
-					errors,
+					diagnostics,
 				);
 
 				if let Some(result) = inner_result {
@@ -684,21 +669,23 @@ pub(crate) fn apply_events(
 									if let crate::subtyping::SubTypeResult::IsNotSubType(_reason) =
 										result
 									{
-										errors.errors.push(FunctionCallingError::CannotCatch {
-											catch: TypeStringRepresentation::from_type_id(
-												constraint,
-												top_environment,
-												types,
-												false,
-											),
-											thrown: TypeStringRepresentation::from_type_id(
-												thrown,
-												top_environment,
-												types,
-												false,
-											),
-											thrown_position: position,
-										});
+										diagnostics.errors.push(
+											FunctionCallingError::CannotCatch {
+												catch: TypeStringRepresentation::from_type_id(
+													constraint,
+													top_environment,
+													types,
+													false,
+												),
+												thrown: TypeStringRepresentation::from_type_id(
+													thrown,
+													top_environment,
+													types,
+													false,
+												),
+												thrown_position: position,
+											},
+										);
 									}
 								}
 							}
@@ -713,7 +700,7 @@ pub(crate) fn apply_events(
 								top_environment,
 								target,
 								types,
-								errors,
+								diagnostics,
 							);
 
 							if result.is_some() {
@@ -763,7 +750,7 @@ pub(crate) fn apply_events(
 						}
 						Err(err) => {
 							crate::utilities::notify!("Raise error here");
-							errors.errors.push(FunctionCallingError::DeleteConstraint {
+							diagnostics.errors.push(FunctionCallingError::DeleteConstraint {
 								constraint: err.constraint,
 								delete_position: *position,
 								call_site: input.call_site,
@@ -806,7 +793,7 @@ pub(crate) fn apply_events(
 										value,
 										call_site: input.call_site,
 									};
-								errors.warnings.push(warning);
+								diagnostics.warnings.push(warning);
 							}
 							ApplicationResult::Throw {
 								thrown: substituted_thrown,

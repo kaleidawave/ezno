@@ -98,7 +98,7 @@ x.a = "hi";
 x.a = 4;
 ```
 
-- Cannot assign 4, to type of string
+- Type 4 does not meet property constraint "hi"
 
 #### `as` rewrite
 
@@ -171,6 +171,22 @@ try {
 
 - Unreachable statement
 - Expected number, found "error"
+
+### Random
+
+#### TDZ errors through nested getter
+
+```ts
+function func(obj: { prop: number }) {
+	return obj.prop
+}
+
+func({ get prop() { return b } });
+
+let b: number = 0;
+```
+
+- Variable 'b' used before declaration
 
 ### Variables
 
@@ -295,14 +311,6 @@ hasPropertyX({ x: 5 }) satisfies number;
 - Expected string, found false
 - Expected number, found true
 
-#### Regexp patterns
-
-```ts
-new RegExp("<string>x").group.string
-```
-
-- ?
-
 #### Array slice matching pattern
 
 ```ts
@@ -361,6 +369,20 @@ array[Math.random()] satisfies string;
 ```
 
 - Expected string, found 1 | 2 | 3 | undefined
+
+#### Properties matched against continous type become conditional
+
+```ts
+declare let strings: { [a: string]: number };
+declare let record: Record<string, number>;
+declare let d: { [a: "a" | "b"]: number };
+
+strings.a satisfies number | undefined;
+record.a satisfies boolean;
+d.a satisfies number;
+```
+
+- Expected boolean, found number | undefined
 
 #### Un-delete-able property
 
@@ -476,6 +498,16 @@ value satisfies boolean;
 ```
 
 - Expected boolean, found 8
+
+#### Assigning to getter
+
+```ts
+const obj = { get prop() { return 2 } };
+obj.prop = "hi";
+obj.prop satisfies 2;
+```
+
+- Cannot write to property 'prop' as it is a getter
 
 ### Collections
 
@@ -612,7 +644,7 @@ global satisfies 10
 ```ts
 function func(get: () => number) {
 	const obj = {};
-	Object.defineProperty("value", { get });
+	Object.defineProperty(obj, "value", { get });
 	obj.value satisfies string
 }
 ```
@@ -623,7 +655,7 @@ function func(get: () => number) {
 
 ```ts
 function Closure(n: string) {
-	return { get value() { return n }, set value() { n = newValue;  } };
+	return { get value() { return n }, set value(newValue: string) { n = newValue;  } };
 }
 
 let b = Closure("hi");
@@ -631,7 +663,7 @@ b.value = "something";
 b.value satisfies number;
 ```
 
-- Expected number, found something
+- Expected number, found "something"
 
 #### `enumerable` in for in
 
@@ -705,7 +737,7 @@ obj.property satisfies string;
 
 ```ts
 const obj = { a: true };
-Object.defineProperty(obj, 'b', { value: 42, writable: false });
+Object.defineProperty(obj, 'b', { value: 42 });
 
 Object.getOwnPropertyDescriptor(obj, 'a') satisfies string;
 Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
@@ -717,7 +749,7 @@ Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
 
 #### And on properties
 
-> Note that it keeps it as a `and`. It does not union the properties
+> Note that it keeps it as a `and`. It does not join the properties into a single typ
 
 ```ts
 declare type U = { a: 2 } & { b: 3 }
@@ -778,3 +810,18 @@ x satisfies Exclusive<X>;
 ```
 
 - Expected Exclusive\<X\>, found { a: 1, b: 2 }
+
+#### `CaseInsensitive`
+
+```ts
+"Hi" satisfies CaseInsensitive<"hi">;
+"Hello" satisfies CaseInsensitive<"hi">;
+
+// yeah
+type CIWord = "WORD" extends Uppercase<infer T> ? T : never;
+"wOrd" satisfies CIWord;
+"wood" satisfies CIWord;
+```
+
+- Expected CaseInsensitive<"hi">, found "Hello"
+- Expected CaseInsensitive<"WORD">, found "wood"

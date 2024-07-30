@@ -22,14 +22,14 @@ pub mod variables;
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{get_value_of_variable, information::InformationChain, ClosedOverReferencesInScope},
+	context::{get_value_of_variable, ClosedOverReferencesInScope, InformationChain},
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	features::functions::ClosedOverVariables,
 	types::{
 		get_constraint,
 		logical::{Logical, LogicalOrValid},
-		properties, PartiallyAppliedGenerics, TypeStore,
+		properties, ObjectNature, PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Environment, PropertyValue, Type, TypeId,
 };
@@ -232,7 +232,7 @@ pub fn delete_operator(
 ) -> Result<TypeId, CannotDeleteFromError> {
 	crate::utilities::notify!("Queue event");
 
-	let existing = properties::has_property((publicity, &under), rhs, environment, types);
+	let existing = has_property((publicity, &under), rhs, environment, types);
 
 	{
 		let constraint =
@@ -270,7 +270,6 @@ pub fn delete_operator(
 				let property_constraint = properties::get_property_unbound(
 					(constraint, None),
 					(publicity, &under, None),
-					false,
 					environment,
 					types,
 				);
@@ -281,6 +280,7 @@ pub fn delete_operator(
 						LogicalOrValid::Logical(Logical::Pure(n)) => match n {
 							PropertyValue::Value(_)
 							| PropertyValue::Getter(_)
+							| PropertyValue::GetterAndSetter { .. }
 							| PropertyValue::Setter(_) => {
 								crate::utilities::notify!(
 									"Cannot delete property because of constraint"
@@ -343,7 +343,7 @@ pub fn in_operator(
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> TypeId {
-	let result = properties::has_property((publicity, under), rhs, environment, types);
+	let result = has_property((publicity, under), rhs, environment, types);
 
 	// TODO if any
 	if get_constraint(rhs, types).is_some() {
@@ -417,31 +417,42 @@ pub mod tsc {
 	}
 
 	pub fn non_null_assertion(on: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
-		/// TODO recursive, or types etc
-		fn get_non_null_type(on: TypeId, types: &mut TypeStore) -> TypeId {
+		/// TODO undefined? what about null
+		fn get_non_null_type(on: TypeId, types: &TypeStore) -> TypeId {
 			match types.get_type_by_id(on) {
-				Type::Constructor(Constructor::ConditionalResult {
-					condition: _,
-					truthy_result,
-					otherwise_result,
-					result_union: _,
-				}) => {
-					// TODO filter null as well
-					if *truthy_result == TypeId::UNDEFINED_TYPE {
-						*otherwise_result
-					} else if *otherwise_result == TypeId::UNDEFINED_TYPE {
-						*truthy_result
+				// Type::Constructor(Constructor::ConditionalResult {
+				// 	condition: _,
+				// 	truthy_result,
+				// 	otherwise_result,
+				// 	result_union: _,
+				// }) => {
+				// 	if *truthy_result == TypeId::UNDEFINED_TYPE {
+				// 		*otherwise_result
+				// 	} else if *otherwise_result == TypeId::UNDEFINED_TYPE {
+				// 		*truthy_result
+				// 	} else {
+				// 		on
+				// 	}
+				// }
+				Type::Or(left, right) => {
+					if *left == TypeId::UNDEFINED_TYPE {
+						*right
+					} else if *right == TypeId::UNDEFINED_TYPE {
+						*left
 					} else {
 						on
 					}
 				}
 				ty => {
 					crate::utilities::notify!("{:?}", ty);
-					on
+					if let Some(constraint) = crate::types::get_constraint(on, types) {
+						get_non_null_type(constraint, types)
+					} else {
+						on
+					}
 				}
 			}
 		}
-
 		let cast_to = get_non_null_type(on, types);
 
 		// TODO Type::Narrowed
@@ -495,6 +506,68 @@ pub mod tsc {
 			checking_data
 				.diagnostics_container
 				.add_error(diagnostics::TypeCheckError::NotSatisfied { at, expected, found });
+		}
+	}
+}
+
+/// WIP
+pub(crate) fn has_property(
+	(publicity, key): (properties::Publicity, &properties::PropertyKey<'_>),
+	rhs: TypeId,
+	information: &impl InformationChain,
+	types: &mut TypeStore,
+) -> TypeId {
+	match types.get_type_by_id(rhs) {
+		Type::Interface { .. }
+		| Type::Class { .. }
+		| Type::Constant(_)
+		| Type::FunctionReference(_)
+		| Type::Object(ObjectNature::RealDeal)
+		| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+		| Type::PartiallyAppliedGenerics(_)
+		| Type::And(_, _)
+		| Type::SpecialObject(_)
+		| Type::AliasTo { .. } => {
+			let result = properties::get_property_unbound(
+				(rhs, None),
+				(publicity, key, None),
+				information,
+				types,
+			);
+			match result {
+				Ok(LogicalOrValid::Logical(result)) => match result {
+					Logical::Pure(_) => TypeId::TRUE,
+					Logical::Or { .. } => {
+						crate::utilities::notify!("or or implies `in`");
+						TypeId::ERROR_TYPE
+					}
+					Logical::Implies { .. } => {
+						crate::utilities::notify!("or or implies `in`");
+						TypeId::ERROR_TYPE
+					}
+					Logical::BasedOnKey { .. } => {
+						crate::utilities::notify!("mapped in");
+						TypeId::ERROR_TYPE
+					}
+				},
+				Ok(LogicalOrValid::NeedsCalculation(result)) => {
+					crate::utilities::notify!("TODO {:?}", result);
+					TypeId::ERROR_TYPE
+				}
+				Err(err) => {
+					crate::utilities::notify!("TODO {:?}", err);
+					TypeId::FALSE
+				}
+			}
+		}
+		Type::Or(_, _) => {
+			crate::utilities::notify!("Condtionally");
+			TypeId::ERROR_TYPE
+		}
+		Type::RootPolyType(_) | Type::Constructor(_) => {
+			crate::utilities::notify!("Queue event / create dependent");
+			let constraint = get_constraint(rhs, types).unwrap();
+			has_property((publicity, key), constraint, information, types)
 		}
 	}
 }

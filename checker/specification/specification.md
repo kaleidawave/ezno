@@ -206,7 +206,9 @@ const obj = {
 obj.value = 5;
 ```
 
-- Type 5 does not meet property constraint string
+> TODO could the error be better?
+
+- Argument of type 5 is not assignable to parameter of type string (in setter)
 
 #### Setter side effect
 
@@ -255,7 +257,7 @@ obj2.a satisfies boolean;
 ```ts
 const obj = { a: 2 }
 
-function setProperty(key: string, value) {
+function setProperty(key: "a" | "b", value) {
 	obj[key] = value;
 }
 
@@ -515,19 +517,6 @@ function func(): string {
 ```
 
 - Cannot return 2 because the function is expected to return string
-
-#### Set property on dependent observed
-
-```ts
-function add_property(obj: { prop: number }) {
-	obj.prop = 2;
-	(obj.prop satisfies 4);
-}
-```
-
-> Not number
-
-- Expected 4, found 2
 
 #### Type checking basic function types
 
@@ -1935,16 +1924,16 @@ s satisfies number;
 ```ts
 const o = { a: 1, b: { c: 3 } };
 
-let a, b, c;
+let a, b, d;
 ({
-  c = o.a++,
+  d = o.a++,
   b: { c: b = 7 },
   a,
 } = o);
 
 a satisfies string;
 b satisfies boolean;
-c satisfies 3;
+d satisfies 3;
 ```
 
 - Expected string, found 2
@@ -2681,7 +2670,7 @@ obj satisfies { [s: string]: number };
 obj satisfies { [s: string]: boolean };
 ```
 
-- Expected { [string]?: boolean }, found { a: 1, b: 2, c: 3 }
+- Expected { [string]: boolean }, found { a: 1, b: 2, c: 3 }
 
 ### Generic types
 

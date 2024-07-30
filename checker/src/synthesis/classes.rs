@@ -5,7 +5,7 @@ use parser::{
 };
 
 use crate::{
-	context::{information::InformationChain, Environment, VariableRegisterArguments},
+	context::{Environment, InformationChain, VariableRegisterArguments},
 	diagnostics::TypeCheckError,
 	features::functions::{
 		function_to_property, synthesise_function, ClassPropertiesToRegister, FunctionBehavior,
@@ -150,8 +150,12 @@ pub(super) fn synthesise_class_declaration<
 					super_type: None,
 					// TODO
 					expecting: TypeId::ANY_TYPE,
+					this_shape: if internal_marker.is_some() {
+						TypeId::ANY_TYPE
+					} else {
+						class_prototype
+					},
 					internal_marker,
-					this_shape: class_prototype,
 					name: key.into_name_type(&mut checking_data.types),
 				};
 
@@ -294,7 +298,11 @@ pub(super) fn synthesise_class_declaration<
 						// TODO
 						expecting: TypeId::ANY_TYPE,
 						// Important that it points to the marker
-						this_shape: class_variable_type,
+						this_shape: if internal_marker.is_some() {
+							TypeId::ANY_TYPE
+						} else {
+							class_variable_type
+						},
 						internal_marker,
 						name: key.into_name_type(&mut checking_data.types),
 					};

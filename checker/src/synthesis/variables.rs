@@ -58,9 +58,12 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 		parser::VariableField::Name(variable) => {
 			register_variable_identifier(variable, environment, checking_data, argument);
 		}
-		parser::VariableField::Array { members, spread, position: _ } => {
+		parser::VariableField::Array { members, spread, position } => {
 			if let Some(_spread) = spread {
-				todo!()
+				checking_data.raise_unimplemented_error(
+					"spread variable field",
+					position.with_source(environment.get_source()),
+				);
 			}
 			for (idx, field) in members.iter().enumerate() {
 				match field.get_ast_ref() {
@@ -276,8 +279,6 @@ pub(super) fn synthesise_variable_declaration_item<
 				checking_data,
 			);
 
-			// crate::utilities::notify!("{:?} {:?}", is_valid, variable_declaration);
-
 			if !is_valid || value_ty == TypeId::ERROR_TYPE {
 				// If error, then create a new type like the annotation
 				checking_data.types.new_error_type(var_ty)
@@ -296,7 +297,10 @@ pub(super) fn synthesise_variable_declaration_item<
 					let _ = reassignment_constraint.insert(constraint);
 				}
 			} else {
-				todo!()
+				crate::utilities::notify!(
+					"Infer constraint on {:?}",
+					variable_declaration.name.get_ast_ref()
+				);
 			}
 
 			value_ty
@@ -359,7 +363,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 			// if let Some(spread) = spread {
 			// }
 		}
-		VariableField::Object { members, spread, .. } => {
+		VariableField::Object { members, spread, position } => {
 			for member in members {
 				match member.get_ast_ref() {
 					ObjectDestructuringField::Name(name, _, default_value, _) => {
@@ -375,57 +379,18 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 
 						// TODO if LHS = undefined ...? conditional
 						// TODO record information
-						let property = environment.get_property(
+						let property = environment.get_property_handle_errors(
 							value,
 							Publicity::Public,
 							&key_ty,
-							&mut checking_data.types,
-							None,
+							checking_data,
 							position,
-							&checking_data.options,
 							crate::types::properties::AccessMode::DoNotBindThis,
 						);
-						let value = match property {
-							Some((_, value)) => value,
-							None => {
-								if let Some(else_expression) = default_value {
-									synthesise_expression(
-										else_expression,
-										environment,
-										checking_data,
-										TypeId::ANY_TYPE,
-									)
-								} else {
-									let property = match key_ty {
-										PropertyKey::String(s) => {
-											PropertyKeyRepresentation::StringKey(s.to_string())
-										}
-										PropertyKey::Type(t) => {
-											PropertyKeyRepresentation::Type(printing::print_type(
-												t,
-												&checking_data.types,
-												environment,
-												false,
-											))
-										}
-									};
-									let on = TypeStringRepresentation::from_type_id(
-										value,
-										environment,
-										&checking_data.types,
-										false,
-									);
-									checking_data.diagnostics_container.add_error(
-										TypeCheckError::PropertyDoesNotExist {
-											property,
-											on,
-											site: position,
-										},
-									);
 
-									TypeId::ERROR_TYPE
-								}
-							}
+						let value = match property {
+							Ok(instance) => instance.get_value(),
+							Err(()) => TypeId::ERROR_TYPE,
 						};
 
 						environment.register_initial_variable_declaration_value(id, value);
@@ -445,61 +410,18 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 						);
 
 						// TODO if LHS = undefined ...? conditional
-						// TODO record information
-						let property_value = environment.get_property(
+						let property_value = environment.get_property_handle_errors(
 							value,
 							Publicity::Public,
-							// TODO different above
 							&key_ty,
-							&mut checking_data.types,
-							None,
+							checking_data,
 							position.with_source(environment.get_source()),
-							&checking_data.options,
 							crate::types::properties::AccessMode::DoNotBindThis,
 						);
 
 						let value = match property_value {
-							Some((_, value)) => value,
-							None => {
-								// TODO this isn't checked if Some
-								if let Some(default_value) = default_value {
-									synthesise_expression(
-										default_value,
-										environment,
-										checking_data,
-										TypeId::ANY_TYPE,
-									)
-								} else {
-									let property = match key_ty {
-										PropertyKey::String(s) => {
-											PropertyKeyRepresentation::StringKey(s.to_string())
-										}
-										PropertyKey::Type(t) => {
-											PropertyKeyRepresentation::Type(printing::print_type(
-												t,
-												&checking_data.types,
-												environment,
-												false,
-											))
-										}
-									};
-									let on = TypeStringRepresentation::from_type_id(
-										value,
-										environment,
-										&checking_data.types,
-										false,
-									);
-									checking_data.diagnostics_container.add_error(
-										TypeCheckError::PropertyDoesNotExist {
-											property,
-											on,
-											site: position.with_source(environment.get_source()),
-										},
-									);
-
-									TypeId::ERROR_TYPE
-								}
-							}
+							Ok(instance) => instance.get_value(),
+							Err(()) => TypeId::ERROR_TYPE,
 						};
 
 						assign_initial_to_fields(
@@ -513,7 +435,10 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 			if let Some(_spread) = spread {
-				todo!()
+				checking_data.raise_unimplemented_error(
+					"spread variable field",
+					position.with_source(environment.get_source()),
+				);
 			}
 		}
 	}

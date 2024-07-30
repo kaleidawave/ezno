@@ -1146,7 +1146,6 @@ pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environm
 			get_property_unbound(
 				(*rhs, None),
 				(Publicity::Public, &PropertyKey::String(Cow::Borrowed("name")), None),
-				false,
 				environment,
 				types,
 			) {

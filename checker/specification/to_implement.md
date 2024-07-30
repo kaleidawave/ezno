@@ -1055,3 +1055,47 @@ x.a = "hi"
 ```
 
 - Cannot assign. Restricted to number
+
+### Others
+
+#### Pure getter assignment
+
+```ts
+function func(p: Pure<{ prop: number }>) {
+	p.prop = 2;
+	p.prop satisfies string;	
+}
+```
+
+- Expected string, found 2
+
+#### Deep readonly
+
+> TODO implement use mapped type `T & { [P in keyof T]: Readonly<T[P]> }`
+
+```ts
+declare const obj: DeepReadonly<{ a: { b: { c: 2 } } };
+obj.a.b.c = 2;
+```
+
+- Cannot assign to readonly
+
+#### Conditionality destructuring from poly
+
+```ts
+declare let x: { a?: 1 }; // also { a: 1 } | { b: 2 }
+let { a = 2 } = x;
+a satisfies 3;
+```
+
+- Expected 3, found 1 | 2
+
+### RegExp
+
+#### Regexp patterns
+
+```ts
+new RegExp("<string>x").group.string
+```
+
+- ?

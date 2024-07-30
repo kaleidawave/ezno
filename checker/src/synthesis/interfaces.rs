@@ -121,6 +121,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		let value = if let IsDefined(TypeId::TRUE) = always_defined {
 			value
 		} else {
+			// crate::utilities::notify!("always_defined.0 {:?}", always_defined.0);
 			PropertyValue::ConditionallyExists {
 				condition: always_defined.0,
 				truthy: Box::new(value),
@@ -286,7 +287,6 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => {
 					// For mapped types: https://www.typescriptlang.org/docs/handbook/2/mapped-types.html
-
 					let matching_type =
 						synthesise_type_annotation(matching_type, environment, checking_data);
 
@@ -307,6 +307,8 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						} else {
 							parameter_type
 						};
+
+						// crate::utilities::notify!("output_type {:?}", output_type);
 
 						let value = synthesise_type_annotation(
 							output_type,

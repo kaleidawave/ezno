@@ -3,6 +3,7 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	context::LocalInformation,
 	features::{
 		functions::{ClosureChain, ClosureId, ThisValue},
 		objects::SpecialObject,
@@ -32,7 +33,7 @@ pub struct SubstitutionArguments<'a> {
 }
 
 impl<'a> ClosureChain for SubstitutionArguments<'a> {
-	fn get_fact_from_closure<T, R>(&self, _fact: &crate::LocalInformation, cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, _fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
@@ -369,14 +370,28 @@ pub(crate) fn substitute(
 					let get_property = get_property_unbound(
 						(on, None),
 						(Publicity::Public, &under, None),
-						true,
 						environment,
 						types,
 					);
 
 					match get_property {
 						Ok(LogicalOrValid::Logical(value)) => {
-							resolve_logical_during_substitution(value)
+							fn resolve_logical_during_substitution(
+								value: Logical<PropertyValue>,
+								types: &TypeStore,
+							) -> TypeId {
+								match value {
+									Logical::Pure(v) => {
+										// substitute(id, arguments, environment, types)
+										v.as_get_type(types)
+									}
+									Logical::Or { .. } => todo!(),
+									Logical::Implies { .. } => todo!(),
+									Logical::BasedOnKey { .. } => todo!(),
+								}
+							}
+
+							resolve_logical_during_substitution(value, types)
 						}
 						Ok(value) => {
 							crate::utilities::notify!("TODO {:?}", value);
@@ -526,18 +541,6 @@ pub(crate) fn substitute(
 				types.new_key_of(on)
 			}
 		},
-	}
-}
-
-fn resolve_logical_during_substitution(value: Logical<PropertyValue>) -> TypeId {
-	match value {
-		Logical::Pure(v) => {
-			// substitute(id, arguments, environment, types)
-			v.as_get_type()
-		}
-		Logical::Or { .. } => todo!(),
-		Logical::Implies { .. } => todo!(),
-		Logical::BasedOnKey { .. } => todo!(),
 	}
 }
 

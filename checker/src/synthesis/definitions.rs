@@ -4,17 +4,17 @@ use parser::{
 };
 use source_map::SourceId;
 
+use super::{
+	classes::{register_statement_class_with_members, synthesise_class_declaration},
+	type_annotations::synthesise_type_annotation,
+	EznoParser,
+};
 use crate::{
-	context::{Names, RootContext, VariableRegisterArguments},
+	context::{Environment, LocalInformation, Names, RootContext, VariableRegisterArguments},
 	diagnostics::TypeCheckWarning,
 	features::functions::synthesise_declare_statement_function,
-	synthesis::{
-		classes::{register_statement_class_with_members, synthesise_class_declaration},
-		type_annotations::synthesise_type_annotation,
-		EznoParser,
-	},
 	types::InternalFunctionEffect,
-	Environment, LocalInformation, TypeId, VariableId,
+	TypeId, VariableId,
 };
 
 const FUNCTION_REASSIGNMENT_CONSTANT: bool = true;

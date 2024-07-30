@@ -10,7 +10,7 @@ use crate::{
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{
-		calling::{application_result_to_return_type, Callable, CalledWithNew, CallingInput},
+		calling::{application_result_to_return_type, Callable, CalledWithNew, CallingInput, CallingContext},
 		properties::PropertyKey,
 		SynthesisedArgument,
 	},
@@ -232,25 +232,22 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		call_site: position,
 		max_inline: checking_data.options.max_inline_count,
 	};
+
+	let mut diagnostics = Default::default();
 	let result = Callable::Type(jsx_function).call(
 		args,
 		calling_input,
 		environment,
-		&mut check_things,
+		(&mut check_things, &mut diagnostics),
 		&mut checking_data.types,
 	);
+	diagnostics.append_to(CallingContext::JSX, &mut checking_data.diagnostics_container);
+
 	match result {
 		Ok(res) => {
 			application_result_to_return_type(res.result, environment, &mut checking_data.types)
 		}
-		Err(error) => {
-			error.errors.into_iter().for_each(|error| {
-				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::JSXCallingError(error));
-			});
-			error.returned_type
-		}
+		Err(error) => error.returned_type,
 	}
 
 	// else {

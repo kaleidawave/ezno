@@ -2,7 +2,7 @@
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
 use crate::{
-	context::information::InformationChain,
+	context::InformationChain,
 	features::functions::ClosureId,
 	types::{SubstitutionArguments, TypeRestrictions, TypeStore},
 	TypeId,
@@ -58,7 +58,7 @@ impl GenericArguments {
 					.and_then(|lookup| lookup.get(&under))?;
 
 				crate::utilities::notify!("Hopefully here {:?}", prototype);
-				let res = lookup.calculate_lookup(info, *on);
+				let res = lookup.calculate_lookup(info, types, *on);
 				Some(res)
 			}
 		}

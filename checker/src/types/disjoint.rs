@@ -1,5 +1,5 @@
 use super::PartiallyAppliedGenerics;
-use crate::{context::information::InformationChain, types::TypeStore, Type, TypeId};
+use crate::{context::InformationChain, types::TypeStore, Type, TypeId};
 
 /// For equality + [`crate::intrinsics::Intrinsics::Not`]
 ///

@@ -2,7 +2,7 @@
 
 use source_map::SpanWithSource;
 
-use super::information::LocalInformation;
+use super::LocalInformation;
 use crate::{
 	context::information::merge_info, events::ApplicationResult, types::TypeStore, Environment,
 	FunctionId, TypeId,

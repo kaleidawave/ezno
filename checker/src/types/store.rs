@@ -451,12 +451,11 @@ impl TypeStore {
 				&PropertyKey::from_type(indexer, self),
 				None,
 			),
-			true,
 			environment,
 			self,
 		) {
 			match prop {
-				LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(),
+				LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(self),
 				value => {
 					crate::utilities::notify!("value={:?}", value);
 					TypeId::ERROR_TYPE
@@ -561,6 +560,7 @@ impl TypeStore {
 			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
 			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
 			Intrinsic::Not => (TypeId::NOT_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
 		};
 		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
 			to_pair,

@@ -5,7 +5,7 @@ use crate::{
 	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	types::{
-		calling::{application_result_to_return_type, Callable, CallingInput},
+		calling::{application_result_to_return_type, Callable, CallingInput, CallingContext},
 		cast_as_string, SynthesisedArgument, TypeStore,
 	},
 	CheckingData, Constant, Environment, Type, TypeId,
@@ -134,25 +134,20 @@ where
 			call_site: position,
 			max_inline: checking_data.options.max_inline_count,
 		};
+		let mut diagnostics = Default::default();
 		let result = Callable::Type(tag).call(
 			arguments,
 			input,
 			environment,
-			&mut check_things,
+			(&mut check_things, &mut diagnostics),
 			&mut checking_data.types,
 		);
+		diagnostics.append_to(CallingContext::TemplateLiteral, &mut checking_data.diagnostics_container);
 		match result {
 			Ok(res) => {
 				application_result_to_return_type(res.result, environment, &mut checking_data.types)
 			}
-			Err(error) => {
-				error.errors.into_iter().for_each(|error| {
-					checking_data
-						.diagnostics_container
-						.add_error(TypeCheckError::TemplateLiteralError(error));
-				});
-				error.returned_type
-			}
+			Err(error) => error.returned_type,
 		}
 	} else {
 		// Bit weird but makes Rust happy

@@ -29,12 +29,10 @@ use crate::{
 	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 };
 
-use self::{
-	environment::{DynamicBoundaryKind, FunctionScope},
-	information::{InformationChain, LocalInformation},
-};
+use self::environment::{DynamicBoundaryKind, FunctionScope};
 pub use environment::Scope;
 pub(crate) use environment::Syntax;
+pub(crate) use information::{InformationChain, LocalInformation, Properties};
 
 use std::{
 	collections::{
@@ -1163,19 +1161,6 @@ pub enum AssignmentError {
 		assignment_position: SpanWithSource,
 	},
 	TDZ(TDZ),
-}
-
-/// WIP
-pub enum SetPropertyError {
-	NotWriteable {
-		property: PropertyKeyRepresentation,
-	},
-	Readonly,
-	AssigningToTuple,
-	DoesNotMeetConstraint {
-		property_constraint: TypeStringRepresentation,
-		reason: crate::types::subtyping::NonEqualityReason,
-	},
 }
 
 /// TODO mutable let imports

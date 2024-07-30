@@ -1,11 +1,14 @@
-use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
+use super::{
+	ClosedOverReferencesInScope, Context, ContextId, ContextType, Environment, GeneralContext,
+	LocalInformation,
+};
 use crate::{
 	features::{
 		modules::{Exported, SynthesisedModule},
 		variables::VariableOrImport,
 	},
 	types::TypeId,
-	CheckingData, Environment, GeneralContext,
+	CheckingData,
 };
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator, mem};
@@ -80,7 +83,7 @@ impl RootContext {
 			("CaseInsensitive".to_owned(), TypeId::CASE_INSENSITIVE),
 		]);
 
-		let mut info = crate::LocalInformation::default();
+		let mut info = LocalInformation::default();
 
 		// Add undefined as a variable
 		let variables = {

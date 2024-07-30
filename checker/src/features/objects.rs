@@ -1,11 +1,12 @@
 use source_map::SpanWithSource;
 
 use crate::{
+	context::LocalInformation,
 	types::{
 		properties::{PropertyKey, PropertyValue, Publicity},
 		TypeStore,
 	},
-	FunctionId, LocalInformation, TypeId,
+	FunctionId, TypeId,
 };
 
 use super::functions::ThisValue;

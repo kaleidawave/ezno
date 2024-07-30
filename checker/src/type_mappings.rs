@@ -1,14 +1,10 @@
-use std::{collections::HashMap, path::PathBuf};
-
-use source_map::{SourceId, SpanWithSource};
-
-use super::range_map::RangeMap;
-
 use crate::{
 	features::variables::VariableWithValue,
 	types::{TypeId, TypeStore},
-	GeneralContext, VariableId,
+	GeneralContext, RangeMap, VariableId,
 };
+use source_map::{SourceId, SpanWithSource};
+use std::{collections::HashMap, path::PathBuf};
 
 /// **PER MODULE**
 /// [`TypeMappings`] is used to retaining information between passes, including the synthesise and checking passes

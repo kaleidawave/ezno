@@ -47,6 +47,7 @@ pub(crate) fn call_constant_function(
 	// TODO `mut` for satisfies which needs checking. Also needed for freeze etc
 	environment: &mut Environment,
 	call_site: SpanWithSource,
+	diagnostics: &mut crate::types::calling::CallingDiagnostics,
 ) -> Result<ConstantOutput, ConstantFunctionError> {
 	// crate::utilities::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
@@ -204,7 +205,7 @@ pub(crate) fn call_constant_function(
 				};
 
 			let get_type_by_id = types.get_type_by_id(ty);
-			if let Type::SpecialObject(SpecialObject::Function(func, _))
+			let message = if let Type::SpecialObject(SpecialObject::Function(func, _))
 			| Type::FunctionReference(func) = get_type_by_id
 			{
 				let function_type =
@@ -212,26 +213,27 @@ pub(crate) fn call_constant_function(
 
 				let effects = &function_type.effect;
 				if id.ends_with("rust") {
-					Ok(ConstantOutput::Diagnostic(format!("{effects:#?}")))
+					format!("{effects:#?}")
 				} else {
 					match effects {
 						FunctionEffect::SideEffects { events, .. } => {
 							let mut buf = String::from("Effects:\n");
 							debug_effects(&mut buf, events, types, environment, 0, true);
-							Ok(ConstantOutput::Diagnostic(buf))
+							buf
 						}
 						FunctionEffect::Constant { identifier, may_throw: _ } => {
-							Ok(ConstantOutput::Diagnostic(format!("Constant: {identifier}")))
+							format!("Constant: {identifier}")
 						}
 						FunctionEffect::InputOutput { identifier, may_throw: _ } => {
-							Ok(ConstantOutput::Diagnostic(format!("InputOutput: {identifier}")))
+							format!("InputOutput: {identifier}")
 						}
-						FunctionEffect::Unknown => Ok(ConstantOutput::Diagnostic("unknown".into())),
+						FunctionEffect::Unknown => "unknown".into(),
 					}
 				}
 			} else {
-				Ok(ConstantOutput::Diagnostic(format!("{get_type_by_id:?} is not a function")))
-			}
+				format!("{get_type_by_id:?} is not a function")
+			};
+			Ok(ConstantOutput::Diagnostic(message))
 		}
 		// For functions
 		"bind" => {
@@ -313,6 +315,7 @@ pub(crate) fn call_constant_function(
 				let publicity = Publicity::Public;
 				let mode = AccessMode::Regular;
 
+				// This doesn't allow generic keys, but it starts to get very weird if that is something to be allowed
 				macro_rules! get_property {
 					($key:expr) => {
 						crate::types::properties::get_property(
@@ -321,7 +324,7 @@ pub(crate) fn call_constant_function(
 							&PropertyKey::String(std::borrow::Cow::Borrowed($key)),
 							None,
 							environment,
-							&mut behavior,
+							(&mut behavior, diagnostics),
 							types,
 							call_site,
 							mode,
@@ -332,18 +335,33 @@ pub(crate) fn call_constant_function(
 
 				// TODO what about two specified, what about order
 				let value = if let Some(value) = get_property!("value") {
+					// TODO check no get or set otherwise causes type error
 					PropertyValue::Value(value)
-				} else if let Some(getter) = get_property!("get") {
-					PropertyValue::Getter(Callable::from_type(getter, types))
-				} else if let Some(setter) = get_property!("set") {
-					PropertyValue::Setter(Callable::from_type(setter, types))
 				} else {
-					return Err(ConstantFunctionError::BadCall);
+					let getter = get_property!("get");
+					let setter = get_property!("set");
+					if let (Some(getter), Some(setter)) = (getter, setter) {
+						// This a weird one, the only time is created wholey rather
+						// from accumulation in resolver
+						PropertyValue::GetterAndSetter {
+							getter: Callable::from_type(getter, types),
+							setter: Callable::from_type(setter, types),
+						}
+					} else if let Some(getter) = getter {
+						PropertyValue::Getter(Callable::from_type(getter, types))
+					} else if let Some(setter) = setter {
+						PropertyValue::Setter(Callable::from_type(setter, types))
+					} else {
+						return Err(ConstantFunctionError::BadCall);
+					}
 				};
 
-				let writable = get_property!("writable").unwrap_or(TypeId::TRUE);
-				let enumerable = get_property!("enumerable").unwrap_or(TypeId::TRUE);
-				let configurable = get_property!("configurable").unwrap_or(TypeId::TRUE);
+				// FALSE is spec here!
+				let writable = get_property!("writable").unwrap_or(TypeId::FALSE);
+				let enumerable = get_property!("enumerable").unwrap_or(TypeId::FALSE);
+				let configurable = get_property!("configurable").unwrap_or(TypeId::FALSE);
+
+				crate::utilities::notify!("values are = {:?}", (writable, enumerable, configurable));
 
 				// Can skip if (read defaults to `true`)
 				let value = if let (TypeId::TRUE, TypeId::TRUE, TypeId::TRUE) =
@@ -376,77 +394,81 @@ pub(crate) fn call_constant_function(
 				let on = on.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
 				let property =
 					property.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
-				let value = environment.get_chain_of_info().find_map(|info| {
-					info.current_properties.get(&on).and_then(|properties| {
-						properties.iter().rev().find_map(|(_, key, value)| {
-							key_matches(
-								(key, None),
-								(&PropertyKey::from_type(property, types), None),
-								environment,
-								types,
-							)
-							.0
-							.then_some(value)
-						})
-					})
-				});
+
+				let value = crate::types::properties::resolver(
+					(on, None),
+					(Publicity::Public, &PropertyKey::from_type(property, types), None),
+					environment,
+					types,
+				);
+				crate::utilities::notify!("value is = {:?}", value);
 
 				match value {
-					Some(value) => {
-						fn get_value_and_descriptor(
-							value: &PropertyValue,
-							types: &mut TypeStore,
-						) -> Result<
-							(PropertyKey<'static>, TypeId, Descriptor),
-							Result<ConstantOutput, ConstantFunctionError>,
-						> {
-							match value {
-								PropertyValue::Value(id) => {
-									Ok(("value".into(), *id, Descriptor::default()))
-								}
-								PropertyValue::Getter(callable) => Ok((
-									"get".into(),
-									callable.into_type(types),
-									Descriptor::default(),
-								)),
-								PropertyValue::Setter(callable) => Ok((
-									"set".into(),
-									callable.into_type(types),
-									Descriptor::default(),
-								)),
-								PropertyValue::Deleted => {
-									return Err(Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE)))
-								}
-								PropertyValue::ConditionallyExists { .. } => {
-									crate::utilities::notify!(
-										"TODO conditional. Union with undefined"
-									);
-									return Err(Err(ConstantFunctionError::BadCall));
-								}
-								PropertyValue::Configured { on, descriptor } => {
-									// Ignoring the nested descriptor is intentional
-									let (key, value, _) = get_value_and_descriptor(&on, types)?;
-									Ok((key, value, *descriptor))
-								}
-							}
-						}
-
-						let (key, value, descriptor) = match get_value_and_descriptor(value, types)
-						{
-							Ok(value) => value,
-							Err(value) => return value,
-						};
-
+					Some((value, _, _)) => {
+						let mut descriptor = crate::types::properties::Descriptor::default();
 						let mut object =
 							ObjectBuilder::new(None, types, call_site, &mut environment.info);
 
-						object.append(
-							Publicity::Public,
-							key,
-							PropertyValue::Value(value),
-							call_site,
-							&mut environment.info,
-						);
+						match value.inner_simple() {
+							PropertyValue::Value(ty) => {
+								object.append(
+									Publicity::Public,
+									"value".into(),
+									PropertyValue::Value(*ty),
+									call_site,
+									&mut environment.info,
+								);
+							}
+							PropertyValue::GetterAndSetter { getter, setter } => {
+								object.append(
+									Publicity::Public,
+									"get".into(),
+									PropertyValue::Value(getter.into_type(types)),
+									call_site,
+									&mut environment.info,
+								);
+								object.append(
+									Publicity::Public,
+									"set".into(),
+									PropertyValue::Value(setter.into_type(types)),
+									call_site,
+									&mut environment.info,
+								);
+							}
+							PropertyValue::Getter(getter) => {
+								object.append(
+									Publicity::Public,
+									"get".into(),
+									PropertyValue::Value(getter.into_type(types)),
+									call_site,
+									&mut environment.info,
+								);
+							}
+							PropertyValue::Setter(setter) => {
+								object.append(
+									Publicity::Public,
+									"set".into(),
+									PropertyValue::Value(setter.into_type(types)),
+									call_site,
+									&mut environment.info,
+								);
+							}
+							PropertyValue::Deleted => {
+								return Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE));
+							}
+							_ => unreachable!()
+						}
+
+						match value {
+							PropertyValue::ConditionallyExists { .. } => {
+								crate::utilities::notify!("TODO conditional. Union with undefined");
+								return Err(ConstantFunctionError::BadCall);
+							}
+							PropertyValue::Configured { on, descriptor: d } => {
+								descriptor = d;
+							}
+							_ => {}
+						}
 
 						object.append(
 							Publicity::Public,

@@ -47,6 +47,15 @@ impl<'a> GenericChainLink<'a> {
 		}
 	}
 
+	pub fn get_origin(&self) -> Option<TypeId> {
+		match self {
+			Self::PartiallyAppliedGenericArgumentsLink { from, .. } => Some(*from),
+			Self::FunctionRoot { .. } => None,
+			Self::SpecialGenericChainLink { parent_link, .. }
+			| Self::MappedPropertyLink { parent_link, .. } => parent_link.and_then(Self::get_origin),
+		}
+	}
+
 	// TODO lifetimes here
 	// TODO make iterator
 	// fn get_parent(&self) -> GenericChainParent {

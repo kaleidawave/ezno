@@ -8,38 +8,32 @@ pub mod diagnostics;
 pub mod events;
 pub mod features;
 mod options;
-pub mod range_map;
-mod serialization;
 mod type_mappings;
 pub mod types;
-mod utilities;
-
-pub const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.ts.d.bin";
-pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/internal.ts.d.bin");
+pub mod utilities;
 
 #[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
-use context::Names;
-
-use diagnostics::{TypeCheckError, TypeCheckWarning};
-pub(crate) use serialization::BinarySerializable;
-
-use features::{
-	functions::SynthesisableFunction, modules::CouldNotOpenFile, modules::SynthesisedModule,
-};
-
-use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
 use std::{
 	collections::{HashMap, HashSet},
 	path::{Path, PathBuf},
 	time::Duration,
 };
 
-pub use context::{
-	information::LocalInformation, Environment, GeneralContext, RootContext, Scope,
-	VariableRegisterArguments,
+use context::{
+	information::{LocalInformation, ModuleInformation},
+	Names,
 };
+
+use diagnostics::{TypeCheckError, TypeCheckWarning};
+pub(crate) use utilities::{map::Map, range_map::RangeMap, serialization::BinarySerializable};
+
+use features::{
+	functions::SynthesisableFunction, modules::CouldNotOpenFile, modules::SynthesisedModule,
+};
+
+pub use context::{Environment, GeneralContext, RootContext, Scope, VariableRegisterArguments};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
 pub use types::{
@@ -47,7 +41,12 @@ pub use types::{
 	subtyping, Constant, Type, TypeId, TypeStore,
 };
 
+pub use source_map::{self, SourceId, Span};
+use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
 pub use type_mappings::*;
+
+pub const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.ts.d.bin";
+pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/internal.ts.d.bin");
 
 pub trait ReadFromFS {
 	/// Returns `Vec<u8>` as this callback can return binary file
@@ -64,10 +63,6 @@ where
 		(self)(path).map(Into::into)
 	}
 }
-
-pub use source_map::{self, SourceId, Span};
-
-use crate::context::information::ModuleInformation;
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
@@ -377,7 +372,7 @@ pub struct CheckOutput<A: crate::ASTImplementation> {
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
 	pub diagnostics: crate::DiagnosticsContainer,
-	pub top_level_information: crate::LocalInformation,
+	pub top_level_information: LocalInformation,
 	pub chronometer: crate::Chronometer,
 }
 
@@ -461,10 +456,10 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	crate::utilities::notify!("--- Reading definition files from {:?} ---", type_definition_files);
 
-	// TODO if env === hide definition file
-	// crate::utilities::set_debug_mode(false);
+	// Hide any debug messages from here
+	crate::utilities::pause_debug_mode();
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
-	// crate::utilities::set_debug_mode(true);
+	crate::utilities::unpause_debug_mode();
 
 	if checking_data.diagnostics_container.has_error() {
 		return CheckOutput {
@@ -498,13 +493,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			match module {
 				Ok(module) => {
-					let evaluate_exports = checking_data.options.evaluate_exports;
-
-					let module = root.new_module_context(source, module, &mut checking_data);
-
-					if evaluate_exports {
-						module.exported.clone().evaluate_generally(&root, &mut checking_data.types);
-					}
+					let _module = root.new_module_context(source, module, &mut checking_data);
 				}
 				Err(err) => {
 					checking_data.diagnostics_container.add_error(err);
@@ -752,92 +741,4 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	}
 
 	buf
-}
-
-/// Small map for 1-5 items
-/// Also should be rewindable
-#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
-pub struct Map<K, V>(pub Vec<(K, V)>);
-
-impl<K, V> Default for Map<K, V> {
-	fn default() -> Self {
-		Self(Default::default())
-	}
-}
-
-impl<K, V> Map<K, V>
-where
-	K: PartialEq,
-{
-	pub fn get(&self, want: &K) -> Option<&V> {
-		self.0.iter().rev().find_map(|(key, value)| (want == key).then_some(value))
-	}
-
-	pub fn get_mut(&mut self, want: &K) -> Option<&mut V> {
-		self.0.iter_mut().rev().find_map(|(key, value)| (want == key).then_some(value))
-	}
-
-	#[must_use]
-	pub fn iter(&self) -> impl ExactSizeIterator<Item = &(K, V)> {
-		self.0.iter()
-	}
-
-	pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (K, V)> {
-		self.0.iter_mut()
-	}
-
-	#[must_use]
-	pub fn values(&self) -> impl ExactSizeIterator<Item = &V> {
-		self.0.iter().map(|(_, v)| v)
-	}
-
-	/// *assumes `id` not already inside*
-	pub fn insert(&mut self, id: K, value: V) {
-		self.0.push((id, value));
-	}
-
-	#[must_use]
-	pub fn is_empty(&self) -> bool {
-		self.0.is_empty()
-	}
-
-	#[must_use]
-	pub fn into_some(self) -> Option<Self> {
-		if self.0.is_empty() {
-			None
-		} else {
-			Some(self)
-		}
-	}
-
-	#[must_use]
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	pub fn drop_range(&mut self, range: std::ops::RangeFrom<usize>) {
-		self.0.drain(range);
-	}
-}
-
-impl<K, V> std::iter::IntoIterator for Map<K, V> {
-	type Item = (K, V);
-
-	type IntoIter = <Vec<(K, V)> as std::iter::IntoIterator>::IntoIter;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
-	}
-}
-
-impl<K, V> std::iter::FromIterator<(K, V)> for Map<K, V> {
-	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
-		Self(Vec::from_iter(iter))
-	}
-}
-
-impl<K, V> std::iter::Extend<(K, V)> for Map<K, V> {
-	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
-		self.0.extend(iter);
-	}
 }
