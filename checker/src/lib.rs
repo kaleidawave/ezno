@@ -459,7 +459,9 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	crate::utilities::notify!("--- Reading definition files from {:?} ---", type_definition_files);
 
 	// Hide any debug messages from here
-	crate::utilities::pause_debug_mode();
+	if !checking_data.options.debug_dts {
+		crate::utilities::pause_debug_mode();
+	}
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 	crate::utilities::unpause_debug_mode();
 

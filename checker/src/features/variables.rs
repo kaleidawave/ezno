@@ -8,7 +8,6 @@ use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
 	types::{
 		logical::{Logical, LogicalOrValid},
-		properties::{get_property_unbound, PropertyKey, Publicity},
 		printing::print_type,
 		properties::{
 			get_property_key_names_on_a_single_type, get_property_unbound, PropertyKey, Publicity,
@@ -114,14 +113,14 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
-				variable_site: variable_declared_pos,
+				variable_position: variable_declared_pos,
 				value_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					expression_type,
 					environment,
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
-				value_site: expression_declared_pos,
+				value_position: expression_declared_pos,
 			},
 		);
 
@@ -161,6 +160,20 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 				TypeId::ERROR_TYPE
 			}
 		} else {
+			let keys;
+			let possibles = if let PropertyKey::String(s) = under {
+				keys = get_property_key_names_on_a_single_type(
+					space,
+					&checking_data.types,
+					environment,
+				);
+				let mut possibles =
+					crate::get_closest(keys.iter().map(AsRef::as_ref), &s).unwrap_or(vec![]);
+				possibles.sort_unstable();
+				possibles
+			} else {
+				Vec::new()
+			};
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
 				property: PropertyKeyRepresentation::new(under, environment, &checking_data.types),
 				on: TypeStringRepresentation::from_type_id(
@@ -169,15 +182,8 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 					&checking_data.types,
 					false,
 				),
-				site: position,
-				possibles: get_property_key_names_on_a_single_type(
-					space,
-					&mut checking_data.types,
-					environment,
-				)
-				.iter()
-				.map(AsRef::as_ref)
-				.collect::<Vec<&str>>(),
+				position,
+				possibles,
 			});
 			TypeId::ERROR_TYPE
 		}

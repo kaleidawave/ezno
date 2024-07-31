@@ -13,7 +13,11 @@ impl<K, V> Map<K, V>
 where
 	K: PartialEq,
 {
-	pub fn get(&self, want: &K) -> Option<&V> {
+	pub fn get<Q>(&self, want: &Q) -> Option<&V>
+	where
+		K: std::borrow::Borrow<Q>,
+		Q: std::hash::Hash + Eq + ?Sized + std::cmp::PartialEq<K>,
+	{
 		self.0.iter().rev().find_map(|(key, value)| (want == key).then_some(value))
 	}
 
@@ -28,6 +32,11 @@ where
 
 	pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (K, V)> {
 		self.0.iter_mut()
+	}
+
+	#[must_use]
+	pub fn keys(&self) -> impl ExactSizeIterator<Item = &K> {
+		self.0.iter().map(|(k, _)| k)
 	}
 
 	#[must_use]

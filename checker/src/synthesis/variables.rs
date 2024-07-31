@@ -17,9 +17,10 @@ use crate::{
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		get_larger_type, printing,
-		properties::{get_properties_on_single_type, PropertyKey, Publicity},
-		printing,
-		properties::{get_property_key_names_on_a_single_type, PropertyKey, Publicity},
+		properties::{
+			get_properties_on_single_type, get_property_key_names_on_a_single_type, PropertyKey,
+			Publicity,
+		},
 	},
 	CheckingData, Environment, TypeId,
 };
@@ -345,7 +346,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 						VariableIdentifier::Standard(ref name, _) => name.to_owned(),
 						VariableIdentifier::Marker(_, _) => "?".to_owned(),
 					};
-					exported.named.push((name, (id, mutability)));
+					exported.named.insert(name, (id, mutability));
 				} else {
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::NonTopLevelExport(
@@ -390,8 +391,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							crate::types::properties::AccessMode::DoNotBindThis,
 						);
 						let value = match property {
-							Some((_, value)) => value,
-							None => {
+							Ok(instance) => instance.get_value(),
+							Err(()) => {
 								if let Some(else_expression) = default_value {
 									synthesise_expression(
 										else_expression,
@@ -404,10 +405,12 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeCheckError::PropertyDoesNotExist {
 											property: match key_ty {
 												PropertyKey::String(s) => {
-													PropertyRepresentation::StringKey(s.to_string())
+													PropertyKeyRepresentation::StringKey(
+														s.to_string(),
+													)
 												}
 												PropertyKey::Type(t) => {
-													PropertyRepresentation::Type(
+													PropertyKeyRepresentation::Type(
 														printing::print_type(
 															t,
 															&checking_data.types,
@@ -423,7 +426,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												&checking_data.types,
 												false,
 											),
-											site: position,
+											position: position,
 											possibles: get_property_key_names_on_a_single_type(
 												value,
 												&mut checking_data.types,
@@ -434,10 +437,9 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 											.collect::<Vec<&str>>(),
 										},
 									);
-
-						let value = match property {
-							Ok(instance) => instance.get_value(),
-							Err(()) => TypeId::ERROR_TYPE,
+									TypeId::ANY_TYPE
+								}
+							}
 						};
 
 						environment.register_initial_variable_declaration_value(id, value);
@@ -467,8 +469,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 						);
 
 						let value = match property_value {
-							Some((_, value)) => value,
-							None => {
+							Ok(instance) => instance.get_value(),
+							Err(()) => {
 								if let Some(default_value) = default_value {
 									synthesise_expression(
 										default_value,
@@ -481,10 +483,12 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeCheckError::PropertyDoesNotExist {
 											property: match key_ty {
 												PropertyKey::String(s) => {
-													PropertyRepresentation::StringKey(s.to_string())
+													PropertyKeyRepresentation::StringKey(
+														s.to_string(),
+													)
 												}
 												PropertyKey::Type(t) => {
-													PropertyRepresentation::Type(
+													PropertyKeyRepresentation::Type(
 														printing::print_type(
 															t,
 															&checking_data.types,
@@ -500,7 +504,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												&checking_data.types,
 												false,
 											),
-											site: position.with_source(environment.get_source()),
+											position: position
+												.with_source(environment.get_source()),
 											possibles: get_property_key_names_on_a_single_type(
 												value,
 												&mut checking_data.types,

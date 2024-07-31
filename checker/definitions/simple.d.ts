@@ -248,9 +248,9 @@ declare class String {
     [index: number]: string;
 
     @Constant
-    toUpperCase(): string;
+    toUpperCase(this: string): string;
     @Constant
-    toLowerCase(): string;
+    toLowerCase(this: string): string;
 
     get length(): number;
 
@@ -294,7 +294,9 @@ declare class Error {
 }
 
 declare class SyntaxError extends Error {
-    constructor() { super("syntax error") }
+    constructor() {
+        super("syntax error");
+    }
 }
 
 declare class JSON {

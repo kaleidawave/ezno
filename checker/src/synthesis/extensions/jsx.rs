@@ -10,7 +10,10 @@ use crate::{
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{
-		calling::{application_result_to_return_type, Callable, CalledWithNew, CallingInput, CallingContext},
+		calling::{
+			application_result_to_return_type, Callable, CalledWithNew, CallingContext,
+			CallingInput,
+		},
 		properties::PropertyKey,
 		SynthesisedArgument,
 	},

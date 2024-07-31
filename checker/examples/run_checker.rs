@@ -18,6 +18,7 @@ fn main() {
 	let no_cache = args.iter().any(|item| item == "--no-cache");
 	let debug_types = args.iter().any(|item| item == "--debug-types");
 	let no_lib = args.iter().any(|item| item == "--no-lib");
+	let debug_dts = args.iter().any(|item| item == "--debug-dts");
 
 	let now = Instant::now();
 
@@ -42,6 +43,7 @@ fn main() {
 		debug_types,
 		record_all_assignments_and_reads: true,
 		max_inline_count: 600,
+		debug_dts,
 		..Default::default()
 	};
 

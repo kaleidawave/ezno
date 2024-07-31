@@ -8,7 +8,6 @@ use crate::{
 
 use super::generic_type_arguments::GenericArguments;
 
-pub type DoubleMap<T, U> = crate::Map<T, U>;
 pub type TriMap<T, U, V> = crate::Map<T, (U, V)>;
 
 /// How deep through the contribution is ()

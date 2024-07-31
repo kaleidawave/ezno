@@ -23,9 +23,8 @@ use crate::{
 		printing,
 		properties::{
 			assignment::{SetPropertyError, SetPropertyResult},
-			AccessMode, PropertyKey, PropertyKind, PropertyValue, Publicity,
-			get_property_key_names_on_a_single_type, PropertyKey, PropertyKind, PropertyValue,
-			Publicity,
+			get_property_key_names_on_a_single_type, AccessMode, PropertyKey, PropertyKind,
+			PropertyValue, Publicity,
 		},
 		PolyNature, Type, TypeStore,
 	},
@@ -473,7 +472,10 @@ impl<'a> Environment<'a> {
 						position,
 						AccessMode::DoNotBindThis,
 					);
-					diagnostics.append_to(crate::types::calling::CallingContext::Getter, &mut checking_data.diagnostics_container);
+					diagnostics.append_to(
+						crate::types::calling::CallingContext::Getter,
+						&mut checking_data.diagnostics_container,
+					);
 
 					let rhs_value = if let Some((_, value)) = result {
 						value
@@ -485,31 +487,36 @@ impl<'a> Environment<'a> {
 							checking_data,
 						)
 					} else {
+						let keys;
+						let possibles = if let PropertyKey::String(s) = &key {
+							keys = get_property_key_names_on_a_single_type(
+								rhs,
+								&checking_data.types,
+								self,
+							);
+							let mut possibles =
+								crate::get_closest(keys.iter().map(AsRef::as_ref), &s)
+									.unwrap_or(vec![]);
+							possibles.sort_unstable();
+							possibles
+						} else {
+							Vec::new()
+						};
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::PropertyDoesNotExist {
-								property: match key {
-									PropertyKey::String(s) => {
-										PropertyKeyRepresentation::StringKey(s.to_string())
-									}
-									PropertyKey::Type(t) => PropertyKeyRepresentation::Type(
-										printing::print_type(t, &checking_data.types, self, false),
-									),
-								},
+								property: PropertyKeyRepresentation::new(
+									&key,
+									self,
+									&checking_data.types,
+								),
 								on: TypeStringRepresentation::from_type_id(
 									rhs,
 									self,
 									&checking_data.types,
 									false,
 								),
-								site: position,
-								possibles: get_property_key_names_on_a_single_type(
-									rhs,
-									&mut checking_data.types,
-									self,
-								)
-								.iter()
-								.map(AsRef::as_ref)
-								.collect::<Vec<&str>>(),
+								position,
+								possibles,
 							},
 						);
 
@@ -631,7 +638,7 @@ impl<'a> Environment<'a> {
 					VariableMutability::Constant => Err(AssignmentError::Constant(*declared_at)),
 					VariableMutability::Mutable { reassignment_constraint } => {
 						let variable = variable.clone();
-						let variable_site = *declared_at;
+						let variable_position = *declared_at;
 						let variable_id = variable.get_id();
 
 						if boundary.is_none()
@@ -664,8 +671,8 @@ impl<'a> Environment<'a> {
 									value_type: TypeStringRepresentation::from_type_id(
 										new_type, self, types, false,
 									),
-									variable_site,
-									value_site: assignment_position,
+									variable_position,
+									value_position: assignment_position,
 								});
 							}
 						}
@@ -729,7 +736,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
-		key: &PropertyKey,
+		under: &PropertyKey,
 		checking_data: &mut CheckingData<U, A>,
 		position: SpanWithSource,
 		mode: AccessMode,
@@ -756,7 +763,7 @@ impl<'a> Environment<'a> {
 		let get_property = crate::types::properties::get_property(
 			on,
 			publicity,
-			key,
+			under,
 			None,
 			self,
 			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
@@ -764,7 +771,10 @@ impl<'a> Environment<'a> {
 			position,
 			mode,
 		);
-		diagnostics.append_to(crate::types::calling::CallingContext::Getter, &mut checking_data.diagnostics_container);
+		diagnostics.append_to(
+			crate::types::calling::CallingContext::Getter,
+			&mut checking_data.diagnostics_container,
+		);
 
 		// };
 
@@ -777,32 +787,26 @@ impl<'a> Environment<'a> {
 				}
 			})
 		} else {
+			let keys;
+			let possibles = if let PropertyKey::String(s) = under {
+				keys = get_property_key_names_on_a_single_type(on, &checking_data.types, self);
+				let mut possibles =
+					crate::get_closest(keys.iter().map(AsRef::as_ref), s).unwrap_or(vec![]);
+				possibles.sort_unstable();
+				possibles
+			} else {
+				Vec::new()
+			};
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
-				// TODO printing temp
-				property: match key {
-					PropertyKey::String(s) => PropertyKeyRepresentation::StringKey(s.to_string()),
-					PropertyKey::Type(t) => PropertyKeyRepresentation::Type(printing::print_type(
-						*t,
-						&checking_data.types,
-						self,
-						false,
-					)),
-				},
+				property: PropertyKeyRepresentation::new(under, self, &checking_data.types),
 				on: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					on,
 					self,
 					&checking_data.types,
 					false,
 				),
-				site: position,
-				possibles: get_property_key_names_on_a_single_type(
-					on,
-					&mut checking_data.types,
-					self,
-				)
-				.iter()
-				.map(AsRef::as_ref)
-				.collect::<Vec<&str>>(),
+				position: position,
+				possibles,
 			});
 			Err(())
 		}
@@ -820,12 +824,14 @@ impl<'a> Environment<'a> {
 			if let Some((in_root, crossed_boundary, og_var)) = variable_information {
 				(in_root, crossed_boundary, og_var.clone())
 			} else {
+				let possibles = {
+					let mut possibles =
+						crate::get_closest(self.get_all_variable_names(), name).unwrap_or(vec![]);
+					possibles.sort_unstable();
+					possibles
+				};
 				checking_data.diagnostics_container.add_error(
-					TypeCheckError::CouldNotFindVariable {
-						variable: name,
-						possibles: self.get_all_variable_names(),
-						position,
-					},
+					TypeCheckError::CouldNotFindVariable { variable: name, possibles, position },
 				);
 				return Err(TypeId::ERROR_TYPE);
 			}
@@ -1192,7 +1198,10 @@ impl<'a> Environment<'a> {
 			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
 			&mut checking_data.types,
 		);
-		diagnostics.append_to(crate::types::calling::CallingContext::Setter, &mut checking_data.diagnostics_container);
+		diagnostics.append_to(
+			crate::types::calling::CallingContext::Setter,
+			&mut checking_data.diagnostics_container,
+		);
 
 		match result {
 			Ok(()) => {}
@@ -1255,5 +1264,185 @@ impl<'a> Environment<'a> {
 			}
 		}
 		None
+	}
+
+	/// TODO extends
+	pub fn register_interface<'b, U: crate::ReadFromFS, A: crate::ASTImplementation>(
+		&mut self,
+		name: &str,
+		nominal: bool,
+		parameters: Option<&'b [A::TypeParameter<'b>]>,
+		_extends: Option<&'b [A::TypeAnnotation<'b>]>,
+		position: SpanWithSource,
+		checking_data: &mut CheckingData<U, A>,
+	) -> TypeId {
+		// Interface merging
+		{
+			let existing = if let Some(id) = self.named_types.get(name) {
+				if let Type::Interface { .. } = checking_data.types.get_type_by_id(*id) {
+					checking_data.diagnostics_container.add_warning(
+						crate::diagnostics::TypeCheckWarning::MergingInterfaceInSameContext {
+							position,
+						},
+					);
+
+					Some(*id)
+				} else {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name: name.to_owned(),
+							position,
+						},
+					);
+					return TypeId::ERROR_TYPE;
+				}
+			} else {
+				self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).and_then(
+					|id| {
+						matches!(checking_data.types.get_type_by_id(*id), Type::Interface { .. })
+							.then_some(*id)
+					},
+				)
+			};
+
+			if let Some(existing) = existing {
+				return existing;
+			};
+		}
+
+		let parameters = parameters.map(|parameters| {
+			parameters
+				.iter()
+				.map(|parameter| {
+					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
+						name: A::type_parameter_name(parameter).to_owned(),
+						// This is assigned later
+						eager_fixed: TypeId::ANY_TYPE,
+					});
+					checking_data.types.register_type(ty)
+				})
+				.collect()
+		});
+
+		let ty = Type::Interface { name: name.to_owned(), nominal, parameters };
+		let interface_ty = checking_data.types.register_type(ty);
+		self.named_types.insert(name.to_owned(), interface_ty);
+		interface_ty
+	}
+
+	/// Registers the class type
+	pub fn register_class<'b, A: crate::ASTImplementation>(
+		&mut self,
+		name: &str,
+		parameters: Option<&'b [A::TypeParameter<'b>]>,
+		_extends: Option<&'b A::Expression<'b>>,
+		types: &mut TypeStore,
+	) -> TypeId {
+		{
+			// Special
+			if let Some(Scope::DefinitionModule { .. }) =
+				self.context_type.as_syntax().map(|s| &s.scope)
+			{
+				match name {
+					"Array" => {
+						return TypeId::ARRAY_TYPE;
+					}
+					"Promise" => {
+						return TypeId::PROMISE_TYPE;
+					}
+					"String" => {
+						return TypeId::STRING_TYPE;
+					}
+					"Number" => {
+						return TypeId::NUMBER_TYPE;
+					}
+					"Boolean" => {
+						return TypeId::BOOLEAN_TYPE;
+					}
+					"ImportMeta" => {
+						return TypeId::IMPORT_META;
+					}
+					_ => {}
+				}
+			}
+		}
+
+		let parameters = parameters.map(|parameters| {
+			parameters
+				.iter()
+				.map(|parameter| {
+					let ty = Type::RootPolyType(PolyNature::StructureGeneric {
+						name: A::type_parameter_name(parameter).to_owned(),
+						constrained: A::parameter_constrained(parameter),
+					});
+					types.register_type(ty)
+				})
+				.collect()
+		});
+
+		let ty = Type::Class { name: name.to_owned(), parameters };
+		let class_type = types.register_type(ty);
+		self.named_types.insert(name.to_owned(), class_type);
+		class_type
+	}
+
+	pub fn new_alias<'b, U: crate::ReadFromFS, A: crate::ASTImplementation>(
+		&mut self,
+		name: &str,
+		parameters: Option<&'b [A::TypeParameter<'b>]>,
+		to: &'b A::TypeAnnotation<'b>,
+		position: Span,
+		checking_data: &mut CheckingData<U, A>,
+	) -> TypeId {
+		let (parameters, to) = if let Some(parameters) = parameters {
+			let mut sub_environment = self.new_lexical_environment(Scope::TypeAlias);
+			let parameters = parameters
+				.iter()
+				.map(|parameter| {
+					let name = A::type_parameter_name(parameter).to_owned();
+					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
+						name: name.clone(),
+						eager_fixed: TypeId::ANY_TYPE,
+					});
+					let ty = checking_data.types.register_type(ty);
+					// TODO declare type
+					sub_environment.named_types.insert(name, ty);
+					ty
+				})
+				.collect();
+
+			// TODO temp as object types use the same environment.properties representation
+			let to = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
+
+			{
+				let super::LocalInformation { current_properties, prototypes, .. } =
+					sub_environment.info;
+				self.info.current_properties.extend(current_properties);
+				self.info.prototypes.extend(prototypes);
+			}
+
+			(Some(parameters), to)
+		} else {
+			// TODO should just use self
+			let to = A::synthesise_type_annotation(to, self, checking_data);
+			(None, to)
+		};
+
+		// Works as an alias
+		let ty = Type::AliasTo { to, name: name.to_owned(), parameters };
+		let alias_ty = checking_data.types.register_type(ty);
+		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
+
+		if existing_type.is_some() {
+			checking_data.diagnostics_container.add_error(
+				crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+					name: name.to_owned(),
+					position: position.with_source(self.get_source()),
+				},
+			);
+			TypeId::ERROR_TYPE
+		} else {
+			alias_ty
+		}
 	}
 }

@@ -9,7 +9,7 @@ use crate::{
 	},
 	parse_source,
 	types::calling::CallingInput,
-	CheckingData, Environment, Instance, Scope, TypeId, TypeMappings, VariableId,
+	CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings, VariableId,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};
@@ -61,14 +61,14 @@ impl<M> SynthesisedModule<M> {
 pub struct Exported {
 	pub default: Option<TypeId>,
 	/// Mutability purely for the mutation thingy
-	pub named: Vec<(String, (VariableId, VariableMutability))>,
-	pub named_types: Vec<(String, TypeId)>,
+	pub named: Map<String, (VariableId, VariableMutability)>,
+	pub named_types: Map<String, TypeId>,
 }
 
 pub type ExportedVariable = (VariableId, VariableMutability);
 
 impl Exported {
-	pub(crate) fn get_export(
+	pub fn get_export(
 		&self,
 		want: &str,
 		type_only: bool,
@@ -76,15 +76,16 @@ impl Exported {
 		let variable = if type_only {
 			None
 		} else {
-			self.named
-				.iter()
-				.find_map(|(export, value)| (export == want).then_some((value.0, value.1)))
+			self.named.get(want).map(|(name, mutability)| (*name, *mutability))
 		};
 
-		let r#type =
-			self.named_types.iter().find_map(|(export, value)| (export == want).then_some(*value));
+		let r#type = self.named_types.get(want).copied();
 
 		(variable, r#type)
+	}
+
+	pub fn keys(&self) -> impl Iterator<Item = &str> {
+		self.named.keys().chain(self.named_types.keys()).map(AsRef::as_ref)
 	}
 }
 
@@ -188,12 +189,19 @@ pub fn import_items<
 						exports.get_export(part.value, type_only);
 
 					if exported_variable.is_none() && exported_type.is_none() {
+						let possibles = {
+							let mut possibles =
+								crate::get_closest(exports.keys(), part.value).unwrap_or(vec![]);
+							possibles.sort_unstable();
+							possibles
+						};
 						let position = part.position.with_source(current_source);
 						checking_data.diagnostics_container.add_error(
 							crate::diagnostics::TypeCheckError::FieldNotExported {
 								file: partial_import_path,
 								position,
 								importing: part.value,
+								possibles,
 							},
 						);
 
@@ -238,7 +246,7 @@ pub fn import_items<
 							if let Scope::Module { ref mut exported, .. } =
 								environment.context_type.scope
 							{
-								exported.named.push((part.r#as.to_owned(), (variable, mutability)));
+								exported.named.insert(part.r#as.to_owned(), (variable, mutability));
 							}
 						}
 					}
@@ -293,10 +301,10 @@ pub fn import_items<
 		}
 		ImportKind::Everything => {
 			if let Ok(Ok(ref exports)) = exports {
-				for (name, (variable, mutability)) in &exports.named {
+				for (name, (variable, mutability)) in exports.named.iter() {
 					// TODO are variables put into scope?
 					if let Scope::Module { ref mut exported, .. } = environment.context_type.scope {
-						exported.named.push((name.clone(), (*variable, *mutability)));
+						exported.named.insert(name.clone(), (*variable, *mutability));
 					}
 				}
 			} else {
@@ -440,4 +448,19 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		}
 		None => Err(CouldNotOpenFile(PathBuf::from(to_import.to_owned()))),
 	}
+}
+
+pub fn get_possibles_message_for_imports(possibles: &[&str], reference: &str) -> Vec<String> {
+	possibles
+		.iter()
+		.filter(|file| !file.ends_with(".d.ts"))
+		.filter_map(|file| file.strip_suffix(".ts"))
+		.map(|file| {
+			if file.starts_with("./") || file.starts_with("../") {
+				file.to_string()
+			} else {
+				"./".to_string() + file
+			}
+		})
+		.collect::<Vec<String>>()
 }

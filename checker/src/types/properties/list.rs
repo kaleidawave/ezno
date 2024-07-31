@@ -159,3 +159,30 @@ pub fn get_properties_on_single_type2(
 		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
 	}
 }
+
+pub fn get_property_key_names_on_a_single_type(
+	base: TypeId,
+	types: &TypeStore,
+	environment: &mut crate::Environment,
+) -> Vec<String> {
+	let is_special = matches!(
+		types.get_type_by_id(base),
+		Type::SpecialObject(_)
+			| Type::Constructor(_)
+			| Type::RootPolyType(_)
+			| Type::Or(..)
+			| Type::PartiallyAppliedGenerics(_)
+			| Type::Constant(_)
+			| Type::AliasTo { .. }
+			| Type::FunctionReference(_)
+			| Type::And(_, _)
+	);
+	if is_special {
+		return vec![];
+	}
+
+	get_properties_on_single_type(base, types, environment, false, TypeId::ANY_TYPE)
+		.into_iter()
+		.map(|property| super::get_property_as_string(&property.1, types, environment))
+		.collect()
+}

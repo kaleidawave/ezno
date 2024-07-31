@@ -95,7 +95,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 					write!(buf, "[mg {} {}] ", ty.0, name).unwrap();
 				}
 				crate::utilities::notify!("args={:?}", args);
-				if let Some(crate::types::CovariantContribution::String(property)) = args.and_then(|arg| arg.get_argument_covariant(ty, info, types)) {
+				if let Some(crate::types::CovariantContribution::String(property)) =
+					args.and_then(|arg| arg.get_argument_covariant(ty, info, types))
+				{
 					write!(buf, "{property}").unwrap();
 				} else {
 					print_type_into_buf(*eager_fixed, buf, cycles, args, types, info, debug);

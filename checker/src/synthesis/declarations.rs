@@ -107,10 +107,10 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 									environment.context_type.scope
 								{
 									if let Ok(value) = value {
-										exported.named.push((
+										exported.named.insert(
 											pair.r#as.to_owned(),
 											(value.0.get_id(), value.0.get_mutability()),
-										));
+										);
 									}
 								}
 							}

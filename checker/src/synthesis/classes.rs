@@ -33,53 +33,109 @@ use super::{block::synthesise_block, expressions::synthesise_expression};
 /// Returns the constructor for expressions!
 ///
 /// TODO this duplicates work done during lifting
+/// returns the new constructor
+#[must_use]
 pub(super) fn synthesise_class_declaration<
 	T: crate::ReadFromFS,
 	P: parser::ExpressionOrStatementPosition + super::StatementOrExpressionVariable,
 >(
 	class: &ClassDeclaration<P>,
-	expecting: TypeId,
+	expected: TypeId,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
-	let is_declare = class.name.is_declare();
-	let name = P::as_option_str(&class.name).map_or_else(String::new, str::to_owned);
-
-	{
-		// TODO what about no name
-		// TODO type needs to be hoisted
-		// let parameters =
-		// 	if let Some(ref type_parameters) = class.type_parameters { todo!() } else { None };
-		// TODO
-		// let nominal = true;
-		// let ty = Type::NamedRooted { name, parameters, nominal };
-		// let class_type = checking_data.types.register_type(ty);
-	}
-
 	// crate::utilities::notify!("hmm {:?}", (&checking_data.local_type_mappings.types_to_types, class.position));
 
 	let existing_id =
 		checking_data.local_type_mappings.types_to_types.get_exact(class.position).copied();
 
 	// Will leak hoisted properties on existing class ...?
-	let class_prototype = if let Some(existing_id) = existing_id {
-		existing_id
+	if let Some(class_type) = existing_id {
+		let class_type2 = checking_data.types.get_type_by_id(class_type);
+
+		let Type::Class { name: _, parameters } = class_type2 else {
+			unreachable!("expecting class type {:?}", class_type2)
+		};
+
+		if let Some(parameters) = parameters {
+			let mut sub_environment = environment.new_lexical_environment(Scope::TypeAlias);
+			for parameter in parameters {
+				let parameter_ty = checking_data.types.get_type_by_id(*parameter);
+				let Type::RootPolyType(PolyNature::StructureGeneric { name, constrained: _ }) =
+					parameter_ty
+				else {
+					unreachable!("{parameter_ty:?}")
+				};
+
+				sub_environment.named_types.insert(name.clone(), *parameter);
+			}
+			let result = synthesise_class_declaration_extends_and_members(
+				class,
+				(class_type, expected),
+				&mut sub_environment,
+				checking_data,
+			);
+			{
+				let crate::context::LocalInformation { current_properties, prototypes, .. } =
+					sub_environment.info;
+				environment.info.current_properties.extend(current_properties);
+				environment.info.prototypes.extend(prototypes);
+			}
+			result
+		} else {
+			synthesise_class_declaration_extends_and_members(
+				class,
+				(class_type, expected),
+				environment,
+				checking_data,
+			)
+		}
 	} else {
 		// For classes in expression position
 		crate::utilities::notify!("TODO class expression parameters");
-		checking_data.types.register_type(Type::Class { name: name.clone(), parameters: None })
-	};
+		let name = P::as_option_str(&class.name).map_or_else(String::new, str::to_owned);
 
-	let extends = class.extends.as_ref().map(|extends| {
-		let ty = synthesise_expression(extends, environment, checking_data, TypeId::ANY_TYPE);
+		let class_type =
+			checking_data.types.register_type(Type::Class { name: name.clone(), parameters: None });
+		synthesise_class_declaration_extends_and_members(
+			class,
+			(class_type, expected),
+			environment,
+			checking_data,
+		)
+	}
+}
 
-		if let TypeId::NULL_TYPE = ty {
+/// `expected` for name
+/// returns the new constructor
+#[must_use]
+fn synthesise_class_declaration_extends_and_members<
+	T: crate::ReadFromFS,
+	P: parser::ExpressionOrStatementPosition + super::StatementOrExpressionVariable,
+>(
+	class: &ClassDeclaration<P>,
+	(class_type, expected): (TypeId, TypeId),
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) -> TypeId {
+	let is_declare = class.name.is_declare();
+	let name = P::as_option_str(&class.name).map_or_else(String::new, str::to_owned);
+	let class_prototype = class_type;
+
+	let extends = class.extends.as_ref().map(|extends_expression| {
+		let extends =
+			synthesise_expression(extends_expression, environment, checking_data, TypeId::ANY_TYPE);
+
+		crate::utilities::notify!("{:?}", (extends, checking_data.types.get_type_by_id(extends)));
+
+		if let TypeId::NULL_TYPE = extends {
 			checking_data.raise_unimplemented_error(
 				"extends `null` edge case",
-				extends.get_position().with_source(environment.get_source()),
+				extends_expression.get_position().with_source(environment.get_source()),
 			);
 		}
-		ty
+
+		extends
 	});
 
 	let class_constructor = class.members.iter().find_map(|member| {
@@ -150,7 +206,9 @@ pub(super) fn synthesise_class_declaration<
 					super_type: None,
 					// TODO
 					expecting: TypeId::ANY_TYPE,
-					this_shape: if internal_marker.is_some() {
+					this_shape: if internal_marker.is_some()
+						&& method.parameters.leading.0.is_none()
+					{
 						TypeId::ANY_TYPE
 					} else {
 						class_prototype
@@ -220,7 +278,7 @@ pub(super) fn synthesise_class_declaration<
 	let name_as_type_id = if let Some(name) = class.name.as_option_str() {
 		checking_data.types.new_constant_type(crate::Constant::String(name.to_owned()))
 	} else {
-		crate::features::functions::extract_name(expecting, &checking_data.types, environment)
+		crate::features::functions::extract_name(expected, &checking_data.types, environment)
 	};
 
 	// TODO abstract
@@ -298,7 +356,9 @@ pub(super) fn synthesise_class_declaration<
 						// TODO
 						expecting: TypeId::ANY_TYPE,
 						// Important that it points to the marker
-						this_shape: if internal_marker.is_some() {
+						this_shape: if internal_marker.is_some()
+							&& method.parameters.leading.0.is_none()
+						{
 							TypeId::ANY_TYPE
 						} else {
 							class_variable_type
@@ -413,23 +473,14 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 		.get_exact(class.get_position())
 		.expect("class type not lifted");
 
-	if let Some(ref extends) = class.extends {
-		let extends = get_extends_as_simple_type(extends, environment, checking_data);
+	let class_type2 = checking_data.types.get_type_by_id(class_type);
 
-		crate::utilities::notify!("Hoisting class with extends {:?}", extends);
-		if let Some(ty) = extends {
-			environment.info.prototypes.insert(class_type, ty);
-		}
-	}
-
-	let get_type_by_id = checking_data.types.get_type_by_id(class_type);
-
-	let Type::Class { name: _, parameters } = get_type_by_id else {
-		unreachable!("expecting class type {:?}", get_type_by_id)
+	let Type::Class { name: _, parameters } = class_type2 else {
+		unreachable!("expecting class type {:?}", class_type2)
 	};
 
-	// TODO also remove
 	if let Some(parameters) = parameters {
+		let mut sub_environment = environment.new_lexical_environment(Scope::TypeAlias);
 		for parameter in parameters {
 			let parameter_ty = checking_data.types.get_type_by_id(*parameter);
 			let Type::RootPolyType(PolyNature::StructureGeneric { name, constrained: _ }) =
@@ -438,7 +489,32 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 				unreachable!("{parameter_ty:?}")
 			};
 
-			environment.named_types.insert(name.clone(), *parameter);
+			sub_environment.named_types.insert(name.clone(), *parameter);
+		}
+		register_extends_and_member(class, class_type, &mut sub_environment, checking_data);
+		{
+			let crate::context::LocalInformation { current_properties, prototypes, .. } =
+				sub_environment.info;
+			environment.info.current_properties.extend(current_properties);
+			environment.info.prototypes.extend(prototypes);
+		}
+	} else {
+		register_extends_and_member(class, class_type, environment, checking_data);
+	}
+}
+
+fn register_extends_and_member<T: crate::ReadFromFS>(
+	class: &ClassDeclaration<StatementPosition>,
+	class_type: TypeId,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+) {
+	if let Some(ref extends) = class.extends {
+		let extends = get_extends_as_simple_type(extends, environment, checking_data);
+
+		crate::utilities::notify!("Hoisting class with extends {:?}", extends);
+		if let Some(extends) = extends {
+			environment.info.prototypes.insert(class_type, extends);
 		}
 	}
 

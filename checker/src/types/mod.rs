@@ -322,7 +322,10 @@ impl Type {
 
 	#[must_use]
 	pub fn is_operator(&self) -> bool {
-		matches!(self, Self::And(..) | Self::Or(..) | Self::Constructor(Constructor::ConditionalResult { .. }))
+		matches!(
+			self,
+			Self::And(..) | Self::Or(..) | Self::Constructor(Constructor::ConditionalResult { .. })
+		)
 	}
 
 	#[must_use]

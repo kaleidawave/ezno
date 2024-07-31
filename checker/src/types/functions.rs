@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use source_map::{BaseSpan, Nullable, SpanWithSource};
 
-use super::calling::{Callable, CallingInput, CallingContext};
+use super::calling::{Callable, CallingContext, CallingInput};
 use crate::{
 	context::{environment::FunctionScope, invocation::CheckThings},
 	events::{Event, RootReference},
@@ -130,7 +130,8 @@ impl FunctionType {
 						&mut checking_data.types,
 					);
 
-					diagnostics.append_to(CallingContext::Super, &mut checking_data.diagnostics_container);
+					diagnostics
+						.append_to(CallingContext::Super, &mut checking_data.diagnostics_container);
 					match result {
 						Ok(_) => {}
 						Err(_error) => {}

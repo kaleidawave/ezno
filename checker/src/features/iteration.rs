@@ -16,8 +16,9 @@ use crate::{
 	},
 	features::{functions::ClosedOverVariables, operations::CanonicalEqualityAndInequality},
 	types::{
-		calling::{CallingDiagnostics, CallingContext}, properties::get_properties_on_single_type, substitute,
-		Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
+		calling::{CallingContext, CallingDiagnostics},
+		properties::get_properties_on_single_type,
+		substitute, Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
 	},
 	CheckingData, Constant, Type, TypeId, VariableId,
 };
@@ -118,7 +119,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
+			diagnostics
+				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	crate::utilities::notify!("Loop returned {:?}", early_return);
@@ -185,7 +187,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
+			diagnostics
+				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -317,7 +320,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
+			diagnostics
+				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
 			// }
@@ -368,7 +372,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut checking_data.types,
 			);
 
-			diagnostics.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
+			diagnostics
+				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")

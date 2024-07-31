@@ -49,6 +49,9 @@ pub struct TypeCheckOptions {
 	pub max_inline_count: u16,
 
 	pub measure_time: bool,
+
+	/// Printing internal diagnostics in dts
+	pub debug_dts: bool,
 }
 
 impl Default for TypeCheckOptions {
@@ -70,6 +73,7 @@ impl Default for TypeCheckOptions {
 			evaluate_exports: false,
 			max_inline_count: 300,
 			measure_time: false,
+			debug_dts: false,
 		}
 	}
 }

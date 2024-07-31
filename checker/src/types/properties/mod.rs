@@ -467,3 +467,14 @@ pub(crate) fn key_matches(
 		}
 	}
 }
+
+pub fn get_property_as_string(
+	property: &PropertyKey,
+	types: &TypeStore,
+	environment: &Environment,
+) -> String {
+	match property {
+		PropertyKey::String(s) => s.to_string(),
+		PropertyKey::Type(t) => crate::types::printing::print_type(*t, types, environment, false),
+	}
+}

@@ -3,6 +3,7 @@
 fn type_mappings() {
 	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
 
+	let root = "index.ts";
 	let text = "const x: number = 2;
 function y() { return x }
 y()";
@@ -12,8 +13,6 @@ y()";
 
 	// `store_expression_type_mappings` important
 	let options = TypeCheckOptions { store_type_mappings: true, ..Default::default() };
-
-	let root = "index.ts";
 
 	let result = check_project::<_, synthesis::EznoParser>(
 		vec![root.into()],

@@ -187,7 +187,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 										.as_option_str()
 										.unwrap_or_default()
 										.to_owned();
-									exported.named_types.push((name, ty));
+									exported.named_types.insert(name, ty);
 								}
 							}
 							Exportable::Class(class) => {
@@ -205,10 +205,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								if let crate::Scope::Module { ref mut exported, .. } =
 									environment.context_type.scope
 								{
-									exported.named_types.push((
+									exported.named_types.insert(
 										class.name.as_option_str().unwrap_or_default().to_owned(),
 										ty,
-									));
+									);
 								}
 							}
 							Exportable::TypeAlias(alias) => {
@@ -223,10 +223,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								if let crate::Scope::Module { ref mut exported, .. } =
 									environment.context_type.scope
 								{
-									exported.named_types.push((
+									exported.named_types.insert(
 										alias.name.as_option_str().unwrap_or_default().to_owned(),
 										ty,
-									));
+									);
 								}
 							}
 							// Other exported things are skipped
@@ -663,7 +663,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					{
 						exported
 							.named
-							.push((name.clone(), (variable_id, VariableMutability::Constant)));
+							.insert(name.clone(), (variable_id, VariableMutability::Constant));
 					}
 				}
 			}

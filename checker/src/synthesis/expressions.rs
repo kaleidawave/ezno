@@ -98,6 +98,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				crate::utilities::notify!("TODO big int");
 				return TypeId::ERROR_TYPE;
 			};
+			// if not_nan == 6. {
+			// 	crate::utilities::notify!("{:?}", environment.get_all_named_types());
+			// }
 			return checking_data.types.new_constant_type(Constant::Number(not_nan));
 		}
 		Expression::BooleanLiteral(value, ..) => {
@@ -706,6 +709,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							&checking_data.types,
 							position.with_source(environment.get_source()),
 						);
+
+						crate::utilities::notify!(
+							"{:?}",
+							checking_data.types.get_type_by_id(super_type)
+						);
+
 						// TODO this gives normal errors. Maybe add something about super here
 						let (result, special) = call_function(
 							super_type,

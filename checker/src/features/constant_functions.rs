@@ -361,7 +361,10 @@ pub(crate) fn call_constant_function(
 				let enumerable = get_property!("enumerable").unwrap_or(TypeId::FALSE);
 				let configurable = get_property!("configurable").unwrap_or(TypeId::FALSE);
 
-				crate::utilities::notify!("values are = {:?}", (writable, enumerable, configurable));
+				crate::utilities::notify!(
+					"values are = {:?}",
+					(writable, enumerable, configurable)
+				);
 
 				// Can skip if (read defaults to `true`)
 				let value = if let (TypeId::TRUE, TypeId::TRUE, TypeId::TRUE) =
@@ -456,7 +459,7 @@ pub(crate) fn call_constant_function(
 							PropertyValue::Deleted => {
 								return Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE));
 							}
-							_ => unreachable!()
+							_ => unreachable!(),
 						}
 
 						match value {

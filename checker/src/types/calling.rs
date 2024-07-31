@@ -56,7 +56,7 @@ pub enum CallingContext {
 	JSX,
 	TemplateLiteral,
 	Super,
-	Iteration
+	Iteration,
 }
 
 #[derive(Default)]
@@ -76,7 +76,9 @@ impl CallingDiagnostics {
 			let error = match context {
 				CallingContext::Regular => TypeCheckError::FunctionCallingError(error),
 				CallingContext::JSX => TypeCheckError::JSXCallingError(error),
-				CallingContext::TemplateLiteral => TypeCheckError::TemplateLiteralCallingError(error),
+				CallingContext::TemplateLiteral => {
+					TypeCheckError::TemplateLiteralCallingError(error)
+				}
 				CallingContext::Getter => TypeCheckError::GetterCallingError(error),
 				CallingContext::Setter => TypeCheckError::SetterCallingError(error),
 				CallingContext::Super => TypeCheckError::SuperCallError(error),
@@ -203,7 +205,8 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				(&mut check_things, &mut diagnostics),
 			);
 
-			diagnostics.append_to(CallingContext::Regular, &mut checking_data.diagnostics_container);
+			diagnostics
+				.append_to(CallingContext::Regular, &mut checking_data.diagnostics_container);
 
 			match result {
 				Ok(CallingOutput {

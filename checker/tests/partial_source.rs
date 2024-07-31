@@ -4,6 +4,7 @@ fn type_mappings() {
 	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
 
 	// Below source has several issues
+	let root = "index.ts";
 	let text = "let x: 2 = 5 + ;
 	const y = 
 	const z = 2;
@@ -17,8 +18,6 @@ fn type_mappings() {
 	// `lsp_mode` <=> partial syntax
 	let options = TypeCheckOptions { lsp_mode: true, ..Default::default() };
 
-	let root = "index.ts";
-
 	let result = check_project::<_, synthesis::EznoParser>(
 		vec![root.into()],
 		type_definition_files,
@@ -30,8 +29,5 @@ fn type_mappings() {
 
 	let diagnostics: Vec<_> = result.diagnostics.into_iter().collect();
 	assert_eq!(diagnostics.len(), 1);
-	assert_eq!(
-		diagnostics.first().unwrap().reason(),
-		"Could not find variable 'b' in scope. Did you mean x, y or z?"
-	);
+	assert_eq!(diagnostics.first().unwrap().reason(), "Could not find variable 'b' in scope");
 }
