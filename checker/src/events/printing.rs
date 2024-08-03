@@ -64,7 +64,7 @@ pub fn debug_effects<C: InformationChain>(
 				);
 				write!(buf, " into {reflects_dependency:?}").unwrap();
 			}
-			Event::Setter { on, under, new, initialisation, publicity: _, position: _ } => {
+			Event::Setter { on, under, new, publicity: _, position: _ } => {
 				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
 				buf.push('[');
 				print_property_key_into_buf(
@@ -77,14 +77,7 @@ pub fn debug_effects<C: InformationChain>(
 					debug,
 				);
 				buf.push_str("] = ");
-				if let PropertyValue::Value(new) = new {
-					print_type_into_buf(*new, buf, &mut HashSet::new(), args, types, info, debug);
-				} else {
-					write!(buf, "{new:?}").unwrap();
-				}
-				if *initialisation {
-					buf.push_str(" (initialisation)")
-				}
+				print_type_into_buf(*new, buf, &mut HashSet::new(), args, types, info, debug);
 			}
 			Event::CallsType {
 				on,
@@ -175,6 +168,27 @@ pub fn debug_effects<C: InformationChain>(
 				}
 				crate::events::MiscellaneousEvents::Delete { .. } => {
 					buf.push_str("Delete");
+				}
+				crate::events::MiscellaneousEvents::RegisterProperty {
+					on,
+					publicity,
+					under,
+					value,
+					position,
+				} => {
+					print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
+					buf.push('[');
+					print_property_key_into_buf(
+						under,
+						buf,
+						&mut HashSet::default(),
+						args,
+						types,
+						info,
+						debug,
+					);
+					buf.push_str("] = ");
+					write!(buf, "{:?}", value).unwrap();
 				}
 			},
 		}

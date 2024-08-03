@@ -6,8 +6,7 @@ use crate::{
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
-		calling::Callable,
-		functions::SynthesisedArgument,
+		calling::{Callable, FunctionCallingError, SynthesisedArgument},
 		printing::print_type,
 		properties::{key_matches, AccessMode, Descriptor, PropertyKey, Publicity},
 		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
@@ -24,6 +23,7 @@ pub(crate) enum ConstantOutput {
 }
 
 pub enum ConstantFunctionError {
+	FunctionCallingError(FunctionCallingError),
 	NoLogicForIdentifier(String),
 	/// This will get picked up by the main calling logic
 	BadCall,
@@ -356,6 +356,48 @@ pub(crate) fn call_constant_function(
 					}
 				};
 
+				// For configurablity
+				let existing = crate::types::properties::get_property_unbound(
+					(on, None),
+					(Publicity::Public, &under, None),
+					false,
+					environment,
+					types,
+				);
+
+				use crate::types::logical::{Logical, LogicalOrValid};
+				if let Ok(LogicalOrValid::Logical(Logical::Pure(PropertyValue::Configured {
+					on,
+					descriptor: Descriptor { writable: _, enumerable: _, configurable },
+				}))) = existing
+				{
+					// WIP doesn't cover all valid cases
+					if configurable != TypeId::TRUE {
+						let valid =
+							if let (PropertyValue::Value(existing), PropertyValue::Value(new)) =
+								(*on, &value)
+							{
+								// yah weird spec
+								existing == *new
+							} else {
+								false
+							};
+						if !valid {
+							return Err(ConstantFunctionError::FunctionCallingError(
+								FunctionCallingError::NotConfiguarable {
+									property: crate::diagnostics::PropertyKeyRepresentation::new(
+										&under,
+										environment,
+										types,
+									),
+									/// Should be set by parent
+									call_site,
+								},
+							));
+						}
+					}
+				}
+
 				// FALSE is spec here!
 				let writable = get_property!("writable").unwrap_or(TypeId::FALSE);
 				let enumerable = get_property!("enumerable").unwrap_or(TypeId::FALSE);
@@ -378,14 +420,7 @@ pub(crate) fn call_constant_function(
 					}
 				};
 
-				environment.info.register_property(
-					on,
-					Publicity::Public,
-					under,
-					value,
-					true,
-					call_site,
-				);
+				environment.info.register_property(on, Publicity::Public, under, value, call_site);
 
 				Ok(ConstantOutput::Value(on))
 			} else {
@@ -504,7 +539,7 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::BadCall)
 			}
 		}
-		"Proxy:constructor" => {
+		"proxy:constructor" => {
 			crate::utilities::notify!("Here creating proxy");
 			if let [object, trap] = arguments {
 				// TODO checking for both, what about spreading

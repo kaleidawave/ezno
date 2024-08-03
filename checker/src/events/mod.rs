@@ -9,8 +9,7 @@ use crate::{
 	context::get_on_ctx,
 	features::{functions::ClosedOverVariables, iteration::IterationKind},
 	types::{
-		calling::{Callable, CalledWithNew},
-		functions::SynthesisedArgument,
+		calling::{Callable, CalledWithNew, SynthesisedArgument},
 		properties::{AccessMode, PropertyKey, PropertyValue, Publicity},
 		TypeId,
 	},
@@ -65,16 +64,11 @@ pub enum Event {
 		position: SpanWithSource,
 		mode: AccessMode,
 	},
-	/// All changes to the value of a property
+	/// All assignments to the value of a property. TODO explain others for defining getters etc
 	Setter {
 		on: TypeId,
 		under: PropertyKey<'static>,
-		// Can be a getter through define property
-		new: PropertyValue,
-		/// THIS DOES NOT CALL SETTERS, JUST SETS VALUE!
-		/// TODO this is [define] property
-		/// see <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Public_class_fields>
-		initialisation: bool,
+		new: TypeId,
 		publicity: Publicity,
 		position: SpanWithSource,
 	},
@@ -179,6 +173,13 @@ pub enum MiscellaneousEvents {
 		publicity: Publicity,
 		under: PropertyKey<'static>,
 		into: Option<TypeId>,
+		position: SpanWithSource,
+	},
+	RegisterProperty {
+		on: TypeId,
+		publicity: Publicity,
+		under: PropertyKey<'static>,
+		value: PropertyValue,
 		position: SpanWithSource,
 	},
 }

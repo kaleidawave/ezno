@@ -58,11 +58,13 @@ pub struct TypeId(pub(crate) u16);
 impl TypeId {
 	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
-	pub const UNIMPLEMENTED_ERROR_TYPE: TypeId = TypeId::ERROR_TYPE;
+	pub const UNIMPLEMENTED_ERROR_TYPE: Self = Self::ERROR_TYPE;
 
 	pub const NEVER_TYPE: Self = Self(1);
 
 	pub const ANY_TYPE: Self = Self(2);
+	// TODO
+	pub const ANY_TO_INFER_TYPE: Self = Self::ANY_TYPE;
 
 	pub const BOOLEAN_TYPE: Self = Self(3);
 	pub const NUMBER_TYPE: Self = Self(4);
@@ -179,9 +181,8 @@ pub enum Type {
 	/// Although they all alias Object
 	Interface {
 		name: String,
-		// Whether only values under this type can be matched
-		nominal: bool,
 		parameters: Option<Vec<TypeId>>,
+		extends: Option<TypeId>,
 	},
 	/// Pretty much same as [`Type::Interface`]
 	Class {
@@ -211,13 +212,13 @@ pub enum PolyNature {
 	/// - `fixed_to` can point to [`PolyNature::FunctionGeneric`]
 	Parameter { fixed_to: TypeId },
 	/// This is on a structure (`class`, `interface` and `type` alias)
-	StructureGeneric { name: String, constrained: bool },
+	StructureGeneric { name: String, extends: TypeId },
 	/// From `infer U`.
 	InferGeneric { name: String, extends: TypeId },
 	/// For explicit generics (or on external definitions)
-	FunctionGeneric { name: String, eager_fixed: TypeId },
+	FunctionGeneric { name: String, extends: TypeId },
 	/// For mapped types
-	MappedGeneric { name: String, eager_fixed: TypeId },
+	MappedGeneric { name: String, extends: TypeId },
 	/// An error occurred and it looks like
 	Error(TypeId),
 	/// This is generic types. Examples such as a fetch
@@ -260,19 +261,20 @@ impl PolyNature {
 		)
 	}
 
+	// TODO remove Option
 	#[must_use]
 	pub fn try_get_constraint(&self) -> Option<TypeId> {
 		match self {
 			PolyNature::Parameter { fixed_to: to }
-			| PolyNature::FunctionGeneric { eager_fixed: to, .. }
-			| PolyNature::MappedGeneric { eager_fixed: to, .. }
+			| PolyNature::FunctionGeneric { extends: to, .. }
+			| PolyNature::MappedGeneric { extends: to, .. }
 			| PolyNature::FreeVariable { based_on: to, .. }
 			| PolyNature::RecursiveFunction(_, to)
+			| PolyNature::StructureGeneric { extends: to, .. }
 			| PolyNature::InferGeneric { extends: to, .. }
 			| PolyNature::CatchVariable(to)
 			| PolyNature::Open(to)
 			| PolyNature::Error(to) => Some(*to),
-			PolyNature::StructureGeneric { .. } => None,
 		}
 	}
 }
@@ -330,7 +332,7 @@ impl Type {
 
 	#[must_use]
 	pub fn is_nominal(&self) -> bool {
-		matches!(self, Self::Class { .. } | Self::Interface { nominal: true, .. })
+		matches!(self, Self::Class { .. })
 	}
 
 	#[must_use]
@@ -375,7 +377,7 @@ pub enum Constructor {
 	Image {
 		on: TypeId,
 		// TODO I don't think this is necessary, maybe for debugging. In such case should be an Rc to share with events
-		with: Box<[SynthesisedArgument]>,
+		with: Box<[calling::SynthesisedArgument]>,
 		result: TypeId,
 	},
 	/// Access
@@ -499,7 +501,10 @@ pub enum PropertyError {
 
 /// TODO temp fix for printing
 pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
-	if let Type::RootPolyType(PolyNature::FunctionGeneric { .. }) = types.get_type_by_id(on) {
+	if let Type::RootPolyType(
+		PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. },
+	) = types.get_type_by_id(on)
+	{
 		true
 	} else if let Type::Constructor(Constructor::Property { on, under, result: _, mode: _ }) =
 		types.get_type_by_id(on)
@@ -516,25 +521,7 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 /// **Also looks at possibly mutated things
 pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
-		Type::RootPolyType(nature) => Some(
-			*(match nature {
-				PolyNature::Parameter { fixed_to }
-				| PolyNature::InferGeneric { extends: fixed_to, .. }
-				| PolyNature::MappedGeneric { name: _, eager_fixed: fixed_to }
-				| PolyNature::FunctionGeneric { name: _, eager_fixed: fixed_to } => fixed_to,
-				PolyNature::Error(ty) | PolyNature::Open(ty) => ty,
-				PolyNature::FreeVariable { reference: _, based_on } => based_on,
-				PolyNature::RecursiveFunction(_, return_ty) => return_ty,
-				PolyNature::StructureGeneric { constrained, .. } => {
-					return if *constrained {
-						todo!("get from TypeStore or ???")
-					} else {
-						Some(TypeId::ANY_TYPE)
-					}
-				}
-				PolyNature::CatchVariable(constraint) => constraint,
-			}),
-		),
+		Type::RootPolyType(nature) => nature.try_get_constraint(),
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs } => {
 				if let MathematicalAndBitwise::Add = operator {
@@ -755,6 +742,7 @@ fn get_simple_value(
 	let value = properties::get_property_unbound(
 		(on, None),
 		(properties::Publicity::Public, property, None),
+		false,
 		ctx,
 		types,
 	)
@@ -1032,8 +1020,8 @@ pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeS
 		} else if let Type::And(left, right) = ty {
 			is_pseudo_continous((*left, generics), types)
 				&& is_pseudo_continous((*right, generics), types)
-		} else if let Type::RootPolyType(PolyNature::MappedGeneric { eager_fixed, .. }) = ty {
-			is_pseudo_continous((*eager_fixed, generics), types)
+		} else if let Type::RootPolyType(PolyNature::MappedGeneric { extends, .. }) = ty {
+			is_pseudo_continous((*extends, generics), types)
 		} else {
 			false
 		}

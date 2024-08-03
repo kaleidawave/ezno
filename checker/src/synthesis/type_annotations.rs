@@ -165,8 +165,16 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			if let Some(inner_type_id) = environment.get_type_from_name(name) {
 				let inner_type = checking_data.types.get_type_by_id(inner_type_id);
-				let inner_type_alias_id =
-					if let Type::AliasTo { to, .. } = inner_type { Some(*to) } else { None };
+				let inner_type_alias_id = if let Type::AliasTo { to, .. } = inner_type {
+					// Fix for recursion
+					if *to == TypeId::ANY_TO_INFER_TYPE {
+						None
+					} else {
+						Some(*to)
+					}
+				} else {
+					None
+				};
 
 				// crate::utilities::notify!("{:?}", inner_type);
 
@@ -574,10 +582,13 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						checking_data,
 					);
 
-					environment
-						.info
-						.current_properties
-						.extend(sub_environment.info.current_properties);
+					// TODO temp as object types use the same environment.properties representation
+					{
+						let LocalInformation { current_properties, prototypes, .. } =
+							sub_environment.info;
+						environment.info.current_properties.extend(current_properties);
+						environment.info.prototypes.extend(prototypes);
+					}
 
 					ty
 				}
@@ -586,13 +597,36 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			let otherwise_result =
 				synthesise_type_annotation(resolve_false, environment, checking_data);
 
-			// TODO might want to record whether infer_types is_empty here
+			// TODO WIP
+			if let Type::Constructor(Constructor::TypeRelationOperator(
+				crate::types::TypeRelationOperator::Extends { item, extends },
+			)) = checking_data.types.get_type_by_id(condition)
+			{
+				if let Type::Constant(_) = checking_data.types.get_type_by_id(*item) {
+					use crate::types::generics::substitution::{
+						compute_extends_rule, SubstitutionArguments,
+					};
+					let temp_args = SubstitutionArguments::new_arguments_for_use_in_loop();
+					crate::utilities::notify!("Here");
+					return compute_extends_rule(
+						*extends,
+						*item,
+						environment,
+						&mut checking_data.types,
+						truthy_result,
+						&temp_args,
+						otherwise_result,
+					);
+				}
+			}
 
+			// TODO might want to record whether infer_types is_empty here
+			let result_union = checking_data.types.new_or_type(truthy_result, otherwise_result);
 			let ty = Type::Constructor(Constructor::ConditionalResult {
 				condition,
 				truthy_result,
 				otherwise_result,
-				result_union: checking_data.types.new_or_type(truthy_result, otherwise_result),
+				result_union,
 			});
 
 			checking_data.types.register_type(ty)

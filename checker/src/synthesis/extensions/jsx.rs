@@ -12,10 +12,9 @@ use crate::{
 	types::{
 		calling::{
 			application_result_to_return_type, Callable, CalledWithNew, CallingContext,
-			CallingInput,
+			CallingInput, SynthesisedArgument,
 		},
 		properties::PropertyKey,
-		SynthesisedArgument,
 	},
 	CheckingData, Constant, Environment, TypeId,
 };

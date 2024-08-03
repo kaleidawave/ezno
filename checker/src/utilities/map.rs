@@ -13,6 +13,10 @@ impl<K, V> Map<K, V>
 where
 	K: PartialEq,
 {
+	pub fn new() -> Self {
+		Default::default()
+	}
+
 	pub fn get<Q>(&self, want: &Q) -> Option<&V>
 	where
 		K: std::borrow::Borrow<Q>,
@@ -68,8 +72,11 @@ where
 		self.0.len()
 	}
 
-	pub fn drop_range(&mut self, range: std::ops::RangeFrom<usize>) {
-		self.0.drain(range);
+	pub fn drop_range(
+		&mut self,
+		range: std::ops::RangeFrom<usize>,
+	) -> impl Iterator<Item = (K, V)> + '_ {
+		self.0.drain(range)
 	}
 }
 

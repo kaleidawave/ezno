@@ -183,14 +183,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							}
 						}
 
-						environment.info.register_property(
-							rest,
-							publicity,
-							key,
-							property,
-							false,
-							SpanWithSource::NULL,
-						);
+						environment.info.register_property_on_type(rest, publicity, key, property);
 					}
 					Some(rest)
 				} else {
@@ -426,7 +419,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												&checking_data.types,
 												false,
 											),
-											position: position,
+											position,
 											possibles: get_property_key_names_on_a_single_type(
 												value,
 												&mut checking_data.types,

@@ -5,8 +5,11 @@ use crate::{
 	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	types::{
-		calling::{application_result_to_return_type, Callable, CallingContext, CallingInput},
-		cast_as_string, SynthesisedArgument, TypeStore,
+		calling::{
+			application_result_to_return_type, Callable, CallingContext, CallingInput,
+			SynthesisedArgument,
+		},
+		cast_as_string, TypeStore,
 	},
 	CheckingData, Constant, Environment, Type, TypeId,
 };

@@ -184,7 +184,9 @@ pub fn import_items<
 	match kind {
 		ImportKind::Parts(parts) => {
 			for part in parts {
+				// Here in nested because want to type variables as error otherwise
 				if let Ok(Ok(ref exports)) = exports {
+					crate::utilities::notify!("{:?}", part);
 					let (exported_variable, exported_type) =
 						exports.get_export(part.value, type_only);
 
@@ -205,6 +207,7 @@ pub fn import_items<
 							},
 						);
 
+						// Register error
 						environment.register_variable_handle_error(
 							part.r#as,
 							VariableRegisterArguments {
@@ -219,6 +222,8 @@ pub fn import_items<
 							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
+
+					// add variable to scope
 					if let Some((variable, mutability)) = exported_variable {
 						let constant = match mutability {
 							VariableMutability::Constant => {
@@ -238,6 +243,7 @@ pub fn import_items<
 								.position
 								.with_source(environment.get_source()),
 						};
+						crate::utilities::notify!("{:?}", part.r#as.to_owned());
 						let existing = environment.variables.insert(part.r#as.to_owned(), v);
 						if let Some(_existing) = existing {
 							todo!("diagnostic")
@@ -251,6 +257,7 @@ pub fn import_items<
 						}
 					}
 
+					// add type to scope
 					if let Some(ty) = exported_type {
 						let existing = environment.named_types.insert(part.r#as.to_owned(), ty);
 						assert!(existing.is_none(), "TODO exception");

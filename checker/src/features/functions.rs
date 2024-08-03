@@ -123,7 +123,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
-) {
+) -> TypeId {
 	let name = checking_data.types.new_constant_type(Constant::String(name));
 	let behavior = FunctionRegisterBehavior::StatementFunction {
 		variable_id,
@@ -149,6 +149,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 
 	let v = checking_data.types.new_function_type(function);
 	environment.info.variable_current_value.insert(variable_id, v);
+	v
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -163,7 +164,7 @@ pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::AST
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
-) {
+) -> TypeId {
 	let name = checking_data.types.new_constant_type(Constant::String(name));
 	let behavior = FunctionRegisterBehavior::StatementFunction {
 		variable_id,
@@ -175,10 +176,9 @@ pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::AST
 	};
 
 	let function = synthesise_function(function, behavior, environment, checking_data);
-	environment
-		.info
-		.variable_current_value
-		.insert(variable_id, checking_data.types.new_function_type(function));
+	let ty = checking_data.types.new_function_type(function);
+	environment.info.variable_current_value.insert(variable_id, ty);
+	ty
 }
 
 pub fn function_to_property(
@@ -190,13 +190,16 @@ pub fn function_to_property(
 	match getter_setter {
 		GetterSetter::Getter => PropertyValue::Getter(Callable::new_from_function(function, types)),
 		GetterSetter::Setter => PropertyValue::Setter(Callable::new_from_function(function, types)),
-		GetterSetter::None => PropertyValue::Value(
-			if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
-				types.new_hoisted_function_type(function)
-			} else {
-				types.new_function_type(function)
-			},
-		),
+		GetterSetter::None => {
+			crate::utilities::notify!("{:?}", function.effect);
+			PropertyValue::Value(
+				if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
+					types.new_hoisted_function_type(function)
+				} else {
+					types.new_function_type(function)
+				},
+			)
+		}
 	}
 }
 
@@ -1146,6 +1149,7 @@ pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environm
 			get_property_unbound(
 				(*rhs, None),
 				(Publicity::Public, &PropertyKey::String(Cow::Borrowed("name")), None),
+				false,
 				environment,
 				types,
 			) {

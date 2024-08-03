@@ -6,7 +6,7 @@ use crate::{
 	context::LocalInformation,
 	features::{
 		functions::{ClosureChain, ClosureId, ThisValue},
-		objects::SpecialObject,
+		objects::{Proxy, SpecialObject},
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
 			evaluate_pure_unary_operator,
@@ -179,11 +179,19 @@ pub(crate) fn substitute(
 		Type::SpecialObject(special_object) => match special_object {
 			SpecialObject::Promise { .. } => todo!(),
 			SpecialObject::Generator { .. } => todo!(),
-			SpecialObject::Proxy { .. } => todo!(),
-			SpecialObject::RegularExpression { .. } => todo!(),
-			SpecialObject::Import(_) => todo!(),
-			SpecialObject::Null => id,
-			SpecialObject::Function(..) => unreachable!(),
+			SpecialObject::Proxy(Proxy { over, handler }) => {
+				let handler = *handler;
+				let over = substitute(*over, arguments, environment, types);
+				let handler = substitute(handler, arguments, environment, types);
+				types.register_type(Type::SpecialObject(SpecialObject::Proxy(Proxy {
+					over,
+					handler,
+				})))
+			}
+			SpecialObject::Import(_)
+			| SpecialObject::RegularExpression { .. }
+			| SpecialObject::Null => id,
+			SpecialObject::Function(..) => unreachable!("done above"),
 		},
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
@@ -370,6 +378,7 @@ pub(crate) fn substitute(
 					let get_property = get_property_unbound(
 						(on, None),
 						(Publicity::Public, &under, None),
+						false,
 						environment,
 						types,
 					);
@@ -544,7 +553,7 @@ pub(crate) fn substitute(
 	}
 }
 
-fn compute_extends_rule(
+pub(crate) fn compute_extends_rule(
 	extends: TypeId,
 	item: TypeId,
 	environment: &Environment,

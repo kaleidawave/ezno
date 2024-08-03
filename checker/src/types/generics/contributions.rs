@@ -18,10 +18,12 @@ pub type ContributionDepth = u8;
 pub enum CovariantContribution {
 	/// Note this can reference array
 	TypeId(TypeId),
-	/// This can be set by property keys in mapped types
+	/// This can be set by property keys in mapped types. Also `[x]` on a constant string
 	String(String),
 	SliceOf(Box<Self>, (u32, u32)),
 	CaseInsensitive(Box<Self>),
+	/// This can be from `.length` on a constant string
+	Number(f64),
 }
 
 impl CovariantContribution {
@@ -41,6 +43,13 @@ impl CovariantContribution {
 			}
 			CovariantContribution::String(slice) => {
 				types.new_constant_type(crate::Constant::String(slice))
+			}
+			CovariantContribution::Number(number) => {
+				if let Ok(number) = number.try_into() {
+					types.new_constant_type(crate::Constant::Number(number))
+				} else {
+					TypeId::NAN
+				}
 			}
 			CovariantContribution::CaseInsensitive(on) => {
 				let inner = on.into_type(types);
@@ -66,6 +75,9 @@ impl CovariantContribution {
 			CovariantContribution::String(slice) => {
 				PropertyKey::String(std::borrow::Cow::Owned(slice.to_owned()))
 			}
+			CovariantContribution::Number(number) => {
+				PropertyKey::String(std::borrow::Cow::Owned(number.to_string()))
+			}
 			CovariantContribution::CaseInsensitive(on) => {
 				todo!("{:?}", on)
 			}
@@ -76,6 +88,15 @@ impl CovariantContribution {
 impl From<TypeId> for CovariantContribution {
 	fn from(value: TypeId) -> Self {
 		CovariantContribution::TypeId(value)
+	}
+}
+
+impl From<PropertyKey<'static>> for CovariantContribution {
+	fn from(value: PropertyKey<'static>) -> Self {
+		match value {
+			PropertyKey::String(s) => CovariantContribution::String(s.to_string()),
+			PropertyKey::Type(value) => CovariantContribution::TypeId(value),
+		}
 	}
 }
 

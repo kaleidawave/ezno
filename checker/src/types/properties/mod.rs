@@ -401,8 +401,7 @@ pub(crate) fn key_matches(
 						)
 					}
 				} else if let Type::RootPolyType(PolyNature::MappedGeneric {
-					eager_fixed: to,
-					..
+					extends: to, ..
 				})
 				| Type::AliasTo { to, .. } = want_ty
 				{

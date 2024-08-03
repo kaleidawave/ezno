@@ -11,13 +11,6 @@ use crate::{
 		function_to_property, synthesise_function, ClassPropertiesToRegister, FunctionBehavior,
 		FunctionRegisterBehavior, GetterSetter, SynthesisableFunction,
 	},
-	synthesis::{
-		definitions::get_internal_function_effect_from_decorators,
-		functions::{build_overloaded_function, synthesise_shape},
-		parser_property_key_to_checker_property_key,
-		type_annotations::synthesise_type_annotation,
-		variables::register_variable_identifier,
-	},
 	types::{
 		classes::ClassValue,
 		properties::{PropertyKey, Publicity},
@@ -26,7 +19,15 @@ use crate::{
 	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 };
 
-use super::{block::synthesise_block, expressions::synthesise_expression};
+use super::{
+	block::synthesise_block,
+	definitions::get_internal_function_effect_from_decorators,
+	expressions::synthesise_expression,
+	functions::{build_overloaded_function, synthesise_shape},
+	parser_property_key_to_checker_property_key,
+	type_annotations::synthesise_type_annotation,
+	variables::register_variable_identifier,
+};
 
 /// Doesn't have any metadata yet
 ///
@@ -40,28 +41,28 @@ pub(super) fn synthesise_class_declaration<
 	P: parser::ExpressionOrStatementPosition + super::StatementOrExpressionVariable,
 >(
 	class: &ClassDeclaration<P>,
+	existing_id: Option<TypeId>,
 	expected: TypeId,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
 	// crate::utilities::notify!("hmm {:?}", (&checking_data.local_type_mappings.types_to_types, class.position));
 
-	let existing_id =
-		checking_data.local_type_mappings.types_to_types.get_exact(class.position).copied();
-
 	// Will leak hoisted properties on existing class ...?
 	if let Some(class_type) = existing_id {
 		let class_type2 = checking_data.types.get_type_by_id(class_type);
 
-		let Type::Class { name: _, parameters } = class_type2 else {
+		let Type::Class { name, parameters } = class_type2 else {
 			unreachable!("expecting class type {:?}", class_type2)
 		};
+
+		crate::utilities::notify!("Here {:?}", name);
 
 		if let Some(parameters) = parameters {
 			let mut sub_environment = environment.new_lexical_environment(Scope::TypeAlias);
 			for parameter in parameters {
 				let parameter_ty = checking_data.types.get_type_by_id(*parameter);
-				let Type::RootPolyType(PolyNature::StructureGeneric { name, constrained: _ }) =
+				let Type::RootPolyType(PolyNature::StructureGeneric { name, extends: _ }) =
 					parameter_ty
 				else {
 					unreachable!("{parameter_ty:?}")
@@ -199,6 +200,9 @@ fn synthesise_class_declaration_extends_and_members<
 					None
 				};
 
+				let internal = internal_marker.is_some();
+				let has_defined_this = method.parameters.leading.0.is_some();
+
 				let behavior = FunctionRegisterBehavior::ClassMethod {
 					is_async,
 					is_generator,
@@ -206,9 +210,7 @@ fn synthesise_class_declaration_extends_and_members<
 					super_type: None,
 					// TODO
 					expecting: TypeId::ANY_TYPE,
-					this_shape: if internal_marker.is_some()
-						&& method.parameters.leading.0.is_none()
-					{
+					this_shape: if internal && !has_defined_this {
 						TypeId::ANY_TYPE
 					} else {
 						class_prototype
@@ -233,8 +235,6 @@ fn synthesise_class_declaration_extends_and_members<
 					publicity,
 					key,
 					property,
-					// Is dynamic environment
-					true,
 					position,
 				);
 			}
@@ -348,6 +348,9 @@ fn synthesise_class_declaration_extends_and_members<
 
 					let key = static_property_keys.pop().unwrap();
 
+					let internal = internal_marker.is_some();
+					let has_defined_this = method.parameters.leading.0.is_some();
+
 					let behavior = FunctionRegisterBehavior::ClassMethod {
 						is_async,
 						is_generator,
@@ -356,9 +359,7 @@ fn synthesise_class_declaration_extends_and_members<
 						// TODO
 						expecting: TypeId::ANY_TYPE,
 						// Important that it points to the marker
-						this_shape: if internal_marker.is_some()
-							&& method.parameters.leading.0.is_none()
-						{
+						this_shape: if internal && !has_defined_this {
 							TypeId::ANY_TYPE
 						} else {
 							class_variable_type
@@ -382,8 +383,6 @@ fn synthesise_class_declaration_extends_and_members<
 						publicity,
 						key,
 						property,
-						// TODO
-						true,
 						// TODO not needed right?
 						method.position.with_source(environment.get_source()),
 					);
@@ -414,8 +413,6 @@ fn synthesise_class_declaration_extends_and_members<
 						publicity,
 						static_property_keys.pop().unwrap(),
 						PropertyValue::Value(value),
-						// TODO
-						true,
 						// TODO not needed right?
 						property.position.with_source(environment.get_source()),
 					);
@@ -445,34 +442,11 @@ fn synthesise_class_declaration_extends_and_members<
 ///
 /// Builds the type of the class
 pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
+	class_type: TypeId,
 	class: &ClassDeclaration<StatementPosition>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
-	{
-		const CLASS_VARIABLE_CONSTANT: bool = true;
-		// crate::utilities::notify!("registering {:?}", class.name.identifier);
-
-		register_variable_identifier(
-			&class.name.identifier,
-			environment,
-			checking_data,
-			VariableRegisterArguments {
-				constant: CLASS_VARIABLE_CONSTANT,
-				// No value yet, classes are equiv to `const`
-				initial_value: None,
-				space: None,
-				allow_reregistration: false,
-			},
-		);
-	}
-
-	let class_type = *checking_data
-		.local_type_mappings
-		.types_to_types
-		.get_exact(class.get_position())
-		.expect("class type not lifted");
-
 	let class_type2 = checking_data.types.get_type_by_id(class_type);
 
 	let Type::Class { name: _, parameters } = class_type2 else {
@@ -483,7 +457,7 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 		let mut sub_environment = environment.new_lexical_environment(Scope::TypeAlias);
 		for parameter in parameters {
 			let parameter_ty = checking_data.types.get_type_by_id(*parameter);
-			let Type::RootPolyType(PolyNature::StructureGeneric { name, constrained: _ }) =
+			let Type::RootPolyType(PolyNature::StructureGeneric { name, extends: _ }) =
 				parameter_ty
 			else {
 				unreachable!("{parameter_ty:?}")
@@ -525,6 +499,12 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 	while let Some(member) = members_iter.next() {
 		match &member.on {
 			ClassMember::Method(initial_is_static, method) => {
+				let publicity = if method.name.get_ast_ref().is_private() {
+					Publicity::Private
+				} else {
+					Publicity::Public
+				};
+
 				// TODO refactor. Maybe do in reverse?
 				let (overloads, actual) = if method.body.0.is_none() {
 					let mut overloads = Vec::new();
@@ -567,6 +547,19 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					(Vec::new(), actual)
 				};
 
+				let name =
+					if let parser::PropertyKey::Identifier(name, ..) = method.name.get_ast_ref() {
+						name
+					} else {
+						// TODO skip decorator
+						"no_name"
+					};
+				let internal_effect = get_internal_function_effect_from_decorators(
+					&member.decorators,
+					name,
+					environment,
+				);
+
 				let value = build_overloaded_function(
 					FunctionId(environment.get_source(), method.position.start),
 					FunctionBehavior::Method {
@@ -581,6 +574,11 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					environment,
 					&mut checking_data.types,
 					&mut checking_data.diagnostics_container,
+					if let Some(ie) = internal_effect {
+						ie.into()
+					} else {
+						crate::types::functions::FunctionEffect::Unknown
+					},
 				);
 
 				let under = crate::synthesis::parser_property_key_to_checker_property_key(
@@ -590,18 +588,11 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					false,
 				);
 
-				environment.info.register_property(
+				environment.info.register_property_on_type(
 					class_type,
-					// TODO
-					if method.name.get_ast_ref().is_private() {
-						Publicity::Private
-					} else {
-						Publicity::Public
-					},
+					publicity,
 					under,
 					PropertyValue::Value(value),
-					false,
-					method.position.with_source(environment.get_source()),
 				);
 			}
 			ClassMember::Property(_is_static, property) => {
@@ -625,7 +616,6 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					},
 					under,
 					PropertyValue::Value(value),
-					false,
 					property.position.with_source(environment.get_source()),
 				);
 			}
@@ -641,19 +631,19 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					);
 				}
 
+				// TODO check declare
+
 				// TODO WIP
 				crate::utilities::notify!("Here for {}", name);
 				let value = PropertyValue::ConditionallyExists {
 					condition: TypeId::OPEN_BOOLEAN_TYPE,
 					truthy: Box::new(PropertyValue::Value(value)),
 				};
-				environment.info.register_property(
+				environment.info.register_property_on_type(
 					class_type,
 					Publicity::Public,
 					PropertyKey::Type(key),
 					value,
-					false,
-					position.with_source(environment.get_source()),
 				);
 			}
 			ClassMember::Constructor(c) => {

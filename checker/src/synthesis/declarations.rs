@@ -1,4 +1,4 @@
-use parser::{declarations::VariableDeclaration, Declaration};
+use parser::{declarations::VariableDeclaration, ASTNode, Declaration};
 
 use crate::{
 	context::Environment, diagnostics::TypeCheckError, features::variables::VariableMutability,
@@ -62,23 +62,41 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 			synthesise_variable_declaration(declaration, environment, checking_data, false, false);
 		}
 		Declaration::Class(class) => {
-			synthesise_class_declaration(&class.on, TypeId::ANY_TYPE, environment, checking_data);
+			use super::StatementOrExpressionVariable;
+
+			let existing_id = checking_data
+				.local_type_mappings
+				.types_to_types
+				.get_exact(class.on.name.identifier.get_position())
+				.copied();
+
+			// Adding variable is done inside
+			let constructor = synthesise_class_declaration(
+				&class.on,
+				existing_id,
+				TypeId::ANY_TYPE,
+				environment,
+				checking_data,
+			);
+
+			if let Some(variable) = class.on.name.get_variable_id(environment.get_source()) {
+				environment.info.variable_current_value.insert(variable, constructor);
+			}
 		}
-		Declaration::DeclareVariable(_)
-		| Declaration::Function(_)
-		| Declaration::Enum(_)
-		| Declaration::Interface(_)
-		| Declaration::TypeAlias(_)
-		| Declaration::Namespace(_)
-		| Declaration::Import(_) => {}
 		Declaration::Export(exported) => match &exported.on {
 			parser::declarations::ExportDeclaration::Variable { exported, position: _ } => {
 				match exported {
 					// Skipped as this is done earlier
 					parser::declarations::export::Exportable::Class(class) => {
+						let existing_id = checking_data
+							.local_type_mappings
+							.types_to_types
+							.get_exact(class.name.identifier.get_position())
+							.copied();
 						// TODO mark as exported
-						synthesise_class_declaration(
+						let _ = synthesise_class_declaration(
 							class,
+							existing_id,
 							TypeId::ANY_TYPE,
 							environment,
 							checking_data,
@@ -154,5 +172,12 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 				);
 			}
 		},
+		Declaration::DeclareVariable(_)
+		| Declaration::Function(_)
+		| Declaration::Enum(_)
+		| Declaration::Interface(_)
+		| Declaration::TypeAlias(_)
+		| Declaration::Namespace(_)
+		| Declaration::Import(_) => {}
 	}
 }

@@ -37,7 +37,7 @@ impl ObjectBuilder {
 		position: SpanWithSource,
 		info: &mut LocalInformation,
 	) {
-		info.register_property(self.object, publicity, under, value, true, position);
+		info.register_property(self.object, publicity, under, value, position);
 	}
 
 	#[must_use]

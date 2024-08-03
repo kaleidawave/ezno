@@ -88,28 +88,38 @@ impl ReturnState {
 }
 
 impl LocalInformation {
-	/// TODO temp
-	pub fn register_property(
+	/// For interfaces only
+	pub fn register_property_on_type(
 		&mut self,
 		on: TypeId,
 		publicity: Publicity,
 		under: PropertyKey<'static>,
 		to: PropertyValue,
-		register_setter_event: bool,
+	) {
+		self.current_properties.entry(on).or_default().push((publicity, under.clone(), to.clone()));
+	}
+	pub fn register_property(
+		&mut self,
+		on: TypeId,
+		publicity: Publicity,
+		under: PropertyKey<'static>,
+		value: PropertyValue,
 		position: SpanWithSource,
 	) {
-		// crate::utilities::notify!("Registering {:?} {:?} {:?}", on, under, to);
-		self.current_properties.entry(on).or_default().push((publicity, under.clone(), to.clone()));
-		if register_setter_event {
-			self.events.push(Event::Setter {
+		self.current_properties.entry(on).or_default().push((
+			publicity,
+			under.clone(),
+			value.clone(),
+		));
+		self.events.push(Event::Miscellaneous(
+			crate::events::MiscellaneousEvents::RegisterProperty {
 				on,
 				under,
-				new: to,
-				initialisation: true,
+				value,
 				publicity,
 				position,
-			});
-		}
+			},
+		));
 	}
 
 	// /// This is how invocation contexts register throws...

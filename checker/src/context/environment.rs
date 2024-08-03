@@ -36,7 +36,16 @@ use super::{
 	Context, ContextType, Environment, GeneralContext, InformationChain,
 };
 
+/// For WIP contextual access of certain APIs
 pub type ContextLocation = Option<String>;
+
+/// Error type for something already being defined
+pub struct AlreadyExists;
+
+pub enum DeclareInterfaceResult {
+	Merging { ty: TypeId, in_same_context: bool },
+	New(TypeId),
+}
 
 #[derive(Debug)]
 pub struct Syntax<'a> {
@@ -805,7 +814,7 @@ impl<'a> Environment<'a> {
 					&checking_data.types,
 					false,
 				),
-				position: position,
+				position,
 				possibles,
 			});
 			Err(())
@@ -1192,7 +1201,7 @@ impl<'a> Environment<'a> {
 		let mut diagnostics = Default::default();
 		let result = crate::types::properties::set_property(
 			on,
-			(publicity, under, PropertyValue::Value(new)),
+			(publicity, under, new),
 			setter_position,
 			self,
 			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
@@ -1266,78 +1275,70 @@ impl<'a> Environment<'a> {
 		None
 	}
 
-	/// TODO extends
-	pub fn register_interface<'b, U: crate::ReadFromFS, A: crate::ASTImplementation>(
+	pub fn declare_interface<'b, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
-		nominal: bool,
 		parameters: Option<&'b [A::TypeParameter<'b>]>,
-		_extends: Option<&'b [A::TypeAnnotation<'b>]>,
-		position: SpanWithSource,
-		checking_data: &mut CheckingData<U, A>,
-	) -> TypeId {
+		extends: Option<&'b [A::TypeAnnotation<'b>]>,
+		types: &mut TypeStore,
+	) -> Result<DeclareInterfaceResult, AlreadyExists> {
 		// Interface merging
 		{
-			let existing = if let Some(id) = self.named_types.get(name) {
-				if let Type::Interface { .. } = checking_data.types.get_type_by_id(*id) {
-					checking_data.diagnostics_container.add_warning(
-						crate::diagnostics::TypeCheckWarning::MergingInterfaceInSameContext {
-							position,
-						},
-					);
-
-					Some(*id)
+			if let Some(id) = self.named_types.get(name) {
+				if let Type::Interface { .. } = types.get_type_by_id(*id) {
+					return Ok(DeclareInterfaceResult::Merging { ty: *id, in_same_context: true });
 				} else {
-					checking_data.diagnostics_container.add_error(
-						crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-							name: name.to_owned(),
-							position,
-						},
-					);
-					return TypeId::ERROR_TYPE;
+					return Err(AlreadyExists);
 				}
 			} else {
-				self.parents_iter().find_map(|env| get_on_ctx!(env.named_types.get(name))).and_then(
-					|id| {
-						matches!(checking_data.types.get_type_by_id(*id), Type::Interface { .. })
-							.then_some(*id)
-					},
-				)
-			};
+				// It is fine that it doesn't necessarily need to be an interface
+				let result = self
+					.parents_iter()
+					.find_map(|env| get_on_ctx!(env.named_types.get(name)))
+					.and_then(|id| {
+						matches!(types.get_type_by_id(*id), Type::Interface { .. }).then_some(*id)
+					});
 
-			if let Some(existing) = existing {
-				return existing;
-			};
+				if let Some(existing) = result {
+					return Ok(DeclareInterfaceResult::Merging {
+						ty: existing,
+						in_same_context: false,
+					});
+				};
+			}
 		}
 
 		let parameters = parameters.map(|parameters| {
 			parameters
 				.iter()
 				.map(|parameter| {
-					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
+					let ty = Type::RootPolyType(PolyNature::StructureGeneric {
 						name: A::type_parameter_name(parameter).to_owned(),
 						// This is assigned later
-						eager_fixed: TypeId::ANY_TYPE,
+						extends: TypeId::ANY_TO_INFER_TYPE,
 					});
-					checking_data.types.register_type(ty)
+					types.register_type(ty)
 				})
 				.collect()
 		});
 
-		let ty = Type::Interface { name: name.to_owned(), nominal, parameters };
-		let interface_ty = checking_data.types.register_type(ty);
+		let ty = Type::Interface {
+			name: name.to_owned(),
+			parameters,
+			extends: extends.map(|_| TypeId::ANY_TO_INFER_TYPE),
+		};
+		let interface_ty = types.register_type(ty);
 		self.named_types.insert(name.to_owned(), interface_ty);
-		interface_ty
+		Ok(DeclareInterfaceResult::New(interface_ty))
 	}
 
 	/// Registers the class type
-	pub fn register_class<'b, A: crate::ASTImplementation>(
+	pub fn declare_class<'b, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		parameters: Option<&'b [A::TypeParameter<'b>]>,
-		_extends: Option<&'b A::Expression<'b>>,
 		types: &mut TypeStore,
-	) -> TypeId {
+	) -> Result<TypeId, AlreadyExists> {
 		{
 			// Special
 			if let Some(Scope::DefinitionModule { .. }) =
@@ -1345,22 +1346,25 @@ impl<'a> Environment<'a> {
 			{
 				match name {
 					"Array" => {
-						return TypeId::ARRAY_TYPE;
+						return Ok(TypeId::ARRAY_TYPE);
 					}
 					"Promise" => {
-						return TypeId::PROMISE_TYPE;
+						return Ok(TypeId::PROMISE_TYPE);
 					}
 					"String" => {
-						return TypeId::STRING_TYPE;
+						return Ok(TypeId::STRING_TYPE);
 					}
 					"Number" => {
-						return TypeId::NUMBER_TYPE;
+						return Ok(TypeId::NUMBER_TYPE);
 					}
 					"Boolean" => {
-						return TypeId::BOOLEAN_TYPE;
+						return Ok(TypeId::BOOLEAN_TYPE);
+					}
+					"Function" => {
+						return Ok(TypeId::FUNCTION_TYPE);
 					}
 					"ImportMeta" => {
-						return TypeId::IMPORT_META;
+						return Ok(TypeId::IMPORT_META);
 					}
 					_ => {}
 				}
@@ -1373,7 +1377,9 @@ impl<'a> Environment<'a> {
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::StructureGeneric {
 						name: A::type_parameter_name(parameter).to_owned(),
-						constrained: A::parameter_constrained(parameter),
+						//A::parameter_constrained(parameter),
+						// TODO
+						extends: TypeId::ANY_TO_INFER_TYPE,
 					});
 					types.register_type(ty)
 				})
@@ -1383,66 +1389,106 @@ impl<'a> Environment<'a> {
 		let ty = Type::Class { name: name.to_owned(), parameters };
 		let class_type = types.register_type(ty);
 		self.named_types.insert(name.to_owned(), class_type);
-		class_type
+		// TODO duplicates
+
+		Ok(class_type)
 	}
 
-	pub fn new_alias<'b, U: crate::ReadFromFS, A: crate::ASTImplementation>(
+	pub fn declare_alias<'b, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		parameters: Option<&'b [A::TypeParameter<'b>]>,
+		position: Span,
+		types: &mut TypeStore,
+	) -> Result<TypeId, AlreadyExists> {
+		let parameters = parameters.map(|parameters| {
+			parameters
+				.iter()
+				.map(|parameter| {
+					let ty = Type::RootPolyType(PolyNature::StructureGeneric {
+						name: A::type_parameter_name(parameter).to_owned(),
+						// Set later for recursion
+						extends: TypeId::ANY_TO_INFER_TYPE,
+					});
+					types.register_type(ty)
+				})
+				.collect()
+		});
+
+		let ty = Type::AliasTo { to: TypeId::ANY_TO_INFER_TYPE, name: name.to_owned(), parameters };
+		let alias_ty = types.register_type(ty);
+		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
+
+		if existing_type.is_none() {
+			Ok(alias_ty)
+		} else {
+			Err(AlreadyExists)
+		}
+	}
+
+	// TODO copy this logic for interface and class
+	pub fn register_alias<'b, U: crate::ReadFromFS, A: crate::ASTImplementation>(
+		&mut self,
+		on: TypeId,
+		ast_parameters: Option<&'b [A::TypeParameter<'b>]>,
 		to: &'b A::TypeAnnotation<'b>,
 		position: Span,
 		checking_data: &mut CheckingData<U, A>,
-	) -> TypeId {
-		let (parameters, to) = if let Some(parameters) = parameters {
+	) {
+		if on == TypeId::ERROR_TYPE {
+			return;
+		}
+
+		let new_to = if let Type::AliasTo { to: _, parameters: Some(parameters), name: _ } =
+			checking_data.types.get_type_by_id(on)
+		{
 			let mut sub_environment = self.new_lexical_environment(Scope::TypeAlias);
-			let parameters = parameters
-				.iter()
-				.map(|parameter| {
-					let name = A::type_parameter_name(parameter).to_owned();
-					let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
-						name: name.clone(),
-						eager_fixed: TypeId::ANY_TYPE,
-					});
-					let ty = checking_data.types.register_type(ty);
-					// TODO declare type
-					sub_environment.named_types.insert(name, ty);
-					ty
-				})
-				.collect();
-
+			let parameters = parameters.clone();
+			for parameter in parameters.iter().cloned() {
+				let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
+					checking_data.types.get_type_by_id(parameter)
+				else {
+					unreachable!()
+				};
+				sub_environment.named_types.insert(name.clone(), parameter);
+			}
+			for (parameter, ast_parameter) in parameters.into_iter().zip(ast_parameters.unwrap()) {
+				let new_to = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
+				checking_data.types.update_generic_extends(parameter, new_to);
+			}
+			let ty = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
 			// TODO temp as object types use the same environment.properties representation
-			let to = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
-
 			{
-				let super::LocalInformation { current_properties, prototypes, .. } =
+				let crate::LocalInformation { current_properties, prototypes, .. } =
 					sub_environment.info;
 				self.info.current_properties.extend(current_properties);
 				self.info.prototypes.extend(prototypes);
 			}
 
-			(Some(parameters), to)
+			// TODO check cycles
+			ty
 		} else {
-			// TODO should just use self
-			let to = A::synthesise_type_annotation(to, self, checking_data);
-			(None, to)
+			let ty = A::synthesise_type_annotation(to, self, checking_data);
+
+			// Cycle checking
+			let disjoint = crate::types::disjoint::types_are_disjoint(
+				ty,
+				on,
+				&mut Vec::new(),
+				self,
+				&checking_data.types,
+			);
+
+			if disjoint {
+				ty
+			} else {
+				checking_data.diagnostics_container.add_error(TypeCheckError::CyclicTypeAlias {
+					position: position.with_source(self.get_source()),
+				});
+				TypeId::ERROR_TYPE
+			}
 		};
 
-		// Works as an alias
-		let ty = Type::AliasTo { to, name: name.to_owned(), parameters };
-		let alias_ty = checking_data.types.register_type(ty);
-		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
-
-		if existing_type.is_some() {
-			checking_data.diagnostics_container.add_error(
-				crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-					name: name.to_owned(),
-					position: position.with_source(self.get_source()),
-				},
-			);
-			TypeId::ERROR_TYPE
-		} else {
-			alias_ty
-		}
+		checking_data.types.update_alias(on, new_to);
 	}
 }

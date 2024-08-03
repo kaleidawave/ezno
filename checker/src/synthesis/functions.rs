@@ -729,6 +729,7 @@ pub(super) fn build_overloaded_function(
 	environment: &Environment,
 	types: &mut crate::types::TypeStore,
 	diagnostics: &mut crate::DiagnosticsContainer,
+	effect: crate::types::FunctionEffect,
 ) -> TypeId {
 	use crate::diagnostics::{TypeCheckError, TypeStringRepresentation};
 	use crate::types::subtyping::{type_is_subtype, State, SubTypeResult};
@@ -742,7 +743,7 @@ pub(super) fn build_overloaded_function(
 		type_parameters: actual.0,
 		parameters: actual.1,
 		return_type: actual.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
-		effect: crate::types::FunctionEffect::Unknown,
+		effect,
 	};
 
 	let actual_func = types.new_hoisted_function_type(as_function);
@@ -829,6 +830,7 @@ pub(super) fn build_overloaded_function(
 			type_parameters: overload.0,
 			parameters: overload.1,
 			return_type: overload.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
+			// existing is base?
 			effect: crate::types::FunctionEffect::Unknown,
 		};
 

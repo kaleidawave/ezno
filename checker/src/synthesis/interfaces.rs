@@ -128,8 +128,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			}
 		};
 
-		// None position should be fine here
-		environment.info.register_property(self.0, publicity, under, value, false, position);
+		environment.info.register_property_on_type(self.0, publicity, under, value);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {
@@ -297,7 +296,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
 							crate::types::PolyNature::MappedGeneric {
 								name: parameter.clone(),
-								eager_fixed: matching_type,
+								extends: matching_type,
 							},
 						));
 						sub_environment.named_types.insert(parameter.clone(), parameter_type);

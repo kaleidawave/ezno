@@ -11,31 +11,32 @@ pub type GenericChainParent<'a> = Option<&'a GenericChainLink<'a>>;
 #[derive(Clone, Copy, Debug)]
 pub enum GenericChainLink<'a> {
 	FunctionRoot {
-		/// From whatever the function was on
-		parent_arguments: Option<&'a GenericArguments>,
 		call_site_type_arguments: Option<&'a TypeRestrictions>,
 		type_arguments: &'a crate::Map<TypeId, TypeId>,
+		/// From whatever the function was on
+		parent_arguments: Option<&'a GenericArguments>,
 	},
 	// For walking through [`Type::PartiallyAppliedGenerics`]
 	PartiallyAppliedGenericArgumentsLink {
 		from: TypeId,
-		parent_link: GenericChainParent<'a>,
 		value: &'a GenericArguments,
+		parent_link: GenericChainParent<'a>,
 	},
 	/// WIP. For the specialised arguments during property key lookup
-	MappedPropertyLink { parent_link: GenericChainParent<'a>, value: &'a SliceArguments },
+	MappedPropertyLink { value: &'a SliceArguments, parent_link: GenericChainParent<'a> },
 	SpecialGenericChainLink {
-		parent_link: GenericChainParent<'a>,
 		special: SpecialGenericChainLink,
+		parent_link: GenericChainParent<'a>,
 	},
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum SpecialGenericChainLink {
 	Exclusive,
-	Readonly,
 	CaseTransform { transform: TypeId },
 	CaseInsensitive,
+	// Don't think this is necesary?
+	// Readonly,
 }
 
 impl<'a> GenericChainLink<'a> {
@@ -127,41 +128,41 @@ impl<'a> GenericChainLink<'a> {
 		}
 	}
 
-	/// TODO wip
-	#[allow(unused)]
-	pub(crate) fn get_argument(
-		&self,
-		on: TypeId,
-		info: &impl InformationChain,
-		types: &TypeStore,
-	) -> Option<Vec<TypeId>> {
-		match self {
-			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
-				parent_link,
-				value,
-				from: _,
-			} => value
-				.get_argument_as_list(on, info, types)
-				.or_else(|| parent_link.and_then(|parent| parent.get_argument(on, info, types))),
-			GenericChainLink::FunctionRoot {
-				parent_arguments,
-				call_site_type_arguments,
-				type_arguments,
-			} => parent_arguments
-				.and_then(|parent| parent.get_argument_as_list(on, info, types))
-				.or_else(|| {
-					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
-				})
-				.or_else(|| type_arguments.get(&on).map(|a| vec![*a])),
-			GenericChainLink::MappedPropertyLink { .. } => {
-				crate::utilities::notify!("TODO temp");
-				self.get_single_argument(on).map(|v| vec![v])
-			}
-			GenericChainLink::SpecialGenericChainLink { parent_link, special: _ } => {
-				parent_link.and_then(|f| f.get_argument(on, info, types))
-			}
-		}
-	}
+	// /// TODO wip
+	// #[allow(unused)]
+	// pub(crate) fn get_argument(
+	// 	&self,
+	// 	on: TypeId,
+	// 	info: &impl InformationChain,
+	// 	types: &TypeStore,
+	// ) -> Option<Vec<TypeId>> {
+	// 	match self {
+	// 		GenericChainLink::PartiallyAppliedGenericArgumentsLink {
+	// 			parent_link,
+	// 			value,
+	// 			from: _,
+	// 		} => value
+	// 			.get_argument_as_list(on, info, types)
+	// 			.or_else(|| parent_link.and_then(|parent| parent.get_argument(on, info, types))),
+	// 		GenericChainLink::FunctionRoot {
+	// 			parent_arguments,
+	// 			call_site_type_arguments,
+	// 			type_arguments,
+	// 		} => parent_arguments
+	// 			.and_then(|parent| parent.get_argument_as_list(on, info, types))
+	// 			.or_else(|| {
+	// 				call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
+	// 			})
+	// 			.or_else(|| type_arguments.get(&on).map(|a| vec![*a])),
+	// 		GenericChainLink::MappedPropertyLink { .. } => {
+	// 			crate::utilities::notify!("TODO temp");
+	// 			self.get_single_argument(on).map(|v| vec![v])
+	// 		}
+	// 		GenericChainLink::SpecialGenericChainLink { parent_link, special: _ } => {
+	// 			parent_link.and_then(|f| f.get_argument(on, info, types))
+	// 		}
+	// 	}
+	// }
 
 	/// WIP I want to make this the main one
 	pub(crate) fn get_argument_covariant(
@@ -175,21 +176,24 @@ impl<'a> GenericChainLink<'a> {
 				parent_link,
 				value,
 				from: _,
-			} => {
-				crate::utilities::notify!("Here");
-				value
-					.get_structure_restriction(on)
-					.map(CovariantContribution::TypeId)
-					.or_else(|| parent_link.and_then(|f| f.get_argument_covariant(on, info, types)))
-			}
+			} => value
+				.get_structure_restriction(on)
+				.map(CovariantContribution::TypeId)
+				.or_else(|| parent_link.and_then(|f| f.get_argument_covariant(on, info, types))),
 			GenericChainLink::FunctionRoot {
 				parent_arguments,
 				call_site_type_arguments,
 				type_arguments,
-			} => {
-				crate::utilities::notify!("Here");
-				None
-			}
+			} => call_site_type_arguments
+				.and_then(|parent| {
+					parent.get(&on).map(|(arg, _)| *arg).map(CovariantContribution::TypeId)
+				})
+				.or_else(|| {
+					call_site_type_arguments
+						.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
+						.map(CovariantContribution::TypeId)
+				})
+				.or_else(|| type_arguments.get(&on).copied().map(CovariantContribution::TypeId)),
 			GenericChainLink::MappedPropertyLink { parent_link, value } => value
 				.get(&on)
 				.map(|(arg, _)| arg.clone())
@@ -311,7 +315,10 @@ impl<'a> GenericChainLink<'a> {
 			} => {
 				match value {
 					GenericArguments::ExplicitRestrictions(n) => {
-						arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));
+						arguments.arguments.extend(n.iter().map(|(k, v)| {
+							assert!(*k != v.0);
+							(*k, v.0)
+						}));
 					}
 					GenericArguments::Closure(n) => arguments.closures.extend(n.iter().copied()),
 					GenericArguments::LookUp { .. } => todo!(),

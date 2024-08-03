@@ -29,13 +29,6 @@ pub struct TypeStore {
 	/// Some types are prototypes but have generic parameters but
 	pub(crate) lookup_generic_map: HashMap<TypeId, LookUpGenericMap>,
 
-	/// Set after the interface [`Type`] is created, so here
-	/// TODO private
-	pub(crate) interface_extends: HashMap<TypeId, TypeId>,
-
-	/// Set after the interface [`Type`] is created, so here
-	interface_type_parameter_extends: HashMap<TypeId, TypeId>,
-
 	/// Contains all the function types
 	///
 	/// TODO is there a faster alternative to a [`HashMap`] like how [`Type`]s are stored in a [`Vec`]
@@ -54,13 +47,13 @@ impl Default for TypeStore {
 		let types = vec![
 			// TODO will `TypeId::ANY_TYPE` cause any problems
 			Type::RootPolyType(PolyNature::Error(TypeId::ANY_TYPE)),
-			Type::Interface { name: "never".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "any".to_owned(), parameters: None, nominal: true },
+			Type::Interface { name: "never".to_owned(), parameters: None, extends: None },
+			Type::Interface { name: "any".to_owned(), parameters: None, extends: None },
 			Type::Class { name: "boolean".to_owned(), parameters: None },
 			Type::Class { name: "number".to_owned(), parameters: None },
 			Type::Class { name: "string".to_owned(), parameters: None },
 			// sure?
-			Type::Interface { name: "undefined".to_owned(), nominal: true, parameters: None },
+			Type::Interface { name: "undefined".to_owned(), parameters: None, extends: None },
 			Type::SpecialObject(SpecialObject::Null),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
@@ -69,9 +62,9 @@ impl Default for TypeStore {
 			// Array and Promise type parameter. Simplifies things
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "T".into(),
-				constrained: false,
+				extends: TypeId::ANY_TYPE,
 			}),
-			Type::Interface { name: "object".to_owned(), parameters: None, nominal: false },
+			Type::Interface { name: "object".to_owned(), parameters: None, extends: None },
 			Type::Class { name: "Function".to_owned(), parameters: None },
 			Type::Class { name: "RegExp".to_owned(), parameters: None },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
@@ -95,17 +88,16 @@ impl Default for TypeStore {
 			Type::RootPolyType(PolyNature::FunctionGeneric {
 				name: "new.target".to_owned(),
 				// TODO
-				eager_fixed: TypeId::ANY_TYPE,
+				extends: TypeId::ANY_TYPE,
 			}),
-			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
+			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, extends: None },
 			Type::Constant(Constant::Symbol { key: "iterator".to_owned() }),
 			Type::Constant(Constant::Symbol { key: "asyncIterator".to_owned() }),
 			Type::Constant(Constant::Symbol { key: "hasInstance".to_owned() }),
 			Type::Constant(Constant::Symbol { key: "toPrimitive".to_owned() }),
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "S".into(),
-				// TODO to string...
-				constrained: true,
+				extends: TypeId::STRING_TYPE,
 			}),
 			Type::AliasTo {
 				to: TypeId::STRING_TYPE,
@@ -140,16 +132,15 @@ impl Default for TypeStore {
 			},
 			Type::RootPolyType(PolyNature::MappedGeneric {
 				name: "NonOptional".into(),
-				eager_fixed: TypeId::BOOLEAN_TYPE,
+				extends: TypeId::BOOLEAN_TYPE,
 			}),
 			Type::RootPolyType(PolyNature::MappedGeneric {
 				name: "Writable".into(),
-				eager_fixed: TypeId::BOOLEAN_TYPE,
+				extends: TypeId::BOOLEAN_TYPE,
 			}),
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "T".into(),
-				// TODO to number...
-				constrained: true,
+				extends: TypeId::NUMBER_TYPE,
 			}),
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
@@ -212,9 +203,6 @@ impl Default for TypeStore {
 			functions: Default::default(),
 			called_functions: Default::default(),
 			closure_counter: 0,
-			interface_extends: Default::default(),
-			// TODO for some of the above needs stuff
-			interface_type_parameter_extends: Default::default(),
 		}
 	}
 }
@@ -435,37 +423,38 @@ impl TypeStore {
 		indexer: TypeId,
 		environment: &Environment,
 	) -> TypeId {
-		if let Some(base) = get_constraint(indexee, self) {
+		use super::properties::{get_property_unbound, AccessMode, Publicity};
+		if let Some(_) = get_constraint(indexee, self) {
 			let under = PropertyKey::from_type(indexer, self);
 			let ty = Type::Constructor(Constructor::Property {
 				on: indexee,
 				under,
-				result: base,
-				mode: super::properties::AccessMode::Regular,
+				result: TypeId::ANY_TYPE,
+				mode: AccessMode::Regular,
 			});
 			self.register_type(ty)
-		} else if let Ok(prop) = super::properties::get_property_unbound(
-			(indexee, None),
-			(
-				crate::types::properties::Publicity::Public,
-				&PropertyKey::from_type(indexer, self),
-				None,
-			),
-			environment,
-			self,
-		) {
-			match prop {
-				LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(self),
-				value => {
-					crate::utilities::notify!("value={:?}", value);
-					TypeId::ERROR_TYPE
-				} // Logical::Or { .. } => todo!(),
-				  // Logical::Implies { .. } => todo!(),
-				  // Logical::BasedOnKey { .. } => todo!(),
-			}
 		} else {
-			crate::utilities::notify!("Error: no index on type annotation");
-			TypeId::ERROR_TYPE
+			let result = get_property_unbound(
+				(indexee, None),
+				(Publicity::Public, &PropertyKey::from_type(indexer, self), None),
+				false,
+				environment,
+				self,
+			);
+			if let Ok(prop) = result {
+				match prop {
+					LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(self),
+					value => {
+						crate::utilities::notify!("value={:?}", value);
+						TypeId::ERROR_TYPE
+					} // Logical::Or { .. } => todo!(),
+					  // Logical::Implies { .. } => todo!(),
+					  // Logical::BasedOnKey { .. } => todo!(),
+				}
+			} else {
+				crate::utilities::notify!("Error: no index on type annotation");
+				TypeId::ERROR_TYPE
+			}
 		}
 	}
 
@@ -506,12 +495,18 @@ impl TypeStore {
 	}
 
 	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	/// TODO check disjoint
 	pub(crate) fn modify_interface_type_parameter_constraint(
 		&mut self,
 		ty: TypeId,
 		constraint: TypeId,
 	) {
-		self.interface_type_parameter_extends.insert(ty, constraint);
+		let ty = &mut self.types[ty.0 as usize];
+		if let Type::RootPolyType(PolyNature::StructureGeneric { extends, .. }) = ty {
+			*extends = constraint;
+		} else {
+			todo!("{:?}", ty)
+		}
 	}
 
 	/// *Dangerous* . TODO WIP
@@ -527,7 +522,27 @@ impl TypeStore {
 
 	/// *Dangerous* type modifying types. TODO this might be modified in the future
 	pub(crate) fn set_extends_on_interface(&mut self, interface_type: TypeId, extends: TypeId) {
-		self.interface_extends.insert(interface_type, extends);
+		if let Type::Interface { extends: Some(ref mut old), .. } =
+			self.types[interface_type.0 as usize]
+		{
+			*old = extends;
+		}
+	}
+
+	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	pub(crate) fn update_alias(&mut self, alias_type: TypeId, to: TypeId) {
+		if let Type::AliasTo { to: ref mut old, .. } = self.types[alias_type.0 as usize] {
+			*old = to;
+		}
+	}
+
+	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	pub(crate) fn update_generic_extends(&mut self, generic: TypeId, to: TypeId) {
+		if let Type::RootPolyType(PolyNature::StructureGeneric { ref mut extends, .. }) =
+			self.types[generic.0 as usize]
+		{
+			*extends = to;
+		}
 	}
 
 	pub(crate) fn new_class_constructor_type(&mut self, constructor: FunctionType) -> TypeId {

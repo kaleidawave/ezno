@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-/// For `notify!` macro below. This caches the value looked up by std::env::var(...)
+// For `notify!` macro below. This caches the value looked up by std::env::var(...)
 thread_local! {
 	static IS_DEBUG_MODE: Cell<Option<bool>> = Cell::new(None);
 	static DEBUG_MODE_PAUSED: Cell<bool> = Cell::new(false);

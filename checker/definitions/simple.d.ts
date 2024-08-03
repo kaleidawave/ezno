@@ -54,11 +54,11 @@ declare class Array<T> {
 
     length: number;
 
-    push(item: T) {
-        let at = this.length++;
-        this[at] = item;
-        return at + 1
-    }
+    // push(item: T) {
+    //     let at = this.length++;
+    //     this[at] = item;
+    //     return at + 1
+    // }
 
     // pop(): T | undefined {
     //     if (this.length === 0) {

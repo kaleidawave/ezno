@@ -224,20 +224,3 @@ impl SynthesisedParameters {
 		}
 	}
 }
-
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub struct SynthesisedArgument {
-	pub(crate) spread: bool,
-	pub(crate) value: TypeId,
-	pub(crate) position: SpanWithSource,
-}
-
-impl SynthesisedArgument {
-	pub fn non_spread_type(&self) -> Result<TypeId, ()> {
-		if self.spread {
-			Err(())
-		} else {
-			Ok(self.value)
-		}
-	}
-}

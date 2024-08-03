@@ -186,7 +186,7 @@ object.value satisfies string
 let a = 2;
 const obj = {
 	x: 5,
-	set value(v) {
+	set value(this: { x: number }, v) {
 		this.x = v;
 	}
 }
@@ -256,9 +256,9 @@ obj2.a satisfies boolean;
 #### Set property with key
 
 ```ts
-const obj = { a: 2 }
+const obj: { a?: number, b?: number } = { a: 2 }
 
-function setProperty(key: "a" | "b", value) {
+function setProperty(key: "a" | "b", value: number) {
 	obj[key] = value;
 }
 
@@ -844,7 +844,7 @@ toUpperCase();
 #### Calling `new` on a function
 
 ```ts
-function MyClass(this: { set value(a: any) }, value) {
+function MyClass(value) {
 	this.value = value
 }
 
@@ -1110,7 +1110,7 @@ setAtoString({ a: 6 });
 setAtoString(myObject);
 ```
 
-- Invalid assignment to parameter
+- Invalid assignment through parameter
 
 > Error message could be better. Full diagnostic contains labels with more information
 > `readA` is allowed, which is disallowed in Hegel, but here is allowed to preserve TSC compatibility (and because how structural subtyping is implemented)
@@ -1159,6 +1159,42 @@ const c = a;
 
 - Expected false, found true
 - Expected string, found false
+
+#### Unconditional throw warning
+
+```ts
+function safeDivide(num: number, denom: number) {
+	if (denom === 0) {
+		throw new Error("Cannot divide by zero");
+	}
+	return num / denom
+}
+
+safeDivide(8, 4) satisfies 2;
+
+safeDivide(10, 0);
+```
+
+- Conditional '[Error] { message: \"Cannot divide by zero\" }' was thrown in function
+
+#### Unreachable statement
+
+```ts
+function throwGreeting() {
+    throw "Hello";
+    return "Unreachable!"
+}
+
+function doSomething() {
+    throwGreeting()
+    const unreachable = 2;
+}
+```
+
+> One is for `return 5` the other is for `const x = 2;`
+
+- Unreachable statement
+- Unreachable statement
 
 ### Closures
 
@@ -2682,10 +2718,11 @@ interface Wrapper<T> {
 	internal: T
 }
 
-const my_wrapped: Wrapper<number> = { internal: "hi" }
+({ internal: "hi" } satisfies Wrapper<number>);
+({ internal: "hi" } satisfies Wrapper<string>);
 ```
 
-- Type { internal: "hi" } is not assignable to type Wrapper\<number>
+- Expected Wrapper\<number>, found { internal: \"hi\" }
 
 #### Array property checking
 
@@ -3225,9 +3262,9 @@ export const mean_gravity = 9.806;
 
 - Expected 2, found 9.806
 
-### Extras
+### Stability
 
-> This contains new features. Most are WIP
+> What to do in the occurance of a type error
 
 #### Use type annotation in the presence of error
 
@@ -3252,41 +3289,27 @@ const z: number = getString(2);
 - Could not find variable 'h' in scope
 - Type (error) string is not assignable to type number
 
-#### Unconditional throw
+#### Errors carries
+
+> Note only one error raised. This prevents the compiler presenting loads of errors if an origin is invalid
 
 ```ts
-function safeDivide(num: number, denom: number) {
-	if (denom === 0) {
-		throw new Error("Cannot divide by zero");
-	}
-	return num / denom
+const obj = { prop: 2 };
+console.log(obj.a.b.c);
+
+function x() {
+	return y
 }
 
-safeDivide(8, 4) satisfies 2;
-
-safeDivide(10, 0);
+x().nothing
 ```
 
-- Conditional '[Error] { message: \"Cannot divide by zero\" }' was thrown in function
+- Could not find variable 'y' in scope
+- No property 'a' on { prop: 2 }
 
-#### Unreachable statement
+### Extras
 
-```ts
-function throwGreeting() {
-    throw "Hello";
-    return "Unreachable!"
-}
-
-function doSomething() {
-    throwGreeting()
-    const unreachable = 2;
-}
-```
-
-> One is for `return 5` the other is for `const x = 2;`
-
-- Unreachable statement
-- Unreachable statement
+> This contains new features. Most are WIP
 
 #### JSX type
 
@@ -3326,21 +3349,3 @@ register(document.title)
 ```
 
 - Argument of type string is not assignable to parameter of type Literal\<string\>
-
-#### Errors carries
-
-> Note only one error raised. This prevents the compiler presenting loads of errors if an origin is invalid
-
-```ts
-const obj = { prop: 2 };
-console.log(obj.a.b.c);
-
-function x() {
-	return y
-}
-
-x().nothing
-```
-
-- Could not find variable 'y' in scope
-- No property 'a' on { prop: 2 }

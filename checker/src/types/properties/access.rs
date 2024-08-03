@@ -103,6 +103,7 @@ pub(crate) fn resolver(
 pub(crate) fn get_property_unbound(
 	(on, on_type_arguments): (TypeId, GenericChain),
 	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
+	require_both_logical: bool,
 	info_chain: &impl InformationChain,
 	types: &TypeStore,
 ) -> PossibleLogical<PropertyValue> {
@@ -139,6 +140,7 @@ pub(crate) fn get_property_unbound(
 	fn get_property_on_type_unbound(
 		(on, on_type_arguments): (TypeId, GenericChain),
 		(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
+		require_both_logical: bool,
 		info_chain: &impl InformationChain,
 		types: &TypeStore,
 	) -> PossibleLogical<PropertyValue> {
@@ -189,6 +191,7 @@ pub(crate) fn get_property_unbound(
 				get_property_on_type_unbound(
 					(*to, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					require_both_logical,
 					info_chain,
 					types,
 				)
@@ -200,6 +203,7 @@ pub(crate) fn get_property_unbound(
 			Type::And(left, right) => get_property_on_type_unbound(
 				(*left, on_type_arguments),
 				(publicity, under, under_type_arguments),
+				require_both_logical,
 				info_chain,
 				types,
 			)
@@ -207,6 +211,7 @@ pub(crate) fn get_property_unbound(
 				get_property_on_type_unbound(
 					(*right, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					require_both_logical,
 					info_chain,
 					types,
 				)
@@ -238,12 +243,17 @@ pub(crate) fn get_property_unbound(
 						let aliases =
 							get_constraint(on, types).expect("poly type with no constraint");
 
-						get_property_on_type_unbound(
-							(aliases, on_type_arguments),
-							(publicity, under, under_type_arguments),
-							info_chain,
-							types,
-						)
+						if aliases == TypeId::ANY_TO_INFER_TYPE {
+							Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }))
+						} else {
+							get_property_on_type_unbound(
+								(aliases, on_type_arguments),
+								(publicity, under, under_type_arguments),
+								require_both_logical,
+								info_chain,
+								types,
+							)
+						}
 					})
 				}
 			}
@@ -277,6 +287,7 @@ pub(crate) fn get_property_unbound(
 					let property = get_property_on_type_unbound(
 						(*base, on_type_arguments),
 						(publicity, under, under_type_arguments),
+						require_both_logical,
 						info_chain,
 						types,
 					)?;
@@ -293,29 +304,53 @@ pub(crate) fn get_property_unbound(
 			| Type::Or(..) => {
 				let (condition, truthy_result, otherwise_result) =
 					get_conditional(on, types).expect("case above != get_conditional");
-				let left = get_property_on_type_unbound(
-					(truthy_result, on_type_arguments),
-					(publicity, under, under_type_arguments),
-					info_chain,
-					types,
-				)?;
-				let right = get_property_on_type_unbound(
-					(otherwise_result, on_type_arguments),
-					(publicity, under, under_type_arguments),
-					info_chain,
-					types,
-				)?;
 
-				Ok(Logical::Or { condition, left: Box::new(left), right: Box::new(right) }.into())
-				// if let (Ok(left), Ok(right)) = (left, right) {
-				// 	crate::utilities::notify!(
-				// 		"Getting property left={:?}, right={:?}",
-				// 		left,
-				// 		right
-				// 	);
-				// } else {
-				// 	Err(Invalid(on))
-				// }
+				if require_both_logical {
+					let left = get_property_on_type_unbound(
+						(truthy_result, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						require_both_logical,
+						info_chain,
+						types,
+					)?;
+					let right = get_property_on_type_unbound(
+						(otherwise_result, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						require_both_logical,
+						info_chain,
+						types,
+					)?;
+
+					Ok(Logical::Or { condition, left: Box::new(left), right: Box::new(right) }
+						.into())
+				} else {
+					let left = get_property_on_type_unbound(
+						(truthy_result, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						require_both_logical,
+						info_chain,
+						types,
+					);
+					let right = get_property_on_type_unbound(
+						(otherwise_result, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						require_both_logical,
+						info_chain,
+						types,
+					);
+					if left.is_err() && right.is_err() {
+						Err(Invalid(on))
+					} else {
+						let left = left.unwrap_or(LogicalOrValid::Logical(Logical::Pure(
+							PropertyValue::Deleted,
+						)));
+						let right = right.unwrap_or(LogicalOrValid::Logical(Logical::Pure(
+							PropertyValue::Deleted,
+						)));
+						Ok(Logical::Or { condition, left: Box::new(left), right: Box::new(right) }
+							.into())
+					}
+				}
 			}
 			Type::Constructor(_constructor) => {
 				let on_constructor_type = resolver(
@@ -334,6 +369,7 @@ pub(crate) fn get_property_unbound(
 					get_property_on_type_unbound(
 						(aliases, on_type_arguments),
 						(publicity, under, under_type_arguments),
+						require_both_logical,
 						info_chain,
 						types,
 					)
@@ -394,7 +430,7 @@ pub(crate) fn get_property_unbound(
 					.map(LogicalOrValid::Logical)
 					.ok_or(Invalid(on))
 			}
-			Type::Interface { .. } => resolver(
+			Type::Interface { extends, .. } => resolver(
 				(on, on_type_arguments),
 				(publicity, under, under_type_arguments),
 				info_chain,
@@ -404,11 +440,11 @@ pub(crate) fn get_property_unbound(
 			.map(LogicalOrValid::Logical)
 			.ok_or(Invalid(on))
 			.or_else(|_| {
-				// TODO class and class constructor extends etc
-				if let Some(extends) = types.interface_extends.get(&on) {
+				if let Some(extends) = extends {
 					get_property_on_type_unbound(
 						(*extends, on_type_arguments),
 						(publicity, under, under_type_arguments),
+						require_both_logical,
 						info_chain,
 						types,
 					)
@@ -434,6 +470,7 @@ pub(crate) fn get_property_unbound(
 					get_property_on_type_unbound(
 						(*prototype, on_type_arguments),
 						(publicity, under, under_type_arguments),
+						require_both_logical,
 						info_chain,
 						types,
 					)
@@ -461,6 +498,18 @@ pub(crate) fn get_property_unbound(
 					Err(Invalid(on))
 				}
 			}
+			Type::Constant(Constant::String(s)) if under.is_equal_to("length") => {
+				// TODO temp TypeId::NUMBER_GENERIC for slice member
+				let count = s.chars().count();
+				Ok(Logical::BasedOnKey(LeftRight::Left {
+					value: Box::new(Logical::Pure(PropertyValue::Value(TypeId::NUMBER_GENERIC))),
+					key_arguments: crate::Map::from_iter([(
+						TypeId::NUMBER_GENERIC,
+						(CovariantContribution::Number(count as f64), 0),
+					)]),
+				})
+				.into())
+			}
 			Type::Constant(cst) => resolver(
 				(on, on_type_arguments),
 				(publicity, under, under_type_arguments),
@@ -475,6 +524,7 @@ pub(crate) fn get_property_unbound(
 				get_property_on_type_unbound(
 					(backing_type, on_type_arguments),
 					(publicity, under, under_type_arguments),
+					require_both_logical,
 					info_chain,
 					types,
 				)
@@ -486,7 +536,7 @@ pub(crate) fn get_property_unbound(
 				todo!()
 			}
 			Type::SpecialObject(SpecialObject::Proxy(proxy)) => {
-				Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(*proxy)))
+				Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(*proxy, on)))
 			}
 			Type::SpecialObject(SpecialObject::Generator { .. }) => {
 				todo!()
@@ -495,6 +545,7 @@ pub(crate) fn get_property_unbound(
 				get_property_on_type_unbound(
 					(TypeId::REGEXP_TYPE, None),
 					(publicity, under, under_type_arguments),
+					require_both_logical,
 					info_chain,
 					types,
 				)
@@ -519,12 +570,14 @@ pub(crate) fn get_property_unbound(
 			let left = get_property_unbound(
 				(on, on_type_arguments),
 				(publicity, &PropertyKey::Type(truthy_result), under_type_arguments),
+				require_both_logical,
 				info_chain,
 				types,
 			)?;
 			let right = get_property_unbound(
 				(on, on_type_arguments),
 				(publicity, &PropertyKey::Type(otherwise_result), under_type_arguments),
+				require_both_logical,
 				info_chain,
 				types,
 			)?;
@@ -535,6 +588,7 @@ pub(crate) fn get_property_unbound(
 			get_property_on_type_unbound(
 				(on, on_type_arguments),
 				(publicity, &PropertyKey::Type(n), under_type_arguments),
+				require_both_logical,
 				info_chain,
 				types,
 			)
@@ -542,7 +596,7 @@ pub(crate) fn get_property_unbound(
 			{
 				let n = if let Type::RootPolyType(crate::types::PolyNature::MappedGeneric {
 					name,
-					eager_fixed,
+					extends,
 				}) = types.get_type_by_id(n)
 				{
 					if let Some(argument) =
@@ -551,6 +605,7 @@ pub(crate) fn get_property_unbound(
 						return get_property_on_type_unbound(
 							(on, on_type_arguments),
 							(publicity, &PropertyKey::Type(argument), under_type_arguments),
+							require_both_logical,
 							info_chain,
 							types,
 						);
@@ -558,38 +613,12 @@ pub(crate) fn get_property_unbound(
 						crate::utilities::notify!("No mapped argument");
 						n
 					}
-				// crate::utilities::notify!("{} {:?}", name, types.get_type_by_id(*eager_fixed));
-				// let n = under_type_arguments
-				// 	.as_ref()
-				// 	.and_then(|args| {
-				// 		crate::utilities::notify!("{:?}", under_type_arguments);
-				// 		args.get_single_argument(*eager_fixed)
-				// 	})
-				// 	.unwrap_or(n);
-
-				// crate::utilities::notify!("Result {:?}", types.get_type_by_id(n));
 				} else {
 					n
 				};
-
-				// Note uses intermediate function to avoid cyclic recursion
-				// TODO could short here
-				// let property_is = get_property_on_type_unbound(
-				// 	(on, on_type_arguments),
-				// 	(publicity, &PropertyKey::Type(n), under_type_arguments),
-				// 	info_chain,
-				// 	types,
-				// );
-
-				// crate::utilities::notify!("IGNORING VALUE {:?}", property_is);
 			}
 
-			// TODO
-			// let optional = if let TypeId::STRING_TYPE | TypeId::NUMBER_TYPE = n {
-			//  true
-			// } else {
-			// 	false
-			// };
+			// let filter = get_constraint(*key, types).unwrap_or(*key);
 
 			Ok(Logical::BasedOnKey(LeftRight::Right { on, filter: *key }).into())
 		}
@@ -597,6 +626,7 @@ pub(crate) fn get_property_unbound(
 		get_property_on_type_unbound(
 			(on, on_type_arguments),
 			(publicity, under, under_type_arguments),
+			require_both_logical,
 			info_chain,
 			types,
 		)
@@ -653,69 +683,60 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		(on, None)
 	};
 
-	let result =
-		get_property_unbound((to_index, None), (publicity, under, None), top_environment, types);
+	let require_both_logical = true;
+	let result = get_property_unbound(
+		(to_index, None),
+		(publicity, under, None),
+		require_both_logical,
+		top_environment,
+		types,
+	);
 
 	{
 		crate::utilities::notify!("Access result {:?}", result);
 	}
 
 	match result {
-		Ok(logical) => {
-			if let LogicalOrValid::Logical(logical) = logical {
-				let (kind, result) = resolve_property_on_logical(
-					(logical, None),
-					(on, under),
-					top_environment,
-					types,
-					(behavior, diagnostics),
+		Ok(LogicalOrValid::Logical(logical)) => {
+			let (kind, result) = resolve_property_on_logical(
+				(logical, None),
+				(on, under),
+				top_environment,
+				types,
+				(behavior, diagnostics),
+				mode,
+			)?;
+
+			if let Some(via) = via {
+				let constructor = types.register_type(Type::Constructor(Constructor::Property {
+					on,
+					under: under.into_owned(),
+					result,
 					mode,
-				)?;
+				}));
+				// TODO if not constant etc
+				behavior.get_latest_info(top_environment).events.push(Event::Getter {
+					on,
+					under: under.into_owned(),
+					reflects_dependency: Some(constructor),
+					publicity,
+					position,
+					mode,
+				});
 
-				if let Some(via) = via {
-					let constructor =
-						types.register_type(Type::Constructor(Constructor::Property {
-							on,
-							under: under.into_owned(),
-							result,
-							mode,
-						}));
-					// TODO if not constant etc
-					behavior.get_latest_info(top_environment).events.push(Event::Getter {
-						on,
-						under: under.into_owned(),
-						reflects_dependency: Some(constructor),
-						publicity,
-						position,
-						mode,
-					});
-
-					Some((kind, constructor))
-				} else {
-					Some((kind, result))
-				}
+				Some((kind, constructor))
 			} else {
-				// TODO
-				None
+				Some((kind, result))
 			}
 		}
+		Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(proxy, proxy_ty))) => {
+			proxy_access((proxy, proxy_ty), under, (behavior, diagnostics), top_environment, types)
+		}
+		Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { .. })) => {
+			crate::utilities::notify!("TODO infer constraint");
+			None
+		}
 		Err(err) => None,
-		// match err {
-		// 	MissingOrToCalculate::Missing => None,
-		// 	MissingOrToCalculate::Error => {
-		// 		// Don't return none because that will raise error!
-		// 		Some((PropertyKind::Direct, TypeId::ERROR_TYPE))
-		// 	}
-		// 	// Can get through set prototype..?
-		// 	MissingOrToCalculate::Infer { .. } => {
-		// 		crate::utilities::notify!("TODO set infer");
-		// 		Some((PropertyKind::Direct, TypeId::ERROR_TYPE))
-		// 	}
-		// 	MissingOrToCalculate::Proxy(Proxy { .. }) => {
-		// 		todo!(); // #33
-		// 		 // TODO pass down
-		// 	}
-		// },
 	}
 }
 
@@ -805,6 +826,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						Type::Class { .. }
 						| Type::Interface { .. }
 						| Type::And(_, _)
+						| Type::AliasTo { to: _, name: _, parameters: _ }
 						| Type::Or(_, _) => {
 							crate::utilities::notify!(
 							    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
@@ -837,9 +859,6 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 								Some((PropertyKind::Direct, value))
 							}
 						}
-						Type::AliasTo { to: _, name: _, parameters: _ } => {
-							todo!()
-						}
 					}
 				}
 				PropertyValue::GetterAndSetter { getter, setter: _ }
@@ -857,20 +876,6 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					};
 					let result =
 						getter.call(Vec::new(), input, environment, (behavior, diagnostics), types);
-					// let getter = types.functions.get(&getter).unwrap().clone();
-					// let call = getter.call(
-					// 	(
-					// 		ThisValue::Passed(on),
-					// 		&[],
-					// 		None,
-					// 		// TODO structure generics
-					// 		None,
-					// 	),
-					// 	input,
-					// 	environment,
-					// 	behavior,
-					// 	types,
-					// );
 					match result {
 						Ok(res) => {
 							let application_result =
@@ -990,13 +995,6 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				)
 			}
 			LeftRight::Right { on, filter } => {
-				// todo!()
-				crate::utilities::notify!(
-					"Here (should do get_properties with filter) {:?} {:?}",
-					on,
-					filter
-				);
-				None
 				// resolve_property_on_logical(
 				// 	(*log_on, generics),
 				// 	(on, under),
@@ -1005,49 +1003,105 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				// 	(behavior, diagnostics),
 				// 	mode,
 				// )
+				let entries = super::list::get_properties_on_single_type2(
+					(on, generics),
+					types,
+					environment,
+					filter,
+				);
+				let mut iter = entries.into_iter();
+				if let Some((_, first_value, _)) = iter.next() {
+					// TODO should properly evaluate value
+					let mut value = first_value.as_get_type(types);
+					for (_, other, _) in iter {
+						value = types.new_or_type(other.as_get_type(types), value);
+					}
+					value = types.new_or_type(value, TypeId::UNDEFINED_TYPE);
+
+					// TODO property result
+					let value = types
+						.register_type(Type::RootPolyType(crate::types::PolyNature::Open(value)));
+
+					Some((PropertyKind::Direct, value))
+				} else {
+					None
+				}
 			}
 		},
 	}
 }
 
-/// Like [`get_property_unbound`] but gets something. For excess properties and LSP
-pub fn get_some_property(
-	(on, on_type_arguments): (TypeId, GenericChain),
-	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
-	info_chain: &impl InformationChain,
-	types: &TypeStore,
-) -> PossibleLogical<PropertyValue> {
-	// crate::utilities::notify!("{:?}", (on, types.get_type_by_id(on)));
-	// Special handling for `or` or other branching conditionals
-	if let Some((_, left, right)) = get_conditional(on, types) {
-		return if let left @ Ok(_) = get_some_property(
-			(left, on_type_arguments),
-			(publicity, under, under_type_arguments),
-			info_chain,
-			types,
-		) {
-			left
-		} else {
-			get_some_property(
-				(right, on_type_arguments),
-				(publicity, under, under_type_arguments),
-				info_chain,
-				types,
-			)
+pub(crate) fn proxy_access<B: CallCheckingBehavior>(
+	(Proxy { handler, over }, resolver): (Proxy, TypeId),
+	under: &PropertyKey,
+	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	environment: &mut Environment,
+	types: &mut TypeStore,
+) -> Option<(PropertyKind, TypeId)> {
+	use crate::types::calling::{
+		application_result_to_return_type, CalledWithNew, CallingInput, SynthesisedArgument,
+	};
+
+	// TODO pass down
+	let position = SpanWithSource::NULL;
+	let property_key = PropertyKey::String(std::borrow::Cow::Borrowed("get"));
+	let result = get_property(
+		handler,
+		Publicity::Public,
+		&property_key,
+		None,
+		environment,
+		(behavior, diagnostics),
+		types,
+		position,
+		AccessMode::DoNotBindThis,
+	);
+
+	if let Some((_, get_trap)) = result {
+		let key_to_pass_to_function = under.into_type(types);
+		// TODO receiver
+		let arguments = vec![
+			SynthesisedArgument { spread: false, value: over, position },
+			SynthesisedArgument { spread: false, value: key_to_pass_to_function, position },
+			SynthesisedArgument { spread: false, value: resolver, position },
+		];
+		let input = CallingInput {
+			// TOOD special
+			called_with_new: CalledWithNew::GetterOrSetter { this_type: handler },
+			// TODO
+			call_site: source_map::Nullable::NULL,
+			// TODO
+			max_inline: 0,
 		};
-	} else if let Some(on) = get_constraint(on, types) {
-		get_some_property(
-			(on, on_type_arguments),
-			(publicity, under, under_type_arguments),
-			info_chain,
+		let result = crate::types::calling::Callable::Type(get_trap).call(
+			arguments,
+			input,
+			environment,
+			(behavior, diagnostics),
 			types,
-		)
+		);
+		match result {
+			Ok(res) => {
+				let application_result =
+					application_result_to_return_type(res.result, environment, types);
+				Some((PropertyKind::Getter, application_result))
+			}
+			Err(_) => {
+				crate::utilities::notify!("TODO merge calling");
+				Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
+			}
+		}
 	} else {
-		get_property_unbound(
-			(on, on_type_arguments),
-			(publicity, under, under_type_arguments),
-			info_chain,
+		get_property(
+			over,
+			Publicity::Public,
+			under,
+			None,
+			environment,
+			(behavior, diagnostics),
 			types,
+			position,
+			AccessMode::DoNotBindThis,
 		)
 	}
 }

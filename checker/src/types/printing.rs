@@ -90,7 +90,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
 		Type::RootPolyType(nature) => match nature {
-			PolyNature::MappedGeneric { name, eager_fixed } => {
+			PolyNature::MappedGeneric { name, extends } => {
 				if debug {
 					write!(buf, "[mg {} {}] ", ty.0, name).unwrap();
 				}
@@ -100,40 +100,42 @@ pub fn print_type_into_buf<C: InformationChain>(
 				{
 					write!(buf, "{property}").unwrap();
 				} else {
-					print_type_into_buf(*eager_fixed, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
 				}
 			}
 			PolyNature::FunctionGeneric { name, .. }
-			| PolyNature::StructureGeneric { name, constrained: _ } => {
+			| PolyNature::StructureGeneric { name, extends: _ } => {
 				if debug {
 					if let PolyNature::FunctionGeneric { .. } = nature {
 						write!(buf, "[fg {} {}] ", ty.0, name).unwrap();
 					}
 				}
-				if let Some(structure_args) =
-					args.and_then(|args| args.get_argument(ty, info, types))
+				if let Some(arg) =
+					args.and_then(|args| args.get_argument_covariant(ty, info, types))
 				{
+					use crate::types::CovariantContribution;
 					if debug {
 						buf.push_str(" (specialised with) ");
 					}
-					for (more, arg) in structure_args.iter().nendiate() {
-						print_type_into_buf(*arg, buf, cycles, args, types, info, debug);
-						if more {
-							buf.push_str(" | ");
+					match arg {
+						CovariantContribution::TypeId(id) => {
+							print_type_into_buf(id, buf, cycles, args, types, info, debug);
+						}
+						arg => {
+							crate::utilities::notify!("TODO print {:?}", arg);
 						}
 					}
+
+				// for (more, arg) in structure_args.iter().nendiate() {
+				// 	print_type_into_buf(*arg, buf, cycles, args, types, info, debug);
+				// 	if more {
+				// 		buf.push_str(" | ");
+				// 	}
+				// }
 				} else {
 					if debug {
-						if let PolyNature::FunctionGeneric { eager_fixed, .. } = nature {
-							print_type_into_buf(
-								*eager_fixed,
-								buf,
-								cycles,
-								args,
-								types,
-								info,
-								debug,
-							);
+						if let PolyNature::FunctionGeneric { extends, .. } = nature {
+							print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
 							buf.push_str("] ");
 						} else {
 							write!(buf, "[sg {}]", ty.0).unwrap();
@@ -306,7 +308,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 				// }
 			}
 			Constructor::Property { on, under, result, mode: _ } => {
-				if crate::types::is_explicit_generic(*on, types) {
+				if crate::types::is_explicit_generic(*on, types)
+					|| matches!(types.get_type_by_id(*on), Type::Interface { .. })
+				{
 					print_type_into_buf(*on, buf, cycles, args, types, info, debug);
 					buf.push('[');
 					match under {
@@ -328,7 +332,20 @@ pub fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				} else {
 					if debug {
-						write!(buf, "(property under {:?}, result=->)", under).unwrap();
+						buf.push_str("(property on ");
+						print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+						buf.push_str(" under ");
+						match under {
+							PropertyKey::String(s) => {
+								buf.push('"');
+								buf.push_str(s);
+								buf.push('"');
+							}
+							PropertyKey::Type(t) => {
+								print_type_into_buf(*t, buf, cycles, args, types, info, debug);
+							}
+						}
+						buf.push_str(") ");
 					}
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}
@@ -412,6 +429,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 				if let Type::AliasTo { to, .. } = t {
 					buf.push_str(" = ");
 					print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+				} else if let Type::Class { .. } = t {
+					buf.push_str(" (class)");
 				}
 			} else {
 				buf.push_str(name);

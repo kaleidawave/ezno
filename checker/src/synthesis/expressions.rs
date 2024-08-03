@@ -49,7 +49,9 @@ use crate::{
 		get_larger_type,
 		logical::{Logical, LogicalOrValid},
 		printing::{print_property_key, print_type},
-		properties::{get_properties_on_single_type, get_some_property, AccessMode, PropertyKey},
+		properties::{
+			get_properties_on_single_type, get_property_unbound, AccessMode, PropertyKey,
+		},
 		Constructor,
 	},
 	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
@@ -855,6 +857,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		),
 		Expression::ClassExpression(class) => Instance::RValue(synthesise_class_declaration(
 			class,
+			None,
 			expecting,
 			environment,
 			checking_data,
@@ -1325,9 +1328,10 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				let position_with_source = position.with_source(environment.get_source());
 
-				let maybe_property_expecting = get_some_property(
+				let maybe_property_expecting = get_property_unbound(
 					(expecting, None),
 					(Publicity::Public, &key, None),
+					false,
 					environment,
 					&checking_data.types,
 				);
@@ -1408,9 +1412,10 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				);
 
 				// TODO needs improvement
-				let property_expecting = get_some_property(
+				let property_expecting = get_property_unbound(
 					(expecting, None),
 					(Publicity::Public, &key, None),
+					false,
 					environment,
 					&checking_data.types,
 				)

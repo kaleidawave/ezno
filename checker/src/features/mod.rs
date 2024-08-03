@@ -270,6 +270,7 @@ pub fn delete_operator(
 				let property_constraint = properties::get_property_unbound(
 					(constraint, None),
 					(publicity, &under, None),
+					false,
 					environment,
 					types,
 				);
@@ -531,6 +532,7 @@ pub(crate) fn has_property(
 			let result = properties::get_property_unbound(
 				(rhs, None),
 				(publicity, key, None),
+				false,
 				information,
 				types,
 			);

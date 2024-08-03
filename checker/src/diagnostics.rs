@@ -308,6 +308,10 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 		possibles: Vec<&'a str>,
 	},
+	/// When accessing
+	CyclicTypeAlias {
+		position: SpanWithSource,
+	},
 	NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
 	RestParameterAnnotationShouldBeArrayType(SpanWithSource),
 	CouldNotFindVariable {
@@ -742,6 +746,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				}
 			}
+			TypeCheckError::CyclicTypeAlias { position } => {
+				Diagnostic::Position {
+					reason: "Circular type reference".to_owned(),
+					position,
+					kind,
+				}
+			}
 			TypeCheckError::CannotDeleteProperty(CannotDeleteFromError { constraint, position }) => {
 				Diagnostic::Position {
 					reason: format!("Cannot delete from object constrained to {constraint}"),
@@ -784,17 +795,17 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position,
 					kind,
 				},
-				// Diagnostic::PositionWithAdditionalLabels {
-				// 	reason: format!(
-				// 		"Type {value_type} is not assignable to type {variable_type}",
-				// 	),
-				// 	position: value_position,
-				// 	labels: vec![(
-				// 		format!("Variable declared with type {variable_type}"),
-				// 		variable_position,
-				// 	)],
-				// 	kind,
-				// }
+				SetPropertyError::AssigningToNonExistent {
+					property,
+					position,
+				} => Diagnostic::Position {
+					reason: match property {
+						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to non-existent property of type {ty}"),
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to non-existent property '{property}'") 
+					},
+					position,
+					kind,
+				}
 			}
 		}
 	}
@@ -1063,7 +1074,7 @@ fn function_calling_error_diagnostic(
 			assignment_position,
 			call_site,
 		} => Diagnostic::PositionWithAdditionalLabels {
-			reason: format!("Invalid assignment to parameter{context}"),
+			reason: format!("Invalid assignment through parameter{context}"),
 			position: call_site,
 			kind,
 			labels: vec![(
@@ -1089,6 +1100,19 @@ fn function_calling_error_diagnostic(
 			Diagnostic::Position {
 				reason: format!("Cannot delete from object constrained to {constraint}"),
 				position: delete_position,
+				kind,
+			}
+		}
+		FunctionCallingError::NotConfiguarable {
+			property,
+			call_site,
+		} => {
+			Diagnostic::Position {
+				reason: match property {
+					PropertyKeyRepresentation::Type(ty) => format!("Property of type '{ty}' not configurable"),
+					PropertyKeyRepresentation::StringKey(property) => format!("Property '{property}' not configurable"),
+				},
+				position: call_site,
 				kind,
 			}
 		}

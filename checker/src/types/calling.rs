@@ -20,7 +20,7 @@ use crate::{
 		SubTypingOptions,
 	},
 	types::{
-		functions::SynthesisedArgument, generics::substitution::SubstitutionArguments,
+		generics::substitution::SubstitutionArguments,
 		get_structure_arguments_based_on_object_constraint, logical::*, properties::AccessMode,
 		substitute, FunctionEffect, FunctionType, GenericChainLink, ObjectNature,
 		PartiallyAppliedGenerics, Type,
@@ -98,6 +98,24 @@ impl CallingDiagnostics {
 	}
 }
 
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct SynthesisedArgument {
+	pub(crate) spread: bool,
+	pub(crate) value: TypeId,
+	pub(crate) position: SpanWithSource,
+}
+
+impl SynthesisedArgument {
+	pub fn non_spread_type(&self) -> Result<TypeId, ()> {
+		if self.spread {
+			Err(())
+		} else {
+			Ok(self.value)
+		}
+	}
+}
+
+/// Intermediate step for inference
 pub struct UnsynthesisedArgument<'a, A: crate::ASTImplementation> {
 	pub spread: bool,
 	pub expression: &'a A::Expression<'a>,
@@ -633,11 +651,17 @@ fn call_logical<B: CallCheckingBehavior>(
 								});
 							}
 							Err(ConstantFunctionError::NoLogicForIdentifier(name)) => {
-								let item = FunctionCallingError::NoLogicForIdentifier(
+								let err = FunctionCallingError::NoLogicForIdentifier(
 									name,
 									input.call_site,
 								);
-								diagnostics.errors.push(item);
+								diagnostics.errors.push(err);
+								return Err(BadCallOutput {
+									returned_type: types.new_error_type(function_type.return_type),
+								});
+							}
+							Err(ConstantFunctionError::FunctionCallingError(err)) => {
+								diagnostics.errors.push(err);
 								return Err(BadCallOutput {
 									returned_type: types.new_error_type(function_type.return_type),
 								});
@@ -936,6 +960,11 @@ pub enum FunctionCallingError {
 	DeleteConstraint {
 		constraint: TypeStringRepresentation,
 		delete_position: SpanWithSource,
+		/// Should be set by parent
+		call_site: SpanWithSource,
+	},
+	NotConfiguarable {
+		property: crate::diagnostics::PropertyKeyRepresentation,
 		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
@@ -1757,7 +1786,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			.iter()
 			.zip(call_site_type_arguments)
 			.map(|(param, (ty, position))| {
-				if let Type::RootPolyType(PolyNature::FunctionGeneric { eager_fixed, .. }) =
+				if let Type::RootPolyType(PolyNature::FunctionGeneric { extends, .. }) =
 					types.get_type_by_id(param.type_id)
 				{
 					let mut state = State {
@@ -1768,7 +1797,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 						object_constraints: None,
 					};
 					let type_is_subtype =
-						type_is_subtype(*eager_fixed, ty, &mut state, environment, types);
+						type_is_subtype(*extends, ty, &mut state, environment, types);
 
 					if let SubTypeResult::IsNotSubType(_) = type_is_subtype {
 						todo!("generic argument does not match restriction")

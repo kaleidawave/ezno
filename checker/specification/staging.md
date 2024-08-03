@@ -130,6 +130,20 @@ function x(p: readonly { a: string }) {
 
 - Cannot write to property 'a'
 
+#### Readonly to readonly
+
+```ts
+function func1(p: { a: string, b: string }) {
+	func2(p)
+}
+function func2(p: readonly { a: string }) { }
+
+const obj = Object.freeze({ a: "hi" });
+func2(obj)
+```
+
+- Argument of type { a: string, b: string } is not assignable to parameter of type Readonly<{ a: string }>
+
 ### Exceptions and `try-catch-finally`
 
 #### Conditional throw
@@ -524,7 +538,7 @@ const array1: Array<string> = []
 fakeRead(array1)
 ```
 
-- Invalid assignment to parameter
+- Invalid assignment through parameter
 
 ### Inferred return types
 
@@ -637,7 +651,7 @@ global satisfies 10
 
 - Expected string, found 0
 
-#### Getters AND setter can be Type via Object.defineProperty
+#### Getters AND setter can be type via `Object.defineProperty`
 
 > TODO parameter checking as well
 
@@ -714,6 +728,24 @@ obj.property = 70;
 - Expected string, found 42
 - Cannot write to property 'property'
 
+#### Descriptor carries across assignments
+
+> TODO defineProperties
+
+```ts
+const obj = {};
+Object.defineProperty(obj, 'property', {
+  value: 42,
+  enumerable: false,
+	// needed as all properties default to false
+  writable: true,
+});
+obj.property = 70;
+Object.getOwnPropertyDescriptor(obj, 'property') satisfies string;
+```
+
+- Expected string, found { value: 70, writable: true, enumerable: false, configurable: false }
+
 #### `Object.defineProperty` getter and setter
 
 > TODO setter
@@ -731,12 +763,22 @@ obj.property satisfies string;
 
 - Expected string, found 1
 
+#### `Object.defineProperty` configurable
+
+```ts
+const obj = {};
+Object.defineProperty(obj, 'property', { value: 6 });
+Object.defineProperty(obj, 'property', { value: "hi" });
+```
+
+- Property 'property' not configurable
+
 #### `Object.getOwnPropertyDescriptor`
 
 > TODO getOwnPropertyDescriptors
 
 ```ts
-const obj = { a: true };
+const obj = { a: "something" };
 Object.defineProperty(obj, 'b', { value: 42 });
 
 Object.getOwnPropertyDescriptor(obj, 'a') satisfies string;
@@ -745,7 +787,7 @@ Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
 
 > Order is also important
 
-- Expected string, found { value: true, writable: true, enumerable: true, configurable: true }
+- Expected string, found { value: "something", writable: true, enumerable: true, configurable: true }
 
 #### And on properties
 
@@ -774,6 +816,99 @@ global.property! satisfies number;
 ```
 
 - Expected number, found string
+
+#### New class
+
+```ts
+function new(property) {
+	return class {
+		[property] = 2
+	}
+}
+```
+
+- TODO
+
+### `Proxy`
+
+#### Proxy get
+
+```ts
+const proxy1 = new Proxy({ a: 2 }, { get(target: { a: number }, prop: string, receiver) {
+	if (prop === "a") {
+		return target["a"] + 1
+	}
+} } );
+
+proxy1.a satisfies string;
+```
+
+- Expected string, found 3
+
+#### Proxy set
+
+```ts
+let lastSet: string = "";
+const proxy1 = new Proxy({ a: 2 }, { 
+	set(target: { a: number }, prop: string, value: number, receiver) {
+		lastSet = prop;
+	} 
+});
+
+proxy1.a = 6;
+lastSet satisfies boolean;
+```
+
+- Expected boolean, found "a"
+
+#### Proxy handler fallthrough
+
+```ts
+const obj = { a: 2 };
+const proxy1 = new Proxy(obj, {  });
+
+proxy1.a = 6;
+obj.a satisfies 6;
+proxy1.a satisfies string;
+```
+
+- Expected string, found 6
+
+#### Proxy subtyping
+
+```ts
+const proxy1 = new Proxy({}, { get(_target, prop, _recivier) { return prop } });
+
+proxy1 satisfies { a: "a", b: "b" };
+proxy1 satisfies { c: "d" };
+```
+
+- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _recivier: any) => any } ]
+
+#### Assinging to non existent property
+
+> Allowing this could break objects passed to functions
+
+```ts
+const obj = { prop: 1 };
+// Fine
+obj.non_existent = 6;
+
+function func(param: { prop: number }) {
+	param.notProp = 5;
+}
+```
+
+- Cannot write to non-existent property 'notProp'
+
+#### Subtyping edge cases
+
+```ts
+"hi" satisfies { length: 3 };
+(() => {}) satisfies Function;
+```
+
+- Expected { length: 3 }, found "hi"
 
 ### Extras
 
@@ -824,4 +959,30 @@ type CIWord = "WORD" extends Uppercase<infer T> ? T : never;
 ```
 
 - Expected CaseInsensitive<"hi">, found "Hello"
-- Expected CaseInsensitive<"WORD">, found "wood"
+- Expected CIWord, found "wood"
+
+### Types
+
+#### Cyclic type alias
+
+```ts
+type Node<T> = { parent: Node<T>, value: T } | null;
+
+null satisfies Node<number>;
+({ parent: { parent: { parent: null, value: 2 }, value: 6 }, value: 2 } satisfies Node<number>);
+({ parent: { parent: { parent: null, value: "hi" }, value: 6 }, value: "hi" } satisfies Node<string>);
+```
+
+- Expected { parent: Node\<string>, value: string } | null, found { parent: { parent: { parent: null, value: "hi" }, value: 6 }, value: "hi" }
+
+#### Cyclic type alias check
+
+```ts
+type X = Y;
+type Y = X;
+
+// test usage doesn't blow up subtyping
+const x: X = 2;
+```
+
+- Circular type reference

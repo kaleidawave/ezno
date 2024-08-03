@@ -754,7 +754,7 @@ impl<T: ContextType> Context<T> {
 		let ty = Type::RootPolyType(PolyNature::FunctionGeneric {
 			name: name.to_owned(),
 			// TODO this is fixed!!
-			eager_fixed: constraint_type.unwrap_or(TypeId::ANY_TYPE),
+			extends: constraint_type.unwrap_or(TypeId::ANY_TYPE),
 		});
 
 		let ty = types.register_type(ty);

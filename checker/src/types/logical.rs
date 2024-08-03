@@ -63,15 +63,15 @@ impl<T> From<NeedsCalculation> for LogicalOrValid<T> {
 pub enum NeedsCalculation {
 	/// From [`TypeId::ANY_TYPE`]
 	Infer { on: TypeId },
-	/// Proxies require extra work in some cases
-	Proxy(Proxy),
+	/// Proxies require extra work in some cases. TypeId points to proxy
+	Proxy(Proxy, TypeId),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Invalid(pub TypeId);
 
 impl Invalid {
-	fn is_null(self) -> bool {
+	fn _is_null(self) -> bool {
 		self.0 == TypeId::NULL_TYPE
 	}
 }

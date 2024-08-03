@@ -13,8 +13,7 @@ use crate::{
 	},
 	subtyping::type_is_subtype,
 	types::{
-		calling::{self, CallingDiagnostics, FunctionCallingError},
-		functions::SynthesisedArgument,
+		calling::{self, CallingDiagnostics, FunctionCallingError, SynthesisedArgument},
 		generics::substitution::SubstitutionArguments,
 		is_type_truthy_falsy,
 		printing::print_type,
@@ -177,14 +176,7 @@ pub(crate) fn apply_events(
 					// }
 				}
 			}
-			Event::Setter {
-				on,
-				under,
-				new,
-				initialisation: initialization,
-				publicity,
-				position,
-			} => {
+			Event::Setter { on, under, new, publicity, position } => {
 				let on = substitute(*on, type_arguments, top_environment, types);
 
 				if unknown_mode {
@@ -193,28 +185,7 @@ pub(crate) fn apply_events(
 					top_environment.possibly_mutated_objects.insert(on, TypeId::ANY_TYPE);
 				} else {
 					let under = under.substitute(type_arguments, top_environment, types);
-
-					let new =
-						match new {
-							PropertyValue::Value(new) => PropertyValue::Value(substitute(
-								*new,
-								type_arguments,
-								top_environment,
-								types,
-							)),
-							value @ (PropertyValue::Getter(_)
-							| PropertyValue::Setter(_)
-							| PropertyValue::GetterAndSetter { .. }) => {
-								crate::utilities::notify!("Setting with getter/setter");
-								value.clone()
-							}
-							PropertyValue::Deleted | PropertyValue::ConditionallyExists { .. } => {
-								unreachable!("This should be handled by Event::DeleteProperty (not Event::Setter)")
-							}
-							PropertyValue::Configured { .. } => {
-								unreachable!("This should be handled by Event::Reconfigure (not Event::Setter)")
-							}
-						};
+					let new = substitute(*new, type_arguments, top_environment, types);
 
 					{
 						crate::utilities::notify!(
@@ -225,57 +196,35 @@ pub(crate) fn apply_events(
 						);
 					}
 
-					if *initialization {
-						// TODO temp fix for closures
-						let on = if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-							on,
-							arguments: _,
-						}) = types.get_type_by_id(on)
-						{
-							*on
-						} else {
-							on
-						};
+					let result = set_property(
+						on,
+						(*publicity, &under, new.clone()),
+						*position,
+						top_environment,
+						(target, diagnostics),
+						types,
+					);
 
-						target.get_latest_info(top_environment).register_property(
-							on,
-							*publicity,
-							under.clone(),
-							new,
-							true,
-							*position,
-						);
-					} else {
-						let result = set_property(
-							on,
-							(*publicity, &under, new.clone()),
-							*position,
-							top_environment,
-							(target, diagnostics),
-							types,
-						);
-
-						match result {
-							Ok(()) => {}
-							Err(err) => {
-								if let SetPropertyError::DoesNotMeetConstraint {
-									property_constraint,
-									value_type,
-									reason: _,
-									position: _,
-								} = err
-								{
-									diagnostics.errors.push(
-										crate::types::calling::FunctionCallingError::SetPropertyConstraint {
-											property_type: property_constraint,
-											value_type,
-											assignment_position: *position,
-											call_site: input.call_site,
-										},
-									);
-								} else {
-									unreachable!("set property check failed")
-								}
+					match result {
+						Ok(()) => {}
+						Err(err) => {
+							if let SetPropertyError::DoesNotMeetConstraint {
+								property_constraint,
+								value_type,
+								reason: _,
+								position: _,
+							} = err
+							{
+								diagnostics.errors.push(
+									crate::types::calling::FunctionCallingError::SetPropertyConstraint {
+										property_type: property_constraint,
+										value_type,
+										assignment_position: *position,
+										call_site: input.call_site,
+									},
+								);
+							} else {
+								unreachable!("set property check failed")
 							}
 						}
 					}
@@ -761,6 +710,48 @@ pub(crate) fn apply_events(
 							}
 						}
 					}
+				}
+				super::MiscellaneousEvents::RegisterProperty {
+					on,
+					publicity,
+					under,
+					value,
+					position,
+				} => {
+					let on = substitute(*on, type_arguments, top_environment, types);
+
+					// TODO temp fix for closures
+					let on = if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on,
+						arguments: _,
+					}) = types.get_type_by_id(on)
+					{
+						*on
+					} else {
+						on
+					};
+
+					let under = under.substitute(type_arguments, top_environment, types);
+					let value = match value {
+						PropertyValue::Value(value) => PropertyValue::Value(substitute(
+							*value,
+							type_arguments,
+							top_environment,
+							types,
+						)),
+						value => {
+							crate::utilities::notify!("TODO value {:?}", value);
+							value.clone()
+						}
+					};
+
+					target.get_latest_info(top_environment).register_property(
+						on,
+						*publicity,
+						under.clone(),
+						value.clone(),
+						*position,
+					);
 				}
 			},
 			Event::FinalEvent(final_event) => {
