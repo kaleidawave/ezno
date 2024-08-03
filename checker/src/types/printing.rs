@@ -308,10 +308,21 @@ pub fn print_type_into_buf<C: InformationChain>(
 				// }
 			}
 			Constructor::Property { on, under, result, mode: _ } => {
-				if crate::types::is_explicit_generic(*on, types)
-					|| matches!(types.get_type_by_id(*on), Type::Interface { .. })
+				crate::utilities::notify!("before {:?}", types.get_type_by_id(*on));
+				let on = if let Some(crate::types::CovariantContribution::TypeId(value)) =
+					args.and_then(|arg| arg.get_argument_covariant(*on, info, types))
 				{
-					print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+					value
+				} else {
+					*on
+				};
+
+				crate::utilities::notify!("after {:?}", types.get_type_by_id(on));
+
+				if crate::types::is_explicit_generic(on, types)
+					|| matches!(types.get_type_by_id(on), Type::Interface { .. } | Type::Object(_))
+				{
+					print_type_into_buf(on, buf, cycles, args, types, info, debug);
 					buf.push('[');
 					match under {
 						PropertyKey::String(s) => {
@@ -325,7 +336,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					};
 					buf.push(']');
 				} else if let Some(Type::PartiallyAppliedGenerics(sgs)) =
-					get_constraint(*on, types).map(|ty| types.get_type_by_id(ty))
+					get_constraint(on, types).map(|ty| types.get_type_by_id(ty))
 				{
 					let new_arguments = sgs.arguments.clone();
 					let args = GenericChainLink::append(ty, args.as_ref(), &new_arguments);
@@ -333,7 +344,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				} else {
 					if debug {
 						buf.push_str("(property on ");
-						print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+						print_type_into_buf(on, buf, cycles, args, types, info, debug);
 						buf.push_str(" under ");
 						match under {
 							PropertyKey::String(s) => {

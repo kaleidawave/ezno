@@ -1170,9 +1170,11 @@ function safeDivide(num: number, denom: number) {
 	return num / denom
 }
 
-safeDivide(8, 4) satisfies 2;
-
-safeDivide(10, 0);
+function func() {
+	safeDivide(8, 4) satisfies 2;
+	// ahh
+	safeDivide(10, 0);
+}
 ```
 
 - Conditional '[Error] { message: \"Cannot divide by zero\" }' was thrown in function

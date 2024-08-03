@@ -30,11 +30,12 @@ pub(crate) fn resolver(
 ) -> Option<(PropertyValue, Option<SliceArguments>, bool)> {
 	// TODO if on == constant string and property == length. Need to be able to create types here
 	info_chain.get_chain_of_info().find_map(|info: &LocalInformation| {
-		info.current_properties.get(&on).and_then(|properties_on_on| {
+		info.current_properties.get(&on).and_then(|on_properties| {
 			{
-				let (on_properties, on_type_arguments) = (properties_on_on, on_type_arguments);
 				let (required_publicity, want_key, want_type_arguments) =
 					(publicity, under, under_type_arguments);
+
+				// crate::utilities::notify!("{:?} {:?}", on, on_properties);
 
 				// TODO trailing for conditional?
 
@@ -562,11 +563,11 @@ pub(crate) fn get_property_unbound(
 	// }
 
 	if let PropertyKey::Type(key) = under {
-		let n = *key;
+		let key = *key;
 		// if *key == TypeId::ERROR_TYPE {
 		// 	return Err(MissingOrToCalculate::Error);
 		// } else
-		if let Some((condition, truthy_result, otherwise_result)) = get_conditional(n, types) {
+		if let Some((condition, truthy_result, otherwise_result)) = get_conditional(key, types) {
 			let left = get_property_unbound(
 				(on, on_type_arguments),
 				(publicity, &PropertyKey::Type(truthy_result), under_type_arguments),
@@ -583,44 +584,44 @@ pub(crate) fn get_property_unbound(
 			)?;
 
 			Ok(Logical::Or { condition, left: Box::new(left), right: Box::new(right) }.into())
-		} else if types.get_type_by_id(n).is_constant() {
+		} else if types.get_type_by_id(key).is_constant() {
 			crate::utilities::notify!("Here at constant");
 			get_property_on_type_unbound(
 				(on, on_type_arguments),
-				(publicity, &PropertyKey::Type(n), under_type_arguments),
+				(publicity, &PropertyKey::Type(key), under_type_arguments),
 				require_both_logical,
 				info_chain,
 				types,
 			)
 		} else {
 			{
-				let n = if let Type::RootPolyType(crate::types::PolyNature::MappedGeneric {
-					name,
-					extends,
-				}) = types.get_type_by_id(n)
-				{
-					if let Some(argument) =
-						under_type_arguments.and_then(|v| v.get_single_argument(n))
-					{
-						return get_property_on_type_unbound(
-							(on, on_type_arguments),
-							(publicity, &PropertyKey::Type(argument), under_type_arguments),
-							require_both_logical,
-							info_chain,
-							types,
-						);
-					} else {
-						crate::utilities::notify!("No mapped argument");
-						n
-					}
-				} else {
-					n
-				};
+				let debug = true;
+				crate::utilities::notify!(
+					"Key is {}",
+					crate::types::printing::print_type(key, types, info_chain, debug)
+				);
 			}
 
-			// let filter = get_constraint(*key, types).unwrap_or(*key);
-
-			Ok(Logical::BasedOnKey(LeftRight::Right { on, filter: *key }).into())
+			if let Type::RootPolyType(crate::types::PolyNature::MappedGeneric { name, extends }) =
+				types.get_type_by_id(key)
+			{
+				if let Some(argument) =
+					under_type_arguments.and_then(|v| v.get_single_argument(key))
+				{
+					return get_property_on_type_unbound(
+						(on, on_type_arguments),
+						(publicity, &PropertyKey::Type(argument), under_type_arguments),
+						require_both_logical,
+						info_chain,
+						types,
+					);
+				} else {
+					crate::utilities::notify!("No mapped argument");
+					Ok(Logical::BasedOnKey(LeftRight::Right { on, key }).into())
+				}
+			} else {
+				Ok(Logical::BasedOnKey(LeftRight::Right { on, key }).into())
+			}
 		}
 	} else {
 		get_property_on_type_unbound(
@@ -994,7 +995,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					mode,
 				)
 			}
-			LeftRight::Right { on, filter } => {
+			LeftRight::Right { on, key } => {
 				// resolve_property_on_logical(
 				// 	(*log_on, generics),
 				// 	(on, under),
@@ -1003,6 +1004,8 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				// 	(behavior, diagnostics),
 				// 	mode,
 				// )
+				let filter = get_constraint(key, types).unwrap_or(key);
+
 				let entries = super::list::get_properties_on_single_type2(
 					(on, generics),
 					types,

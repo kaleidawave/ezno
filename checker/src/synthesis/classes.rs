@@ -56,8 +56,6 @@ pub(super) fn synthesise_class_declaration<
 			unreachable!("expecting class type {:?}", class_type2)
 		};
 
-		crate::utilities::notify!("Here {:?}", name);
-
 		if let Some(parameters) = parameters {
 			let mut sub_environment = environment.new_lexical_environment(Scope::TypeAlias);
 			for parameter in parameters {
@@ -250,6 +248,20 @@ fn synthesise_class_declaration_extends_and_members<
 					checking_data,
 					true,
 				);
+
+				// TODO temp fix for array.length
+				if let Some(ref property_type) = property.type_annotation {
+					let value =
+						synthesise_type_annotation(property_type, environment, checking_data);
+					let value = PropertyValue::Value(value);
+					environment.info.register_property_on_type(
+						class_type,
+						Publicity::Public,
+						key.clone(),
+						value,
+					);
+				}
+
 				// TODO restriction
 				properties.push(ClassValue { publicity, key, value: property.value.as_deref() });
 			}
@@ -271,7 +283,33 @@ fn synthesise_class_declaration_extends_and_members<
 				);
 				static_property_keys.push(key);
 			}
-			_ => {}
+			ClassMember::Indexer { name, indexer_type, return_type, is_readonly, position } => {
+				// TODO this redoes work done at registration. Because the info gets overwritten
+				let key = synthesise_type_annotation(indexer_type, environment, checking_data);
+				let value = synthesise_type_annotation(return_type, environment, checking_data);
+
+				if *is_readonly {
+					checking_data.raise_unimplemented_error(
+						"readonly class index",
+						position.with_source(environment.get_source()),
+					);
+				}
+
+				// TODO check declare
+
+				// TODO WIP
+				crate::utilities::notify!("Indexing (again) for  '{}'", name);
+				let value = PropertyValue::Value(value);
+				environment.info.register_property_on_type(
+					class_type,
+					Publicity::Public,
+					PropertyKey::Type(key),
+					value,
+				);
+			}
+			_item => {
+				crate::utilities::notify!("Skipping {:?}", _item);
+			}
 		}
 	}
 
@@ -588,14 +626,18 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					false,
 				);
 
-				environment.info.register_property_on_type(
-					class_type,
-					publicity,
-					under,
-					PropertyValue::Value(value),
-				);
+				if *initial_is_static {
+					crate::utilities::notify!("TODO static item?");
+				} else {
+					environment.info.register_property_on_type(
+						class_type,
+						publicity,
+						under,
+						PropertyValue::Value(value),
+					);
+				}
 			}
-			ClassMember::Property(_is_static, property) => {
+			ClassMember::Property(is_static, property) => {
 				let under = crate::synthesis::parser_property_key_to_checker_property_key(
 					property.key.get_ast_ref(),
 					environment,
@@ -607,17 +649,21 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				} else {
 					TypeId::ANY_TYPE
 				};
-				environment.info.register_property(
-					class_type,
-					if property.key.get_ast_ref().is_private() {
-						Publicity::Private
-					} else {
-						Publicity::Public
-					},
-					under,
-					PropertyValue::Value(value),
-					property.position.with_source(environment.get_source()),
-				);
+				let publicity = if property.key.get_ast_ref().is_private() {
+					Publicity::Private
+				} else {
+					Publicity::Public
+				};
+				if *is_static {
+					crate::utilities::notify!("TODO static item?");
+				} else {
+					environment.info.register_property_on_type(
+						class_type,
+						publicity,
+						under,
+						PropertyValue::Value(value),
+					);
+				}
 			}
 			ClassMember::Indexer { name, indexer_type, return_type, is_readonly, position } => {
 				// TODO think this is okay
@@ -634,11 +680,9 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				// TODO check declare
 
 				// TODO WIP
-				crate::utilities::notify!("Here for {}", name);
-				let value = PropertyValue::ConditionallyExists {
-					condition: TypeId::OPEN_BOOLEAN_TYPE,
-					truthy: Box::new(PropertyValue::Value(value)),
-				};
+				crate::utilities::notify!("Indexing for  '{}'", name);
+				let value = PropertyValue::Value(value);
+				crate::utilities::notify!("{:?}", class_type);
 				environment.info.register_property_on_type(
 					class_type,
 					Publicity::Public,

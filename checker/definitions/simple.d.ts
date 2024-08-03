@@ -54,21 +54,21 @@ declare class Array<T> {
 
     length: number;
 
-    // push(item: T) {
-    //     let at = this.length++;
-    //     this[at] = item;
-    //     return at + 1
-    // }
+    push(item: T) {
+        let at = this.length++;
+        this[at] = item;
+        return at + 1
+    }
 
-    // pop(): T | undefined {
-    //     if (this.length === 0) {
-    //         return undefined
-    //     } else {
-    //         const value = this[--this.length];
-    //         delete this[this.length];
-    //         return value
-    //     }
-    // }
+    pop(): T | undefined {
+        if (this.length === 0) {
+            return undefined
+        } else {
+            const value = this[--this.length];
+            delete this[this.length];
+            return value
+        }
+    }
 
     // TODO this argument
     // map<U>(cb: (t: T, i?: number) => U): Array<U> {

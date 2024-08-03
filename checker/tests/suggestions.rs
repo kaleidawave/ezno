@@ -2,7 +2,7 @@ const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts")
 
 #[cfg(feature = "ezno-parser")]
 #[test]
-fn type_mappings() {
+fn suggestions() {
 	use ezno_checker::{check_project, Diagnostic, TypeCheckOptions};
 	use std::path::{Path, PathBuf};
 

@@ -24,7 +24,7 @@ pub enum Logical<T> {
 #[derive(Debug, Clone)]
 pub enum LeftRight<T> {
 	Left { value: Box<Logical<T>>, key_arguments: SliceArguments },
-	Right { on: TypeId, filter: TypeId },
+	Right { on: TypeId, key: TypeId },
 }
 
 /// TODO where does Error type fit in here?

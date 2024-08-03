@@ -401,16 +401,9 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 ) -> SetPropertyResult {
 	match existing {
 		PropertyValue::Deleted | PropertyValue::Value(..) => {
-			if let (Some(constraint), PropertyValue::Value(value)) =
+			if let (Some(_), PropertyValue::Value(constraint_for_new)) =
 				(get_constraint(on, types), existing)
 			{
-				{
-					crate::utilities::notify!(
-						"{:?} {:?}",
-						(constraint, types.get_type_by_id(constraint)),
-						generics
-					);
-				}
 				// TODO ...?
 				let mut state = State {
 					already_checked: Default::default(),
@@ -420,15 +413,28 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 					object_constraints: Default::default(),
 				};
 				let result = crate::subtyping::type_is_subtype_with_generics(
-					(value, generics),
+					(constraint_for_new, generics),
 					(new, None),
 					&mut state,
 					environment,
 					types,
 				);
 				if let SubTypeResult::IsNotSubType(reason) = result {
+					{
+						crate::utilities::notify!(
+							"{} {:?}",
+							crate::types::printing::print_type(
+								constraint_for_new,
+								types,
+								environment,
+								true
+							),
+							generics
+						);
+					}
+
 					let property_constraint = TypeStringRepresentation::from_property_constraint(
-						Logical::Pure(PropertyValue::Value(value)),
+						Logical::Pure(PropertyValue::Value(constraint_for_new)),
 						generics,
 						environment,
 						types,
@@ -436,6 +442,8 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 					);
 					let value_type =
 						TypeStringRepresentation::from_type_id(new, environment, types, false);
+
+					// TOOD generics
 					return Err(SetPropertyError::DoesNotMeetConstraint {
 						property_constraint,
 						value_type,

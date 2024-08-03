@@ -58,7 +58,8 @@ fn main() {
 
 	if args.iter().any(|arg| arg == "--types") {
 		eprintln!("Types:");
-		for (type_id, item) in result.types.into_vec_temp() {
+		let types = result.types.into_vec_temp();
+		for (type_id, item) in &types[types.len().saturating_sub(60)..] {
 			eprintln!("\t{type_id:?}: {item:?}");
 		}
 	}

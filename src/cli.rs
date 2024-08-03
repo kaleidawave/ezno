@@ -250,6 +250,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				let reporting = current.unwrap().elapsed();
 				eprintln!("Diagnostics: {}", diagnostics_count);
 				eprintln!("Types:       {}", types.count_of_types());
+				eprintln!("Lines:       {}", chronometer.lines);
 				eprintln!("Cache read:  {:?}", chronometer.cached);
 				eprintln!("FS read:     {:?}", chronometer.fs);
 				eprintln!("Parsed in:   {:?}", chronometer.parse);

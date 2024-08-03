@@ -480,6 +480,8 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	for point in &entry_points {
 		// eprintln!("Trying to get {point} from {:?}", checking_data.modules.files.get_paths());
+		let current = checking_data.options.measure_time.then(std::time::Instant::now);
+
 		let entry_content = if let Some(source) =
 			checking_data.modules.files.get_source_at_path(point)
 		{
@@ -491,13 +493,25 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		} else {
 			None
 		};
+		if let Some(current) = current {
+			checking_data.chronometer.fs += current.elapsed();
+		}
 
 		if let Some((source, content)) = entry_content {
-			let module = parse_source(point, source, content, &mut checking_data);
+			let current = checking_data.options.measure_time.then(std::time::Instant::now);
 
+			let module = parse_source(point, source, content, &mut checking_data);
+			if let Some(current) = current {
+				checking_data.chronometer.parse += current.elapsed();
+			}
+
+			let current = checking_data.options.measure_time.then(std::time::Instant::now);
 			match module {
 				Ok(module) => {
 					let _module = root.new_module_context(source, module, &mut checking_data);
+					if let Some(current) = current {
+						checking_data.chronometer.check += current.elapsed();
+					}
 				}
 				Err(err) => {
 					checking_data.diagnostics_container.add_error(err);

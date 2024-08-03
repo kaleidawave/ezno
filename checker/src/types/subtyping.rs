@@ -736,7 +736,11 @@ pub(crate) fn type_is_subtype_with_generics(
 							types,
 						);
 					} else if information.get_chain_of_info().any(|info| info.frozen.contains(&ty))
-					{
+						|| matches!(right_ty, Type::Constant(_))
+						|| matches!(
+							ty,
+							TypeId::STRING_TYPE | TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE
+						) {
 						return type_is_subtype_with_generics(
 							(inner, ty_structure_arguments),
 							(ty, base_type_arguments),
@@ -1203,7 +1207,9 @@ pub(crate) fn type_is_subtype_with_generics(
 									  // }
 								}
 							}
-							Logical::BasedOnKey(LeftRight::Right { on, filter }) => {
+							Logical::BasedOnKey(LeftRight::Right { on, key }) => {
+								let filter = get_constraint(key, types).unwrap_or(key);
+
 								let properties =
 									crate::types::properties::get_properties_on_single_type(
 										on,
@@ -2057,12 +2063,12 @@ fn check_logical_property(
 					types,
 				)
 			}
-			LeftRight::Right { on, filter } => {
+			LeftRight::Right { on, key } => {
 				if let Type::RootPolyType(PolyNature::MappedGeneric { name: _, extends }) =
-					types.get_type_by_id(filter)
+					types.get_type_by_id(key)
 				{
 					type_is_subtype_of_property_mapped_key(
-						MappedKey { value: extends.clone().into(), key: filter },
+						MappedKey { value: extends.clone().into(), key },
 						(lhs_property_value, lhs_property_value_type_arguments, optional),
 						(on, right_type_arguments),
 						state,
@@ -2070,6 +2076,8 @@ fn check_logical_property(
 						types,
 					)
 				} else {
+					let filter = get_constraint(key, types).unwrap_or(key);
+
 					let properties = get_properties_on_single_type2(
 						(on, right_type_arguments),
 						types,
@@ -2348,7 +2356,7 @@ pub fn type_is_subtype_of_property(
 			type_is_subtype_of_property((on, property_generics), ty, state, information, types)
 		}
 		Logical::BasedOnKey(on) => {
-			// if let LeftRight::Right { on, filter } = on {
+			// if let LeftRight::Right { on, key } = on {
 			// 	if let Type::RootPolyType(PolyNature::MappedGeneric { name: _, extends }) =
 			// 		types.get_type_by_id(*filter)
 			// 	{

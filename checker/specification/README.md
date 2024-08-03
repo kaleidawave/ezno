@@ -12,3 +12,6 @@ These can all be ran as tests using the markdown to Rust test code transpiler in
 
 ---
 Other tests unrelated to specific checking features can be found in `checker/tests`
+
+> [!IMPORTANT]
+> Any tests that throw or produce unreachables must be contained as it breaks the total concatenation.

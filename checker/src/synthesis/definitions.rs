@@ -39,7 +39,6 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 			}),
 		) = item
 		{
-			crate::utilities::notify!("Here");
 			use super::StatementOrExpressionVariable;
 
 			let class_type = *checking_data

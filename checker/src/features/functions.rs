@@ -190,16 +190,13 @@ pub fn function_to_property(
 	match getter_setter {
 		GetterSetter::Getter => PropertyValue::Getter(Callable::new_from_function(function, types)),
 		GetterSetter::Setter => PropertyValue::Setter(Callable::new_from_function(function, types)),
-		GetterSetter::None => {
-			crate::utilities::notify!("{:?}", function.effect);
-			PropertyValue::Value(
-				if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
-					types.new_hoisted_function_type(function)
-				} else {
-					types.new_function_type(function)
-				},
-			)
-		}
+		GetterSetter::None => PropertyValue::Value(
+			if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
+				types.new_hoisted_function_type(function)
+			} else {
+				types.new_function_type(function)
+			},
+		),
 	}
 }
 

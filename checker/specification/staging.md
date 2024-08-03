@@ -820,14 +820,17 @@ global.property! satisfies number;
 #### New class
 
 ```ts
-function new(property) {
+function newClass(property, value) {
 	return class {
-		[property] = 2
+		[property] = value
 	}
 }
+
+new (newClass("hello", 2)).hello satisfies 2;
+new (newClass("hi", 6)).hi satisfies string;
 ```
 
-- TODO
+- Expected string, found 6
 
 ### `Proxy`
 
