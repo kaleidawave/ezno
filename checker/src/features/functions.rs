@@ -147,6 +147,8 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 		crate::utilities::notify!("TODO check that the result is the same");
 	}
 
+	crate::utilities::notify!("function.effect={:?}", function.effect);
+
 	let v = checking_data.types.new_function_type(function);
 	environment.info.variable_current_value.insert(variable_id, v);
 	v

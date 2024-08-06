@@ -183,6 +183,7 @@ try {
 }
 ```
 
+- Conditional '"error"' was thrown in function
 - Unreachable statement
 - Expected number, found "error"
 
@@ -325,19 +326,6 @@ hasPropertyX({ x: 5 }) satisfies number;
 - Expected string, found false
 - Expected number, found true
 
-#### Array slice matching pattern
-
-```ts
-type Head<T> = T extends [infer H, ...Array<any>] ? H : never;
-
-type Tail<T> = T extends [any, ...infer Tail] ? Tail : [];
-
-2 satisfies Head<[1, 2, 3, 4, 5]>;
-[2, 3, 4, 5] satisfies Tail<[1, 2, 3, 4, 5]>;
-```
-
-- Expected 1, found 2
-
 #### String slice matching pattern
 
 ```ts
@@ -410,9 +398,14 @@ delete x.a;
 const y: { a: number } = { a: 4 };
 // Bad
 delete y.a;
+
+const z = {};
+Object.defineProperty(z, "a", { value: 4 });
+delete z.a;
 ```
 
 - Cannot delete from object constrained to { a: number }
+- Cannot delete from non-configurable property
 
 #### TSC string intrinsics
 
@@ -422,23 +415,6 @@ const b: Uppercase<string> = "hi"
 ```
 
 - Type \"hi\" is not assignable to type Uppercase\<string\>
-
-#### Ezno intrinsics
-
-```ts
-5 satisfies MultipleOf<2>;
-4 satisfies MultipleOf<2>;
-
-6 satisfies GreaterThan<2>;
--4 satisfies GreaterThan<2>;
-
-6 satisfies LessThan<2>;
--4 satisfies LessThan<2>;
-```
-
-- Expected MultipleOf\<2\>, found 5
-- Expected GreaterThan\<2\>, found -4
-- Expected LessThan\<2\>, found 6
 
 #### Order of numerical properties
 
@@ -450,6 +426,18 @@ x satisfies string;
 ```
 
 - Expected string, found { 2: null, 4: null, something: null, eight: null }
+
+#### Order of properties after assignment
+
+> TODO this is because setting properties are simply appended. There are two straightforward fixes, but I am unsure which one is better...
+
+```ts
+const obj = { a: 1, b: 2 };
+obj.a = 2; obj.c = 6; obj.b = 4;
+obj satisfies boolean;
+```
+
+- Expected boolean, found { a: 2, b: 4, c: 6 }
 
 #### `NoInfer`
 
@@ -789,6 +777,18 @@ Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
 
 - Expected string, found { value: "something", writable: true, enumerable: true, configurable: true }
 
+#### `Object.assign`
+
+> TODO multiple RHS
+
+```ts
+const obj = { a: 1 };
+Object.assign(obj, { b: 2, c: 3 });
+obj satisfies string;
+```
+
+- Expected string, found { a: 1, b: 2, c: 3 }
+
 #### And on properties
 
 > Note that it keeps it as a `and`. It does not join the properties into a single typ
@@ -804,7 +804,7 @@ x.b satisfies 3;
 
 - Expected U, found { b: 3 }
 
-#### Non null assertions
+#### Non-null assertions
 
 > TODO this currently only works on conditionals
 
@@ -816,21 +816,6 @@ global.property! satisfies number;
 ```
 
 - Expected number, found string
-
-#### New class
-
-```ts
-function newClass(property, value) {
-	return class {
-		[property] = value
-	}
-}
-
-new (newClass("hello", 2)).hello satisfies 2;
-new (newClass("hi", 6)).hi satisfies string;
-```
-
-- Expected string, found 6
 
 ### `Proxy`
 
@@ -914,6 +899,23 @@ function func(param: { prop: number }) {
 - Expected { length: 3 }, found "hi"
 
 ### Extras
+
+#### Number intrinsics
+
+```ts
+5 satisfies MultipleOf<2>;
+4 satisfies MultipleOf<2>;
+
+6 satisfies GreaterThan<2>;
+-4 satisfies GreaterThan<2>;
+
+6 satisfies LessThan<2>;
+-4 satisfies LessThan<2>;
+```
+
+- Expected MultipleOf\<2\>, found 5
+- Expected GreaterThan\<2\>, found -4
+- Expected LessThan\<2\>, found 6
 
 #### `Not`
 

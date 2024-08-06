@@ -70,7 +70,7 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		(value, always_defined, writable): (InterfaceValue, IsDefined, Writable),
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
-		position: SpanWithSource,
+		_position: SpanWithSource,
 	) {
 		let (publicity, under) = match key {
 			InterfaceKey::ClassProperty(key) => {
@@ -354,6 +354,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						}
 						parser::types::interface::MappedReadonlyKind::False => {
 							if references_key_of(key, &checking_data.types) {
+								crate::utilities::notify!("Here");
 								Writable(TypeId::WRITABLE_KEY_ARGUMENT)
 							} else {
 								Writable::from_readonly(false)

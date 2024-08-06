@@ -75,7 +75,7 @@ impl<'a> GenericChainLink<'a> {
 		match self {
 			GenericChainLink::FunctionRoot { .. } => None,
 			GenericChainLink::SpecialGenericChainLink {
-				parent_link,
+				parent_link: _,
 				special: SpecialGenericChainLink::CaseTransform { transform },
 			} => Some(*transform),
 			GenericChainLink::SpecialGenericChainLink { parent_link, special: _ }
@@ -94,7 +94,7 @@ impl<'a> GenericChainLink<'a> {
 		match self {
 			GenericChainLink::FunctionRoot { .. } => false,
 			GenericChainLink::SpecialGenericChainLink {
-				parent_link,
+				parent_link: _,
 				special: SpecialGenericChainLink::CaseInsensitive,
 			} => true,
 			GenericChainLink::SpecialGenericChainLink { parent_link, special: _ }
@@ -113,7 +113,7 @@ impl<'a> GenericChainLink<'a> {
 		match self {
 			GenericChainLink::FunctionRoot { .. } => false,
 			GenericChainLink::SpecialGenericChainLink {
-				parent_link,
+				parent_link: _,
 				special: SpecialGenericChainLink::Exclusive,
 			} => true,
 			GenericChainLink::SpecialGenericChainLink { parent_link, special: _ }
@@ -127,42 +127,6 @@ impl<'a> GenericChainLink<'a> {
 			}
 		}
 	}
-
-	// /// TODO wip
-	// #[allow(unused)]
-	// pub(crate) fn get_argument(
-	// 	&self,
-	// 	on: TypeId,
-	// 	info: &impl InformationChain,
-	// 	types: &TypeStore,
-	// ) -> Option<Vec<TypeId>> {
-	// 	match self {
-	// 		GenericChainLink::PartiallyAppliedGenericArgumentsLink {
-	// 			parent_link,
-	// 			value,
-	// 			from: _,
-	// 		} => value
-	// 			.get_argument_as_list(on, info, types)
-	// 			.or_else(|| parent_link.and_then(|parent| parent.get_argument(on, info, types))),
-	// 		GenericChainLink::FunctionRoot {
-	// 			parent_arguments,
-	// 			call_site_type_arguments,
-	// 			type_arguments,
-	// 		} => parent_arguments
-	// 			.and_then(|parent| parent.get_argument_as_list(on, info, types))
-	// 			.or_else(|| {
-	// 				call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| vec![*arg]))
-	// 			})
-	// 			.or_else(|| type_arguments.get(&on).map(|a| vec![*a])),
-	// 		GenericChainLink::MappedPropertyLink { .. } => {
-	// 			crate::utilities::notify!("TODO temp");
-	// 			self.get_single_argument(on).map(|v| vec![v])
-	// 		}
-	// 		GenericChainLink::SpecialGenericChainLink { parent_link, special: _ } => {
-	// 			parent_link.and_then(|f| f.get_argument(on, info, types))
-	// 		}
-	// 	}
-	// }
 
 	/// WIP I want to make this the main one
 	pub(crate) fn get_argument_covariant(
@@ -184,9 +148,9 @@ impl<'a> GenericChainLink<'a> {
 				parent_arguments,
 				call_site_type_arguments,
 				type_arguments,
-			} => call_site_type_arguments
+			} => parent_arguments
 				.and_then(|parent| {
-					parent.get(&on).map(|(arg, _)| *arg).map(CovariantContribution::TypeId)
+					parent.get_structure_restriction(on).map(CovariantContribution::TypeId)
 				})
 				.or_else(|| {
 					call_site_type_arguments

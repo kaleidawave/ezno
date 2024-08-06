@@ -10,6 +10,7 @@ use crate::{
 		functions::ThisValue,
 		iteration::{self, IterationKind},
 		objects::SpecialObject,
+		CannotDeleteFromError,
 	},
 	subtyping::type_is_subtype,
 	types::{
@@ -162,7 +163,7 @@ pub(crate) fn apply_events(
 				) else {
 					// TODO getters can fail here
 					panic!(
-						"could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
+						"Could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
 						print_type(on, types, top_environment, true)
 					);
 				};
@@ -274,7 +275,7 @@ pub(crate) fn apply_events(
 						let result =
 							on.call(with, input, top_environment, (target, diagnostics), types);
 						match result {
-							Ok(mut result) => {
+							Ok(result) => {
 								if let Some(ApplicationResult::Throw { .. }) = result.result {
 									// TODO conditional here
 									return result.result;
@@ -454,7 +455,7 @@ pub(crate) fn apply_events(
 				// TODO
 				let is_under_dyn = true;
 
-				let new_object_id = match prototype {
+				let new_object_ty = match prototype {
 					PrototypeArgument::Yeah(prototype) => {
 						let prototype =
 							substitute(*prototype, type_arguments, top_environment, types);
@@ -477,25 +478,25 @@ pub(crate) fn apply_events(
 				};
 
 				// TODO conditionally if any properties are structurally generic
-				// let new_object_id_with_curried_arguments =
-				// 	curry_arguments(type_arguments, types, new_object_id);
+				// let new_object_ty_with_curried_arguments =
+				// 	curry_arguments(type_arguments, types, new_object_ty);
 
 				// crate::utilities::notify!(
 				// 	"Setting {:?} to {:?}",
 				// 	referenced_in_scope_as,
-				// 	new_object_id_with_curried_arguments
+				// 	new_object_ty_with_curried_arguments
 				// );
 
 				if let Some(object_constraint) =
 					top_environment.get_object_constraint(*referenced_in_scope_as)
 				{
 					top_environment.add_object_constraints(
-						std::iter::once((new_object_id, object_constraint)),
+						std::iter::once((new_object_ty, object_constraint)),
 						types,
 					);
 				}
 
-				type_arguments.set_during_application(*referenced_in_scope_as, new_object_id);
+				type_arguments.set_during_application(*referenced_in_scope_as, new_object_ty);
 			}
 			Event::Iterate { kind, iterate_over, initial } => {
 				let closure_id = types.new_closure_id();
@@ -698,11 +699,15 @@ pub(crate) fn apply_events(
 							}
 						}
 						Err(err) => {
-							crate::utilities::notify!("Raise error here");
-							diagnostics.errors.push(FunctionCallingError::DeleteConstraint {
-								constraint: err.constraint,
-								delete_position: *position,
-								call_site: input.call_site,
+							diagnostics.errors.push(match err {
+								CannotDeleteFromError::Constraint { constraint, position } => {
+									FunctionCallingError::DeleteConstraint {
+										constraint,
+										delete_position: position,
+										call_site: input.call_site,
+									}
+								}
+								_ => todo!(),
 							});
 
 							if let Some(into) = into {
@@ -752,6 +757,15 @@ pub(crate) fn apply_events(
 						value.clone(),
 						*position,
 					);
+				}
+				super::MiscellaneousEvents::CreateConstructor {
+					referenced_in_scope_as,
+					function,
+				} => {
+					let new_function_ty = types.register_type(Type::SpecialObject(
+						SpecialObject::Function(*function, Default::default()),
+					));
+					type_arguments.set_during_application(*referenced_in_scope_as, new_function_ty);
 				}
 			},
 			Event::FinalEvent(final_event) => {

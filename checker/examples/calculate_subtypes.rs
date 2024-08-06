@@ -60,7 +60,6 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 		Publicity::Public,
 		inner.clone(),
 		PropertyValue::Value(generic_parameter.type_id),
-		false,
 		source_map::SpanWithSource::NULL,
 	);
 

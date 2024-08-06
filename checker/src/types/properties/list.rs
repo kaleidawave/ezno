@@ -4,7 +4,7 @@ use crate::{
 	types::{GenericChain, SliceArguments},
 	Type, TypeId, TypeStore,
 };
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 /// Get properties on a type (for printing and other non-one property uses)
 ///
@@ -23,21 +23,19 @@ pub fn get_properties_on_single_type(
 	match types.get_type_by_id(base) {
 		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
 			// Reversed needed for deleted
-			let reversed_flattened_properties = info
+			let flattened_properties = info
 				.get_chain_of_info()
-				.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
+				.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter()))
 				.flatten();
 
-			let mut deleted_or_existing_properties = HashSet::<PropertyKey>::new();
+			let mut existing_properties = HashMap::<PropertyKey, usize>::new();
 
 			// This retains ordering here
 
 			let mut properties = Vec::new();
 			let mut numerical_properties = BTreeMap::new();
 
-			for (publicity, key, value) in reversed_flattened_properties {
-				let new_record = deleted_or_existing_properties.insert(key.clone());
-
+			for (publicity, key, value) in flattened_properties {
 				if let PropertyValue::Configured { on: _, ref descriptor } = value {
 					// TODO what about if not `TypeId::TRUE | TypeId::FALSE`
 					crate::utilities::notify!("descriptor.enumerable={:?}", descriptor.enumerable);
@@ -46,7 +44,11 @@ pub fn get_properties_on_single_type(
 					}
 				}
 
+				let existing = existing_properties.insert(key.clone(), properties.len());
 				if let PropertyValue::Deleted = value {
+					if let Some(existing) = existing {
+						properties.remove(existing);
+					}
 					// TODO only covers constant keys :(
 					continue;
 				}
@@ -67,7 +69,17 @@ pub fn get_properties_on_single_type(
 					}
 				}
 
-				if new_record {
+				if let Some(idx) = existing {
+					let value = (*publicity, key.to_owned(), value.clone());
+
+					if let Some(n) = key.as_number(types) {
+						numerical_properties.insert(n, value);
+					} else {
+						properties[idx] = value;
+					}
+				} else {
+					// crate::utilities::notify!("Here just with {:?}", key);
+
 					let value = (*publicity, key.to_owned(), value.clone());
 
 					if let Some(n) = key.as_number(types) {
@@ -78,14 +90,10 @@ pub fn get_properties_on_single_type(
 				}
 			}
 
-			properties.reverse();
-
 			if numerical_properties.is_empty() {
 				properties
 			} else {
-				let mut new: Vec<_> = numerical_properties.into_values().collect();
-				new.append(&mut properties);
-				new
+				numerical_properties.into_values().chain(properties).collect()
 			}
 		}
 		t @ (Type::SpecialObject(_)
@@ -101,6 +109,10 @@ pub fn get_properties_on_single_type(
 }
 
 /// WIP TODO remove filter
+/// Slightly different to regular get_properties_on_single_type
+/// - appends key argument
+/// - no numerical sorting
+/// - no enumerable
 pub fn get_properties_on_single_type2(
 	(base, base_arguments): (TypeId, GenericChain),
 	types: &TypeStore,
@@ -110,20 +122,28 @@ pub fn get_properties_on_single_type2(
 	match types.get_type_by_id(base) {
 		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
 			// Reversed needed for deleted
-			let reversed_flattened_properties = info
+			let flattened_properties = info
 				.get_chain_of_info()
-				.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter().rev()))
+				.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter()))
 				.flatten();
 
-			let mut deleted_or_existing_properties = HashSet::<PropertyKey>::new();
+			let mut existing_properties = HashMap::<PropertyKey, usize>::new();
 
 			// This retains ordering here
 
 			let mut properties = Vec::new();
 
-			for (publicity, key, value) in reversed_flattened_properties {
-				let new_record = deleted_or_existing_properties.insert(key.clone());
+			for (_publicity, key, value) in flattened_properties {
+				let existing = existing_properties.insert(key.clone(), properties.len());
+				if let PropertyValue::Deleted = value {
+					if let Some(existing) = existing {
+						properties.remove(existing);
+					}
+					// TODO only covers constant keys :(
+					continue;
+				}
 
+				// if !matches!(filter_type, TypeId::ANY_TYPE) {
 				let on_type_arguments = None; // TODO
 				let (key_matches, key_arguments) = super::key_matches(
 					(&PropertyKey::Type(filter_type), on_type_arguments),
@@ -132,14 +152,28 @@ pub fn get_properties_on_single_type2(
 					types,
 				);
 
-				// crate::utilities::notify!("key_arguments={:?}", key_arguments);
+				crate::utilities::notify!("key_arguments={:?}", key_arguments);
 
-				if key_matches {
-					properties.push((key.clone(), value.clone(), key_arguments));
+				if !key_matches {
+					continue;
+				}
+				// }
+
+				if let Some(idx) = existing {
+					let value = (key.to_owned(), value.clone(), key_arguments);
+					properties[idx] = value;
+				} else {
+					let value = (key.to_owned(), value.clone(), key_arguments);
+					properties.push(value);
 				}
 			}
 
 			properties
+			// if numerical_properties.is_empty() {
+			// } else {
+			// 	todo!()
+			// 	// numerical_properties.into_values().chain(properties).collect()
+			// }
 		}
 		Type::Constructor(_) | Type::RootPolyType(_) => {
 			if let Some(argument) =
@@ -150,9 +184,31 @@ pub fn get_properties_on_single_type2(
 				todo!("Getting properties on generic")
 			}
 		}
+		Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
+			on,
+			arguments,
+		}) => {
+			// Temp fix
+			if *on == TypeId::ARRAY_TYPE {
+				let value = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+				vec![(
+					PropertyKey::Type(TypeId::NUMBER_TYPE),
+					PropertyValue::Value(value),
+					Default::default(),
+				)]
+			} else {
+				// let result = super::access::get_property_unbound(
+				// 	(base, base_arguments),
+				// 	(Publicity::Public, &PropertyKey::Type(filter_type), None),
+				// 	false,
+				// 	info,
+				// 	types,
+				// );
+				todo!("{:?}", (on, arguments));
+			}
+		}
 		t @ (Type::SpecialObject(_)
 		| Type::Or(..)
-		| Type::PartiallyAppliedGenerics(_)
 		| Type::Constant(_)
 		| Type::AliasTo { .. }
 		| Type::FunctionReference(_)

@@ -117,6 +117,18 @@ impl crate::ASTImplementation for EznoParser {
 		&parameter.name
 	}
 
+	fn synthesise_type_parameter_extends<T: crate::ReadFromFS>(
+		parameter: &Self::TypeParameter<'_>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId {
+		if let Some(ref extends) = parameter.extends {
+			synthesise_type_annotation(extends, environment, checking_data)
+		} else {
+			TypeId::ANY_TYPE
+		}
+	}
+
 	fn type_annotation_position<'_a>(
 		annotation: &'_a Self::TypeAnnotation<'_a>,
 	) -> source_map::Span {

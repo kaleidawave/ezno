@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![allow(deprecated, clippy::new_without_default, clippy::too_many_lines, clippy::result_unit_err)]
 #![warn(clippy::must_use_candidate)]
-#![allow(unused)]
+// #![allow(unused)]
 
 pub mod context;
 pub mod diagnostics;
@@ -133,6 +133,12 @@ pub trait ASTImplementation: Sized {
 	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
 		expression: &'a Self::MultipleExpression<'a>,
 		expected_type: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId;
+
+	fn synthesise_type_parameter_extends<T: crate::ReadFromFS>(
+		parameter: &Self::TypeParameter<'_>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
@@ -498,12 +504,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		}
 
 		if let Some((source, content)) = entry_content {
-			let current = checking_data.options.measure_time.then(std::time::Instant::now);
-
 			let module = parse_source(point, source, content, &mut checking_data);
-			if let Some(current) = current {
-				checking_data.chronometer.parse += current.elapsed();
-			}
 
 			let current = checking_data.options.measure_time.then(std::time::Instant::now);
 			match module {
@@ -560,6 +561,15 @@ fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	content: String,
 	checking_data: &mut CheckingData<T, A>,
 ) -> Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError> {
+	if checking_data.options.measure_time {
+		let code_lines =
+			content.lines().filter(|c| !(c.is_empty() || c.trim_start().starts_with('/'))).count();
+		checking_data.chronometer.lines += code_lines;
+	}
+
+	// TODO pause check timing
+	let current = checking_data.options.measure_time.then(std::time::Instant::now);
+
 	// TODO abstract using similar to import logic
 	let is_js = path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.ends_with("js"));
 
@@ -569,12 +579,18 @@ fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		checking_data.options.lsp_mode,
 	);
 
-	A::module_from_string(
+	let result = A::module_from_string(
 		source,
 		content,
 		parse_options,
 		&mut checking_data.modules.parser_requirements,
-	)
+	);
+
+	if let Some(current) = current {
+		checking_data.chronometer.parse += current.elapsed();
+	}
+
+	result
 }
 
 const CACHE_MARKER: &[u8] = b"ezno-cache-file";
@@ -612,16 +628,16 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 		};
 
 		match file {
-			File::Binary(content) => {
+			File::Binary(data) => {
 				let current = checking_data.options.measure_time.then(std::time::Instant::now);
-				deserialize_cache(length, content, checking_data, root);
+				deserialize_cache(length, data, checking_data, root);
 				if let Some(current) = current {
 					checking_data.chronometer.cached += current.elapsed();
 				}
 			}
-			File::Source(source_id, content) => {
+			File::Source(source_id, source) => {
 				if checking_data.options.measure_time {
-					let code_lines = content
+					let code_lines = source
 						.lines()
 						.filter(|c| !(c.is_empty() || c.trim_start().starts_with('/')))
 						.count();
@@ -631,7 +647,7 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 				let current = checking_data.options.measure_time.then(std::time::Instant::now);
 				let result = A::definition_module_from_string(
 					source_id,
-					content,
+					source,
 					&mut checking_data.modules.parser_requirements,
 				);
 				if let Some(current) = current {

@@ -8,7 +8,6 @@ use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
 	types::{
 		logical::{Logical, LogicalOrValid},
-		printing::print_type,
 		properties::{
 			get_property_key_names_on_a_single_type, get_property_unbound, PropertyKey, Publicity,
 		},

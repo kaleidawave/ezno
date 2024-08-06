@@ -10,11 +10,8 @@ use super::{Type, TypeStore};
 use crate::{
 	context::InformationChain,
 	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
-	types::{
-		calling::Callable, generics::contributions::Contributions, logical::*, properties,
-		GenericChain, PolyNature,
-	},
-	Constant, Environment, FunctionId, TypeId,
+	types::{calling::Callable, generics::contributions::Contributions, GenericChain, PolyNature},
+	Constant, Environment, TypeId,
 };
 use std::borrow::Cow;
 
@@ -304,6 +301,16 @@ impl PropertyValue {
 			!matches!(descriptor.writable, TypeId::TRUE | TypeId::WRITABLE_KEY_ARGUMENT)
 		} else {
 			false
+		}
+	}
+
+	pub fn is_configuable_simple(&self) -> bool {
+		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
+			truthy.is_configuable_simple()
+		} else if let PropertyValue::Configured { on: _, descriptor } = self {
+			descriptor.configurable == TypeId::TRUE
+		} else {
+			true
 		}
 	}
 }

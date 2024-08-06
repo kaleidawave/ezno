@@ -5,7 +5,7 @@ use parser::{
 };
 
 use crate::{
-	context::{Environment, InformationChain, VariableRegisterArguments},
+	context::{Environment, InformationChain, LocalInformation},
 	diagnostics::TypeCheckError,
 	features::functions::{
 		function_to_property, synthesise_function, ClassPropertiesToRegister, FunctionBehavior,
@@ -26,7 +26,6 @@ use super::{
 	functions::{build_overloaded_function, synthesise_shape},
 	parser_property_key_to_checker_property_key,
 	type_annotations::synthesise_type_annotation,
-	variables::register_variable_identifier,
 };
 
 /// Doesn't have any metadata yet
@@ -52,7 +51,7 @@ pub(super) fn synthesise_class_declaration<
 	if let Some(class_type) = existing_id {
 		let class_type2 = checking_data.types.get_type_by_id(class_type);
 
-		let Type::Class { name, parameters } = class_type2 else {
+		let Type::Class { name: _, parameters } = class_type2 else {
 			unreachable!("expecting class type {:?}", class_type2)
 		};
 
@@ -75,8 +74,9 @@ pub(super) fn synthesise_class_declaration<
 				checking_data,
 			);
 			{
-				let crate::context::LocalInformation { current_properties, prototypes, .. } =
+				let LocalInformation { current_properties, prototypes, mut events, .. } =
 					sub_environment.info;
+				environment.info.events.append(&mut events);
 				environment.info.current_properties.extend(current_properties);
 				environment.info.prototypes.extend(prototypes);
 			}
@@ -91,11 +91,13 @@ pub(super) fn synthesise_class_declaration<
 		}
 	} else {
 		// For classes in expression position
-		crate::utilities::notify!("TODO class expression parameters");
-		let name = P::as_option_str(&class.name).map_or_else(String::new, str::to_owned);
+		crate::utilities::notify!("TODO class expression type parameters");
+		let name =
+			P::as_option_str(&class.name).map_or_else(|| "(anonymous)".to_owned(), str::to_owned);
 
 		let class_type =
 			checking_data.types.register_type(Type::Class { name: name.clone(), parameters: None });
+
 		synthesise_class_declaration_extends_and_members(
 			class,
 			(class_type, expected),
@@ -118,8 +120,10 @@ fn synthesise_class_declaration_extends_and_members<
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
 	let is_declare = class.name.is_declare();
-	let name = P::as_option_str(&class.name).map_or_else(String::new, str::to_owned);
+	let _name = P::as_option_str(&class.name).map_or_else(String::new, str::to_owned);
 	let class_prototype = class_type;
+
+	crate::utilities::notify!("At start {:?}", environment.context_type.free_variables);
 
 	let extends = class.extends.as_ref().map(|extends_expression| {
 		let extends =
@@ -349,7 +353,13 @@ fn synthesise_class_declaration_extends_and_members<
 		)
 	};
 
+	// TODO abstract
+	let function_id = constructor.id;
 	let class_variable_type = checking_data.types.new_class_constructor_type(constructor);
+	// Adds event
+	environment.register_constructable_function(class_variable_type, function_id);
+
+	crate::utilities::notify!("At end {:?}", environment.context_type.free_variables);
 
 	{
 		// Static items and blocks

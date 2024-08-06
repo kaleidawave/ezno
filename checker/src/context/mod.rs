@@ -10,14 +10,11 @@ mod root;
 pub(crate) use invocation::CallCheckingBehavior;
 pub use root::RootContext;
 
-use source_map::{Span, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	context::environment::ExpectedReturnType,
-	diagnostics::{
-		CannotRedeclareVariable, PropertyKeyRepresentation, TypeCheckError, TypeCheckWarning,
-		TypeStringRepresentation, TDZ,
-	},
+	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, TDZ},
 	events::RootReference,
 	features::{
 		assignments::Reference,
@@ -32,7 +29,7 @@ use crate::{
 use self::environment::{DynamicBoundaryKind, FunctionScope};
 pub use environment::Scope;
 pub(crate) use environment::Syntax;
-pub(crate) use information::{InformationChain, LocalInformation, Properties};
+pub use information::{InformationChain, LocalInformation, Properties};
 
 use std::{
 	collections::{

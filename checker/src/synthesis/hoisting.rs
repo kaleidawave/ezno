@@ -17,10 +17,7 @@ use crate::{
 		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
-	synthesis::{
-		classes::register_statement_class_with_members,
-		type_annotations::get_annotation_from_declaration,
-	},
+	synthesis::type_annotations::get_annotation_from_declaration,
 	CheckingData, ReadFromFS, TypeId,
 };
 
@@ -713,7 +710,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				_ => {}
 			},
 			StatementOrDeclaration::Imported { .. } | StatementOrDeclaration::Marker(_, _) => {}
-			_ => {}
 		}
 	}
 

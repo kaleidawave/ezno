@@ -1,7 +1,4 @@
 //! Contains type checking errors, warnings and related structures
-
-#![allow(clippy::upper_case_acronyms)]
-
 use crate::{
 	context::{environment::Label, AssignmentError, InformationChain},
 	diagnostics,
@@ -312,7 +309,9 @@ pub(crate) enum TypeCheckError<'a> {
 	CyclicTypeAlias {
 		position: SpanWithSource,
 	},
+	#[allow(dead_code)]
 	NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel),
+	#[allow(dead_code)]
 	RestParameterAnnotationShouldBeArrayType(SpanWithSource),
 	CouldNotFindVariable {
 		variable: &'a str,
@@ -323,8 +322,11 @@ pub(crate) enum TypeCheckError<'a> {
 	TypeHasNoGenericParameters(String, SpanWithSource),
 	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
+	#[allow(dead_code)]
 	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
+	#[allow(dead_code)]
 	InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
+	#[allow(dead_code)]
 	InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
 	SetPropertyError(SetPropertyError),
 	ReturnedTypeDoesNotMatch {
@@ -365,6 +367,7 @@ pub(crate) enum TypeCheckError<'a> {
 		found: TypeStringRepresentation,
 	},
 	/// TODO temp, needs more info
+	#[allow(dead_code)]
 	FunctionDoesNotMeetConstraint {
 		function_constraint: TypeStringRepresentation,
 		function_type: TypeStringRepresentation,
@@ -374,13 +377,16 @@ pub(crate) enum TypeCheckError<'a> {
 		name: String,
 		position: SpanWithSource,
 	},
-	// TODO parameter position
+	/// This is for structure generics
+	#[allow(dead_code)]
 	GenericArgumentDoesNotMeetRestriction {
 		parameter_restriction: TypeStringRepresentation,
 		argument: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
+	#[allow(dead_code)]
 	NotTopLevelImport(SpanWithSource),
+	#[allow(dead_code)]
 	DoubleDefaultExport(SpanWithSource),
 	CannotOpenFile {
 		file: CouldNotOpenFile,
@@ -388,6 +394,8 @@ pub(crate) enum TypeCheckError<'a> {
 		possibles: Vec<&'a str>,
 		partial_import_path: &'a str,
 	},
+	/// WIP
+	#[allow(dead_code)]
 	VariableNotDefinedInContext {
 		variable: &'a str,
 		expected_context: &'a str,
@@ -400,12 +408,14 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	TDZ(TDZ),
+	#[allow(dead_code)]
 	InvalidMathematicalOrBitwiseOperation {
 		operator: MathematicalAndBitwise,
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
+	#[allow(dead_code)]
 	InvalidCast {
 		position: SpanWithSource,
 		from: TypeStringRepresentation,
@@ -413,6 +423,7 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 	/// TODO Position = Function body position. Could it be better
 	/// TODO maybe warning?
+	#[allow(dead_code)]
 	UnreachableVariableClosedOver(String, SpanWithSource),
 	IncompatibleOverloadParameter {
 		parameter_position: SpanWithSource,
@@ -439,7 +450,7 @@ pub fn get_possibles_message(possibles: Vec<&str>) -> String {
 		[a] => format!("Did you mean '{a}'?"),
 		[a @ .., b] => {
 			let mut iter = a.into_iter();
-			let mut first = format!("'{first}'", first = iter.next().unwrap());
+			let first = format!("'{first}'", first = iter.next().unwrap());
 			format!(
 				"Did you mean {items} or '{b}'?",
 				items = iter.fold(first, |acc, item| format!("{acc}, '{item}'"))
@@ -663,10 +674,14 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 			},
 			TypeCheckError::DoubleDefaultExport(_) => todo!(),
 			TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
-				Diagnostic::Position {
+				Diagnostic::PositionWithAdditionalLabels {
 					reason: format!("Cannot find {partial_import_path}"),
 					position: import_position,
 					kind,
+					labels: map_error_empty(possibles, |possibles| vec![(
+						get_possibles_message(possibles),
+						import_position,
+					)])
 				}
 			} else {
 				Diagnostic::Global { reason: format!("Cannot find file {}", file.0.display()), kind }
@@ -753,9 +768,18 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				}
 			}
-			TypeCheckError::CannotDeleteProperty(CannotDeleteFromError { constraint, position }) => {
+			TypeCheckError::CannotDeleteProperty(CannotDeleteFromError::Constraint { constraint, position }) => {
 				Diagnostic::Position {
 					reason: format!("Cannot delete from object constrained to {constraint}"),
+					position,
+					kind,
+				}
+			}
+			TypeCheckError::CannotDeleteProperty(CannotDeleteFromError::NonConfigurable {
+				position,
+			}) => {
+				Diagnostic::Position {
+					reason: "Cannot delete from non-configurable property".to_owned(),
 					position,
 					kind,
 				}
@@ -775,7 +799,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				SetPropertyError::DoesNotMeetConstraint {
 					property_constraint,
 					value_type,
-					reason,
+					reason: _,
 					position,
 				} => Diagnostic::Position {
 					reason: format!(

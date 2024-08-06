@@ -10,7 +10,6 @@ use crate::{
 		properties::PropertyKey,
 		GenericChain, TypeStore,
 	},
-	PropertyValue,
 };
 
 pub fn debug_effects<C: InformationChain>(
@@ -163,18 +162,18 @@ pub fn debug_effects<C: InformationChain>(
 				buf.push_str("end");
 			}
 			Event::Miscellaneous(misc) => match misc {
-				crate::events::MiscellaneousEvents::Has { .. } => {
+				super::MiscellaneousEvents::Has { .. } => {
 					buf.push_str("Has");
 				}
-				crate::events::MiscellaneousEvents::Delete { .. } => {
+				super::MiscellaneousEvents::Delete { .. } => {
 					buf.push_str("Delete");
 				}
-				crate::events::MiscellaneousEvents::RegisterProperty {
+				super::MiscellaneousEvents::RegisterProperty {
 					on,
-					publicity,
+					publicity: _,
 					under,
 					value,
-					position,
+					position: _,
 				} => {
 					print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
 					buf.push('[');
@@ -189,6 +188,9 @@ pub fn debug_effects<C: InformationChain>(
 					);
 					buf.push_str("] = ");
 					write!(buf, "{:?}", value).unwrap();
+				}
+				super::MiscellaneousEvents::CreateConstructor { .. } => {
+					buf.push_str("create constructor");
 				}
 			},
 		}

@@ -175,6 +175,7 @@ pub enum MiscellaneousEvents {
 		into: Option<TypeId>,
 		position: SpanWithSource,
 	},
+	/// :/
 	RegisterProperty {
 		on: TypeId,
 		publicity: Publicity,
@@ -182,6 +183,8 @@ pub enum MiscellaneousEvents {
 		value: PropertyValue,
 		position: SpanWithSource,
 	},
+	/// Creates a new function or class
+	CreateConstructor { referenced_in_scope_as: TypeId, function: FunctionId },
 }
 
 /// A break in application

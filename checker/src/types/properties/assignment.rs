@@ -4,11 +4,10 @@ use crate::{
 	context::CallCheckingBehavior,
 	diagnostics::{PropertyKeyRepresentation, TypeStringRepresentation},
 	events::Event,
-	features::{constant_functions::CallSiteTypeArguments, functions::ThisValue, objects::Proxy},
+	features::objects::Proxy,
 	subtyping::{State, SubTypeResult},
 	types::{
 		calling::{CallingDiagnostics, CallingOutput, SynthesisedArgument},
-		generics::generic_type_arguments::GenericArguments,
 		get_constraint,
 		logical::{LeftRight, Logical, LogicalOrValid},
 		tuple_like, Constructor, GenericChain, NeedsCalculation, PartiallyAppliedGenerics,
@@ -244,6 +243,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 			),
 			LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }) => {
 				crate::utilities::notify!("TODO add assignment request on {:?}", on);
+				behavior.get_latest_info(environment).events.push(Event::Setter {
+					on,
+					new,
+					under: under.into_owned(),
+					publicity,
+					position,
+				});
 				Ok(())
 			}
 			LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(proxy, on)) => proxy_assign(
@@ -296,7 +302,7 @@ fn set_on_logical<B: CallCheckingBehavior>(
 			types,
 			position,
 		),
-		Logical::Or { condition, left, right } => {
+		Logical::Or { .. } => {
 			if types.get_type_by_id(on).is_dependent() {
 				{
 					let info = behavior.get_latest_info(environment);
@@ -484,7 +490,7 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 			let arg = SynthesisedArgument { position, spread: false, value: new };
 			let this_type = generics.and_then(|arg| arg.get_origin()).unwrap_or(on);
 			let input = CallingInput {
-				called_with_new: CalledWithNew::GetterOrSetter { this_type: on },
+				called_with_new: CalledWithNew::GetterOrSetter { this_type },
 				call_site: position,
 				// TODO
 				max_inline: 0,
@@ -557,9 +563,7 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> SetPropertyResult {
-	use crate::types::calling::{
-		application_result_to_return_type, CalledWithNew, CallingInput, SynthesisedArgument,
-	};
+	use crate::types::calling::{CalledWithNew, CallingInput, SynthesisedArgument};
 	use crate::types::properties::{get_property, AccessMode};
 
 	let property_key = PropertyKey::String(std::borrow::Cow::Borrowed("set"));
@@ -600,7 +604,7 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 			types,
 		);
 		match result {
-			Ok(res) => Ok(()),
+			Ok(_res) => Ok(()),
 			Err(_) => {
 				crate::utilities::notify!("TODO Proxy.set failed but returning Ok() (as difference captured in CallingDiagnostics)");
 				Ok(())

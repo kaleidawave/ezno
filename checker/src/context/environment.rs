@@ -20,15 +20,13 @@ use crate::{
 	},
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
-		printing,
 		properties::{
-			assignment::{SetPropertyError, SetPropertyResult},
 			get_property_key_names_on_a_single_type, AccessMode, PropertyKey, PropertyKind,
-			PropertyValue, Publicity,
+			Publicity,
 		},
 		PolyNature, Type, TypeStore,
 	},
-	CheckingData, Instance, RootContext, TypeCheckOptions, TypeId,
+	CheckingData, Instance, RootContext, TypeId,
 };
 
 use super::{
@@ -589,7 +587,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		reference: Reference,
 		rhs: TypeId,
-		position: SpanWithSource,
+		_position: SpanWithSource,
 		checking_data: &mut CheckingData<U, A>,
 	) {
 		match reference {
@@ -1197,7 +1195,7 @@ impl<'a> Environment<'a> {
 		setter_position: SpanWithSource,
 		checking_data: &mut CheckingData<T, A>,
 	) {
-		/// For setters
+		// For setters
 		let mut diagnostics = Default::default();
 		let result = crate::types::properties::set_property(
 			on,
@@ -1398,7 +1396,7 @@ impl<'a> Environment<'a> {
 		&mut self,
 		name: &str,
 		parameters: Option<&'b [A::TypeParameter<'b>]>,
-		position: Span,
+		_position: Span,
 		types: &mut TypeStore,
 	) -> Result<TypeId, AlreadyExists> {
 		let parameters = parameters.map(|parameters| {
@@ -1453,7 +1451,11 @@ impl<'a> Environment<'a> {
 				sub_environment.named_types.insert(name.clone(), parameter);
 			}
 			for (parameter, ast_parameter) in parameters.into_iter().zip(ast_parameters.unwrap()) {
-				let new_to = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
+				let new_to = A::synthesise_type_parameter_extends(
+					ast_parameter,
+					&mut sub_environment,
+					checking_data,
+				);
 				checking_data.types.update_generic_extends(parameter, new_to);
 			}
 			let ty = A::synthesise_type_annotation(to, &mut sub_environment, checking_data);
@@ -1490,5 +1492,19 @@ impl<'a> Environment<'a> {
 		};
 
 		checking_data.types.update_alias(on, new_to);
+	}
+
+	/// For functions and classes
+	pub(crate) fn register_constructable_function(
+		&mut self,
+		referenced_in_scope_as: TypeId,
+		function: crate::FunctionId,
+	) {
+		self.info.events.push(Event::Miscellaneous(
+			crate::events::MiscellaneousEvents::CreateConstructor {
+				referenced_in_scope_as,
+				function,
+			},
+		))
 	}
 }

@@ -68,7 +68,7 @@ pub struct CallingDiagnostics {
 
 impl CallingDiagnostics {
 	pub(crate) fn append_to(
-		mut self,
+		self,
 		context: CallingContext,
 		diagnostics_container: &mut crate::DiagnosticsContainer,
 	) {
@@ -338,32 +338,40 @@ impl Callable {
 
 	pub(crate) fn get_return_type(self, types: &TypeStore) -> TypeId {
 		match self {
-			Callable::Fixed(id, this_value) => types.get_function_from_id(id).return_type,
+			Callable::Fixed(id, _this_value) => types.get_function_from_id(id).return_type,
 			Callable::Type(ty) => {
-				crate::utilities::notify!("Cannot get return type");
-				TypeId::ERROR_TYPE
-				// if let Type::SpecialObject(SpecialObject::Function(func_id, _)) = types.get_type_by_id(ty) {
-				// 	Callable::Fixed(*func_id, ThisValue::UseParent)
-				// } else {
-				// }
+				if let Type::SpecialObject(SpecialObject::Function(id, _)) =
+					types.get_type_by_id(ty)
+				{
+					types.get_function_from_id(*id).return_type
+				} else {
+					crate::utilities::notify!("Cannot get return type");
+					TypeId::ERROR_TYPE
+				}
 			}
 		}
 	}
 
 	pub(crate) fn get_first_argument(self, types: &TypeStore) -> TypeId {
 		match self {
-			Callable::Fixed(id, this_value) => types
+			Callable::Fixed(id, _this_value) => types
 				.get_function_from_id(id)
 				.parameters
 				.get_parameter_type_at_index(0)
 				.map_or(TypeId::ERROR_TYPE, |(ty, _)| ty),
 			Callable::Type(ty) => {
-				crate::utilities::notify!("Cannot get set type");
-				TypeId::ERROR_TYPE
-				// if let Type::SpecialObject(SpecialObject::Function(func_id, _)) = types.get_type_by_id(ty) {
-				// 	Callable::Fixed(*func_id, ThisValue::UseParent)
-				// } else {
-				// }
+				if let Type::SpecialObject(SpecialObject::Function(id, _)) =
+					types.get_type_by_id(ty)
+				{
+					types
+						.get_function_from_id(*id)
+						.parameters
+						.get_parameter_type_at_index(0)
+						.map_or(TypeId::ERROR_TYPE, |(ty, _)| ty)
+				} else {
+					crate::utilities::notify!("Cannot get first arugment");
+					TypeId::ERROR_TYPE
+				}
 			}
 		}
 	}
@@ -808,7 +816,7 @@ fn call_logical<B: CallCheckingBehavior>(
 			}
 		}
 		Logical::Or { condition, left, right } => {
-			todo!();
+			todo!("{:?}", (condition, left, right));
 			// if let (Ok(_left), Ok(_right)) = (*left, *right) {
 			// let (truthy_result, otherwise_result) = behavior.evaluate_conditionally(
 			// 	top_environment,
@@ -1033,7 +1041,7 @@ impl FunctionType {
 			types.called_functions.insert(self.id);
 		}
 
-		let mut errors = CallingDiagnostics::default();
+		let errors = CallingDiagnostics::default();
 
 		let mut type_arguments = SubstitutionArguments {
 			parent: None,
@@ -1509,7 +1517,7 @@ impl FunctionType {
 							type_arguments: &type_arguments.arguments,
 						});
 
-						// crate::utilities::notify!("Type arguments are {:?}", type_arguments);
+						crate::utilities::notify!("Type arguments are {:?}", type_arguments);
 
 						diagnostics.errors.push(FunctionCallingError::InvalidArgumentType {
 							parameter_type: TypeStringRepresentation::from_type_id_with_generics(

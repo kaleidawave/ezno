@@ -4,12 +4,10 @@ use super::variables::{VariableMutability, VariableOrImport};
 use crate::{
 	context::{
 		information::{get_value_of_constant_import_variable, LocalInformation},
-		invocation::InvocationContext,
 		VariableRegisterArguments,
 	},
-	parse_source,
-	types::calling::CallingInput,
-	CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings, VariableId,
+	parse_source, CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings,
+	VariableId,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};
@@ -457,17 +455,17 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	}
 }
 
-pub fn get_possibles_message_for_imports(possibles: &[&str], reference: &str) -> Vec<String> {
-	possibles
-		.iter()
-		.filter(|file| !file.ends_with(".d.ts"))
-		.filter_map(|file| file.strip_suffix(".ts"))
-		.map(|file| {
-			if file.starts_with("./") || file.starts_with("../") {
-				file.to_string()
-			} else {
-				"./".to_string() + file
-			}
-		})
-		.collect::<Vec<String>>()
-}
+// pub fn get_possibles_message_for_imports(possibles: &[&str]) -> Vec<String> {
+// 	possibles
+// 		.iter()
+// 		.filter(|file| !file.ends_with(".d.ts"))
+// 		.filter_map(|file| file.strip_suffix(".ts"))
+// 		.map(|file| {
+// 			if file.starts_with("./") || file.starts_with("../") {
+// 				file.to_string()
+// 			} else {
+// 				"./".to_string() + file
+// 			}
+// 		})
+// 		.collect::<Vec<String>>()
+// }

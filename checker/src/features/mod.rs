@@ -217,9 +217,9 @@ pub(crate) fn create_closed_over_references(
 	)
 }
 
-pub struct CannotDeleteFromError {
-	pub constraint: TypeStringRepresentation,
-	pub position: SpanWithSource,
+pub enum CannotDeleteFromError {
+	Constraint { constraint: TypeStringRepresentation, position: SpanWithSource },
+	NonConfigurable { position: SpanWithSource },
 }
 
 /// WIP
@@ -249,7 +249,7 @@ pub fn delete_operator(
 			{
 				let constraint =
 					TypeStringRepresentation::from_type_id(constraint, environment, types, false);
-				return Err(CannotDeleteFromError { constraint, position });
+				return Err(CannotDeleteFromError::Constraint { constraint, position });
 			}
 
 			// Array indices deletion currently broken
@@ -292,7 +292,10 @@ pub fn delete_operator(
 									types,
 									false,
 								);
-								return Err(CannotDeleteFromError { constraint, position });
+								return Err(CannotDeleteFromError::Constraint {
+									constraint,
+									position,
+								});
 							}
 							PropertyValue::Deleted => {
 								crate::utilities::notify!("Here?");
@@ -311,6 +314,22 @@ pub fn delete_operator(
 						  // Logical::BasedOnKey { .. } => todo!(),
 					}
 				}
+			}
+		}
+
+		// Cannot `delete` from non-configurable
+		if let Ok(LogicalOrValid::Logical(Logical::Pure(value))) =
+			crate::types::properties::get_property_unbound(
+				(rhs, None),
+				(publicity, &under, None),
+				false,
+				environment,
+				types,
+			) {
+			if !value.is_configuable_simple() {
+				let constraint =
+					TypeStringRepresentation::from_type_id(rhs, environment, types, false);
+				return Err(CannotDeleteFromError::Constraint { constraint, position });
 			}
 		}
 	}

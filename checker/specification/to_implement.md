@@ -3,19 +3,18 @@
 
 ### Types
 
-#### Resolving value by property on dependent
+#### Array slice matching pattern
 
 ```ts
-function getProperty(property: "a" | "b" | "c") {
-	return { a: 1, b: 2, c: 3 }[property]
-}
+type Head<T> = T extends [infer H, ...Array<any>] ? H : never;
 
-getProperty("d")
-getProperty("c") satisfies 2
+type Tail<T> = T extends [any, ...infer Tail] ? Tail : [];
+
+1 satisfies Head<[1, 2, 3, 4, 5]>;
+[2, 3, 4, 5] satisfies Tail<[1, 2, 3, 4, 5]>;
 ```
 
-- Expected "a" | "b" | "c" found "d"
-- Expected 2 found 3
+- Expected 1, found 2
 
 #### Generic type argument restriction
 
@@ -210,22 +209,6 @@ function func(array: Array<string>) {
 
 - Expected number found string
 
-#### Order of properties
-
-> TODO this is because setting properties are simply appended. There are two straightforward fixes, but I am unsure which one is better...
-
-```ts
-const obj = { a: 1, b: 2 };
-obj.a = 2; obj.c = 6; obj.b = 4;
-let properties: string = "";
-for (const property in obj) {
-	properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found "abc"
-
 ### Inference
 
 #### Parameter property
@@ -366,10 +349,6 @@ function x*() {
 ```
 
 - TODO
-
-### `Proxy` and `Object`
-
-> TODO effects, different traps and `Object.defineProperty`
 
 ### Collections
 
@@ -661,6 +640,21 @@ class Rectangle implements Draw {
 - Class "MyNumber", does not implement draw
 - Expected string, found CanvasRenderingContext2D
 
+#### Via effect
+
+```ts
+function newClass(property, value) {
+	return class {
+		[property] = value
+	}
+}
+
+new (newClass("hello", 2)).hello satisfies 2;
+new (newClass("hi", 6)).hi satisfies string;
+```
+
+- Expected string, found 6
+
 ### Recursion
 
 #### Application
@@ -714,18 +708,6 @@ a satisfies 3; b satisfies string;
 - Expected string, found 2
 
 ### Functions
-
-#### No generics
-
-```ts
-function id(a) { return a }
-
-id<5>(4)
-```
-
-- Cannot pass generic arguments to function without generic arguments
-
-> Or at least explicit generic arguments
 
 #### Method overloading
 

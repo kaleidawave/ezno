@@ -136,7 +136,6 @@ pub fn print_type_into_buf<C: InformationChain>(
 					if debug {
 						if let PolyNature::FunctionGeneric { extends, .. } = nature {
 							print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
-							buf.push_str("] ");
 						} else {
 							write!(buf, "[sg {}]", ty.0).unwrap();
 						}
@@ -308,7 +307,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				// }
 			}
 			Constructor::Property { on, under, result, mode: _ } => {
-				crate::utilities::notify!("before {:?}", types.get_type_by_id(*on));
+				// crate::utilities::notify!("before {:?}", types.get_type_by_id(*on));
 				let on = if let Some(crate::types::CovariantContribution::TypeId(value)) =
 					args.and_then(|arg| arg.get_argument_covariant(*on, info, types))
 				{
@@ -317,7 +316,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					*on
 				};
 
-				crate::utilities::notify!("after {:?}", types.get_type_by_id(on));
+				// crate::utilities::notify!("after {:?}", types.get_type_by_id(on));
 
 				if crate::types::is_explicit_generic(on, types)
 					|| matches!(types.get_type_by_id(on), Type::Interface { .. } | Type::Object(_))
@@ -395,8 +394,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
 				}
 				Constructor::Image { on: _, with: _, result } => {
-					write!(buf, "[func result {}] (*args here*)", ty.0).unwrap();
 					// TODO arguments
+					write!(buf, "[func result {}] (*args*)", ty.0).unwrap();
 					buf.push_str(" -> ");
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}

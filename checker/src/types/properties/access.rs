@@ -9,10 +9,10 @@ use crate::{
 		generics::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
 		},
-		get_conditional, get_constraint, is_pseudo_continous,
+		get_conditional, get_constraint, is_inferrable_type, is_pseudo_continous,
 		logical::*,
-		Constructor, GenericChain, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
-		SliceArguments, SpecialObject, TypeRestrictions, TypeStore,
+		Constructor, GenericChain, GenericChainLink, PartiallyAppliedGenerics, SliceArguments,
+		SpecialObject, TypeStore,
 	},
 	Constant, Type, TypeId,
 };
@@ -244,7 +244,7 @@ pub(crate) fn get_property_unbound(
 						let aliases =
 							get_constraint(on, types).expect("poly type with no constraint");
 
-						if aliases == TypeId::ANY_TO_INFER_TYPE {
+						if is_inferrable_type(aliases) {
 							Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }))
 						} else {
 							get_property_on_type_unbound(
@@ -554,14 +554,6 @@ pub(crate) fn get_property_unbound(
 		}
 	}
 
-	// if on == TypeId::ERROR_TYPE {
-	// 	return Err(MissingOrToCalculate::Error);
-	// }
-	// if on == TypeId::ANY_TYPE {
-	// 	// TODO any
-	// 	return Err(MissingOrToCalculate::Infer { on });
-	// }
-
 	if let PropertyKey::Type(key) = under {
 		let key = *key;
 		// if *key == TypeId::ERROR_TYPE {
@@ -602,7 +594,7 @@ pub(crate) fn get_property_unbound(
 				);
 			}
 
-			if let Type::RootPolyType(crate::types::PolyNature::MappedGeneric { name, extends }) =
+			if let Type::RootPolyType(crate::types::PolyNature::MappedGeneric { .. }) =
 				types.get_type_by_id(key)
 			{
 				if let Some(argument) =
@@ -619,7 +611,14 @@ pub(crate) fn get_property_unbound(
 					crate::utilities::notify!("No mapped argument");
 					Ok(Logical::BasedOnKey(LeftRight::Right { on, key }).into())
 				}
+			} else if get_constraint(on, types).is_some_and(is_inferrable_type)
+				|| is_inferrable_type(on)
+			{
+				// TODO or above temp
+				Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }))
 			} else {
+				crate::utilities::notify!("{:?}", types.get_type_by_id(on));
+
 				Ok(Logical::BasedOnKey(LeftRight::Right { on, key }).into())
 			}
 		}
@@ -651,7 +650,7 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
 	under: &PropertyKey,
-	with: Option<TypeId>,
+	_with: Option<TypeId>,
 	top_environment: &mut Environment,
 	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
 	types: &mut TypeStore,
@@ -708,7 +707,7 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 				mode,
 			)?;
 
-			if let Some(via) = via {
+			if let Some(_via) = via {
 				let constructor = types.register_type(Type::Constructor(Constructor::Property {
 					on,
 					under: under.into_owned(),
@@ -734,10 +733,26 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 			proxy_access((proxy, proxy_ty), under, (behavior, diagnostics), top_environment, types)
 		}
 		Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { .. })) => {
-			crate::utilities::notify!("TODO infer constraint");
-			None
+			crate::utilities::notify!("Here infer constraint");
+			let constructor = types.register_type(Type::Constructor(Constructor::Property {
+				on,
+				under: under.into_owned(),
+				result: TypeId::ANY_TO_INFER_TYPE,
+				mode,
+			}));
+			// TODO if not constant etc
+			behavior.get_latest_info(top_environment).events.push(Event::Getter {
+				on,
+				under: under.into_owned(),
+				reflects_dependency: Some(constructor),
+				publicity,
+				position,
+				mode,
+			});
+
+			Some((PropertyKind::Direct, constructor))
 		}
-		Err(err) => None,
+		Err(_err) => None,
 	}
 }
 
@@ -897,10 +912,18 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				PropertyValue::ConditionallyExists { condition, truthy } => {
 					crate::utilities::notify!("{:?} {:?}", condition, generics);
 
-					let condition = generics
-						.as_ref()
-						.and_then(|link| link.get_single_argument(condition))
-						.unwrap_or(condition);
+					let condition = if let TypeId::NON_OPTIONAL_KEY_ARGUMENT = condition {
+						// `unwrap_or(TypeId::TRUE)` temp fix for argument not passed along
+						generics
+							.as_ref()
+							.and_then(|link| link.get_single_argument(condition))
+							.unwrap_or(TypeId::TRUE)
+					} else {
+						generics
+							.as_ref()
+							.and_then(|link| link.get_single_argument(condition))
+							.unwrap_or(condition)
+					};
 
 					if let TypeId::FALSE = condition {
 						None
@@ -913,10 +936,12 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 							(behavior, diagnostics),
 							mode,
 						)?;
-						Some((
-							kind,
-							types.new_conditional_type(condition, value, TypeId::UNDEFINED_TYPE),
-						))
+						let value = if let TypeId::TRUE = condition {
+							value
+						} else {
+							types.new_conditional_type(condition, value, TypeId::UNDEFINED_TYPE)
+						};
+						Some((kind, value))
 					}
 				}
 				PropertyValue::Configured { on: value, .. } => resolve_property_on_logical(
@@ -1012,14 +1037,21 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					environment,
 					filter,
 				);
+
+				let size = crate::types::type_cardinality(filter, types);
+				let entries_len = entries.len();
+
 				let mut iter = entries.into_iter();
 				if let Some((_, first_value, _)) = iter.next() {
 					// TODO should properly evaluate value
 					let mut value = first_value.as_get_type(types);
 					for (_, other, _) in iter {
-						value = types.new_or_type(other.as_get_type(types), value);
+						value = types.new_or_type(value, other.as_get_type(types));
 					}
-					value = types.new_or_type(value, TypeId::UNDEFINED_TYPE);
+
+					if size > entries_len {
+						value = types.new_or_type(value, TypeId::UNDEFINED_TYPE);
+					}
 
 					// TODO property result
 					let value = types

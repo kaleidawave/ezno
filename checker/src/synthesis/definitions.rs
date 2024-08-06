@@ -1,22 +1,15 @@
 use parser::{
 	ast::{export::Exportable, ExportDeclaration},
-	ASTNode, Declaration, Decorated, Expression, ExpressionOrStatementPosition, Statement,
-	StatementOrDeclaration,
+	ASTNode, Declaration, Decorated, Expression, StatementOrDeclaration,
 };
 use source_map::SourceId;
 
-use super::{
-	classes::{register_statement_class_with_members, synthesise_class_declaration},
-	type_annotations::synthesise_type_annotation,
-	EznoParser,
-};
+use super::classes::synthesise_class_declaration;
 
 use crate::{
-	context::{Environment, LocalInformation, Names, RootContext, VariableRegisterArguments},
-	diagnostics::TypeCheckWarning,
-	features::functions::synthesise_declare_statement_function,
+	context::{Environment, LocalInformation, Names, RootContext},
 	types::InternalFunctionEffect,
-	TypeId, VariableId,
+	TypeId,
 };
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]

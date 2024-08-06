@@ -8,7 +8,7 @@ use crate::{
 	types::{
 		calling::{Callable, FunctionCallingError, SynthesisedArgument},
 		printing::print_type,
-		properties::{key_matches, AccessMode, Descriptor, PropertyKey, Publicity},
+		properties::{AccessMode, Descriptor, PropertyKey, Publicity},
 		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
 	Constant, Environment, PropertyValue, TypeId,
@@ -390,7 +390,7 @@ pub(crate) fn call_constant_function(
 										environment,
 										types,
 									),
-									/// Should be set by parent
+									// Should be set by parent
 									call_site,
 								},
 							));
@@ -502,7 +502,7 @@ pub(crate) fn call_constant_function(
 								crate::utilities::notify!("TODO conditional. Union with undefined");
 								return Err(ConstantFunctionError::BadCall);
 							}
-							PropertyValue::Configured { on, descriptor: d } => {
+							PropertyValue::Configured { on: _, descriptor: d } => {
 								descriptor = d;
 							}
 							_ => {}

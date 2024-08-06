@@ -2,7 +2,6 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::invocation::CheckThings,
-	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	types::{
 		calling::{

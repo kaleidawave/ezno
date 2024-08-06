@@ -244,10 +244,11 @@ impl PolyNature {
 		matches!(
 			self,
 			Self::Parameter { .. }
-				| Self::StructureGeneric { .. }
 				| Self::FunctionGeneric { .. }
 				| Self::InferGeneric { .. }
+				| Self::MappedGeneric { .. }
 		)
+		// | Self::StructureGeneric { .. }
 	}
 
 	/// The constraint can be adjusted
@@ -263,7 +264,7 @@ impl PolyNature {
 
 	// TODO remove Option
 	#[must_use]
-	pub fn try_get_constraint(&self) -> Option<TypeId> {
+	pub fn get_constraint(&self) -> TypeId {
 		match self {
 			PolyNature::Parameter { fixed_to: to }
 			| PolyNature::FunctionGeneric { extends: to, .. }
@@ -274,7 +275,7 @@ impl PolyNature {
 			| PolyNature::InferGeneric { extends: to, .. }
 			| PolyNature::CatchVariable(to)
 			| PolyNature::Open(to)
-			| PolyNature::Error(to) => Some(*to),
+			| PolyNature::Error(to) => *to,
 		}
 	}
 }
@@ -521,7 +522,7 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 /// **Also looks at possibly mutated things
 pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
-		Type::RootPolyType(nature) => nature.try_get_constraint(),
+		Type::RootPolyType(nature) => Some(nature.get_constraint()),
 		Type::Constructor(constructor) => match constructor.clone() {
 			Constructor::BinaryOperator { lhs, operator, rhs } => {
 				if let MathematicalAndBitwise::Add = operator {
@@ -873,13 +874,7 @@ pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 		Type::Or(lhs, rhs) | Type::And(lhs, rhs) => {
 			references_key_of(*lhs, types) || references_key_of(*rhs, types)
 		}
-		Type::RootPolyType(c) => {
-			if let Some(c) = c.try_get_constraint() {
-				references_key_of(c, types)
-			} else {
-				false
-			}
-		}
+		Type::RootPolyType(c) => references_key_of(c.get_constraint(), types),
 		Type::Constructor(c) => {
 			if let Constructor::KeyOf(..) = c {
 				true
@@ -915,74 +910,6 @@ pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
 		false
 	}
 }
-
-// pub fn scan_type<T, R>(
-// 	(ty, ty_arguments): (TypeId, GenericChain),
-// 	types: &TypeStore,
-// 	information: &impl InformationChain,
-// 	data: &mut T,
-// 	cb: &impl Fn(TypeId, &TypeStore, &mut T) -> Option<R>
-// ) -> Option<R> {
-// 	match types.get_type_by_id(ty) {
-// 	    Type::AliasTo { to, name: _, parameters: _ } => scan_type(
-// 			(ty, ty_arguments),
-// 			types,
-// 			information,
-// 			data,
-// 			cb
-// 		),
-// 		Type::And(_,_) => {
-// 			todo!("filter")
-// 		},
-// 		Type::Or(l, r) => {
-// 			let left_result = scan_type(
-// 				(*l, ty_arguments),
-// 				types,
-// 				information,
-// 				data,
-// 				cb
-// 			);
-// 			if left_result.is_some() {
-// 				left_result
-// 			} else {
-// 				scan_type(
-// 					(*r, ty_arguments),
-// 					types,
-// 					information,
-// 					data,
-// 					cb
-// 				)
-// 			}
-// 		},
-// 		Type::RootPolyType(_) => {
-// 			if let Some(arg) = ty_arguments.and_then(|args| args.get_single_argument(ty)) {
-// 				scan_type(
-// 					(arg, ty_arguments),
-// 					types,
-// 					information,
-// 					data,
-// 					cb
-// 				)
-// 			} else {
-// 				cb(ty, types, data)
-// 			}
-// 		},
-// 		ty @ Type::Constructor(_) => {
-// 			todo!("{:?}", ty)
-// 		},
-// 		ty @ Type::PartiallyAppliedGenerics(_) => {
-// 			todo!("{:?}", ty)
-// 		},
-// 		Type::Interface { .. } |
-// 		Type::Class { .. } |
-// 		Type::Constant(_) |
-// 		Type::FunctionReference(_) |
-// 		Type::Object(_) |
-// 		Type::SpecialObject(_) => {
-// 			cb(ty, types, data)
-// 		}
-// 	}
-// }
 
 /// TODO want to skip mapped generics because that would break subtyping
 pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
@@ -1025,5 +952,28 @@ pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeS
 		} else {
 			false
 		}
+	}
+}
+
+pub fn is_inferrable_type(ty: TypeId) -> bool {
+	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
+}
+
+/// TODO temp
+pub fn type_cardinality(ty: TypeId, types: &TypeStore) -> usize {
+	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+		on: TypeId::CASE_INSENSITIVE,
+		arguments,
+	}) = types.get_type_by_id(ty)
+	{
+		let inner = arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
+		if let Type::Constant(Constant::String(inner)) = types.get_type_by_id(inner) {
+			2u32.pow(inner.chars().filter(|c| c.is_lowercase() == c.is_uppercase()).count() as u32)
+				as usize
+		} else {
+			usize::MAX
+		}
+	} else {
+		usize::MAX
 	}
 }

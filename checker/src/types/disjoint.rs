@@ -63,7 +63,7 @@ pub fn types_are_disjoint(
 		} else if let (
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 				on: TypeId::ARRAY_TYPE,
-				arguments,
+				arguments: _arguments,
 			}),
 			Type::Object(super::ObjectNature::RealDeal),
 		) = (left_ty, right_ty)

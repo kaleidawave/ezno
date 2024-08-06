@@ -248,14 +248,15 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			#[cfg(not(target_family = "wasm"))]
 			if timings {
 				let reporting = current.unwrap().elapsed();
-				eprintln!("Diagnostics: {}", diagnostics_count);
-				eprintln!("Types:       {}", types.count_of_types());
-				eprintln!("Lines:       {}", chronometer.lines);
-				eprintln!("Cache read:  {:?}", chronometer.cached);
-				eprintln!("FS read:     {:?}", chronometer.fs);
-				eprintln!("Parsed in:   {:?}", chronometer.parse);
-				eprintln!("Checked in:  {:?}", chronometer.check);
-				eprintln!("Reporting:   {:?}", reporting);
+				eprintln!("---\n");
+				eprintln!("Diagnostics:\t{}", diagnostics_count);
+				eprintln!("Types:      \t{}", types.count_of_types());
+				eprintln!("Lines:      \t{}", chronometer.lines);
+				eprintln!("Cache read: \t{:?}", chronometer.cached);
+				eprintln!("FS read:    \t{:?}", chronometer.fs);
+				eprintln!("Parsed in:  \t{:?}", chronometer.parse);
+				eprintln!("Checked in: \t{:?}", chronometer.check);
+				eprintln!("Reporting:  \t{:?}", reporting);
 			}
 
 			result

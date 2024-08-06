@@ -4,7 +4,6 @@ use parser::{
 	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField, Expression,
 	ObjectDestructuringField, SpreadDestructuringField, VariableField, VariableIdentifier,
 };
-use source_map::{Nullable, SpanWithSource};
 
 use super::expressions::synthesise_expression;
 use crate::{

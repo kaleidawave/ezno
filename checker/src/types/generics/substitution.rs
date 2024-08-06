@@ -16,7 +16,7 @@ use crate::{
 	types::{
 		generics::contributions::Contributions,
 		intrinsics::{self, distribute_tsc_string_intrinsic},
-		logical::{Logical, LogicalOrValid},
+		logical::{LeftRight, Logical, LogicalOrValid},
 		properties::{get_property_unbound, Publicity},
 		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	},
@@ -188,9 +188,8 @@ pub(crate) fn substitute(
 					handler,
 				})))
 			}
-			SpecialObject::Import(_)
-			| SpecialObject::RegularExpression { .. }
-			| SpecialObject::Null => id,
+			SpecialObject::RegularExpression { .. } => todo!(),
+			SpecialObject::Import(_) | SpecialObject::Null => id,
 			SpecialObject::Function(..) => unreachable!("done above"),
 		},
 		Type::And(lhs, rhs) => {
@@ -387,20 +386,54 @@ pub(crate) fn substitute(
 						Ok(LogicalOrValid::Logical(value)) => {
 							fn resolve_logical_during_substitution(
 								value: Logical<PropertyValue>,
-								types: &TypeStore,
+								environment: &Environment,
+								types: &mut TypeStore,
 							) -> TypeId {
 								match value {
 									Logical::Pure(v) => {
 										// substitute(id, arguments, environment, types)
 										v.as_get_type(types)
 									}
-									Logical::Or { .. } => todo!(),
-									Logical::Implies { .. } => todo!(),
-									Logical::BasedOnKey { .. } => todo!(),
+									Logical::Or { .. } => todo!("{:?}", value),
+									Logical::Implies { .. } => todo!("{:?}", value),
+									Logical::BasedOnKey(LeftRight::Left { .. }) => {
+										todo!("{:?}", value)
+									}
+									Logical::BasedOnKey(LeftRight::Right { on, key }) => {
+										let filter =
+											crate::types::get_constraint(key, types).unwrap_or(key);
+
+										let entries = crate::types::properties::list::get_properties_on_single_type2(
+											(on, None),
+											types,
+											environment,
+											filter,
+										);
+										let mut iter = entries.into_iter();
+										if let Some((_, first_value, _)) = iter.next() {
+											// TODO should properly evaluate value
+											let mut value = first_value.as_get_type(types);
+											for (_, other, _) in iter {
+												value = types
+													.new_or_type(other.as_get_type(types), value);
+											}
+											value =
+												types.new_or_type(value, TypeId::UNDEFINED_TYPE);
+
+											// TODO property result
+											let value = types.register_type(Type::RootPolyType(
+												crate::types::PolyNature::Open(value),
+											));
+
+											value
+										} else {
+											TypeId::NEVER_TYPE
+										}
+									}
 								}
 							}
 
-							resolve_logical_during_substitution(value, types)
+							resolve_logical_during_substitution(value, environment, types)
 						}
 						Ok(value) => {
 							crate::utilities::notify!("TODO {:?}", value);
