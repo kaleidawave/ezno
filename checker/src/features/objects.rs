@@ -4,6 +4,7 @@ use crate::{
 	context::Environment,
 	types::{
 		properties::{PropertyKey, PropertyValue, Publicity},
+		regexp::RegExp,
 		TypeStore,
 	},
 	FunctionId, LocalInformation, TypeId,
@@ -56,7 +57,7 @@ pub enum SpecialObjects {
 	/// Needs overrides for calling, getting etc
 	Proxy(Proxy),
 	/// Not a [Constant] as `typeof /hi/ === "object"` and it has state
-	RegularExpression(String),
+	RegularExpression(RegExp),
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
 	/// Yeah here

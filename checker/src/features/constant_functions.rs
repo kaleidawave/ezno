@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use iterator_endiate::EndiateIteratorExt;
 use source_map::SpanWithSource;
 
@@ -7,12 +9,16 @@ use crate::{
 	types::{
 		functions::SynthesisedArgument,
 		printing::{debug_effects, print_type},
+		properties::PropertyKey,
 		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
 	Constant, Environment, TypeId,
 };
 
-use super::{functions::ThisValue, objects::SpecialObjects};
+use super::{
+	functions::ThisValue,
+	objects::{ObjectBuilder, SpecialObjects},
+};
 
 // TODO ...
 pub(crate) enum ConstantOutput {
@@ -43,7 +49,7 @@ pub(crate) fn call_constant_function(
 	types: &mut TypeStore,
 	// TODO mut for satisfies which needs checking
 	environment: &mut Environment,
-	_call_site: SpanWithSource,
+	call_site: SpanWithSource,
 ) -> Result<ConstantOutput, ConstantFunctionError> {
 	// crate::utilities::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
@@ -305,6 +311,153 @@ pub(crate) fn call_constant_function(
 		"json:stringify" => {
 			crate::utilities::notify!("TODO json:stringify");
 			Err(ConstantFunctionError::BadCall)
+		}
+		"regexp:constructor" => {
+			let pattern = types
+				.get_type_by_id(arguments.first().unwrap().non_spread_type().expect("pattern"));
+			let flags =
+				arguments.get(1).map(|a| types.get_type_by_id(a.non_spread_type().expect("flags")));
+
+			let Type::Constant(Constant::String(pattern)) = pattern else {
+				return Err(ConstantFunctionError::BadCall);
+			};
+			let flags = match flags {
+				Some(flags) => {
+					let Type::Constant(Constant::String(flags)) = flags else {
+						return Err(ConstantFunctionError::BadCall);
+					};
+
+					Some(flags.clone())
+				}
+				None => None,
+			};
+
+			let regex =
+				types.new_regex(&pattern.clone(), &flags, &call_site.clone().without_source());
+
+			Ok(ConstantOutput::Value(regex))
+		}
+		"regexp:exec" => {
+			let this = this_argument.get_passed().map(|t| types.get_type_by_id(t));
+
+			if let Some(Type::SpecialObject(SpecialObjects::RegularExpression(regexp))) = this {
+				let pattern_type_id =
+					arguments.first().unwrap().non_spread_type().expect("pattern");
+				let pattern_type = types.get_type_by_id(pattern_type_id);
+				let pattern = {
+					let Type::Constant(Constant::String(pattern)) = pattern_type else {
+						return Err(ConstantFunctionError::BadCall);
+					};
+
+					pattern.clone()
+				};
+
+				let regexp = regexp.clone();
+
+				match regexp.exec(&pattern) {
+					Some(match_) => {
+						let mut basis = ObjectBuilder::new(
+							Some(TypeId::ARRAY_TYPE),
+							types,
+							call_site,
+							&mut environment.info,
+						);
+
+						basis.append(
+							environment,
+							crate::types::properties::Publicity::Public,
+							PropertyKey::String(Cow::Borrowed("input")),
+							crate::types::properties::PropertyValue::Value(pattern_type_id),
+							call_site,
+						);
+
+						let index = types.new_constant_type(Constant::Number(
+							(match_.start() as f64).try_into().unwrap(),
+						));
+						basis.append(
+							environment,
+							crate::types::properties::Publicity::Public,
+							PropertyKey::String(Cow::Borrowed("index")),
+							crate::types::properties::PropertyValue::Value(index),
+							call_site,
+						);
+
+						for (idx, group) in match_.groups().enumerate() {
+							let key = PropertyKey::from_usize(idx);
+							let value = match group {
+								Some(range) => types.new_constant_type(Constant::String(
+									pattern[range].to_string(),
+								)),
+								None => todo!(),
+							};
+
+							basis.append(
+								environment,
+								crate::types::properties::Publicity::Public,
+								key,
+								crate::types::properties::PropertyValue::Value(value),
+								call_site,
+							);
+						}
+
+						let named_groups = {
+							let mut named_groups_object = ObjectBuilder::new(
+								Some(TypeId::NULL_TYPE),
+								types,
+								call_site,
+								&mut environment.info,
+							);
+
+							for (name, group) in match_.named_groups() {
+								let key = PropertyKey::String(Cow::Owned(name.to_string()));
+								let value = match group {
+									Some(range) => types.new_constant_type(Constant::String(
+										pattern[range].to_string(),
+									)),
+									None => todo!(),
+								};
+
+								named_groups_object.append(
+									environment,
+									crate::types::properties::Publicity::Public,
+									key,
+									crate::types::properties::PropertyValue::Value(value),
+									call_site,
+								);
+							}
+
+							named_groups_object.build_object()
+						};
+
+						basis.append(
+							environment,
+							crate::types::properties::Publicity::Public,
+							PropertyKey::String(Cow::Borrowed("groups")),
+							crate::types::properties::PropertyValue::Value(named_groups),
+							call_site,
+						);
+
+						{
+							let length = types.new_constant_type(crate::Constant::Number(
+								((regexp.groups + 1) as f64).try_into().unwrap(),
+							));
+
+							basis.append(
+								environment,
+								crate::types::properties::Publicity::Public,
+								PropertyKey::String("length".into()),
+								crate::types::properties::PropertyValue::Value(length),
+								call_site,
+							);
+						}
+
+						Ok(ConstantOutput::Value(basis.build_object()))
+					}
+					None => Ok(ConstantOutput::Value(TypeId::NULL_TYPE)),
+				}
+			} else {
+				Err(ConstantFunctionError::BadCall)
+			}
 		}
 		// "satisfies" => {
 		// 	let ty = arguments

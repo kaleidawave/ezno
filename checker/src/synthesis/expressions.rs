@@ -88,8 +88,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::StringLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
-		Expression::RegexLiteral { pattern, flags: _, position: _ } => {
-			return checking_data.types.new_regex(pattern.clone());
+		Expression::RegexLiteral { pattern, flags, position } => {
+			return checking_data.types.new_regex(pattern, flags, position);
 		}
 		Expression::NumberLiteral(value, ..) => {
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {

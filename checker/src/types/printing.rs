@@ -613,9 +613,7 @@ fn print_type_into_buf<C: InformationChain>(
 				buf.push_str(" }");
 			}
 			SpecialObjects::RegularExpression(exp) => {
-				buf.push('/');
-				buf.push_str(exp);
-				buf.push('/');
+				buf.push_str(exp.source());
 			}
 			SpecialObjects::Function(..) => unreachable!(),
 			SpecialObjects::ClassConstructor { name, prototype, constructor: _ } => {

@@ -6,6 +6,7 @@ pub mod generics;
 pub mod others;
 pub mod printing;
 pub mod properties;
+pub mod regexp;
 pub mod store;
 pub mod subtyping;
 mod terms;

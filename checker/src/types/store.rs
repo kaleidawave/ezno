@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::Map as SmallMap;
+use parser::Span;
 use source_map::SpanWithSource;
 
 use crate::{
@@ -15,7 +16,8 @@ use crate::{
 
 use super::{
 	generics::generic_type_arguments::GenericArguments, get_constraint, properties::PropertyKey,
-	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeRelationOperator,
+	regexp::RegExp, Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics,
+	TypeRelationOperator,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -371,10 +373,11 @@ impl TypeStore {
 		}
 	}
 
-	/// TODO flags
-	pub fn new_regex(&mut self, pattern: String) -> TypeId {
+	pub fn new_regex(&mut self, pattern: &str, flags: &Option<String>, _position: &Span) -> TypeId {
+		let regexp = RegExp::new(pattern, flags.as_ref().map(|s| s.as_str()));
+
 		self.register_type(Type::SpecialObject(
-			crate::features::objects::SpecialObjects::RegularExpression(pattern),
+			crate::features::objects::SpecialObjects::RegularExpression(regexp),
 		))
 	}
 

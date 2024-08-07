@@ -851,6 +851,9 @@ impl<T: ContextType> Context<T> {
 					"Boolean" => {
 						return TypeId::BOOLEAN_TYPE;
 					}
+					"RegExp" => {
+						return TypeId::REGEXP_TYPE;
+					}
 					"ImportMeta" => {
 						return TypeId::IMPORT_META;
 					}

@@ -1394,9 +1394,25 @@ pub(crate) fn get_property_unbound(
 		Type::SpecialObject(SpecialObjects::Generator { .. }) => {
 			todo!()
 		}
-		Type::SpecialObject(SpecialObjects::RegularExpression(..)) => {
-			todo!()
-		}
+		Type::SpecialObject(SpecialObjects::RegularExpression(..)) => info_chain
+			.get_chain_of_info()
+			.find_map(|info| {
+				resolver(
+					(on, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					info,
+					types,
+				)
+				.or_else(|| {
+					resolver(
+						(TypeId::REGEXP_TYPE, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info,
+						types,
+					)
+				})
+			})
+			.ok_or(crate::context::MissingOrToCalculate::Missing),
 	}
 }
 
