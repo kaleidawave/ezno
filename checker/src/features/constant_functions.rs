@@ -343,7 +343,12 @@ pub(crate) fn call_constant_function(
 				let pattern_type_id =
 					arguments.first().unwrap().non_spread_type().expect("pattern");
 
-				regexp.clone().exec(pattern_type_id, types, environment, call_site)
+				Ok(ConstantOutput::Value(regexp.clone().exec(
+					pattern_type_id,
+					types,
+					environment,
+					call_site,
+				)))
 			} else {
 				Err(ConstantFunctionError::BadCall)
 			}

@@ -97,7 +97,7 @@ impl RegExp {
 		types: &mut TypeStore,
 		environment: &mut Environment,
 		call_site: SpanWithSource,
-	) -> Result<ConstantOutput, ConstantFunctionError> {
+	) -> TypeId {
 		let pattern_type = types.get_type_by_id(pattern_type_id);
 
 		match (self.flags_unsupported, pattern_type) {
@@ -108,14 +108,14 @@ impl RegExp {
 		}
 	}
 
-	fn exec_constant(
+	pub(crate) fn exec_constant(
 		&self,
 		pattern: String,
 		pattern_type_id: TypeId,
 		types: &mut TypeStore,
 		environment: &mut Environment,
 		call_site: SpanWithSource,
-	) -> Result<ConstantOutput, ConstantFunctionError> {
+	) -> TypeId {
 		let mut object =
 			ObjectBuilder::new(Some(TypeId::ARRAY_TYPE), types, call_site, &mut environment.info);
 
@@ -213,18 +213,18 @@ impl RegExp {
 					);
 				}
 
-				Ok(ConstantOutput::Value(object.build_object()))
+				object.build_object()
 			}
-			None => Ok(ConstantOutput::Value(TypeId::NULL_TYPE)),
+			None => TypeId::NULL_TYPE,
 		}
 	}
 
-	fn exec_variable(
+	pub(crate) fn exec_variable(
 		&self,
 		types: &mut TypeStore,
 		environment: &mut Environment,
 		call_site: SpanWithSource,
-	) -> Result<ConstantOutput, ConstantFunctionError> {
+	) -> TypeId {
 		let mut object =
 			ObjectBuilder::new(Some(TypeId::ARRAY_TYPE), types, call_site, &mut environment.info);
 
@@ -304,7 +304,7 @@ impl RegExp {
 			);
 		}
 
-		Ok(ConstantOutput::Value(types.new_or_type(object.build_object(), TypeId::NULL_TYPE)))
+		types.new_or_type(object.build_object(), TypeId::NULL_TYPE)
 	}
 }
 
