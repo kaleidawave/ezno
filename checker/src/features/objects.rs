@@ -4,13 +4,12 @@ use crate::{
 	context::Environment,
 	types::{
 		properties::{PropertyKey, PropertyValue, Publicity},
-		regexp::RegExp,
 		TypeStore,
 	},
 	FunctionId, LocalInformation, TypeId,
 };
 
-use super::functions::ThisValue;
+use super::{functions::ThisValue, regexp::RegExp};
 
 /// Helper for building objects easy
 // TODO slice indexes
