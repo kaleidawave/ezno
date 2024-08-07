@@ -209,6 +209,7 @@ declare class RegExp {
     exec(input: string): RegExpExecArray | null;
 }
 
+// es5
 interface RegExpExecArray extends Array<string> {
     /**
      * The index of the search at which the result was found.
@@ -222,6 +223,13 @@ interface RegExpExecArray extends Array<string> {
      * The first match. This will always be present because `null` will be returned if there are no matches.
      */
     0: string;
+}
+
+// es2018
+interface RegExpExecArray {
+    groups?: {
+        [key: string]: string;
+    };
 }
 
 type ResponseBody = string;

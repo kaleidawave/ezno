@@ -425,6 +425,10 @@ pub(crate) enum TypeCheckError<'a> {
 		base: TypeStringRepresentation,
 		overload: TypeStringRepresentation,
 	},
+	InvalidRegexp {
+		error: String,
+		position: SpanWithSource,
+	},
 }
 
 #[allow(clippy::useless_format)]
@@ -784,7 +788,12 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					)],
 					position: overload_position,
 					kind,
-				}
+				},
+				TypeCheckError::InvalidRegexp { error, position } => Diagnostic::Position {
+					reason: format!("Invalid regular expression: {error}"),
+					position,
+					kind,
+				},
 			}
 	}
 }

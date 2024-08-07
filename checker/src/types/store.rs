@@ -8,6 +8,7 @@ use crate::{
 	features::{
 		functions::{ClosureId, FunctionBehavior},
 		objects::SpecialObjects,
+		regexp::RegExp,
 	},
 	types::{FunctionType, PolyNature, Type},
 	Environment, FunctionId, TypeId,
@@ -15,8 +16,7 @@ use crate::{
 
 use super::{
 	generics::generic_type_arguments::GenericArguments, get_constraint, properties::PropertyKey,
-	regexp::RegExp, Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics,
-	TypeRelationOperator,
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeRelationOperator,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -372,12 +372,16 @@ impl TypeStore {
 		}
 	}
 
-	pub fn new_regex(&mut self, pattern: &str, flags: &Option<String>, _position: &Span) -> TypeId {
-		let regexp = RegExp::new(pattern, flags.as_ref().map(|s| s.as_str()));
+	pub fn new_regexp(
+		&mut self,
+		pattern: &str,
+		flags: &Option<String>,
+		_position: &Span,
+	) -> Result<TypeId, String> {
+		let regexp = RegExp::new(pattern, flags.as_ref().map(|s| s.as_str()))?;
+		let ty = Type::SpecialObject(SpecialObjects::RegularExpression(regexp));
 
-		self.register_type(Type::SpecialObject(
-			crate::features::objects::SpecialObjects::RegularExpression(regexp),
-		))
+		Ok(self.register_type(ty))
 	}
 
 	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {

@@ -89,7 +89,19 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		Expression::RegexLiteral { pattern, flags, position } => {
-			return checking_data.types.new_regex(pattern, flags, position);
+			let regexp = checking_data.types.new_regexp(pattern, flags, position);
+
+			match regexp {
+				Ok(regexp) => return regexp,
+				Err(error) => {
+					checking_data.diagnostics_container.add_error(TypeCheckError::InvalidRegexp {
+						error,
+						position: position.with_source(environment.get_source()),
+					});
+
+					return TypeId::ERROR_TYPE;
+				}
+			}
 		}
 		Expression::NumberLiteral(value, ..) => {
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
