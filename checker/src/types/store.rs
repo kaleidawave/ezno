@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::Map as SmallMap;
-use parser::Span;
-use source_map::SpanWithSource;
+use source_map::{Span, SpanWithSource};
 
 use crate::{
 	context::Logical,
