@@ -1,6 +1,3 @@
-@Constant
-declare function debug_type_independent(t: any): void;
-
 // Eventually this will be merged with existing TS es5.d.ts files but for now is the standalone see #121
 
 interface ImportEnv {
@@ -33,8 +30,7 @@ declare class Array<T> {
             return undefined
         } else {
             const value = this[--this.length];
-            // TODO this currently breaks value?
-            // delete this[this.length];
+            delete this[this.length];
             return value
         }
     }
@@ -149,7 +145,10 @@ declare class Math {
     @Constant
     static trunc(x: number): number;
 
-    static PI: 3.141592653589793
+    static PI: 3.141592653589793;
+
+    @InputOutput
+    static random(): number;
 }
 
 @Primitive("string")
@@ -279,12 +278,24 @@ declare class Function {
 
 declare class Symbols {
     // TODO temp
-    iterator: 199
+    static iterator: unique symbol "iterator"
 }
 
 declare class Proxy {
-    @Constant("Proxy:constructor")
+    @Constant("proxy:constructor")
         constructor(obj: any, cb: any);
+}
+
+// Copied from `es5.d.ts`. Could this be an or
+// TODO string keys temp because parser broke
+interface PropertyDescriptor {
+    value?: any;
+    ["get" ? (): any;
+    ["set" ? (v: any): void;
+
+    writable?: boolean;
+    configurable?: boolean;
+    enumerable?: boolean;
 }
 
 declare class Object {
@@ -294,11 +305,19 @@ declare class Object {
     @Constant
     static getPrototypeOf(on: object): object | null;
 
-    // static create(prototype: object): object {
-    //     const n = {};
-    //     Object.setProtoTypeOf(n, prototype);
-    //     return n
-    // }
+    @Constant
+    static freeze(on: object): object;
+
+    @Constant
+    static isFrozen(on: object): boolean;
+
+    // TODO defineProperties via body (not constant)
+    @Constant
+    static defineProperty(on: object, property: string, discriminator: PropertyDescriptor): boolean;
+
+    // TODO getOwnPropertyDescriptors via body (not constant)
+    @Constant
+    static getOwnPropertyDescriptor(on: object, property: string): PropertyDescriptor;
 
     static keys(on: { [s: string]: any }): Array<string> {
         const keys: Array<string> = [];
@@ -322,6 +341,14 @@ declare class Object {
             entries.push([key, on[key]]);
         }
         return entries
+    }
+
+    // TODO multiple arguments
+    static assign(target: object, source: object): object {
+        for (const key in source) {
+            target[key] = source[key]
+        }
+        return target
     }
 
     // static fromEntries(iterator: any): object {
@@ -386,6 +413,8 @@ declare function debug_context(): void;
 declare function context_id(): void;
 @Constant
 declare function context_id_chain(): void;
+@Constant
+declare function debug_type_independent(t: any): void;
 
 // A function, as it should be!
 @Constant

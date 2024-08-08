@@ -78,6 +78,11 @@ pub fn get_properties_on_single_type(
 					if let Some(n) = key.as_number(types) {
 						numerical_properties.insert(n, value);
 					} else {
+						// TODO temp fix
+						if idx > properties.len() {
+							crate::utilities::notify!("Here!");
+							continue;
+						}
 						properties[idx] = value;
 					}
 				} else {

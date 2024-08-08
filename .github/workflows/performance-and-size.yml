@@ -36,7 +36,6 @@ jobs:
 
       - name: Run checker performance
         shell: bash
-        continue-on-error: true
         run: |
           # Generate a file which contains everything that Ezno currently implements  
           cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md --comment-headers --out ./demo.tsx
@@ -58,14 +57,12 @@ jobs:
 
           echo "::info::Wrote code to summary"
           
-          command_output=$(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1)
+          command_output=$(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
           diagnostics=""; statistics=""; found_splitter=false;
 
-          echo "$command_output"
-
           while IFS= read -r line; do
-              if [[ "$line" == *"---"* ]]; then found_splitter = true;
-              elif [[ "$found_splitter"  == false ]]; then diagnostics += "$line"$'\n';
+              if [[ "$line" == *"---"* ]]; then found_splitter=true;
+              elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
               else statistics+="$line"$'\n'; fi
           done <<< "$command_output"
 
@@ -107,7 +104,6 @@ jobs:
 
           cat ./checker/specification/specification.md > main.md
           cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./code.tsx
-          cat ./code.tsx > large.tsx
           for i in {1..10}; do
             cat ./code.tsx >> large.tsx
           done
