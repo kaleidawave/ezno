@@ -348,15 +348,47 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		VariableField::Array { members: _, spread: _, position } => {
-			checking_data.raise_unimplemented_error(
-				"array spread",
+		VariableField::Array { members, spread: _, position } => {
+			let iterator = crate::features::iteration::IteratorHelper::from_type(
+				value,
+				environment,
+				checking_data,
 				position.with_source(environment.get_source()),
-			);
-			// let position = position.with_source(environment.get_source());
+			)
+			.unwrap();
 
-			// if let Some(spread) = spread {
-			// }
+			for member in members {
+				match member.get_ast_ref() {
+					ArrayDestructuringField::Name(inner, _, default) => {
+						let position = inner.get_position().with_source(environment.get_source());
+						let value = iterator.next(environment, checking_data, position);
+						let value = if let (None, Some(expression)) = (value, default) {
+							synthesise_expression(
+								&*expression,
+								environment,
+								checking_data,
+								TypeId::ANY_TYPE,
+							)
+						} else if let Some(value) = value {
+							value
+						} else {
+							todo!("error")
+						};
+						assign_initial_to_fields(
+							inner,
+							environment,
+							checking_data,
+							value,
+							exported,
+						);
+					}
+					ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {
+						use source_map::{Nullable, SpanWithSource};
+
+						let _ = iterator.next(environment, checking_data, SpanWithSource::NULL);
+					}
+				}
+			}
 		}
 		VariableField::Object { members, spread, position } => {
 			for member in members {
