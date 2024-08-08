@@ -7,8 +7,8 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::conditional::new_conditional_context,
 	types::{
-		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, Constructor,
-		PartiallyAppliedGenerics, TypeStore,
+		cast_as_number, cast_as_string, get_constraint, intrinsics, is_type_truthy_falsy,
+		new_logical_or_type, Constructor, PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
@@ -180,6 +180,53 @@ pub fn evaluate_mathematical_operation(
 		}
 	}
 
+	{
+		fn simple_is_type(matching: TypeId, on: TypeId, types: &TypeStore) -> bool {
+			if on == matching {
+				true
+			} else {
+				match types.get_type_by_id(on) {
+					Type::Constant(c) => c.get_backing_type_id() == matching,
+					Type::Or(left, right) => {
+						simple_is_type(matching, *left, types)
+							&& simple_is_type(matching, *right, types)
+					}
+					Type::And(left, right) => {
+						simple_is_type(matching, *left, types)
+							|| simple_is_type(matching, *right, types)
+					}
+					ty => {
+						crate::utilities::notify!("{:?} not handled by simple is", ty);
+						false
+					}
+				}
+			}
+		}
+
+		let lhs = get_constraint(lhs, types).unwrap_or(lhs);
+		let rhs = get_constraint(rhs, types).unwrap_or(rhs);
+
+		// TODO proper type_is_subtype
+		if let MathematicalAndBitwise::Add = operator {
+			let want = if simple_is_type(TypeId::NUMBER_TYPE, lhs, types) {
+				TypeId::NUMBER_TYPE
+			} else if simple_is_type(TypeId::STRING_TYPE, lhs, types) {
+				TypeId::STRING_TYPE
+			} else {
+				return Err(());
+			};
+			if !simple_is_type(want, rhs, types) {
+				return Err(());
+			}
+		} else {
+			if !simple_is_type(TypeId::NUMBER_TYPE, lhs, types)
+				|| !simple_is_type(TypeId::NUMBER_TYPE, rhs, types)
+			{
+				return Err(());
+			}
+		}
+	}
+
 	if lhs == TypeId::ERROR_TYPE || rhs == TypeId::ERROR_TYPE {
 		return Ok(TypeId::ERROR_TYPE);
 	}
@@ -305,6 +352,80 @@ pub fn evaluate_equality_inequality_operation(
 					}
 				}
 
+				// Checking things (TODO under option) via distribution
+				{
+					// lhs < rhs (ceiling < rhs)
+					if let (
+						Type::Constant(Constant::Number(lhs)),
+						Some(Type::Constant(Constant::Number(ceiling))),
+					) = (
+						types.get_type_by_id(lhs),
+						intrinsics::get_less_than(rhs, types).map(|t| types.get_type_by_id(t)),
+					) {
+						// crate::utilities::notify!("{:?} < {:?}", lhs, ceiling);
+						// We know that the rhs is always greater than ceiling
+						if *lhs >= *ceiling {
+							return TypeId::FALSE;
+						}
+					}
+
+					if let (
+						Type::Constant(Constant::Number(lhs)),
+						Some(Type::Constant(Constant::Number(floor))),
+					) = (
+						types.get_type_by_id(lhs),
+						intrinsics::get_greater_than(rhs, types).map(|t| types.get_type_by_id(t)),
+					) {
+						// crate::utilities::notify!("{:?} {:?}", lhs, floor);
+						if *lhs <= *floor {
+							return TypeId::TRUE;
+						}
+					}
+
+					if let (
+						Some(Type::Constant(Constant::Number(ceiling))),
+						Type::Constant(Constant::Number(rhs)),
+					) = (
+						intrinsics::get_less_than(lhs, types).map(|t| types.get_type_by_id(t)),
+						types.get_type_by_id(rhs),
+					) {
+						// We know that the lhs is always less than ceiling
+						// crate::utilities::notify!("{:?} {:?}", rhs, ceiling);
+
+						if *rhs >= *ceiling {
+							return TypeId::TRUE;
+						}
+					}
+
+					if let (
+						Some(Type::Constant(Constant::Number(floor))),
+						Type::Constant(Constant::Number(rhs)),
+					) = (
+						intrinsics::get_greater_than(lhs, types).map(|t| types.get_type_by_id(t)),
+						types.get_type_by_id(rhs),
+					) {
+						// We know that the lhs is always less than ceiling
+						// crate::utilities::notify!("{:?} {:?}", rhs, floor);
+
+						if *rhs <= *floor {
+							return TypeId::FALSE;
+						}
+					}
+
+					// {
+					// 	crate::utilities::notify!(
+					// 		"Floors and ceilings: {:?} {:?} {:?} {:?}, lhs={:?}, rhs={:?}",
+					// 		intrinsics::get_less_than(lhs, types).map(|t| types.get_type_by_id(t)),
+					// 		intrinsics::get_less_than(rhs, types).map(|t| types.get_type_by_id(t)),
+					// 		intrinsics::get_greater_than(lhs, types)
+					// 			.map(|t| types.get_type_by_id(t)),
+					// 		intrinsics::get_greater_than(rhs, types)
+					// 			.map(|t| types.get_type_by_id(t)),
+					// 		types.get_type_by_id(lhs),
+					// 		types.get_type_by_id(rhs)
+					// 	);
+					// }
+				}
 				let constructor = Constructor::CanonicalRelationOperator {
 					lhs,
 					operator: CanonicalEqualityAndInequality::LessThan,
