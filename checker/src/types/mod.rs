@@ -158,6 +158,21 @@ impl TypeId {
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Type {
+	/// *Dependent equality types*
+	Constant(crate::Constant),
+	/// Technically could be just a function but...
+	Object(ObjectNature),
+	SpecialObject(SpecialObject),
+
+	/// From a parameter, introduces a set of types > 1
+	RootPolyType(PolyNature),
+	/// Also a "Substituted constructor type"
+	Constructor(Constructor),
+	Narrowed {
+		/// Either `RootPolyType` or `Constructor`
+		from: TypeId,
+		narrowed_to: TypeId,
+	},
 	/// For
 	/// - `extends` interface part (for multiple it to is a `Type::And`)
 	/// - Can be used for subtypes (aka N aliases number then more types on top)
@@ -167,15 +182,6 @@ pub enum Type {
 		name: String,
 		parameters: Option<Vec<TypeId>>,
 	},
-	And(TypeId, TypeId),
-	Or(TypeId, TypeId),
-	RootPolyType(PolyNature),
-	/// Also a "Substituted constructor type"
-	Constructor(Constructor),
-
-	/// **e.g `Array<string>`
-	PartiallyAppliedGenerics(PartiallyAppliedGenerics),
-
 	/// For number and other rooted types
 	///
 	/// Although they all alias Object
@@ -189,15 +195,16 @@ pub enum Type {
 		name: String,
 		type_parameters: Option<Vec<TypeId>>,
 	},
-	/// *Dependent equality types*
-	Constant(crate::Constant),
-
 	/// From a type annotation or .d.ts WITHOUT body. e.g. don't know effects TODO...
 	FunctionReference(FunctionId),
 
-	/// Technically could be just a function but...
-	Object(ObjectNature),
-	SpecialObject(SpecialObject),
+	/// **e.g `Array<string>`
+	PartiallyAppliedGenerics(PartiallyAppliedGenerics),
+
+	/// Has properties of both sides
+	And(TypeId, TypeId),
+	/// Has properties of either of sides
+	Or(TypeId, TypeId),
 }
 
 /// TODO difference between untyped and typed parameters and what about parameter based for any
@@ -310,7 +317,7 @@ impl Type {
 			// TODO
 			Type::PartiallyAppliedGenerics(..) => false,
 			// Fine
-			Type::Constructor(_) | Type::RootPolyType(_) => true,
+			Type::Narrowed { .. } | Type::Constructor(_) | Type::RootPolyType(_) => true,
 			// TODO what about if left or right
 			Type::And(_, _) | Type::Or(_, _) => false,
 			// TODO what about if it aliases dependent?
@@ -458,6 +465,7 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 			| Type::Constructor(_)
 			| Type::Interface { .. }
 			| Type::PartiallyAppliedGenerics(..)
+			| Type::Narrowed { .. }
 			| Type::Class { .. } => {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
@@ -581,6 +589,7 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			},
 			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
 		},
+		Type::Narrowed { from: _, narrowed_to } => Some(*narrowed_to),
 		Type::Object(ObjectNature::RealDeal) => {
 			// crate::utilities::notify!("Might be missing some mutations that are possible here");
 			None
@@ -895,6 +904,7 @@ pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 		Type::Interface { .. }
 		| Type::Class { .. }
 		| Type::Constant(_)
+		| Type::Narrowed { .. }
 		| Type::FunctionReference(_)
 		| Type::Object(_)
 		| Type::SpecialObject(_) => false,

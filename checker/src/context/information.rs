@@ -38,6 +38,10 @@ pub struct LocalInformation {
 	/// *not quite the best place, but used in [`InformationChain`]*
 	pub(crate) object_constraints: HashMap<TypeId, TypeId>,
 
+	/// WIP narrowing
+	/// TODO how will chaining but not cycles work
+	pub(crate) narrowed_values: HashMap<TypeId, TypeId>,
+
 	pub(crate) state: ReturnState,
 
 	/// For super calls etc

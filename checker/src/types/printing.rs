@@ -88,6 +88,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 			buf.push_str(" | ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
+		Type::Narrowed { narrowed_to, .. } => {
+			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
+		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::MappedGeneric { name, extends } => {
 				if debug {

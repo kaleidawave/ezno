@@ -1269,17 +1269,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							}
 						}
 					}
-					crate::Type::AliasTo { .. }
-					| crate::Type::And { .. }
-					| crate::Type::Or { .. }
-					| crate::Type::RootPolyType { .. }
-					| crate::Type::Constructor { .. }
-					| crate::Type::PartiallyAppliedGenerics { .. }
-					| crate::Type::Interface { .. }
-					| crate::Type::Class { .. }
-					| crate::Type::Constant { .. }
-					| crate::Type::FunctionReference { .. }
-					| crate::Type::SpecialObject(_) => {
+					r#type => {
+						crate::utilities::notify!("more than binary spread {:?}", r#type);
 						checking_data.raise_unimplemented_error(
 							"more than binary spread",
 							pos.with_source(environment.get_source()),

@@ -206,6 +206,7 @@ pub(crate) fn substitute(
 			let rhs = substitute(rhs, arguments, environment, types);
 			types.new_or_type(lhs, rhs)
 		}
+		Type::Narrowed { from, .. } => substitute(*from, arguments, environment, types),
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) | PolyNature::Error(_) = nature {
 				id
