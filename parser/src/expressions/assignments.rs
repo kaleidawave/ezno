@@ -1,6 +1,10 @@
 use crate::{
-	ast::{object_literal::ObjectLiteralMember, FunctionArgument},
-	derive_ASTNode, PropertyKey, PropertyReference, TSXToken,
+	ast::{
+		object_literal::{ObjectLiteral, ObjectLiteralMember},
+		FunctionArgument,
+	},
+	derive_ASTNode, ParseErrors, PropertyKey, PropertyReference, SpreadDestructuringField,
+	TSXToken,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
@@ -180,21 +184,25 @@ impl VariableOrPropertyAccess {
 #[partial_eq_ignore_types(Span)]
 pub enum LHSOfAssignment {
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
-	ArrayDestructuring(
-		#[visit_skip_field] Vec<WithComment<ArrayDestructuringField<LHSOfAssignment>>>,
-		Span,
-	),
-	ObjectDestructuring(
-		#[visit_skip_field] Vec<WithComment<ObjectDestructuringField<LHSOfAssignment>>>,
-		Span,
-	),
+	ArrayDestructuring {
+		#[visit_skip_field]
+		members: Vec<WithComment<ArrayDestructuringField<LHSOfAssignment>>>,
+		spread: Option<SpreadDestructuringField<LHSOfAssignment>>,
+		position: Span,
+	},
+	ObjectDestructuring {
+		#[visit_skip_field]
+		members: Vec<WithComment<ObjectDestructuringField<LHSOfAssignment>>>,
+		spread: Option<SpreadDestructuringField<LHSOfAssignment>>,
+		position: Span,
+	},
 }
 
 impl ASTNode for LHSOfAssignment {
 	fn get_position(&self) -> Span {
 		match self {
-			LHSOfAssignment::ObjectDestructuring(_, pos)
-			| LHSOfAssignment::ArrayDestructuring(_, pos) => *pos,
+			LHSOfAssignment::ObjectDestructuring { position, .. }
+			| LHSOfAssignment::ArrayDestructuring { position, .. } => *position,
 			LHSOfAssignment::VariableOrPropertyAccess(var_prop_access) => {
 				var_prop_access.get_position()
 			}
@@ -216,7 +224,7 @@ impl ASTNode for LHSOfAssignment {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			LHSOfAssignment::ObjectDestructuring(members, _) => {
+			LHSOfAssignment::ObjectDestructuring { members, spread, position: _ } => {
 				buf.push('{');
 				options.push_gap_optionally(buf);
 				for (at_end, member) in members.iter().endiate() {
@@ -226,10 +234,18 @@ impl ASTNode for LHSOfAssignment {
 						options.push_gap_optionally(buf);
 					}
 				}
+				if let Some(ref spread) = spread {
+					if !members.is_empty() {
+						buf.push(',');
+						options.push_gap_optionally(buf);
+					}
+					buf.push_str("...");
+					spread.0.to_string_from_buffer(buf, options, local);
+				}
 				options.push_gap_optionally(buf);
 				buf.push('}');
 			}
-			LHSOfAssignment::ArrayDestructuring(members, _) => {
+			LHSOfAssignment::ArrayDestructuring { members, spread, position: _ } => {
 				buf.push('[');
 				for (at_end, member) in members.iter().endiate() {
 					member.to_string_from_buffer(buf, options, local);
@@ -237,6 +253,14 @@ impl ASTNode for LHSOfAssignment {
 						buf.push(',');
 						options.push_gap_optionally(buf);
 					}
+				}
+				if let Some(ref spread) = spread {
+					if !members.is_empty() {
+						buf.push(',');
+						options.push_gap_optionally(buf);
+					}
+					buf.push_str("...");
+					spread.0.to_string_from_buffer(buf, options, local);
 				}
 				buf.push(']');
 			}
@@ -252,9 +276,10 @@ impl TryFrom<Expression> for LHSOfAssignment {
 
 	fn try_from(value: Expression) -> Result<Self, Self::Error> {
 		match value {
-			Expression::ArrayLiteral(inner, position) => {
-				let mut members = Vec::with_capacity(inner.len());
-				for member in inner {
+			Expression::ArrayLiteral(members, position) => {
+				let mut new_members = Vec::with_capacity(members.len());
+				let mut iter = members.into_iter();
+				for member in iter.by_ref() {
 					let new_member = match member.0 {
 						Some(FunctionArgument::Comment { content, is_multiline: _, position }) => {
 							WithComment::PrefixComment(
@@ -264,8 +289,19 @@ impl TryFrom<Expression> for LHSOfAssignment {
 							)
 						}
 						Some(FunctionArgument::Spread(expression, span)) => {
-							let lhs: LHSOfAssignment = expression.try_into()?;
-							WithComment::None(ArrayDestructuringField::Spread(lhs, span))
+							return if let Some(next) = iter.next() {
+								Err(ParseError::new(
+									ParseErrors::CannotHaveRegularMemberAfterSpread,
+									next.get_position(),
+								))
+							} else {
+								let inner: LHSOfAssignment = expression.try_into()?;
+								Ok(Self::ArrayDestructuring {
+									members: new_members,
+									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
+									position,
+								})
+							}
 						}
 						Some(FunctionArgument::Standard(expression)) => {
 							WithComment::None(match expression {
@@ -279,16 +315,29 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						}
 						None => WithComment::None(ArrayDestructuringField::None),
 					};
-					members.push(new_member);
+					new_members.push(new_member);
 				}
-				Ok(Self::ArrayDestructuring(members, position))
+				Ok(Self::ArrayDestructuring { members: new_members, spread: None, position })
 			}
-			Expression::ObjectLiteral(inner) => {
-				let mut members = Vec::with_capacity(inner.members.len());
-				for member in inner.members {
+			Expression::ObjectLiteral(ObjectLiteral { members, position }) => {
+				let mut new_members = Vec::with_capacity(members.len());
+				let mut iter = members.into_iter();
+				for member in iter.by_ref() {
 					let new_member: ObjectDestructuringField<LHSOfAssignment> = match member {
-						ObjectLiteralMember::Spread(expression, pos) => {
-							ObjectDestructuringField::Spread(expression.try_into()?, pos)
+						ObjectLiteralMember::Spread(expression, span) => {
+							return if let Some(next) = iter.next() {
+								Err(ParseError::new(
+									ParseErrors::CannotHaveRegularMemberAfterSpread,
+									next.get_position(),
+								))
+							} else {
+								let inner: LHSOfAssignment = expression.try_into()?;
+								Ok(Self::ObjectDestructuring {
+									members: new_members,
+									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
+									position,
+								})
+							}
 						}
 						ObjectLiteralMember::Shorthand(name, pos) => {
 							ObjectDestructuringField::Name(
@@ -300,7 +349,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						}
 						ObjectLiteralMember::Property { assignment, key, position, value } => {
 							if assignment {
-								if let PropertyKey::Ident(name, pos, _) = key.get_ast() {
+								if let PropertyKey::Identifier(name, pos, _) = key.get_ast() {
 									ObjectDestructuringField::Name(
 										crate::VariableIdentifier::Standard(name, pos),
 										(),
@@ -334,16 +383,16 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						ObjectLiteralMember::Method(_) => {
 							return Err(ParseError::new(
 								crate::ParseErrors::InvalidLHSAssignment,
-								inner.position,
+								position,
 							))
 						}
 						ObjectLiteralMember::Comment(..) => {
 							continue;
 						}
 					};
-					members.push(WithComment::None(new_member));
+					new_members.push(WithComment::None(new_member));
 				}
-				Ok(Self::ObjectDestructuring(members, inner.position))
+				Ok(Self::ObjectDestructuring { members: new_members, spread: None, position })
 			}
 			expression => VariableOrPropertyAccess::try_from(expression)
 				.map(LHSOfAssignment::VariableOrPropertyAccess),

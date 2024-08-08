@@ -1,52 +1,52 @@
 #![doc = include_str!("../README.md")]
 #![allow(deprecated, clippy::new_without_default, clippy::too_many_lines, clippy::result_unit_err)]
+#![warn(clippy::must_use_candidate)]
+// #![allow(unused)]
 
 pub mod context;
 pub mod diagnostics;
 pub mod events;
 pub mod features;
 mod options;
-pub mod range_map;
-mod serialization;
 mod type_mappings;
 pub mod types;
-mod utilities;
-
-pub const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.ts.d.bin";
-pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/internal.ts.d.bin");
+pub mod utilities;
 
 #[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
-use context::Names;
+use std::{
+	collections::{HashMap, HashSet},
+	path::{Path, PathBuf},
+	time::Duration,
+};
+
+use context::{
+	information::{LocalInformation, ModuleInformation},
+	Names,
+};
 
 use diagnostics::{TypeCheckError, TypeCheckWarning};
-pub(crate) use serialization::BinarySerializable;
+pub(crate) use utilities::{map::Map, range_map::RangeMap, serialization::BinarySerializable};
 
 use features::{
 	functions::SynthesisableFunction, modules::CouldNotOpenFile, modules::SynthesisedModule,
 };
 
-use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
-use std::{
-	collections::{HashMap, HashSet},
-	path::{Path, PathBuf},
-};
-
-use types::TypeStore;
-
-pub use context::{
-	information::LocalInformation, Environment, GeneralContext, Logical, RootContext, Scope,
-	VariableRegisterArguments,
-};
+pub use context::{Environment, GeneralContext, RootContext, Scope, VariableRegisterArguments};
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
 pub use types::{
 	calling::call_type_handle_errors, generics::GenericTypeParameters, properties::PropertyValue,
-	subtyping, Constant, Type, TypeId,
+	subtyping, Constant, Type, TypeId, TypeStore,
 };
 
+pub use source_map::{self, SourceId, Span};
+use source_map::{FileSystem, MapFileStore, Nullable, SpanWithSource, WithPathMap};
 pub use type_mappings::*;
+
+pub const INTERNAL_DEFINITION_FILE_PATH: &str = "internal.ts.d.bin";
+pub const INTERNAL_DEFINITION_FILE: &[u8] = include_bytes!("../definitions/internal.ts.d.bin");
 
 pub trait ReadFromFS {
 	/// Returns `Vec<u8>` as this callback can return binary file
@@ -64,9 +64,7 @@ where
 	}
 }
 
-pub use source_map::{self, SourceId, Span};
-
-use crate::subtyping::State;
+use levenshtein::levenshtein;
 
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
@@ -116,8 +114,8 @@ pub trait ASTImplementation: Sized {
 	);
 
 	#[allow(clippy::needless_lifetimes)]
-	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'a>,
+	fn synthesise_definition_module<'a, T: crate::ReadFromFS>(
+		module: &Self::DefinitionFile<'a>,
 		source: SourceId,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
@@ -135,6 +133,12 @@ pub trait ASTImplementation: Sized {
 	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
 		expression: &'a Self::MultipleExpression<'a>,
 		expected_type: TypeId,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId;
+
+	fn synthesise_type_parameter_extends<T: crate::ReadFromFS>(
+		parameter: &Self::TypeParameter<'_>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) -> TypeId;
@@ -216,7 +220,11 @@ where
 		}
 	}
 
-	pub(crate) fn get_file(&mut self, path: &Path) -> Option<File> {
+	pub(crate) fn get_file(
+		&mut self,
+		path: &Path,
+		chronometer: Option<&mut Chronometer>,
+	) -> Option<File> {
 		// TODO only internal code should be able to do this
 		if let Some("bin") = path.extension().and_then(|s| s.to_str()) {
 			return self.file_reader.read_file(path).map(|s| File::Binary(s.clone()));
@@ -235,9 +243,12 @@ where
 			Some(File::Source(source, self.files.get_file_content(source)))
 		} else {
 			// Load into system
+			let current = chronometer.is_some().then(std::time::Instant::now);
 			let content = self.file_reader.read_file(path)?;
-			let content = String::from_utf8(content);
-			if let Ok(content) = content {
+			if let Ok(content) = String::from_utf8(content) {
+				if let Some(current) = current {
+					chronometer.unwrap().fs += current.elapsed();
+				}
 				let source_id = self.files.new_source_id(path.to_path_buf(), content);
 				Some(File::Source(source_id, self.files.get_file_content(source_id)))
 			} else {
@@ -276,6 +287,20 @@ pub trait GenericTypeParameter {
 	fn get_name(&self) -> &str;
 }
 
+#[derive(Default)]
+pub struct Chronometer {
+	/// In binary .d.ts files
+	pub cached: Duration,
+	/// read actions
+	pub fs: Duration,
+	/// parsing. (TODO only of first file)
+	pub parse: Duration,
+	/// type checking (inc binding). TODO this includes parsing of imports
+	pub check: Duration,
+	/// parsed and type checked lines
+	pub lines: usize,
+}
+
 /// Contains logic for **checking phase** (none of the later steps)
 /// All data is global, non local to current scope
 /// TODO some of these should be mutex / ref cell
@@ -294,6 +319,8 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 
 	// pub(crate) events: EventsStore,
 	pub types: TypeStore,
+
+	pub(crate) chronometer: Chronometer,
 
 	/// Do not repeat emitting unimplemented parts
 	unimplemented_items: HashSet<&'static str>,
@@ -317,11 +344,12 @@ where
 
 		Self {
 			options,
-			local_type_mappings: Default::default(),
-			diagnostics_container: Default::default(),
 			modules,
+			diagnostics_container: Default::default(),
+			local_type_mappings: Default::default(),
 			types: Default::default(),
 			unimplemented_items: Default::default(),
+			chronometer: Default::default(),
 		}
 	}
 
@@ -344,58 +372,6 @@ where
 	pub fn add_expression_mapping(&mut self, span: SpanWithSource, instance: Instance) {
 		self.local_type_mappings.expressions_to_instances.push(span, instance);
 	}
-
-	pub fn check_satisfies(
-		&mut self,
-		expr_ty: TypeId,
-		to_satisfy: TypeId,
-		at: SpanWithSource,
-		environment: &mut Environment,
-	) {
-		pub(crate) fn check_satisfies(
-			expr_ty: TypeId,
-			to_satisfy: TypeId,
-			types: &TypeStore,
-			environment: &mut Environment,
-		) -> bool {
-			// TODO `behavior.allow_error = true` would be better
-			if expr_ty == TypeId::ERROR_TYPE {
-				false
-			} else {
-				let mut state = State {
-					already_checked: Default::default(),
-					mode: Default::default(),
-					contributions: Default::default(),
-					others: subtyping::SubTypingOptions { allow_errors: false },
-					object_constraints: None,
-				};
-				let result =
-					subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, environment, types);
-
-				matches!(result, subtyping::SubTypeResult::IsSubType)
-			}
-		}
-
-		if !check_satisfies(expr_ty, to_satisfy, &self.types, environment) {
-			let expected = diagnostics::TypeStringRepresentation::from_type_id(
-				to_satisfy,
-				environment,
-				&self.types,
-				false,
-			);
-			let found = diagnostics::TypeStringRepresentation::from_type_id(
-				expr_ty,
-				environment,
-				&self.types,
-				false,
-			);
-			self.diagnostics_container.add_error(TypeCheckError::NotSatisfied {
-				at,
-				expected,
-				found,
-			});
-		}
-	}
 }
 
 /// Used for transformers and other things after checking!!!!
@@ -404,23 +380,24 @@ pub struct CheckOutput<A: crate::ASTImplementation> {
 	pub module_contents: MapFileStore<WithPathMap>,
 	pub modules: HashMap<SourceId, SynthesisedModule<A::OwnedModule>>,
 	pub diagnostics: crate::DiagnosticsContainer,
-	pub top_level_information: crate::LocalInformation,
+	pub top_level_information: LocalInformation,
+	pub chronometer: crate::Chronometer,
 }
 
 impl<A: crate::ASTImplementation> CheckOutput<A> {
 	#[must_use]
 	pub fn get_type_at_position(&self, path: &str, pos: u32, debug: bool) -> Option<String> {
 		let source = self.module_contents.get_source_at_path(path.as_ref())?;
-		self.modules.get(&source).expect("no module").get_instance_at_position(pos).map(
-			|instance| {
-				crate::types::printing::print_type(
-					instance.get_value_on_ref(),
-					&self.types,
-					&self.top_level_information,
-					debug,
-				)
-			},
-		)
+		let module = &self.modules.get(&source)?;
+
+		module.get_instance_at_position(pos).map(|instance| {
+			crate::types::printing::print_type(
+				instance.get_value_on_ref(),
+				&self.types,
+				&ModuleInformation { top: &self.top_level_information, module: &module.info },
+				debug,
+			)
+		})
 	}
 
 	#[must_use]
@@ -437,7 +414,10 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 					crate::types::printing::print_type(
 						instance.get_value_on_ref(),
 						&self.types,
-						&self.top_level_information,
+						&ModuleInformation {
+							top: &self.top_level_information,
+							module: &module.info,
+						},
 						debug,
 					),
 					SpanWithSource { start: range.start, end: range.end, source },
@@ -463,6 +443,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 			modules: Default::default(),
 			diagnostics: Default::default(),
 			top_level_information: Default::default(),
+			chronometer: Default::default(),
 		}
 	}
 }
@@ -470,7 +451,7 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 #[allow(clippy::needless_pass_by_value)]
 pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	entry_points: Vec<PathBuf>,
-	type_definition_files: HashSet<PathBuf>,
+	type_definition_files: Vec<PathBuf>,
 	resolver: T,
 	options: TypeCheckOptions,
 	parser_requirements: A::ParserRequirements,
@@ -482,7 +463,13 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
 	crate::utilities::notify!("--- Reading definition files from {:?} ---", type_definition_files);
+
+	// Hide any debug messages from here
+	if !checking_data.options.debug_dts {
+		crate::utilities::pause_debug_mode();
+	}
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
+	crate::utilities::unpause_debug_mode();
 
 	if checking_data.diagnostics_container.has_error() {
 		return CheckOutput {
@@ -491,6 +478,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			modules: Default::default(),
 			diagnostics: checking_data.diagnostics_container,
 			top_level_information: Default::default(),
+			chronometer: checking_data.chronometer,
 		};
 	}
 
@@ -498,6 +486,8 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	for point in &entry_points {
 		// eprintln!("Trying to get {point} from {:?}", checking_data.modules.files.get_paths());
+		let current = checking_data.options.measure_time.then(std::time::Instant::now);
+
 		let entry_content = if let Some(source) =
 			checking_data.modules.files.get_source_at_path(point)
 		{
@@ -509,13 +499,20 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		} else {
 			None
 		};
+		if let Some(current) = current {
+			checking_data.chronometer.fs += current.elapsed();
+		}
 
 		if let Some((source, content)) = entry_content {
 			let module = parse_source(point, source, content, &mut checking_data);
 
+			let current = checking_data.options.measure_time.then(std::time::Instant::now);
 			match module {
 				Ok(module) => {
-					root.new_module_context(source, module, &mut checking_data);
+					let _module = root.new_module_context(source, module, &mut checking_data);
+					if let Some(current) = current {
+						checking_data.chronometer.check += current.elapsed();
+					}
 				}
 				Err(err) => {
 					checking_data.diagnostics_container.add_error(err);
@@ -525,6 +522,14 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			checking_data.diagnostics_container.add_error(TypeCheckError::CannotOpenFile {
 				file: CouldNotOpenFile(point.clone()),
 				import_position: None,
+				possibles: checking_data
+					.modules
+					.files
+					.get_paths()
+					.keys()
+					.filter_map(|path| path.to_str())
+					.collect(),
+				partial_import_path: point.to_str().unwrap_or(""),
 			});
 			continue;
 		}
@@ -537,6 +542,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		options: _,
 		types,
 		unimplemented_items: _,
+		chronometer,
 	} = checking_data;
 
 	CheckOutput {
@@ -545,6 +551,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		modules: modules.synthesised_modules,
 		diagnostics: diagnostics_container,
 		top_level_information: root.info,
+		chronometer,
 	}
 }
 
@@ -554,6 +561,15 @@ fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	content: String,
 	checking_data: &mut CheckingData<T, A>,
 ) -> Result<<A as ASTImplementation>::Module<'static>, <A as ASTImplementation>::ParseError> {
+	if checking_data.options.measure_time {
+		let code_lines =
+			content.lines().filter(|c| !(c.is_empty() || c.trim_start().starts_with('/'))).count();
+		checking_data.chronometer.lines += code_lines;
+	}
+
+	// TODO pause check timing
+	let current = checking_data.options.measure_time.then(std::time::Instant::now);
+
 	// TODO abstract using similar to import logic
 	let is_js = path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.ends_with("js"));
 
@@ -563,12 +579,18 @@ fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		checking_data.options.lsp_mode,
 	);
 
-	A::module_from_string(
+	let result = A::module_from_string(
 		source,
 		content,
 		parse_options,
 		&mut checking_data.modules.parser_requirements,
-	)
+	);
+
+	if let Some(current) = current {
+		checking_data.chronometer.parse += current.elapsed();
+	}
+
+	result
 }
 
 const CACHE_MARKER: &[u8] = b"ezno-cache-file";
@@ -584,15 +606,18 @@ pub(crate) struct Cache {
 }
 
 pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	type_definition_files: HashSet<PathBuf>,
+	type_definition_files: Vec<PathBuf>,
 	root: &mut RootContext,
 	checking_data: &mut CheckingData<T, A>,
 ) {
 	let length = type_definition_files.len();
 	for path in type_definition_files {
+		let chronometer =
+			checking_data.options.measure_time.then_some(&mut checking_data.chronometer);
+
 		let file = if path == PathBuf::from(crate::INTERNAL_DEFINITION_FILE_PATH) {
 			File::Binary(crate::INTERNAL_DEFINITION_FILE.to_owned())
-		} else if let Some(file) = checking_data.modules.get_file(&path) {
+		} else if let Some(file) = checking_data.modules.get_file(&path, chronometer) {
 			file
 		} else {
 			checking_data.diagnostics_container.add_error(Diagnostic::Global {
@@ -603,63 +628,44 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 		};
 
 		match file {
-			File::Binary(mut content) => {
-				crate::utilities::notify!("Using cache :)");
-				assert_eq!(length, 1, "only a single cache is current supported");
-
-				let vec = content[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
-					.to_owned();
-
-				let at_end =
-					<u32 as BinarySerializable>::deserialize(&mut vec.into_iter(), SourceId::NULL);
-
-				let source_id = {
-					// Get source and content which is at the end.
-					let mut drain = content
-						.drain((CACHE_MARKER.len() + U32_BYTES as usize + at_end as usize)..);
-
-					// Okay as end
-					let (_source_id, path) =
-						<(SourceId, String) as BinarySerializable>::deserialize(
-							&mut drain,
-							SourceId::NULL,
-						);
-
-					let get_source_at_path =
-						checking_data.modules.files.get_source_at_path(Path::new(&path));
-
-					if let Some(source_id) = get_source_at_path {
-						eprintln!("reusing source id {source_id:?}");
-						source_id
-					} else {
-						// Collect from end
-						let source_content = String::from_utf8(drain.collect::<Vec<_>>()).unwrap();
-						checking_data.modules.files.new_source_id(path.into(), source_content)
-					}
-				};
-
-				let mut bytes = content.drain((CACHE_MARKER.len() + U32_BYTES as usize)..);
-
-				// TODO WIP
-				let Cache { variables, named_types, info, types } =
-					Cache::deserialize(&mut bytes, source_id);
-
-				root.variables = variables;
-				root.named_types = named_types;
-				root.info = info;
-				checking_data.types = types;
+			File::Binary(data) => {
+				let current = checking_data.options.measure_time.then(std::time::Instant::now);
+				deserialize_cache(length, data, checking_data, root);
+				if let Some(current) = current {
+					checking_data.chronometer.cached += current.elapsed();
+				}
 			}
-			File::Source(source_id, content) => {
+			File::Source(source_id, source) => {
+				if checking_data.options.measure_time {
+					let code_lines = source
+						.lines()
+						.filter(|c| !(c.is_empty() || c.trim_start().starts_with('/')))
+						.count();
+					checking_data.chronometer.lines += code_lines;
+				}
+
+				let current = checking_data.options.measure_time.then(std::time::Instant::now);
 				let result = A::definition_module_from_string(
 					source_id,
-					content,
+					source,
 					&mut checking_data.modules.parser_requirements,
 				);
+				if let Some(current) = current {
+					checking_data.chronometer.parse += current.elapsed();
+				}
 
 				match result {
 					Ok(tdm) => {
+						let current =
+							checking_data.options.measure_time.then(std::time::Instant::now);
+
 						let (names, info) =
-							A::synthesise_definition_file(tdm, source_id, root, checking_data);
+							A::synthesise_definition_module(&tdm, source_id, root, checking_data);
+
+						// TODO bad. should be per file
+						if let Some(current) = current {
+							checking_data.chronometer.check += current.elapsed();
+						}
 
 						root.variables.extend(names.variables);
 						root.named_types.extend(names.named_types);
@@ -676,6 +682,53 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 	}
 }
 
+fn deserialize_cache<T: ReadFromFS, A: ASTImplementation>(
+	length: usize,
+	mut content: Vec<u8>,
+	checking_data: &mut CheckingData<T, A>,
+	root: &mut RootContext,
+) {
+	crate::utilities::notify!("Using cache :)");
+	assert_eq!(length, 1, "only a single cache is current supported");
+
+	let end_content =
+		content[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)].to_owned();
+
+	let at_end =
+		<u32 as BinarySerializable>::deserialize(&mut end_content.into_iter(), SourceId::NULL);
+
+	let source_id = {
+		// Get source and content which is at the end.
+		let mut drain =
+			content.drain((CACHE_MARKER.len() + U32_BYTES as usize + at_end as usize)..);
+
+		// Okay as end
+		let (_source_id, path) =
+			<(SourceId, String) as BinarySerializable>::deserialize(&mut drain, SourceId::NULL);
+
+		let get_source_at_path = checking_data.modules.files.get_source_at_path(Path::new(&path));
+
+		if let Some(source_id) = get_source_at_path {
+			eprintln!("reusing source id {source_id:?}");
+			source_id
+		} else {
+			// Collect from end
+			let source_content = String::from_utf8(drain.collect::<Vec<_>>()).unwrap();
+			checking_data.modules.files.new_source_id(path.into(), source_content)
+		}
+	};
+
+	let mut bytes = content.drain((CACHE_MARKER.len() + U32_BYTES as usize)..);
+
+	// TODO WIP
+	let Cache { variables, named_types, info, types } = Cache::deserialize(&mut bytes, source_id);
+
+	root.variables = variables;
+	root.named_types = named_types;
+	root.info = info;
+	checking_data.types = types;
+}
+
 const U32_BYTES: u32 = u32::BITS / u8::BITS;
 
 pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -688,21 +741,20 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 
-	add_definition_files_to_root(
-		HashSet::from_iter([on.to_path_buf()]),
-		&mut root,
-		&mut checking_data,
-	);
+	{
+		add_definition_files_to_root(vec![on.to_path_buf()], &mut root, &mut checking_data);
 
-	assert!(
-		!checking_data.diagnostics_container.has_error(),
-		"found error in definition file {:#?}",
-		checking_data.diagnostics_container.get_diagnostics()
-	);
+		assert!(
+			!checking_data.diagnostics_container.has_error(),
+			"found error in definition file {:#?}",
+			checking_data.diagnostics_container.get_diagnostics()
+		);
+	}
 
 	let mut buf = CACHE_MARKER.to_vec();
 
-	buf.extend_from_slice(&0_u32.to_le_bytes());
+	// This reserves a u32 bytes which marks where the content lives
+	buf.extend_from_slice(&[0u8; (u32::BITS / u8::BITS) as usize]);
 
 	let cache = Cache {
 		variables: root.variables,
@@ -710,96 +762,38 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		info: root.info,
 		types: checking_data.types,
 	};
+
 	cache.serialize(&mut buf);
 
-	let cache_len: usize = buf.len() - CACHE_MARKER.len() - U32_BYTES as usize;
-	// Set length
-	buf[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
-		.copy_from_slice(&(cache_len as u32).to_le_bytes());
+	// Add content
+	{
+		let cache_len: usize = buf.len() - CACHE_MARKER.len() - U32_BYTES as usize;
+		// Set length
+		buf[CACHE_MARKER.len()..(CACHE_MARKER.len() + U32_BYTES as usize)]
+			.copy_from_slice(&(cache_len as u32).to_le_bytes());
 
-	// TODO not great
-	let Some(File::Source(source, content)) = checking_data.modules.get_file(on) else { panic!() };
+		// TODO not great
+		let Some(File::Source(source, content)) = checking_data.modules.get_file(on, None) else {
+			panic!()
+		};
 
-	let path = on.to_str().unwrap().to_owned();
-	(source, path).serialize(&mut buf);
-	buf.extend_from_slice(content.as_bytes());
+		let path = on.to_str().unwrap().to_owned();
+		(source, path).serialize(&mut buf);
+		buf.extend_from_slice(content.as_bytes());
+	}
 
 	buf
 }
 
-/// Small map for 1-5 items
-/// Also should be rewindable
-#[derive(Debug, Clone, binary_serialize_derive::BinarySerializable)]
-pub struct Map<K, V>(pub Vec<(K, V)>);
-
-impl<K, V> Default for Map<K, V> {
-	fn default() -> Self {
-		Self(Default::default())
-	}
-}
-
-impl<K, V> Map<K, V>
-where
-	K: PartialEq,
-{
-	pub fn get(&self, want: &K) -> Option<&V> {
-		self.0.iter().rev().find_map(|(key, value)| (want == key).then_some(value))
-	}
-
-	pub fn get_mut(&mut self, want: &K) -> Option<&mut V> {
-		self.0.iter_mut().rev().find_map(|(key, value)| (want == key).then_some(value))
-	}
-
-	#[must_use]
-	pub fn iter(&self) -> impl ExactSizeIterator<Item = &(K, V)> {
-		self.0.iter()
-	}
-
-	pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut (K, V)> {
-		self.0.iter_mut()
-	}
-
-	#[must_use]
-	pub fn values(&self) -> impl ExactSizeIterator<Item = &V> {
-		self.0.iter().map(|(_, v)| v)
-	}
-
-	/// *assumes `id` not already inside*
-	pub fn insert(&mut self, id: K, value: V) {
-		self.0.push((id, value));
-	}
-	#[must_use]
-	pub fn is_empty(&self) -> bool {
-		self.0.is_empty()
-	}
-	#[must_use]
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	pub fn drop_range(&mut self, range: std::ops::RangeFrom<usize>) {
-		self.0.drain(range);
-	}
-}
-
-impl<K, V> std::iter::IntoIterator for Map<K, V> {
-	type Item = (K, V);
-
-	type IntoIter = <Vec<(K, V)> as std::iter::IntoIterator>::IntoIter;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
-	}
-}
-
-impl<K, V> std::iter::FromIterator<(K, V)> for Map<K, V> {
-	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
-		Self(Vec::from_iter(iter))
-	}
-}
-
-impl<K, V> std::iter::Extend<(K, V)> for Map<K, V> {
-	fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
-		self.0.extend(iter);
+pub fn get_closest<'a, 'b>(
+	items: impl Iterator<Item = &'a str>,
+	closest_one: &'b str,
+) -> Option<Vec<&'a str>> {
+	const MIN_DISTANCE: usize = 2;
+	let candidates =
+		items.filter(|item| levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
+	match candidates.len() {
+		0 => None,
+		1.. => Some(candidates),
 	}
 }

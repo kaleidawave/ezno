@@ -55,7 +55,7 @@ impl ASTNode for InterfaceDeclaration {
 			.is_some()
 			.then(|| {
 				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _)| params)
+					.map(|(params, _, _)| params)
 			})
 			.transpose()?;
 
@@ -256,7 +256,7 @@ impl ASTNode for InterfaceMember {
 			}
 			// Caller self with generic parameters
 			TSXToken::OpenChevron => {
-				let (type_parameters, _start_pos) =
+				let (type_parameters, _, _start_pos) =
 					parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
@@ -285,7 +285,7 @@ impl ASTNode for InterfaceMember {
 					.is_some()
 					.then(|| parse_bracketed(reader, state, options, None, TSXToken::CloseChevron))
 					.transpose()?
-					.map(|(tp, _)| tp);
+					.map(|(tp, _, _)| tp);
 
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
@@ -480,7 +480,7 @@ impl ASTNode for InterfaceMember {
 						})
 						.transpose()?;
 
-					(property_key, type_parameters.map(|(tp, _)| tp))
+					(property_key, type_parameters.map(|(tp, _, _)| tp))
 				};
 
 				let start = readonly_position.unwrap_or_else(|| name.get_position());

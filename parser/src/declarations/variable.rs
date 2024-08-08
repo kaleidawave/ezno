@@ -4,8 +4,9 @@ use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE,
-	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, ParseResult, Span,
-	TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField, WithComment,
+	throw_unexpected_token_with_token, ASTNode, Expression, ParseError, ParseErrors, ParseOptions,
+	ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
+	WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -270,10 +271,19 @@ impl ASTNode for VariableDeclaration {
 						break;
 					}
 				}
-				VariableDeclaration::LetDeclaration {
-					position: start.union(declarations.last().unwrap().get_position()),
-					declarations,
-				}
+
+				let position = if let Some(last) = declarations.last() {
+					start.union(last.get_position())
+				} else {
+					let position = start.with_length(3);
+					if options.partial_syntax {
+						position
+					} else {
+						return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+					}
+				};
+
+				VariableDeclaration::LetDeclaration { position, declarations }
 			}
 			VariableDeclarationKeyword::Const => {
 				state.append_keyword_at_pos(start.0, TSXKeyword::Const);
@@ -297,10 +307,19 @@ impl ASTNode for VariableDeclaration {
 						break;
 					}
 				}
-				VariableDeclaration::ConstDeclaration {
-					position: start.union(declarations.last().unwrap().get_position()),
-					declarations,
-				}
+
+				let position = if let Some(last) = declarations.last() {
+					start.union(last.get_position())
+				} else {
+					let position = start.with_length(3);
+					if options.partial_syntax {
+						position
+					} else {
+						return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+					}
+				};
+
+				VariableDeclaration::ConstDeclaration { position, declarations }
 			}
 		})
 	}

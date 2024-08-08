@@ -10,31 +10,38 @@ use super::operations::{LogicalOperator, MathematicalAndBitwise};
 /// A single or multiple items to assign to
 pub enum Assignable<A: crate::ASTImplementation> {
 	Reference(Reference),
-	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>),
-	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>),
+	ObjectDestructuring(Vec<AssignableObjectDestructuringField<A>>, Option<AssignableSpread<A>>),
+	ArrayDestructuring(Vec<AssignableArrayDestructuringField<A>>, Option<AssignableSpread<A>>),
 }
 
 /// TODO Can this use lifetimes?
 #[derive(Clone)]
 pub enum Reference {
 	Variable(String, SpanWithSource),
-	Property { on: TypeId, with: PropertyKey<'static>, publicity: Publicity, span: SpanWithSource },
+	Property {
+		on: TypeId,
+		with: PropertyKey<'static>,
+		publicity: Publicity,
+		position: SpanWithSource,
+	},
 }
 
 pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 	/// `{ x: y }`
 	Mapped {
-		on: PropertyKey<'static>,
+		key: PropertyKey<'static>,
 		name: Assignable<A>,
 		default_value: Option<Box<A::Expression<'static>>>,
 		position: SpanWithSource,
 	},
-	/// `{ ...x }`
-	Spread(Assignable<A>, SpanWithSource),
 }
 
+pub struct AssignableSpread<A: crate::ASTImplementation>(
+	pub Box<Assignable<A>>,
+	pub SpanWithSource,
+);
+
 pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {
-	Spread(Assignable<A>, SpanWithSource),
 	Name(Assignable<A>, Option<Box<A::Expression<'static>>>),
 	Comment { content: String, is_multiline: bool, position: SpanWithSource },
 	None,
@@ -63,7 +70,7 @@ impl Reference {
 	#[must_use]
 	pub fn get_position(&self) -> SpanWithSource {
 		match self {
-			Reference::Variable(_, span) | Reference::Property { span, .. } => *span,
+			Reference::Variable(_, position) | Reference::Property { position, .. } => *position,
 		}
 	}
 

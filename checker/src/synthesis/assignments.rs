@@ -9,15 +9,15 @@ use crate::{
 	context::Environment,
 	features::assignments::{
 		Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
-		Reference,
+		AssignableSpread, Reference,
 	},
-	synthesis::expressions::synthesise_expression,
 	types::properties::{PropertyKey, Publicity},
 	CheckingData, TypeId,
 };
 
 use super::{
-	expressions::synthesise_multiple_expression, parser_property_key_to_checker_property_key,
+	expressions::{synthesise_expression, synthesise_multiple_expression},
+	parser_property_key_to_checker_property_key,
 };
 
 pub(super) trait SynthesiseToAssignable {
@@ -35,11 +35,11 @@ impl SynthesiseToAssignable for LHSOfAssignment {
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Assignable<super::EznoParser> {
 		match self {
-			LHSOfAssignment::ObjectDestructuring(items, _) => {
-				synthesise_object_to_reference(items, environment, checking_data)
+			LHSOfAssignment::ObjectDestructuring { members, spread, position: _ } => {
+				synthesise_object_to_reference(members, spread, environment, checking_data)
 			}
-			LHSOfAssignment::ArrayDestructuring(items, _) => {
-				synthesise_array_to_reference(items, environment, checking_data)
+			LHSOfAssignment::ArrayDestructuring { members, spread, position: _ } => {
+				synthesise_array_to_reference(members, spread, environment, checking_data)
 			}
 			LHSOfAssignment::VariableOrPropertyAccess(access) => Assignable::Reference(
 				synthesise_access_to_reference(access, environment, checking_data),
@@ -55,11 +55,11 @@ impl SynthesiseToAssignable for VariableField {
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Assignable<super::EznoParser> {
 		match self {
-			VariableField::Object(items, _) => {
-				synthesise_object_to_reference(items, environment, checking_data)
+			VariableField::Object { members, spread, position: _ } => {
+				synthesise_object_to_reference(members, spread, environment, checking_data)
 			}
-			VariableField::Array(items, _) => {
-				synthesise_array_to_reference(items, environment, checking_data)
+			VariableField::Array { members, spread, position: _ } => {
+				synthesise_array_to_reference(members, spread, environment, checking_data)
 			}
 			VariableField::Name(ident) => Assignable::Reference(match ident {
 				VariableIdentifier::Standard(name, position) => Reference::Variable(
@@ -79,6 +79,7 @@ fn synthesise_object_to_reference<
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
 	items: &[parser::WithComment<parser::ObjectDestructuringField<U>>],
+	spread: &Option<parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -88,7 +89,7 @@ fn synthesise_object_to_reference<
 			.map(|item| match item.get_ast_ref() {
 				parser::ObjectDestructuringField::Name(name, _, default_value, position) => {
 					AssignableObjectDestructuringField::Mapped {
-						on: synthesise_object_property_key(name, environment),
+						key: synthesise_object_property_key(name, environment),
 						name: synthesise_object_shorthand_assignable(
 							name,
 							environment,
@@ -98,16 +99,6 @@ fn synthesise_object_to_reference<
 						position: position.with_source(environment.get_source()),
 					}
 				}
-				parser::ObjectDestructuringField::Spread(name, position) => {
-					AssignableObjectDestructuringField::Spread(
-						SynthesiseToAssignable::synthesise_to_assignable(
-							name,
-							environment,
-							checking_data,
-						),
-						position.with_source(environment.get_source()),
-					)
-				}
 				parser::ObjectDestructuringField::Map {
 					from,
 					annotation: _,
@@ -115,7 +106,7 @@ fn synthesise_object_to_reference<
 					default_value,
 					position,
 				} => {
-					let on = parser_property_key_to_checker_property_key(
+					let key = parser_property_key_to_checker_property_key(
 						from,
 						environment,
 						checking_data,
@@ -123,7 +114,7 @@ fn synthesise_object_to_reference<
 					);
 
 					AssignableObjectDestructuringField::Mapped {
-						on,
+						key,
 						name: SynthesiseToAssignable::synthesise_to_assignable(
 							name.get_ast_ref(),
 							environment,
@@ -135,6 +126,16 @@ fn synthesise_object_to_reference<
 				}
 			})
 			.collect(),
+		spread.as_ref().map(|spread| {
+			AssignableSpread(
+				Box::new(SynthesiseToAssignable::synthesise_to_assignable(
+					&*spread.0,
+					environment,
+					checking_data,
+				)),
+				spread.1.with_source(environment.get_source()),
+			)
+		}),
 	)
 }
 
@@ -143,6 +144,7 @@ fn synthesise_array_to_reference<
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
 	items: &[parser::WithComment<parser::ArrayDestructuringField<U>>],
+	spread: &Option<parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -150,16 +152,6 @@ fn synthesise_array_to_reference<
 		items
 			.iter()
 			.map(|item| match item.get_ast_ref() {
-				parser::ArrayDestructuringField::Spread(name, position) => {
-					AssignableArrayDestructuringField::Spread(
-						SynthesiseToAssignable::synthesise_to_assignable(
-							name,
-							environment,
-							checking_data,
-						),
-						position.with_source(environment.get_source()),
-					)
-				}
 				parser::ArrayDestructuringField::Name(name, _, default_value) => {
 					AssignableArrayDestructuringField::Name(
 						SynthesiseToAssignable::synthesise_to_assignable(
@@ -180,6 +172,16 @@ fn synthesise_array_to_reference<
 				parser::ArrayDestructuringField::None => AssignableArrayDestructuringField::None,
 			})
 			.collect(),
+		spread.as_ref().map(|spread| {
+			AssignableSpread(
+				Box::new(SynthesiseToAssignable::synthesise_to_assignable(
+					&*spread.0,
+					environment,
+					checking_data,
+				)),
+				spread.1.with_source(environment.get_source()),
+			)
+		}),
 	)
 }
 
@@ -239,14 +241,14 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 					Reference::Property {
 						on: parent_ty,
 						with: PropertyKey::String(Cow::Owned(property.clone())),
-						span: position.with_source(environment.get_source()),
+						position: position.with_source(environment.get_source()),
 						publicity,
 					}
 				}
 				parser::PropertyReference::Marker(_) => Reference::Property {
 					on: parent_ty,
 					with: PropertyKey::new_empty_property_key(),
-					span: position.with_source(environment.get_source()),
+					position: position.with_source(environment.get_source()),
 					publicity: Publicity::Public,
 				},
 			}
@@ -263,7 +265,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 			Reference::Property {
 				on: parent_ty,
 				with: PropertyKey::from_type(key_ty, &checking_data.types),
-				span: position.with_source(environment.get_source()),
+				position: position.with_source(environment.get_source()),
 				publicity: crate::types::properties::Publicity::Public,
 			}
 		}

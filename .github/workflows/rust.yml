@@ -223,20 +223,26 @@ jobs:
           rustup install nightly
           rustup default nightly
 
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        if: steps.changes.outputs.parser == 'true'
-        with:
-          packages: cargo-fuzz
+      # Current `cargo-fuzz` is broken: https://github.com/kaleidawave/ezno/pull/158#issuecomment-2171431210
+      # However `cargo install --git ...` does work below
+      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      #   if: steps.changes.outputs.parser == 'true'
+      #   with:
+      #     packages: cargo-fuzz
 
+      - name: Install cargo-fuzz
+        if: steps.changes.outputs.parser == 'true'
+        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
+      
       - name: Run fuzzing
         env:
           SHORT_CIRCUIT: true
         if: steps.changes.outputs.parser == 'true'
         run: |
           if ${{ env.SHORT_CIRCUIT }}; then
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
           else
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
+            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
             
             if test -d fuzz/artifacts; then 
               find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 

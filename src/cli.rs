@@ -11,11 +11,11 @@ use std::{
 use crate::{
 	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
 	check::check,
-	reporting::emit_diagnostics,
-	utilities::{self, print_to_cli},
+	reporting::report_diagnostics_to_cli,
+	utilities::{self, print_to_cli, MaxDiagnostics},
 };
 use argh::FromArgs;
-use checker::CheckOutput;
+use checker::{CheckOutput, TypeCheckOptions};
 use parser::ParseOptions;
 
 /// The Ezno type-checker & compiler
@@ -62,14 +62,14 @@ pub(crate) enum ExperimentalSubcommand {
 
 // TODO definition file as list
 /// Build project
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, Debug)]
 #[argh(subcommand, name = "build")]
 // TODO: Can be refactored with bit to reduce memory
 #[allow(clippy::struct_excessive_bools)]
 pub(crate) struct BuildArguments {
-	/// path to input file
+	/// path to input file (accepts glob)
 	#[argh(positional)]
-	pub input: PathBuf,
+	pub input: String,
 	/// path to output
 	#[argh(positional)]
 	pub output: Option<PathBuf>,
@@ -80,24 +80,18 @@ pub(crate) struct BuildArguments {
 	/// whether to minify build output
 	#[argh(switch, short = 'm')]
 	pub minify: bool,
-	/// whether to include comments in the output
-	#[argh(switch)]
-	pub no_comments: bool,
 	/// build source maps
 	#[argh(switch)]
 	pub source_maps: bool,
 	/// compact diagnostics
 	#[argh(switch)]
 	pub compact_diagnostics: bool,
-	/// enable non standard syntax
-	#[argh(switch)]
-	pub non_standard_syntax: bool,
-	/// enable non standard library
-	#[argh(switch)]
-	pub non_standard_library: bool,
-	/// enable optimising transforms (warning can break code)
+	/// enable optimising transforms (warning can currently break code)
 	#[argh(switch)]
 	pub optimise: bool,
+	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
+	#[argh(option, default = "MaxDiagnostics::default()")]
+	pub max_diagnostics: MaxDiagnostics,
 
 	#[cfg(not(target_family = "wasm"))]
 	/// whether to display compile times
@@ -109,27 +103,27 @@ pub(crate) struct BuildArguments {
 }
 
 /// Type check project
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, Debug)]
 #[argh(subcommand, name = "check")]
 pub(crate) struct CheckArguments {
-	/// path to input file
+	/// path to input file (accepts glob)
 	#[argh(positional)]
-	pub input: PathBuf,
+	pub input: String,
 	/// paths to definition files
 	#[argh(option, short = 'd')]
 	pub definition_file: Option<PathBuf>,
-	/// whether to re-check on file changes
+	/// whether to re-check on file changes TODO #164
 	#[argh(switch)]
-	pub watch: bool,
+	pub _watch: bool,
 	/// whether to display check time
 	#[argh(switch)]
 	pub timings: bool,
-	/// whether to print all diagnostics
-	#[argh(switch)]
-	pub count_diagnostics: bool,
 	/// compact diagnostics
 	#[argh(switch)]
 	pub compact_diagnostics: bool,
+	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
+	#[argh(option, default = "MaxDiagnostics::default()")]
+	pub max_diagnostics: MaxDiagnostics,
 }
 
 /// Formats file in-place
@@ -198,70 +192,116 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments {
 				input,
-				watch: _,
+				// TODO #164
+				_watch,
 				definition_file,
 				timings,
-				count_diagnostics,
 				compact_diagnostics,
+				max_diagnostics,
 			} = check_arguments;
 
-			let entry_points = vec![input];
+			let mut type_check_options: TypeCheckOptions = Default::default();
 
 			#[cfg(not(target_family = "wasm"))]
-			let start = timings.then(std::time::Instant::now);
+			{
+				type_check_options.measure_time = timings;
+			}
 
-			let type_check_options = Default::default();
-
-			let CheckOutput { diagnostics, module_contents, .. } =
-				check(entry_points, read_file, definition_file.as_deref(), type_check_options);
-
-			#[cfg(not(target_family = "wasm"))]
-			if let Some(start) = start {
-				eprintln!("Checked in {:?}", start.elapsed());
+			let entry_points = match get_entry_points(input) {
+				Ok(entry_points) => entry_points,
+				Err(_) => return ExitCode::FAILURE,
 			};
 
-			if diagnostics.has_error() {
-				if count_diagnostics {
+			let CheckOutput { diagnostics, module_contents, chronometer, types, .. } =
+				check(entry_points, read_file, definition_file.as_deref(), type_check_options);
+
+			let diagnostics_count = diagnostics.count();
+			let current = timings.then(std::time::Instant::now);
+
+			let result = if diagnostics.has_error() {
+				if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
 					let count = diagnostics.into_iter().count();
 					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
 				} else {
-					emit_diagnostics(diagnostics, &module_contents, compact_diagnostics).unwrap();
+					report_diagnostics_to_cli(
+						diagnostics,
+						&module_contents,
+						compact_diagnostics,
+						max_diagnostics,
+					)
+					.unwrap();
 				}
 				ExitCode::FAILURE
 			} else {
 				// May be warnings or information here
-				emit_diagnostics(diagnostics, &module_contents, compact_diagnostics).unwrap();
+				report_diagnostics_to_cli(
+					diagnostics,
+					&module_contents,
+					compact_diagnostics,
+					max_diagnostics,
+				)
+				.unwrap();
 				print_to_cli(format_args!("No type errors found 🎉"));
 				ExitCode::SUCCESS
+			};
+
+			#[cfg(not(target_family = "wasm"))]
+			if timings {
+				let reporting = current.unwrap().elapsed();
+				eprintln!("---\n");
+				eprintln!("Diagnostics:\t{}", diagnostics_count);
+				eprintln!("Types:      \t{}", types.count_of_types());
+				eprintln!("Lines:      \t{}", chronometer.lines);
+				eprintln!("Cache read: \t{:?}", chronometer.cached);
+				eprintln!("FS read:    \t{:?}", chronometer.fs);
+				eprintln!("Parsed in:  \t{:?}", chronometer.parse);
+				eprintln!("Checked in: \t{:?}", chronometer.check);
+				eprintln!("Reporting:  \t{:?}", reporting);
 			}
+
+			result
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Build(build_config),
 		}) => {
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
 
-			// TODO
-			let default_builders = EznoParsePostCheckVisitors {
-				expression_visitors_mut: vec![Box::new(
-					crate::transformers::optimisations::ExpressionOptimiser,
-				)],
-				statement_visitors_mut: vec![Box::new(
-					crate::transformers::optimisations::StatementOptimiser,
-				)],
-				variable_visitors_mut: Default::default(),
-				block_visitors_mut: Default::default(),
+			let mut default_builders = EznoParsePostCheckVisitors::default();
+
+			if build_config.optimise {
+				default_builders
+					.expression_visitors_mut
+					.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
+
+				default_builders
+					.statement_visitors_mut
+					.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
+			}
+
+			let entry_points = match get_entry_points(build_config.input) {
+				Ok(entry_points) => entry_points,
+				Err(_) => return ExitCode::FAILURE,
 			};
 
-			let input_paths = vec![build_config.input];
+			#[cfg(not(target_family = "wasm"))]
+			let start = build_config.timings.then(std::time::Instant::now);
 
 			let output = build(
-				input_paths,
+				entry_points,
 				read_file,
 				build_config.definition_file.as_deref(),
 				&output_path,
-				&BuildConfig { strip_whitespace: build_config.minify },
+				&BuildConfig {
+					strip_whitespace: build_config.minify,
+					source_maps: build_config.source_maps,
+				},
 				Some(default_builders),
 			);
+
+			#[cfg(not(target_family = "wasm"))]
+			if let Some(start) = start {
+				eprintln!("Checked & built in {:?}", start.elapsed());
+			};
 
 			let compact_diagnostics = build_config.compact_diagnostics;
 
@@ -270,12 +310,24 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					for output in outputs {
 						write_file(output.output_path.as_path(), output.content);
 					}
-					emit_diagnostics(diagnostics, &fs, compact_diagnostics).unwrap();
+					report_diagnostics_to_cli(
+						diagnostics,
+						&fs,
+						compact_diagnostics,
+						build_config.max_diagnostics,
+					)
+					.unwrap();
 					print_to_cli(format_args!("Project built successfully 🎉"));
 					ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
-					emit_diagnostics(diagnostics, &fs, compact_diagnostics).unwrap();
+					report_diagnostics_to_cli(
+						diagnostics,
+						&fs,
+						compact_diagnostics,
+						build_config.max_diagnostics,
+					)
+					.unwrap();
 					ExitCode::FAILURE
 				}
 			}
@@ -301,15 +353,23 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			);
 			match res {
 				Ok(module) => {
-					let options =
-						ToStringOptions { trailing_semicolon: true, ..Default::default() };
+					let options = ToStringOptions {
+						trailing_semicolon: true,
+						include_type_annotations: true,
+						..Default::default()
+					};
 					let _ = fs::write(path.clone(), module.to_string(&options));
 					print_to_cli(format_args!("Formatted {} 🎉", path.display()));
 					ExitCode::SUCCESS
 				}
 				Err(err) => {
-					emit_diagnostics(std::iter::once((err, source_id).into()), &files, false)
-						.unwrap();
+					report_diagnostics_to_cli(
+						std::iter::once((err, source_id).into()),
+						&files,
+						false,
+						MaxDiagnostics::All,
+					)
+					.unwrap();
 					ExitCode::FAILURE
 				}
 			}
@@ -369,5 +429,29 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		  // 	let _root_ctx = checker::root_context_from_bytes(file);
 		  // 	println!("Registered {} types", _root_ctx.types.len();
 		  // }
+	}
+}
+
+fn get_entry_points(input: String) -> Result<Vec<PathBuf>, ()> {
+	match glob::glob(&input) {
+		Ok(files) => {
+			let files = files
+				.into_iter()
+				.collect::<Result<Vec<PathBuf>, glob::GlobError>>()
+				.map_err(|err| {
+					eprintln!("{err:?}");
+				})?;
+
+			if files.is_empty() {
+				eprintln!("Input {input:?} matched no files");
+				Err(())
+			} else {
+				Ok(files)
+			}
+		}
+		Err(err) => {
+			eprintln!("{err:?}");
+			Err(())
+		}
 	}
 }
