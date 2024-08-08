@@ -5,7 +5,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{Context, Environment},
-	features::functions::{self, GetterSetter},
+	features::functions::GetterSetter,
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		calling::Callable,
@@ -57,7 +57,7 @@ pub(crate) enum InterfaceKey<'a> {
 }
 
 pub(crate) enum InterfaceValue {
-	Function(FunctionType, GetterSetter),
+	Function(FunctionType, Option<GetterSetter>),
 	Value(TypeId),
 }
 
@@ -88,25 +88,24 @@ impl SynthesiseInterfaceBehavior for OnToType {
 			}
 			InterfaceKey::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
-		let value = match value {
-			InterfaceValue::Function(function, getter_setter) => match getter_setter {
-				GetterSetter::Getter => PropertyValue::Getter(Callable::new_from_function(
-					function,
-					&mut checking_data.types,
-				)),
-				GetterSetter::Setter => PropertyValue::Setter(Callable::new_from_function(
-					function,
-					&mut checking_data.types,
-				)),
-				GetterSetter::None => {
-					let function_id = function.id;
-					checking_data.types.functions.insert(function.id, function);
-					let ty = Type::FunctionReference(function_id);
-					PropertyValue::Value(checking_data.types.register_type(ty))
-				}
-			},
-			InterfaceValue::Value(value) => PropertyValue::Value(value),
-		};
+		let value =
+			match value {
+				InterfaceValue::Function(function, getter_setter) => match getter_setter {
+					Some(GetterSetter::Getter) => PropertyValue::Getter(
+						Callable::new_from_function(function, &mut checking_data.types),
+					),
+					Some(GetterSetter::Setter) => PropertyValue::Setter(
+						Callable::new_from_function(function, &mut checking_data.types),
+					),
+					None => {
+						let function_id = function.id;
+						checking_data.types.functions.insert(function.id, function);
+						let ty = Type::FunctionReference(function_id);
+						PropertyValue::Value(checking_data.types.register_type(ty))
+					}
+				},
+				InterfaceValue::Value(value) => PropertyValue::Value(value),
+			};
 		let value = if let Writable(TypeId::TRUE) = writable {
 			value
 		} else {
@@ -169,9 +168,11 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						.iter()
 						.any(|a| a.name.first().cloned().as_deref() == Some("DoNotIncludeThis"))
 					{
-						functions::FunctionBehavior::ArrowFunction { is_async: header.is_async() }
+						crate::types::functions::FunctionBehavior::ArrowFunction {
+							is_async: header.is_async(),
+						}
 					} else {
-						functions::FunctionBehavior::Method {
+						crate::types::functions::FunctionBehavior::Method {
 							is_async: header.is_async(),
 							is_generator: header.is_generator(),
 							// TODO ...
@@ -180,9 +181,9 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						}
 					};
 					let getter = match header {
-						parser::functions::MethodHeader::Get => GetterSetter::Getter,
-						parser::functions::MethodHeader::Set => GetterSetter::Setter,
-						parser::functions::MethodHeader::Regular { .. } => GetterSetter::None,
+						parser::functions::MethodHeader::Get => Some(GetterSetter::Getter),
+						parser::functions::MethodHeader::Set => Some(GetterSetter::Setter),
+						parser::functions::MethodHeader::Regular { .. } => None,
 					};
 
 					let position_with_source = position.with_source(environment.get_source());

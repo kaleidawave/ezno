@@ -7,7 +7,7 @@ use super::calling::{Callable, CallingContext, CallingInput};
 use crate::{
 	context::{environment::FunctionScope, invocation::CheckThings},
 	events::{Event, RootReference},
-	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
+	features::functions::{ClassPropertiesToRegister, ClosedOverVariables},
 	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
 
@@ -79,6 +79,7 @@ impl From<InternalFunctionEffect> for FunctionEffect {
 }
 
 impl FunctionType {
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new_auto_constructor<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		function_id: FunctionId,
 		class_prototype: TypeId,
@@ -172,11 +173,58 @@ impl FunctionType {
 	}
 }
 
-/// TODO temp
+/// TODO different place
+/// TODO maybe generic
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum GetSet {
-	Get,
-	Set,
+pub enum FunctionBehavior {
+	/// For arrow functions, cannot have `this` bound
+	ArrowFunction {
+		is_async: bool,
+	},
+	Method {
+		free_this_id: TypeId,
+		is_async: bool,
+		is_generator: bool,
+		name: TypeId,
+	},
+	/// Functions defined `function`. Extends above by allowing `new`
+	Function {
+		/// This points the general `this` object.
+		/// When calling with:
+		/// - `new`: an arguments should set with (`free_this_id`, *new object*)
+		/// - regularly: bound argument, else parent `this` (I think)
+		this_id: TypeId,
+		/// The function type. [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new)
+		prototype: TypeId,
+		is_async: bool,
+		/// Cannot be called with `new` if true
+		is_generator: bool,
+		/// This is to implement <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/name>
+		name: TypeId,
+	},
+	/// Constructors, require new
+	Constructor {
+		/// The prototype of the base object
+		prototype: TypeId,
+		/// The id of the generic that needs to be pulled out
+		this_object_type: TypeId,
+		name: TypeId,
+	},
+}
+
+impl FunctionBehavior {
+	pub(crate) fn can_be_bound(self) -> bool {
+		matches!(self, Self::Method { .. } | Self::Function { .. })
+	}
+
+	pub(crate) fn get_name(self) -> TypeId {
+		match self {
+			Self::ArrowFunction { .. } => TypeId::EMPTY_STRING,
+			Self::Method { name, .. }
+			| Self::Function { name, .. }
+			| Self::Constructor { name, .. } => name,
+		}
+	}
 }
 
 /// Optionality is indicated by what vector it is in [`SynthesisedParameters`]

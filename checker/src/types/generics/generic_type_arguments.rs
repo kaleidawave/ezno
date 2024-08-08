@@ -65,7 +65,7 @@ impl GenericArguments {
 	}
 
 	#[must_use]
-	pub fn into_substitutable(&self) -> SubstitutionArguments<'static> {
+	pub fn build_substitutable(&self) -> SubstitutionArguments<'static> {
 		match self {
 			GenericArguments::ExplicitRestrictions(res) => SubstitutionArguments {
 				parent: None,

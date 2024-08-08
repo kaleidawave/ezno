@@ -5,7 +5,6 @@ use super::TypeId;
 /// Terms
 /// TODO:
 /// - `BigInt` (<https://github.com/rust-num/num-bigint>)
-/// TODO unsure about some of these
 #[derive(Eq, PartialEq, Hash, Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Constant {
 	Number(ordered_float::NotNan<f64>),

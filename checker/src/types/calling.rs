@@ -12,7 +12,6 @@ use crate::{
 		constant_functions::{
 			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
 		},
-		functions::{FunctionBehavior, ThisValue},
 		objects::{ObjectBuilder, SpecialObject},
 	},
 	subtyping::{
@@ -20,10 +19,12 @@ use crate::{
 		SubTypingOptions,
 	},
 	types::{
+		functions::{FunctionBehavior, FunctionEffect, FunctionType},
 		generics::substitution::SubstitutionArguments,
-		get_structure_arguments_based_on_object_constraint, logical::*, properties::AccessMode,
-		substitute, FunctionEffect, FunctionType, GenericChainLink, ObjectNature,
-		PartiallyAppliedGenerics, Type,
+		get_structure_arguments_based_on_object_constraint,
+		logical::{Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical},
+		properties::AccessMode,
+		substitute, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
 	},
 	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
 };
@@ -44,6 +45,35 @@ pub struct CallingInput {
 
 	/// An option to invocation
 	pub max_inline: u16,
+}
+
+#[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
+pub enum ThisValue {
+	Passed(TypeId),
+	/// Or pick from [`Constructor::Property`]
+	#[default]
+	UseParent,
+}
+
+impl ThisValue {
+	pub(crate) fn get(
+		self,
+		environment: &mut Environment,
+		types: &TypeStore,
+		position: SpanWithSource,
+	) -> TypeId {
+		match self {
+			ThisValue::Passed(value) => value,
+			ThisValue::UseParent => environment.get_value_of_this(types, position),
+		}
+	}
+
+	pub(crate) fn get_passed(self) -> Option<TypeId> {
+		match self {
+			ThisValue::Passed(value) => Some(value),
+			ThisValue::UseParent => None,
+		}
+	}
 }
 
 /// For diagnostics
@@ -83,9 +113,10 @@ impl CallingDiagnostics {
 				CallingContext::Setter => TypeCheckError::SetterCallingError(error),
 				CallingContext::Super => TypeCheckError::SuperCallError(error),
 				// TODO maybe separate error (even thoguh this should not occur)
+				#[allow(clippy::match_same_arms)]
 				CallingContext::Iteration => TypeCheckError::FunctionCallingError(error),
 			};
-			diagnostics_container.add_error(error)
+			diagnostics_container.add_error(error);
 		});
 		self.warnings.into_iter().for_each(|warning| diagnostics_container.add_warning(warning));
 		self.info.into_iter().for_each(|crate::diagnostics::InfoDiagnostic(message, position)| {
@@ -94,7 +125,7 @@ impl CallingDiagnostics {
 				position,
 				kind: crate::diagnostics::DiagnosticKind::Info,
 			});
-		})
+		});
 	}
 }
 
@@ -306,7 +337,7 @@ pub fn application_result_to_return_type(
 
 #[derive(Debug, Copy, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Callable {
-	/// TODO ThisValue not always needed
+	/// TODO `ThisValue` not always needed
 	Fixed(FunctionId, ThisValue),
 	Type(TypeId),
 }
@@ -521,7 +552,7 @@ fn get_logical_callable_from_type(
 					Ok(result)
 				}
 			} else {
-				Ok(result.into())
+				Ok(result)
 			}
 		}
 		Type::RootPolyType(_) | Type::Constructor(_) => {
@@ -576,7 +607,7 @@ fn call_logical<B: CallCheckingBehavior>(
 						|| is_independent_function
 						|| matches!(
 							const_fn_ident.as_str(),
-							"satisfies" | "is_dependent" | "bind" | "create_proxy"
+							"satisfies" | "is_dependent" | "bind" | "proxy:constructor"
 						);
 
 					// {
@@ -712,6 +743,23 @@ fn call_logical<B: CallCheckingBehavior>(
 						};
 					}
 				}
+
+				// Temp fix for structure generics, doesn't work in access
+				let structure_generics = if let (false, Some(on)) =
+					(structure_generics.is_some(), function.this_value.get_passed())
+				{
+					if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on: _,
+						arguments,
+					}) = types.get_type_by_id(get_constraint(on, types).unwrap_or(on))
+					{
+						Some(arguments.clone())
+					} else {
+						None
+					}
+				} else {
+					structure_generics
+				};
 
 				let mut result = function_type.call(
 					(function.this_value, &arguments, explicit_type_arguments, structure_generics),
@@ -869,14 +917,17 @@ fn call_logical<B: CallCheckingBehavior>(
 			// 	Err(BadCallOutput { returned_type: TypeId::ERROR_TYPE, errors: vec![err] })
 			// }
 		}
-		Logical::Implies { on, antecedent } => call_logical(
-			*on,
-			(arguments, explicit_type_arguments, Some(antecedent)),
-			input,
-			top_environment,
-			types,
-			(behavior, diagnostics),
-		),
+		Logical::Implies { on, antecedent } => {
+			// crate::utilities::notify!("antecedent={:?}", antecedent);
+			call_logical(
+				*on,
+				(arguments, explicit_type_arguments, Some(antecedent)),
+				input,
+				top_environment,
+				types,
+				(behavior, diagnostics),
+			)
+		}
 		Logical::BasedOnKey { .. } => todo!(),
 	}
 }
@@ -1892,8 +1943,9 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							.unwrap();
 
 						crate::utilities::notify!(
-							"Here calculating lookup argument {:?}",
-							prototype
+							"Here calculating lookup argument prototype={:?} {:?}",
+							prototype,
+							on
 						);
 						let map =
 							checking_data.types.lookup_generic_map.get(prototype).unwrap().clone();
@@ -1902,8 +1954,9 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							let entries =
 								lookup.calculate_lookup(environment, &checking_data.types, *on);
 							let mut iter = entries.into_iter();
-							let mut ty = iter.next().unwrap();
+							let mut ty = iter.next().unwrap_or(TypeId::NEVER_TYPE);
 							for other in iter {
+								// crate::utilities::notify!("here {:?}", checking_data.types.get_type_by_id(other));
 								ty = checking_data.types.new_or_type(ty, other);
 							}
 
@@ -1937,10 +1990,10 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							{
 								*fixed_to
 							} else {
-								// crate::utilities::notify!(
-								// 	"Parameter is not `PolyNature::Parameter`? {:?}",
-								// 	ty
-								// );
+								crate::utilities::notify!(
+									"Parameter is not `PolyNature::Parameter`? {:?}",
+									ty
+								);
 								parameter_type
 							};
 
@@ -1949,6 +2002,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 									*ty
 								} else {
 									// Unfortunately this seems the best way to pass down to expected type
+									crate::utilities::notify!("Here");
 									checking_data.types.register_type(
 										Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 											on: parameter_type,
@@ -1963,6 +2017,19 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							}
 						},
 					);
+
+					{
+						let debug = true;
+						crate::utilities::notify!(
+							"Here!, expected = {}",
+							crate::types::printing::print_type(
+								expected_type,
+								&checking_data.types,
+								environment,
+								debug
+							)
+						);
+					}
 
 					let value = A::synthesise_expression(
 						argument.expression,

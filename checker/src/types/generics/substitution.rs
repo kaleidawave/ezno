@@ -5,7 +5,7 @@ use source_map::{Nullable, SpanWithSource};
 use crate::{
 	context::LocalInformation,
 	features::{
-		functions::{ClosureChain, ClosureId, ThisValue},
+		functions::{ClosureChain, ClosureId},
 		objects::{Proxy, SpecialObject},
 		operations::{
 			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
@@ -14,9 +14,10 @@ use crate::{
 	},
 	subtyping::{State, SubTypingOptions},
 	types::{
+		calling::ThisValue,
 		generics::contributions::Contributions,
 		intrinsics::{self, distribute_tsc_string_intrinsic},
-		logical::{LeftRight, Logical, LogicalOrValid},
+		logical::{BasedOnKey, Logical, LogicalOrValid},
 		properties::{get_property_unbound, Publicity},
 		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	},
@@ -180,9 +181,10 @@ pub(crate) fn substitute(
 			SpecialObject::Promise { .. } => todo!(),
 			SpecialObject::Generator { .. } => todo!(),
 			SpecialObject::Proxy(Proxy { over, handler }) => {
-				let handler = *handler;
-				let over = substitute(*over, arguments, environment, types);
-				let handler = substitute(handler, arguments, environment, types);
+				let (prev_over, prev_handler) = (*over, *handler);
+				let over = substitute(prev_over, arguments, environment, types);
+				let handler = substitute(prev_handler, arguments, environment, types);
+				crate::utilities::notify!("Here {:?}", (prev_over, prev_handler, over, handler));
 				types.register_type(Type::SpecialObject(SpecialObject::Proxy(Proxy {
 					over,
 					handler,
@@ -347,7 +349,7 @@ pub(crate) fn substitute(
 						let value = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 						types.new_or_type(value, TypeId::UNDEFINED_TYPE)
 					} else {
-						let substitutable = arguments.into_substitutable();
+						let substitutable = arguments.build_substitutable();
 
 						let new_result = substitute(
 							result,
@@ -396,39 +398,13 @@ pub(crate) fn substitute(
 									}
 									Logical::Or { .. } => todo!("{:?}", value),
 									Logical::Implies { .. } => todo!("{:?}", value),
-									Logical::BasedOnKey(LeftRight::Left { .. }) => {
+									Logical::BasedOnKey(BasedOnKey::Left { .. }) => {
 										todo!("{:?}", value)
 									}
-									Logical::BasedOnKey(LeftRight::Right { on, key }) => {
-										let filter =
-											crate::types::get_constraint(key, types).unwrap_or(key);
-
-										let entries = crate::types::properties::list::get_properties_on_single_type2(
-											(on, None),
-											types,
-											environment,
-											filter,
-										);
-										let mut iter = entries.into_iter();
-										if let Some((_, first_value, _)) = iter.next() {
-											// TODO should properly evaluate value
-											let mut value = first_value.as_get_type(types);
-											for (_, other, _) in iter {
-												value = types
-													.new_or_type(other.as_get_type(types), value);
-											}
-											value =
-												types.new_or_type(value, TypeId::UNDEFINED_TYPE);
-
-											// TODO property result
-											let value = types.register_type(Type::RootPolyType(
-												crate::types::PolyNature::Open(value),
-											));
-
-											value
-										} else {
-											TypeId::NEVER_TYPE
-										}
+									Logical::BasedOnKey(BasedOnKey::Right(property_on)) => {
+										property_on
+											.get_on(None, environment, types)
+											.unwrap_or(TypeId::NEVER_TYPE)
 									}
 								}
 							}

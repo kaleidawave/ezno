@@ -1,11 +1,11 @@
 //! Contains implementations of specific JavaScript items and how Ezno handles them.
 //! Contains
 //! - Helper / abstracting functions for synthesising
+//! - Internal representations for specific objects
 //!
 //! Does not contain
-//! - Logic stuff
-//! - Context
-//! - Internal structures
+//! - Type and logic stuff
+//! - Contextual information
 
 pub mod assignments;
 pub mod conditional;
@@ -29,7 +29,7 @@ use crate::{
 	types::{
 		get_constraint,
 		logical::{Logical, LogicalOrValid},
-		properties, ObjectNature, PartiallyAppliedGenerics, TypeStore,
+		properties, PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Environment, PropertyValue, Type, TypeId,
 };
@@ -54,7 +54,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 		types.new_constant_type(crate::Constant::String(name.to_owned()))
 	} else if on == TypeId::UNDEFINED_TYPE {
 		return types.new_constant_type(crate::Constant::String("undefined".to_owned()));
-	} else if on == TypeId::UNDEFINED_TYPE {
+	} else if on == TypeId::NULL_TYPE {
 		return types.new_constant_type(crate::Constant::String("null".to_owned()));
 	} else {
 		let ty = types.get_type_by_id(on);
@@ -105,6 +105,7 @@ pub fn instance_of_operator(
 	if let Some(_constraint) = get_constraint(lhs, types) {
 		todo!()
 	} else {
+		use crate::types::functions;
 		let rhs_prototype = if let Type::SpecialObject(SpecialObject::Function(func, _)) =
 			types.get_type_by_id(rhs)
 		{
@@ -327,9 +328,7 @@ pub fn delete_operator(
 				types,
 			) {
 			if !value.is_configuable_simple() {
-				let constraint =
-					TypeStringRepresentation::from_type_id(rhs, environment, types, false);
-				return Err(CannotDeleteFromError::Constraint { constraint, position });
+				return Err(CannotDeleteFromError::NonConfigurable { position });
 			}
 		}
 	}
@@ -542,8 +541,7 @@ pub(crate) fn has_property(
 		| Type::Class { .. }
 		| Type::Constant(_)
 		| Type::FunctionReference(_)
-		| Type::Object(ObjectNature::RealDeal)
-		| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+		| Type::Object(_)
 		| Type::PartiallyAppliedGenerics(_)
 		| Type::And(_, _)
 		| Type::SpecialObject(_)

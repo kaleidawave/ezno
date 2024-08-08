@@ -3,13 +3,12 @@ use source_map::SpanWithSource;
 use crate::{
 	context::LocalInformation,
 	types::{
+		calling::ThisValue,
 		properties::{PropertyKey, PropertyValue, Publicity},
 		TypeStore,
 	},
 	FunctionId, TypeId,
 };
-
-use super::functions::ThisValue;
 
 /// Helper for building objects easy
 // TODO slice indexes

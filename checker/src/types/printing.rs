@@ -4,15 +4,14 @@ use std::collections::HashSet;
 use super::{GenericChain, PolyNature, Type, TypeId, TypeStore};
 use crate::{
 	context::information::{get_value_of_constant_import_variable, InformationChain},
-	features::{
-		functions::{FunctionBehavior, ThisValue},
-		objects::{Proxy, SpecialObject},
-	},
+	features::objects::{Proxy, SpecialObject},
 	types::{
+		calling::ThisValue,
+		functions::{FunctionBehavior, FunctionEffect},
 		generics::generic_type_arguments::GenericArguments,
 		get_array_length, get_constraint, get_simple_value,
 		properties::{get_properties_on_single_type, AccessMode, PropertyKey, Publicity},
-		Constructor, FunctionEffect, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
+		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
 		TypeRelationOperator,
 	},
 	PropertyValue,
@@ -96,7 +95,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				crate::utilities::notify!("args={:?}", args);
 				if let Some(crate::types::CovariantContribution::String(property)) =
-					args.and_then(|arg| arg.get_argument_covariant(ty, info, types))
+					args.and_then(|arg| arg.get_argument_covariant(ty))
 				{
 					write!(buf, "{property}").unwrap();
 				} else {
@@ -110,9 +109,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						write!(buf, "[fg {} {}] ", ty.0, name).unwrap();
 					}
 				}
-				if let Some(arg) =
-					args.and_then(|args| args.get_argument_covariant(ty, info, types))
-				{
+				if let Some(arg) = args.and_then(|args| args.get_argument_covariant(ty)) {
 					use crate::types::CovariantContribution;
 					if debug {
 						buf.push_str(" (specialised with) ");
@@ -137,7 +134,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						if let PolyNature::FunctionGeneric { extends, .. } = nature {
 							print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
 						} else {
-							write!(buf, "[sg {}]", ty.0).unwrap();
+							write!(buf, "[sg {}] ", ty.0).unwrap();
 						}
 					}
 					buf.push_str(name);
@@ -188,7 +185,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::CatchVariable(constraint) => {
 				if debug {
-					write!(buf, "[catch variable {}] ", ty.0).unwrap();
+					write!(buf, "[catch variable {ty:?}] ").unwrap();
 				}
 				print_type_into_buf(*constraint, buf, cycles, args, types, info, debug);
 			}
@@ -288,7 +285,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				buf.push_str("keyof ");
 				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
 				// } else {
-				// 	let properties = get_properties_on_type(*on, types, info);
+				// 	let properties = get_properties_on_type(*on, types);
 				// 	if properties.is_empty() {
 				// 		buf.push_str("never");
 				// 	} else {
@@ -309,7 +306,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 			Constructor::Property { on, under, result, mode: _ } => {
 				// crate::utilities::notify!("before {:?}", types.get_type_by_id(*on));
 				let on = if let Some(crate::types::CovariantContribution::TypeId(value)) =
-					args.and_then(|arg| arg.get_argument_covariant(*on, info, types))
+					args.and_then(|arg| arg.get_argument_covariant(*on))
 				{
 					value
 				} else {
@@ -355,6 +352,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 								print_type_into_buf(*t, buf, cycles, args, types, info, debug);
 							}
 						}
+						write!(buf, "{ty:?}").unwrap();
 						buf.push_str(") ");
 					}
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
@@ -431,7 +429,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				print_type_into_buf(base, buf, cycles, args, types, info, debug);
 			}
 		},
-		t @ (Type::Class { name, parameters: _, .. }
+		t @ (Type::Class { name, type_parameters: _, .. }
 		| Type::Interface { name, parameters: _, .. }
 		| Type::AliasTo { to: _, name, parameters: _ }) => {
 			if debug {

@@ -337,7 +337,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				checking_data,
 				&position,
 				// TODO async
-				crate::features::functions::FunctionBehavior::ArrowFunction { is_async: false },
+				crate::types::functions::FunctionBehavior::ArrowFunction { is_async: false },
 			);
 			// TODO bit messy
 			checking_data.types.new_function_type_annotation(
@@ -403,7 +403,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::TupleLiteral(members, position) => {
 			let mut items = Vec::<(SpanWithSource, ArrayItem)>::with_capacity(members.len());
 
-			for TupleLiteralElement(spread, member, pos) in members.iter() {
+			for TupleLiteralElement(spread, member, pos) in members {
 				// TODO store binder name...?
 				let type_annotation = match member {
 					AnnotationWithBinder::Annotated { ty, .. }
@@ -437,7 +437,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 								// TODO position here?
 								items.extend(new_items.into_iter().map(|value| (pos, value)));
 							}
-							Err(_) => items.push((pos, ArrayItem::Wildcard(annotation_ty))),
+							Err(()) => items.push((pos, ArrayItem::Wildcard(annotation_ty))),
 						}
 					}
 				}
@@ -466,9 +466,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						crate::utilities::notify!("found wildcard");
 						let after = idx.into_type(&mut checking_data.types);
 
-						let key = checking_data
-							.types
-							.new_intrinsic(crate::types::intrinsics::Intrinsic::GreaterThan, after);
+						let key = checking_data.types.new_intrinsic(
+							&crate::types::intrinsics::Intrinsic::GreaterThan,
+							after,
+						);
 
 						let item_type = checking_data.types.register_type(Type::Constructor(
 							Constructor::Property {

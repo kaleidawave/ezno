@@ -421,7 +421,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 											position,
 											possibles: get_property_key_names_on_a_single_type(
 												value,
-												&mut checking_data.types,
+												&checking_data.types,
 												environment,
 											)
 											.iter()
@@ -500,7 +500,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 												.with_source(environment.get_source()),
 											possibles: get_property_key_names_on_a_single_type(
 												value,
-												&mut checking_data.types,
+												&checking_data.types,
 												environment,
 											)
 											.iter()

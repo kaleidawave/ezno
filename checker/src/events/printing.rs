@@ -187,7 +187,7 @@ pub fn debug_effects<C: InformationChain>(
 						debug,
 					);
 					buf.push_str("] = ");
-					write!(buf, "{:?}", value).unwrap();
+					write!(buf, "{value:?}").unwrap();
 				}
 				super::MiscellaneousEvents::CreateConstructor { .. } => {
 					buf.push_str("create constructor");

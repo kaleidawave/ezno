@@ -15,7 +15,7 @@ use crate::{
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
 /// TODO remove unwraps here and add to the existing error handler
 pub(super) fn type_definition_file<T: crate::ReadFromFS>(
-	definition: parser::Module,
+	definition: &parser::Module,
 	source: SourceId,
 	checking_data: &mut crate::CheckingData<T, super::EznoParser>,
 	root: &RootContext,

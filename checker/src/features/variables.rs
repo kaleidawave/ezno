@@ -168,7 +168,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 					environment,
 				);
 				let mut possibles =
-					crate::get_closest(keys.iter().map(AsRef::as_ref), &s).unwrap_or(vec![]);
+					crate::get_closest(keys.iter().map(AsRef::as_ref), s).unwrap_or(vec![]);
 				possibles.sort_unstable();
 				possibles
 			} else {

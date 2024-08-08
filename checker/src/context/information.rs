@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
 	events::{Event, RootReference},
-	features::functions::{ClosureId, ThisValue},
+	features::functions::ClosureId,
 	types::{
+		calling::ThisValue,
 		properties::{PropertyKey, Publicity},
 		TypeStore,
 	},
@@ -96,7 +97,7 @@ impl LocalInformation {
 		under: PropertyKey<'static>,
 		to: PropertyValue,
 	) {
-		self.current_properties.entry(on).or_default().push((publicity, under.clone(), to.clone()));
+		self.current_properties.entry(on).or_default().push((publicity, under, to));
 	}
 	pub fn register_property(
 		&mut self,

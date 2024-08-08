@@ -17,7 +17,7 @@ use crate::{
 		self,
 		calling::Callable,
 		classes::ClassValue,
-		functions::SynthesisedParameters,
+		functions::{FunctionBehavior, SynthesisedParameters},
 		generics::GenericTypeParameters,
 		logical::{Logical, LogicalOrValid},
 		printing::print_type,
@@ -30,40 +30,10 @@ use crate::{
 	ReadFromFS, Scope, Type, TypeId, VariableId,
 };
 
-#[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
-pub enum ThisValue {
-	Passed(TypeId),
-	/// Or pick from [`Constructor::Property`]
-	#[default]
-	UseParent,
-}
-
-impl ThisValue {
-	pub(crate) fn get(
-		self,
-		environment: &mut Environment,
-		types: &TypeStore,
-		position: SpanWithSource,
-	) -> TypeId {
-		match self {
-			ThisValue::Passed(value) => value,
-			ThisValue::UseParent => environment.get_value_of_this(types, position),
-		}
-	}
-
-	pub(crate) fn get_passed(self) -> Option<TypeId> {
-		match self {
-			ThisValue::Passed(value) => Some(value),
-			ThisValue::UseParent => None,
-		}
-	}
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum GetterSetter {
 	Getter,
 	Setter,
-	None,
 }
 
 pub fn register_arrow_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -82,6 +52,7 @@ pub fn register_arrow_function<T: crate::ReadFromFS, A: crate::ASTImplementation
 	checking_data.types.new_function_type(function_type)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn register_expression_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	expected: TypeId,
 	is_async: bool,
@@ -184,15 +155,19 @@ pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::AST
 }
 
 pub fn function_to_property(
-	getter_setter: GetterSetter,
+	getter_setter: Option<GetterSetter>,
 	function: FunctionType,
 	types: &mut TypeStore,
 	is_declare: bool,
 ) -> PropertyValue {
 	match getter_setter {
-		GetterSetter::Getter => PropertyValue::Getter(Callable::new_from_function(function, types)),
-		GetterSetter::Setter => PropertyValue::Setter(Callable::new_from_function(function, types)),
-		GetterSetter::None => PropertyValue::Value(
+		Some(GetterSetter::Getter) => {
+			PropertyValue::Getter(Callable::new_from_function(function, types))
+		}
+		Some(GetterSetter::Setter) => {
+			PropertyValue::Setter(Callable::new_from_function(function, types))
+		}
+		None => PropertyValue::Value(
 			if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
 				types.new_hoisted_function_type(function)
 			} else {
@@ -282,60 +257,6 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	);
 
 	result
-}
-
-/// TODO different place
-/// TODO maybe generic
-#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum FunctionBehavior {
-	/// For arrow functions, cannot have `this` bound
-	ArrowFunction {
-		is_async: bool,
-	},
-	Method {
-		free_this_id: TypeId,
-		is_async: bool,
-		is_generator: bool,
-		name: TypeId,
-	},
-	/// Functions defined `function`. Extends above by allowing `new`
-	Function {
-		/// This points the general `this` object.
-		/// When calling with:
-		/// - `new`: an arguments should set with (`free_this_id`, *new object*)
-		/// - regularly: bound argument, else parent `this` (I think)
-		this_id: TypeId,
-		/// The function type. [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new)
-		prototype: TypeId,
-		is_async: bool,
-		/// Cannot be called with `new` if true
-		is_generator: bool,
-		/// This is to implement <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/name>
-		name: TypeId,
-	},
-	/// Constructors, require new
-	Constructor {
-		/// The prototype of the base object
-		prototype: TypeId,
-		/// The id of the generic that needs to be pulled out
-		this_object_type: TypeId,
-		name: TypeId,
-	},
-}
-
-impl FunctionBehavior {
-	pub(crate) fn can_be_bound(self) -> bool {
-		matches!(self, Self::Method { .. } | Self::Function { .. })
-	}
-
-	pub(crate) fn get_name(self) -> TypeId {
-		match self {
-			Self::ArrowFunction { .. } => TypeId::EMPTY_STRING,
-			Self::Method { name, .. }
-			| Self::Function { name, .. }
-			| Self::Constructor { name, .. } => name,
-		}
-	}
 }
 
 #[derive(Clone, Copy)]
@@ -566,6 +487,7 @@ where
 				&mut checking_data.types,
 				base_environment,
 			);
+			crate::utilities::notify!("expected {:?}", expecting);
 
 			if let Some((or, _)) =
 				expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))
@@ -1097,7 +1019,18 @@ fn get_expected_parameters_from_type(
 					.parameters
 					.into_iter()
 					.map(|p| SynthesisedParameter {
-						ty: substitute(p.ty, &type_arguments, environment, types),
+						ty: substitute(
+							if let Type::RootPolyType(PolyNature::Parameter { fixed_to }) =
+								types.get_type_by_id(p.ty)
+							{
+								*fixed_to
+							} else {
+								p.ty
+							},
+							&type_arguments,
+							environment,
+							types,
+						),
 						..p
 					})
 					.collect();
@@ -1112,6 +1045,7 @@ fn get_expected_parameters_from_type(
 			expected_return_type.map(|rt| substitute(rt, &type_arguments, environment, types)),
 		)
 	} else {
+		crate::utilities::notify!("(un)Expected = {:?}", ty);
 		(None, None)
 	}
 }

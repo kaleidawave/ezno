@@ -9,7 +9,7 @@ use crate::{
 	types::{
 		calling::{CallingDiagnostics, CallingOutput, SynthesisedArgument},
 		get_constraint,
-		logical::{LeftRight, Logical, LogicalOrValid},
+		logical::{BasedOnKey, Logical, LogicalOrValid},
 		tuple_like, Constructor, GenericChain, NeedsCalculation, PartiallyAppliedGenerics,
 		TypeStore,
 	},
@@ -153,16 +153,15 @@ pub fn set_property<B: CallCheckingBehavior>(
 						reason,
 						position,
 					});
-				} else {
-					crate::utilities::notify!("TODO assigning to non existent");
-					// if get_constraint(on, types).is_none() {
-					// 	crate::utilities::notify!("Here");
-					// 	return Err(SetPropertyError::AssigningToNonExistent {
-					// 		property: PropertyKeyRepresentation::new(under, environment, types),
-					// 		position,
-					// 	});
-					// }
 				}
+				// if get_constraint(on, types).is_none() {
+				// 	crate::utilities::notify!("Here");
+				// 	return Err(SetPropertyError::AssigningToNonExistent {
+				// 		property: PropertyKeyRepresentation::new(under, environment, types),
+				// 		position,
+				// 	});
+				// }
+				crate::utilities::notify!("TODO assigning to non existent");
 
 				// PropertyValue::Getter(_)
 				// | PropertyValue::Setter(_)
@@ -262,24 +261,22 @@ pub fn set_property<B: CallCheckingBehavior>(
 				types,
 			),
 		}
+	} else if get_constraint(on, types).is_some() {
+		Err(SetPropertyError::AssigningToNonExistent {
+			property: PropertyKeyRepresentation::new(under, environment, types),
+			position,
+		})
 	} else {
-		if get_constraint(on, types).is_some() {
-			Err(SetPropertyError::AssigningToNonExistent {
-				property: PropertyKeyRepresentation::new(under, environment, types),
-				position,
-			})
-		} else {
-			crate::utilities::notify!("No property on object, assigning anyway");
-			let info = behavior.get_latest_info(environment);
-			info.register_property(
-				on,
-				publicity,
-				under.into_owned(),
-				PropertyValue::Value(new),
-				position,
-			);
-			Ok(())
-		}
+		crate::utilities::notify!("No property on object, assigning anyway");
+		let info = behavior.get_latest_info(environment);
+		info.register_property(
+			on,
+			publicity,
+			under.into_owned(),
+			PropertyValue::Value(new),
+			position,
+		);
+		Ok(())
 	}
 }
 
@@ -344,7 +341,7 @@ fn set_on_logical<B: CallCheckingBehavior>(
 			)
 		}
 		Logical::BasedOnKey(kind) => {
-			if let LeftRight::Left { value, key_arguments } = kind {
+			if let BasedOnKey::Left { value, key_arguments } = kind {
 				let generics = crate::types::GenericChainLink::MappedPropertyLink {
 					parent_link: generics.as_ref(),
 					value: &key_arguments,
@@ -571,7 +568,6 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 		handler,
 		Publicity::Public,
 		&property_key,
-		None,
 		environment,
 		(behavior, diagnostics),
 		types,
@@ -603,12 +599,11 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 			(behavior, diagnostics),
 			types,
 		);
-		match result {
-			Ok(_res) => Ok(()),
-			Err(_) => {
-				crate::utilities::notify!("TODO Proxy.set failed but returning Ok() (as difference captured in CallingDiagnostics)");
-				Ok(())
-			}
+		if let Ok(_res) = result {
+			Ok(())
+		} else {
+			crate::utilities::notify!("TODO Proxy.set failed but returning Ok() (as difference captured in CallingDiagnostics)");
+			Ok(())
 		}
 	} else {
 		set_property(

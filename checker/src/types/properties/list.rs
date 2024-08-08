@@ -65,6 +65,9 @@ pub fn get_properties_on_single_type(
 					crate::utilities::notify!("key_arguments={:?}", key_arguments);
 
 					if !key_matches {
+						if let Some(existing) = existing {
+							properties.remove(existing);
+						}
 						continue;
 					}
 				}
@@ -109,7 +112,7 @@ pub fn get_properties_on_single_type(
 }
 
 /// WIP TODO remove filter
-/// Slightly different to regular get_properties_on_single_type
+/// Slightly different to regular `get_properties_on_single_type`
 /// - appends key argument
 /// - no numerical sorting
 /// - no enumerable
@@ -152,7 +155,7 @@ pub fn get_properties_on_single_type2(
 					types,
 				);
 
-				crate::utilities::notify!("key_arguments={:?}", key_arguments);
+				// crate::utilities::notify!("key_arguments={:?}", key_arguments);
 
 				if !key_matches {
 					continue;

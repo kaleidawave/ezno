@@ -8,7 +8,7 @@ use crate::{
 	context::{Environment, InformationChain, LocalInformation},
 	diagnostics::TypeCheckError,
 	features::functions::{
-		function_to_property, synthesise_function, ClassPropertiesToRegister, FunctionBehavior,
+		function_to_property, synthesise_function, ClassPropertiesToRegister,
 		FunctionRegisterBehavior, GetterSetter, SynthesisableFunction,
 	},
 	types::{
@@ -51,13 +51,13 @@ pub(super) fn synthesise_class_declaration<
 	if let Some(class_type) = existing_id {
 		let class_type2 = checking_data.types.get_type_by_id(class_type);
 
-		let Type::Class { name: _, parameters } = class_type2 else {
+		let Type::Class { name: _, type_parameters } = class_type2 else {
 			unreachable!("expecting class type {:?}", class_type2)
 		};
 
-		if let Some(parameters) = parameters {
+		if let Some(type_parameters) = type_parameters {
 			let mut sub_environment = environment.new_lexical_environment(Scope::TypeAlias);
-			for parameter in parameters {
+			for parameter in type_parameters {
 				let parameter_ty = checking_data.types.get_type_by_id(*parameter);
 				let Type::RootPolyType(PolyNature::StructureGeneric { name, extends: _ }) =
 					parameter_ty
@@ -95,8 +95,9 @@ pub(super) fn synthesise_class_declaration<
 		let name =
 			P::as_option_str(&class.name).map_or_else(|| "(anonymous)".to_owned(), str::to_owned);
 
-		let class_type =
-			checking_data.types.register_type(Type::Class { name: name.clone(), parameters: None });
+		let class_type = checking_data
+			.types
+			.register_type(Type::Class { name: name.clone(), type_parameters: None });
 
 		synthesise_class_declaration_extends_and_members(
 			class,
@@ -183,10 +184,10 @@ fn synthesise_class_declaration_extends_and_members<
 
 				// TODO abstract
 				let (getter_setter, is_async, is_generator) = match &method.header {
-					MethodHeader::Get => (GetterSetter::Getter, false, false),
-					MethodHeader::Set => (GetterSetter::Setter, false, false),
+					MethodHeader::Get => (Some(GetterSetter::Getter), false, false),
+					MethodHeader::Set => (Some(GetterSetter::Setter), false, false),
 					MethodHeader::Regular { is_async, generator } => {
-						(GetterSetter::None, *is_async, generator.is_some())
+						(None, *is_async, generator.is_some())
 					}
 				};
 
@@ -312,7 +313,7 @@ fn synthesise_class_declaration_extends_and_members<
 				);
 			}
 			_item => {
-				crate::utilities::notify!("Skipping {:?}", _item);
+				// crate::utilities::notify!("Skipping {:?}", _item);
 			}
 		}
 	}
@@ -387,10 +388,10 @@ fn synthesise_class_declaration_extends_and_members<
 					};
 
 					let (getter_setter, is_async, is_generator) = match &method.header {
-						MethodHeader::Get => (GetterSetter::Getter, false, false),
-						MethodHeader::Set => (GetterSetter::Setter, false, false),
+						MethodHeader::Get => (Some(GetterSetter::Getter), false, false),
+						MethodHeader::Set => (Some(GetterSetter::Setter), false, false),
 						MethodHeader::Regular { is_async, generator } => {
-							(GetterSetter::None, *is_async, generator.is_some())
+							(None, *is_async, generator.is_some())
 						}
 					};
 
@@ -497,13 +498,13 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 ) {
 	let class_type2 = checking_data.types.get_type_by_id(class_type);
 
-	let Type::Class { name: _, parameters } = class_type2 else {
+	let Type::Class { name: _, type_parameters } = class_type2 else {
 		unreachable!("expecting class type {:?}", class_type2)
 	};
 
-	if let Some(parameters) = parameters {
+	if let Some(type_parameters) = type_parameters {
 		let mut sub_environment = environment.new_lexical_environment(Scope::TypeAlias);
-		for parameter in parameters {
+		for parameter in type_parameters {
 			let parameter_ty = checking_data.types.get_type_by_id(*parameter);
 			let Type::RootPolyType(PolyNature::StructureGeneric { name, extends: _ }) =
 				parameter_ty
@@ -610,7 +611,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 
 				let value = build_overloaded_function(
 					FunctionId(environment.get_source(), method.position.start),
-					FunctionBehavior::Method {
+					crate::types::functions::FunctionBehavior::Method {
 						free_this_id: TypeId::ANY_TYPE,
 						is_async: method.header.is_async(),
 						is_generator: method.header.is_generator(),

@@ -9,7 +9,10 @@ use crate::{
 	},
 	events::{Event, FinalEvent, RootReference},
 	features::{
-		assignments::*,
+		assignments::{
+			Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
+			AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
+		},
 		modules::Exported,
 		objects::SpecialObject,
 		operations::{
@@ -426,7 +429,12 @@ impl<'a> Environment<'a> {
 	) {
 		match lhs {
 			Assignable::Reference(reference) => {
-				self.set_reference_handle_errors(reference, rhs, assignment_position, checking_data)
+				self.set_reference_handle_errors(
+					reference,
+					rhs,
+					assignment_position,
+					checking_data,
+				);
 			}
 			Assignable::ObjectDestructuring(assignments, _spread) => self
 				.assign_to_object_destructure_handle_errors(
@@ -469,7 +477,6 @@ impl<'a> Environment<'a> {
 						rhs,
 						Publicity::Public,
 						&key,
-						None,
 						self,
 						(
 							&mut CheckThings { debug_types: checking_data.options.debug_types },
@@ -502,7 +509,7 @@ impl<'a> Environment<'a> {
 								self,
 							);
 							let mut possibles =
-								crate::get_closest(keys.iter().map(AsRef::as_ref), &s)
+								crate::get_closest(keys.iter().map(AsRef::as_ref), s)
 									.unwrap_or(vec![]);
 							possibles.sort_unstable();
 							possibles
@@ -542,6 +549,7 @@ impl<'a> Environment<'a> {
 	}
 
 	#[allow(clippy::needless_pass_by_value)]
+	#[allow(clippy::unused_self)]
 	fn assign_to_array_destructure_handle_errors<
 		T: crate::ReadFromFS,
 		A: crate::ASTImplementation,
@@ -771,7 +779,6 @@ impl<'a> Environment<'a> {
 			on,
 			publicity,
 			under,
-			None,
 			self,
 			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
 			&mut checking_data.types,
@@ -1283,27 +1290,28 @@ impl<'a> Environment<'a> {
 		// Interface merging
 		{
 			if let Some(id) = self.named_types.get(name) {
-				if let Type::Interface { .. } = types.get_type_by_id(*id) {
-					return Ok(DeclareInterfaceResult::Merging { ty: *id, in_same_context: true });
+				let ty = types.get_type_by_id(*id);
+				return if let Type::Interface { .. } = ty {
+					Ok(DeclareInterfaceResult::Merging { ty: *id, in_same_context: true })
 				} else {
-					return Err(AlreadyExists);
-				}
-			} else {
-				// It is fine that it doesn't necessarily need to be an interface
-				let result = self
-					.parents_iter()
-					.find_map(|env| get_on_ctx!(env.named_types.get(name)))
-					.and_then(|id| {
-						matches!(types.get_type_by_id(*id), Type::Interface { .. }).then_some(*id)
-					});
-
-				if let Some(existing) = result {
-					return Ok(DeclareInterfaceResult::Merging {
-						ty: existing,
-						in_same_context: false,
-					});
+					Err(AlreadyExists)
 				};
 			}
+
+			// It is fine that it doesn't necessarily need to be an interface
+			let result = self
+				.parents_iter()
+				.find_map(|env| get_on_ctx!(env.named_types.get(name)))
+				.and_then(|id| {
+					matches!(types.get_type_by_id(*id), Type::Interface { .. }).then_some(*id)
+				});
+
+			if let Some(existing) = result {
+				return Ok(DeclareInterfaceResult::Merging {
+					ty: existing,
+					in_same_context: false,
+				});
+			};
 		}
 
 		let parameters = parameters.map(|parameters| {
@@ -1334,7 +1342,7 @@ impl<'a> Environment<'a> {
 	pub fn declare_class<'b, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
-		parameters: Option<&'b [A::TypeParameter<'b>]>,
+		type_parameters: Option<&'b [A::TypeParameter<'b>]>,
 		types: &mut TypeStore,
 	) -> Result<TypeId, AlreadyExists> {
 		{
@@ -1369,8 +1377,8 @@ impl<'a> Environment<'a> {
 			}
 		}
 
-		let parameters = parameters.map(|parameters| {
-			parameters
+		let type_parameters = type_parameters.map(|type_parameters| {
+			type_parameters
 				.iter()
 				.map(|parameter| {
 					let ty = Type::RootPolyType(PolyNature::StructureGeneric {
@@ -1384,7 +1392,7 @@ impl<'a> Environment<'a> {
 				.collect()
 		});
 
-		let ty = Type::Class { name: name.to_owned(), parameters };
+		let ty = Type::Class { name: name.to_owned(), type_parameters };
 		let class_type = types.register_type(ty);
 		self.named_types.insert(name.to_owned(), class_type);
 		// TODO duplicates
@@ -1442,7 +1450,7 @@ impl<'a> Environment<'a> {
 		{
 			let mut sub_environment = self.new_lexical_environment(Scope::TypeAlias);
 			let parameters = parameters.clone();
-			for parameter in parameters.iter().cloned() {
+			for parameter in parameters.iter().copied() {
 				let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
 					checking_data.types.get_type_by_id(parameter)
 				else {
@@ -1505,6 +1513,6 @@ impl<'a> Environment<'a> {
 				referenced_in_scope_as,
 				function,
 			},
-		))
+		));
 	}
 }

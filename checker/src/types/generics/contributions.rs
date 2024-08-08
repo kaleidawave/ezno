@@ -66,14 +66,14 @@ impl CovariantContribution {
 	}
 
 	// TODO maybe return modifier for generic chain
-	pub(crate) fn as_property_key(self) -> PropertyKey<'static> {
+	pub(crate) fn into_property_key(self) -> PropertyKey<'static> {
 		match self {
 			CovariantContribution::TypeId(ty) => PropertyKey::Type(ty),
 			CovariantContribution::SliceOf(inner, (start, end)) => {
 				todo!("{:?}", (inner, (start, end)));
 			}
 			CovariantContribution::String(slice) => {
-				PropertyKey::String(std::borrow::Cow::Owned(slice.to_owned()))
+				PropertyKey::String(std::borrow::Cow::Owned(slice.clone()))
 			}
 			CovariantContribution::Number(number) => {
 				PropertyKey::String(std::borrow::Cow::Owned(number.to_string()))

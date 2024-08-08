@@ -584,7 +584,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			match get_variable_or_alternatives {
 				Ok(variable) => Instance::LValue(variable),
-				Err(_err) => Instance::RValue(TypeId::ERROR_TYPE),
+				Err(_) => Instance::RValue(TypeId::ERROR_TYPE),
 			}
 		}
 		Expression::PropertyAccess { parent, position, property, is_optional, .. } => {
@@ -620,7 +620,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						);
 						match result {
 							Ok(i) => i.get_value(),
-							Err(_) => TypeId::ERROR_TYPE,
+							Err(()) => TypeId::ERROR_TYPE,
 						}
 					}),
 					checking_data,
@@ -636,7 +636,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				);
 				match result {
 					Ok(i) => Instance::RValue(i.get_value()),
-					Err(_) => {
+					Err(()) => {
 						return TypeId::ERROR_TYPE;
 					}
 				}
@@ -670,7 +670,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						);
 						match result {
 							Ok(i) => i.get_value(),
-							Err(_) => TypeId::ERROR_TYPE,
+							Err(()) => TypeId::ERROR_TYPE,
 						}
 					}),
 					checking_data,
@@ -692,7 +692,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				);
 				match result {
 					Ok(i) => Instance::RValue(i.get_value()),
-					Err(_) => {
+					Err(()) => {
 						return TypeId::ERROR_TYPE;
 					}
 				}
@@ -1366,7 +1366,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 						if let LogicalOrValid::Logical(Logical::Pure(l)) = l {
 							Some(l.as_get_type(&checking_data.types))
 						} else {
-							crate::utilities::notify!("TODO {:?}", l);
+							crate::utilities::notify!("TODO expecting {:?}", l);
 							None
 						}
 					})
@@ -1440,9 +1440,9 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let function = synthesise_function(method, behavior, environment, checking_data);
 
 				let kind = match &method.header {
-					MethodHeader::Get => GetterSetter::Getter,
-					MethodHeader::Set => GetterSetter::Setter,
-					MethodHeader::Regular { .. } => GetterSetter::None,
+					MethodHeader::Get => Some(GetterSetter::Getter),
+					MethodHeader::Set => Some(GetterSetter::Setter),
+					MethodHeader::Regular { .. } => None,
 				};
 
 				let property =

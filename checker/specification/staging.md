@@ -374,6 +374,8 @@ array[Math.random()] satisfies string;
 
 #### Properties matched against continous type become conditional
 
+> I think this is TSC behavior under indexed access
+
 ```ts
 declare let strings: { [a: string]: number };
 declare let record: Record<string, number>;
@@ -873,6 +875,32 @@ proxy1 satisfies { c: "d" };
 
 - Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _recivier: any) => any } ]
 
+#### Proxy across functions
+
+```ts
+function makeObservable(obj, cb: (kind: string, prop: string, value: any) => void) {
+	return new Proxy(obj, {
+		get(on, prop: string, _rec) {
+			cb("get", prop, on[prop])
+		},
+		set(on, prop: string, _value, _rec) {
+			cb("set", prop, on[prop])
+		},
+	})
+}
+
+let r = null;
+const value = makeObservable({ a: 1 }, (k, p, v) => {
+	r = { k, p, v };
+});
+
+r satisfies null;
+value.a = 2;
+r satisfies string;
+```
+
+- Expected string, found { k: "set", p: "a", v: 1 }
+
 #### Assinging to non existent property
 
 > Allowing this could break objects passed to functions
@@ -991,3 +1019,31 @@ const x: X = 2;
 ```
 
 - Circular type reference
+
+### Closures
+
+#### Class constructors
+
+```ts
+function func(a: number, b: number) {
+	return class {
+		value: number;
+
+		constructor() {
+			this.value = a;
+		}
+
+		plusB() {
+			return this.value + b
+		}
+	}
+}
+
+const c1 = new (func(1, 2));
+c1.plusB() satisfies 3;
+
+const c2 = new (func(6, 8));
+c2.plusB() satisfies string;
+```
+
+- Expected string, found 14

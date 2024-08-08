@@ -3,14 +3,17 @@ use source_map::{Nullable, SpanWithSource};
 use crate::{
 	context::{CallCheckingBehavior, Environment, InformationChain, LocalInformation},
 	events::Event,
-	features::{functions::ThisValue, objects::Proxy},
+	features::objects::Proxy,
 	types::{
-		calling::{Callable, CallingDiagnostics},
+		calling::{Callable, CallingDiagnostics, ThisValue},
 		generics::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
 		},
 		get_conditional, get_constraint, is_inferrable_type, is_pseudo_continous,
-		logical::*,
+		logical::{
+			BasedOnKey, Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical,
+			PropertyOn,
+		},
 		Constructor, GenericChain, GenericChainLink, PartiallyAppliedGenerics, SliceArguments,
 		SpecialObject, TypeStore,
 	},
@@ -21,7 +24,8 @@ use super::{PropertyKey, PropertyKind, PropertyValue, Publicity};
 
 /// Has to return `Logical` for mapped types
 ///
-/// Resolver runs information lookup on **ONE** TypeId
+/// Resolver runs information lookup on **ONE** `TypeId`
+#[allow(clippy::similar_names)]
 pub(crate) fn resolver(
 	(on, on_type_arguments): (TypeId, GenericChain),
 	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
@@ -72,16 +76,14 @@ pub(crate) fn resolver(
 							PropertyValue::Getter(getter) => {
 								if let Some(setter) = trailing_setter {
 									return Some((PropertyValue::GetterAndSetter { getter: *getter, setter }, key_arguments.into_some(), is_key_continous));
-								} else {
-									trailing_getter = Some(*getter);
 								}
+								trailing_getter = Some(*getter);
 							}
 							PropertyValue::Setter(setter) => {
 								if let Some(getter) = trailing_getter {
 									return Some((PropertyValue::GetterAndSetter { getter, setter: *setter }, key_arguments.into_some(), is_key_continous));
-								} else {
-									trailing_setter = Some(*setter);
 								}
+								trailing_setter = Some(*setter);
 							}
 							_ => {
 								return Some((value.clone(), key_arguments.into_some(), is_key_continous));
@@ -89,6 +91,8 @@ pub(crate) fn resolver(
 						}
 					}
 				}
+
+				#[allow(clippy::manual_map)]
 				if let Some(setter) = trailing_setter {
 					Some((PropertyValue::Setter(setter), None, false))
 				} else if let Some(getter) = trailing_getter {
@@ -127,7 +131,7 @@ pub(crate) fn get_property_unbound(
 		};
 		let logical_value = Logical::Pure(value);
 		if let Some(slice_arguments) = slice_arguments {
-			Logical::BasedOnKey(LeftRight::Left {
+			Logical::BasedOnKey(BasedOnKey::Left {
 				value: Box::new(logical_value),
 				key_arguments: slice_arguments,
 			})
@@ -157,7 +161,8 @@ pub(crate) fn get_property_unbound(
 				let get_function_from_id = types.get_function_from_id(*function_id);
 				let ty = if let (
 					true,
-					crate::features::functions::FunctionBehavior::Function { prototype, .. },
+					crate::types::functions::FunctionBehavior::Function { prototype, .. }
+					| crate::types::functions::FunctionBehavior::Constructor { prototype, .. },
 				) = (under.is_equal_to("prototype"), &get_function_from_id.behavior)
 				{
 					Some(*prototype)
@@ -485,7 +490,7 @@ pub(crate) fn get_property_unbound(
 				let idx: usize = under.as_number(types).unwrap();
 				let character = s.chars().nth(idx);
 				if let Some(character) = character {
-					Ok(Logical::BasedOnKey(LeftRight::Left {
+					Ok(Logical::BasedOnKey(BasedOnKey::Left {
 						value: Box::new(Logical::Pure(PropertyValue::Value(
 							TypeId::STRING_GENERIC,
 						))),
@@ -502,7 +507,7 @@ pub(crate) fn get_property_unbound(
 			Type::Constant(Constant::String(s)) if under.is_equal_to("length") => {
 				// TODO temp TypeId::NUMBER_GENERIC for slice member
 				let count = s.chars().count();
-				Ok(Logical::BasedOnKey(LeftRight::Left {
+				Ok(Logical::BasedOnKey(BasedOnKey::Left {
 					value: Box::new(Logical::Pure(PropertyValue::Value(TypeId::NUMBER_GENERIC))),
 					key_arguments: crate::Map::from_iter([(
 						TypeId::NUMBER_GENERIC,
@@ -586,13 +591,13 @@ pub(crate) fn get_property_unbound(
 				types,
 			)
 		} else {
-			{
-				let debug = true;
-				crate::utilities::notify!(
-					"Key is {}",
-					crate::types::printing::print_type(key, types, info_chain, debug)
-				);
-			}
+			// {
+			// 	let debug = true;
+			// 	crate::utilities::notify!(
+			// 		"Key is {}",
+			// 		crate::types::printing::print_type(key, types, info_chain, debug)
+			// 	);
+			// }
 
 			if let Type::RootPolyType(crate::types::PolyNature::MappedGeneric { .. }) =
 				types.get_type_by_id(key)
@@ -607,10 +612,10 @@ pub(crate) fn get_property_unbound(
 						info_chain,
 						types,
 					);
-				} else {
-					crate::utilities::notify!("No mapped argument");
-					Ok(Logical::BasedOnKey(LeftRight::Right { on, key }).into())
 				}
+
+				crate::utilities::notify!("No mapped argument, returning BasedOnKey::Right");
+				Ok(Logical::BasedOnKey(BasedOnKey::Right(PropertyOn { on, key })).into())
 			} else if get_constraint(on, types).is_some_and(is_inferrable_type)
 				|| is_inferrable_type(on)
 			{
@@ -619,7 +624,7 @@ pub(crate) fn get_property_unbound(
 			} else {
 				crate::utilities::notify!("{:?}", types.get_type_by_id(on));
 
-				Ok(Logical::BasedOnKey(LeftRight::Right { on, key }).into())
+				Ok(Logical::BasedOnKey(BasedOnKey::Right(PropertyOn { on, key })).into())
 			}
 		}
 	} else {
@@ -650,7 +655,6 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 	on: TypeId,
 	publicity: Publicity,
 	under: &PropertyKey,
-	_with: Option<TypeId>,
 	top_environment: &mut Environment,
 	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
 	types: &mut TypeStore,
@@ -707,7 +711,9 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 				mode,
 			)?;
 
-			if let Some(_via) = via {
+			let is_constant = types.get_type_by_id(result).is_constant();
+
+			if let (false, Some(_via)) = (is_constant, via) {
 				let constructor = types.register_type(Type::Constructor(Constructor::Property {
 					on,
 					under: under.into_owned(),
@@ -803,9 +809,13 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						}
 						Type::Constructor(_) | Type::RootPolyType { .. } => {
 							if let Some(generics) = generics {
-								let arguments = generics.into_substitutable(types);
+								let arguments = generics.build_substitutable(types);
 								let value =
 									crate::types::substitute(value, &arguments, environment, types);
+
+								if value == TypeId::NEVER_TYPE {
+									crate::utilities::notify!("Here");
+								}
 								Some((PropertyKind::Direct, value))
 							} else {
 								Some((PropertyKind::Direct, value))
@@ -849,9 +859,6 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 							    property, ty
 						    );
 
-							let value = types.register_type(Type::RootPolyType(
-								crate::types::PolyNature::Open(value),
-							));
 							Some((PropertyKind::Direct, value))
 						}
 						// For closures
@@ -892,16 +899,13 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					};
 					let result =
 						getter.call(Vec::new(), input, environment, (behavior, diagnostics), types);
-					match result {
-						Ok(res) => {
-							let application_result =
-								application_result_to_return_type(res.result, environment, types);
-							Some((PropertyKind::Getter, application_result))
-						}
-						Err(_) => {
-							crate::utilities::notify!("TODO merge calling");
-							Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
-						}
+					if let Ok(res) = result {
+						let application_result =
+							application_result_to_return_type(res.result, environment, types);
+						Some((PropertyKind::Getter, application_result))
+					} else {
+						crate::utilities::notify!("TODO merge calling");
+						Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
 					}
 				}
 				PropertyValue::Setter(_) => {
@@ -1005,7 +1009,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 			)
 		}
 		Logical::BasedOnKey(kind) => match kind {
-			LeftRight::Left { value, key_arguments } => {
+			BasedOnKey::Left { value, key_arguments } => {
 				let generics = Some(GenericChainLink::MappedPropertyLink {
 					parent_link: generics.as_ref(),
 					value: &key_arguments,
@@ -1020,47 +1024,32 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					mode,
 				)
 			}
-			LeftRight::Right { on, key } => {
-				// resolve_property_on_logical(
-				// 	(*log_on, generics),
-				// 	(on, under),
-				// 	environment,
-				// 	types,
-				// 	(behavior, diagnostics),
-				// 	mode,
-				// )
-				let filter = get_constraint(key, types).unwrap_or(key);
+			BasedOnKey::Right(property_on) => {
+				crate::utilities::notify!("{:?}", generics);
+				let result = property_on.get_on(generics, environment, types)?;
 
-				let entries = super::list::get_properties_on_single_type2(
-					(on, generics),
-					types,
-					environment,
-					filter,
-				);
+				// {
+				// 	let constructor = types.register_type(Type::Constructor(Constructor::Property {
+				// 		on,
+				// 		under: under.into_owned(),
+				// 		result,
+				// 		mode,
+				// 	}));
+				// 	// TODO if not constant etc
+				// 	behavior.get_latest_info(environment).events.push(Event::Getter {
+				// 		on,
+				// 		under: under.into_owned(),
+				// 		reflects_dependency: Some(constructor),
+				// 		// always this
+				// 		publicity: Publicity::Public,
+				// 		// TODO
+				// 		position: SpanWithSource::NULL,
+				// 		mode,
+				// 	});
+				// 	Some((PropertyKind::Direct, constructor))
+				// }
 
-				let size = crate::types::type_cardinality(filter, types);
-				let entries_len = entries.len();
-
-				let mut iter = entries.into_iter();
-				if let Some((_, first_value, _)) = iter.next() {
-					// TODO should properly evaluate value
-					let mut value = first_value.as_get_type(types);
-					for (_, other, _) in iter {
-						value = types.new_or_type(value, other.as_get_type(types));
-					}
-
-					if size > entries_len {
-						value = types.new_or_type(value, TypeId::UNDEFINED_TYPE);
-					}
-
-					// TODO property result
-					let value = types
-						.register_type(Type::RootPolyType(crate::types::PolyNature::Open(value)));
-
-					Some((PropertyKind::Direct, value))
-				} else {
-					None
-				}
+				Some((PropertyKind::Direct, result))
 			}
 		},
 	}
@@ -1084,7 +1073,6 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 		handler,
 		Publicity::Public,
 		&property_key,
-		None,
 		environment,
 		(behavior, diagnostics),
 		types,
@@ -1115,23 +1103,19 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 			(behavior, diagnostics),
 			types,
 		);
-		match result {
-			Ok(res) => {
-				let application_result =
-					application_result_to_return_type(res.result, environment, types);
-				Some((PropertyKind::Getter, application_result))
-			}
-			Err(_) => {
-				crate::utilities::notify!("TODO merge calling");
-				Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
-			}
+		if let Ok(res) = result {
+			let application_result =
+				application_result_to_return_type(res.result, environment, types);
+			Some((PropertyKind::Getter, application_result))
+		} else {
+			crate::utilities::notify!("TODO merge calling");
+			Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
 		}
 	} else {
 		get_property(
 			over,
 			Publicity::Public,
 			under,
-			None,
 			environment,
 			(behavior, diagnostics),
 			types,

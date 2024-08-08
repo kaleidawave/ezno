@@ -1,6 +1,6 @@
 use crate::types::{
-	CovariantContribution, GenericArguments, InformationChain, SliceArguments,
-	SubstitutionArguments, TypeId, TypeRestrictions, TypeStore,
+	CovariantContribution, GenericArguments, SliceArguments, SubstitutionArguments, TypeId,
+	TypeRestrictions, TypeStore,
 };
 
 pub type GenericChain<'a> = Option<GenericChainLink<'a>>;
@@ -129,12 +129,7 @@ impl<'a> GenericChainLink<'a> {
 	}
 
 	/// WIP I want to make this the main one
-	pub(crate) fn get_argument_covariant(
-		&self,
-		on: TypeId,
-		info: &impl InformationChain,
-		types: &TypeStore,
-	) -> Option<CovariantContribution> {
+	pub(crate) fn get_argument_covariant(&self, on: TypeId) -> Option<CovariantContribution> {
 		match self {
 			GenericChainLink::PartiallyAppliedGenericArgumentsLink {
 				parent_link,
@@ -143,7 +138,7 @@ impl<'a> GenericChainLink<'a> {
 			} => value
 				.get_structure_restriction(on)
 				.map(CovariantContribution::TypeId)
-				.or_else(|| parent_link.and_then(|f| f.get_argument_covariant(on, info, types))),
+				.or_else(|| parent_link.and_then(|f| f.get_argument_covariant(on))),
 			GenericChainLink::FunctionRoot {
 				parent_arguments,
 				call_site_type_arguments,
@@ -161,9 +156,9 @@ impl<'a> GenericChainLink<'a> {
 			GenericChainLink::MappedPropertyLink { parent_link, value } => value
 				.get(&on)
 				.map(|(arg, _)| arg.clone())
-				.or_else(|| parent_link.and_then(|f| f.get_argument_covariant(on, info, types))),
+				.or_else(|| parent_link.and_then(|f| f.get_argument_covariant(on))),
 			GenericChainLink::SpecialGenericChainLink { parent_link, special: _ } => {
-				parent_link.and_then(|f| f.get_argument_covariant(on, info, types))
+				parent_link.and_then(|f| f.get_argument_covariant(on))
 			}
 		}
 	}
@@ -171,7 +166,7 @@ impl<'a> GenericChainLink<'a> {
 	/// TODO WIP
 	///
 	/// between this and `extend_arguments` there needs to be something better
-	pub(crate) fn into_substitutable(
+	pub(crate) fn build_substitutable(
 		&self,
 		types: &mut TypeStore,
 	) -> SubstitutionArguments<'static> {
@@ -181,7 +176,7 @@ impl<'a> GenericChainLink<'a> {
 				parent_link,
 				value,
 			} => {
-				let mut args = value.into_substitutable();
+				let mut args = value.build_substitutable();
 				if let Some(parent_link) = parent_link {
 					parent_link.extend_arguments(&mut args);
 				}

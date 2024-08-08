@@ -10,12 +10,11 @@ use parser::{
 
 use crate::{
 	context::{Context, ContextType, Scope, VariableRegisterArguments},
-	features::functions::{
-		synthesise_function_default_value, FunctionBehavior, ReturnType, SynthesisableFunction,
-	},
+	features::functions::{synthesise_function_default_value, ReturnType, SynthesisableFunction},
 	types::{
 		functions::{
-			FunctionType, SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter,
+			FunctionBehavior, FunctionType, SynthesisedParameter, SynthesisedParameters,
+			SynthesisedRestParameter,
 		},
 		generics::GenericTypeParameters,
 		PartiallyAppliedGenerics, Type, TypeId,
@@ -721,6 +720,7 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 
 /// TODO WIP
 /// TODO also check generics?
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_overloaded_function(
 	id: FunctionId,
 	behavior: FunctionBehavior,

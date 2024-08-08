@@ -54,7 +54,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	position: SpanWithSource,
 ) {
 	let application_input = ApplicationInput {
-		this_value: super::functions::ThisValue::UseParent,
+		this_value: crate::types::calling::ThisValue::UseParent,
 		call_site: position,
 		max_inline: checking_data.options.max_inline_count,
 	};
@@ -668,7 +668,7 @@ fn evaluate_unknown_iteration_for_loop(
 		apply_events(
 			events,
 			&ApplicationInput {
-				this_value: super::functions::ThisValue::UseParent,
+				this_value: crate::types::calling::ThisValue::UseParent,
 				call_site: BaseSpan::NULL,
 				max_inline,
 			},

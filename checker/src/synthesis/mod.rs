@@ -91,13 +91,13 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
-	fn synthesise_definition_file<T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'_>,
+	fn synthesise_definition_module<T: crate::ReadFromFS>(
+		module: &Self::DefinitionFile<'_>,
 		source: SourceId,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
 	) -> (Names, LocalInformation) {
-		definitions::type_definition_file(file, source, checking_data, root)
+		definitions::type_definition_file(module, source, checking_data, root)
 	}
 
 	fn synthesise_expression<U: crate::ReadFromFS>(

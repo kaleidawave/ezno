@@ -49,16 +49,16 @@ pub fn types_are_disjoint(
 				|| types_are_disjoint(left, *right_right, already_checked, information, types)
 		} else if let Type::AliasTo { to, parameters: None, name: _ } = left_ty {
 			// TODO temp fix, need infer ANY
-			if !matches!(*to, TypeId::ANY_TYPE) {
-				types_are_disjoint(*to, right, already_checked, information, types)
-			} else {
+			if matches!(*to, TypeId::ANY_TYPE) {
 				true
+			} else {
+				types_are_disjoint(*to, right, already_checked, information, types)
 			}
 		} else if let Type::AliasTo { to, parameters: None, name: _ } = right_ty {
-			if !matches!(*to, TypeId::ANY_TYPE) {
-				types_are_disjoint(left, *to, already_checked, information, types)
-			} else {
+			if matches!(*to, TypeId::ANY_TYPE) {
 				true
+			} else {
+				types_are_disjoint(left, *to, already_checked, information, types)
 			}
 		} else if let (
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {

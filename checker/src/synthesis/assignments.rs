@@ -7,7 +7,10 @@ use parser::{
 
 use crate::{
 	context::Environment,
-	features::assignments::*,
+	features::assignments::{
+		Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
+		AssignableSpread, Reference,
+	},
 	types::properties::{PropertyKey, Publicity},
 	CheckingData, TypeId,
 };

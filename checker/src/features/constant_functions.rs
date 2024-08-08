@@ -6,7 +6,8 @@ use crate::{
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
-		calling::{Callable, FunctionCallingError, SynthesisedArgument},
+		calling::{Callable, FunctionCallingError, SynthesisedArgument, ThisValue},
+		logical::{Logical, LogicalOrValid},
 		printing::print_type,
 		properties::{AccessMode, Descriptor, PropertyKey, Publicity},
 		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
@@ -14,7 +15,7 @@ use crate::{
 	Constant, Environment, PropertyValue, TypeId,
 };
 
-use super::{functions::ThisValue, objects::SpecialObject};
+use super::objects::SpecialObject;
 
 // TODO ...
 pub(crate) enum ConstantOutput {
@@ -38,6 +39,7 @@ pub enum ConstantFunctionError {
 pub(crate) type CallSiteTypeArguments = TypeRestrictions;
 
 /// Computes a constant value
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn call_constant_function(
 	id: &str,
 	this_argument: ThisValue,
@@ -322,7 +324,6 @@ pub(crate) fn call_constant_function(
 							descriptor,
 							publicity,
 							&PropertyKey::String(std::borrow::Cow::Borrowed($key)),
-							None,
 							environment,
 							(&mut behavior, diagnostics),
 							types,
@@ -365,7 +366,6 @@ pub(crate) fn call_constant_function(
 					types,
 				);
 
-				use crate::types::logical::{Logical, LogicalOrValid};
 				if let Ok(LogicalOrValid::Logical(Logical::Pure(PropertyValue::Configured {
 					on,
 					descriptor: Descriptor { writable: _, enumerable: _, configurable },

@@ -52,6 +52,7 @@ pub enum Diagnostic {
 }
 
 /// Temporary dead zone. Between the variable identifier being hoisted and the value being assigned
+#[allow(clippy::upper_case_acronyms)]
 pub struct TDZ {
 	pub variable_name: String,
 	pub position: SpanWithSource,
@@ -407,6 +408,7 @@ pub(crate) enum TypeCheckError<'a> {
 		name: String,
 		position: SpanWithSource,
 	},
+	#[allow(clippy::upper_case_acronyms)]
 	TDZ(TDZ),
 	#[allow(dead_code)]
 	InvalidMathematicalOrBitwiseOperation {
@@ -444,12 +446,12 @@ pub(crate) enum TypeCheckError<'a> {
 }
 
 #[allow(clippy::useless_format)]
-pub fn get_possibles_message(possibles: Vec<&str>) -> String {
-	match possibles.as_slice() {
+pub fn get_possibles_message(possibles: &[&str]) -> String {
+	match possibles {
 		[] => format!(""),
 		[a] => format!("Did you mean '{a}'?"),
 		[a @ .., b] => {
-			let mut iter = a.into_iter();
+			let mut iter = a.iter();
 			let first = format!("'{first}'", first = iter.next().unwrap());
 			format!(
 				"Did you mean {items} or '{b}'?",
@@ -475,7 +477,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				Diagnostic::PositionWithAdditionalLabels {
 					reason: format!("Could not find variable '{variable}' in scope"),
 					labels: map_error_empty(possibles, |possibles| vec![(
-						get_possibles_message(possibles),
+						get_possibles_message(&possibles),
 						position,
 					)]),
 					position,
@@ -486,7 +488,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				reason: format!("Could not find type '{reference}'"),
 				position,
 				labels: map_error_empty(possibles, |possibles| vec![(
-					get_possibles_message(possibles),
+					get_possibles_message(&possibles),
 					position,
 				)]),
 				kind,
@@ -499,7 +501,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					},
 					position,
 					labels: map_error_empty(possibles, |possibles| vec![(
-						get_possibles_message(possibles),
+						get_possibles_message(&possibles),
 						position,
 					)]),
 					kind,
@@ -616,7 +618,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position,
 					kind,
 					labels: map_error_empty(possibles, |possibles| vec![(
-						get_possibles_message(possibles),
+						get_possibles_message(&possibles),
 						position,
 					)]),
 				}
@@ -679,7 +681,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					position: import_position,
 					kind,
 					labels: map_error_empty(possibles, |possibles| vec![(
-						get_possibles_message(possibles),
+						get_possibles_message(&possibles),
 						import_position,
 					)])
 				}

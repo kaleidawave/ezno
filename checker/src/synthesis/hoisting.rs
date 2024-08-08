@@ -35,9 +35,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	for item in items {
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
-				Declaration::DeclareVariable(_)
-				| Declaration::Variable(_)
-				| Declaration::Function(_) => {}
 				Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
 					"enum",
 					r#enum.on.position.with_source(environment.get_source()),
@@ -279,7 +276,10 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						*type_definitions_only,
 					);
 				}
-				_ => {}
+				Declaration::DeclareVariable(_)
+				| Declaration::Variable(_)
+				| Declaration::Function(_)
+				| Declaration::Export(..) => {}
 			}
 		}
 	}
@@ -430,7 +430,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							let mut sub_environment =
 								environment.new_lexical_environment(Scope::TypeAlias);
 							let parameters = parameters.clone();
-							for parameter in parameters.iter().cloned() {
+							for parameter in parameters.iter().copied() {
 								let Type::RootPolyType(PolyNature::StructureGeneric {
 									name, ..
 								}) = checking_data.types.get_type_by_id(parameter)
@@ -617,7 +617,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 						let value = super::functions::build_overloaded_function(
 							crate::FunctionId(environment.get_source(), function.position.start),
-							crate::features::functions::FunctionBehavior::Function {
+							crate::types::functions::FunctionBehavior::Function {
 								this_id: TypeId::ERROR_TYPE,
 								prototype: TypeId::ERROR_TYPE,
 								is_async: function.header.is_async(),
@@ -714,15 +714,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	}
 
 	// Third stage: functions
-	let mut third_stage_items = items.iter().peekable();
-	while let Some(item) = third_stage_items.next() {
-		match item {
-			StatementOrDeclaration::Declaration(Declaration::Function(Decorated {
-				on: function,
-				decorators,
-				..
-			}))
-			| StatementOrDeclaration::Declaration(Declaration::Export(Decorated {
+	let third_stage_items = items.iter().peekable();
+	for item in third_stage_items {
+		if let StatementOrDeclaration::Declaration(
+			Declaration::Function(Decorated { on: function, decorators, .. })
+			| Declaration::Export(Decorated {
 				on:
 					ExportDeclaration::Variable {
 						exported: Exportable::Function(function),
@@ -730,119 +726,118 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					},
 				decorators,
 				..
-			})) => {
-				if let Some(VariableIdentifier::Standard(name, name_position)) =
-					function.name.as_option_variable_identifier()
-				{
-					let variable_id =
-						crate::VariableId(environment.get_source(), name_position.start);
-					let is_async = function.header.is_async();
-					let is_generator = function.header.is_generator();
-					let location = function.header.get_location().map(|location| match location {
-						parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
-						parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
-					});
+			}),
+		) = item
+		{
+			if let Some(VariableIdentifier::Standard(name, name_position)) =
+				function.name.as_option_variable_identifier()
+			{
+				let variable_id = crate::VariableId(environment.get_source(), name_position.start);
+				let is_async = function.header.is_async();
+				let is_generator = function.header.is_generator();
+				let location = function.header.get_location().map(|location| match location {
+					parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
+					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
+				});
 
-					let value = if function.name.declare {
-						let (overloaded, _last) = (false, function);
-						//  if function.has_body() {
-						// } else {
-						// 	let last = third_stage_items.find(|f| {
-						// 		if let StatementOrDeclaration::Declaration(Declaration::Function(
-						// 			Decorated { on: function, .. },
-						// 		)) = f
-						// 		{
-						// 			function.has_body()
-						// 		} else {
-						// 			false
-						// 		}
-						// 	});
-						// 	if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
-						// 		Decorated { on: function, .. },
-						// 	))) = last
-						// 	{
-						// 		(true, function)
-						// 	} else {
-						// 		// Some error with non-overloads
-						// 		continue;
-						// 	}
-						// };
+				let value = if function.name.declare {
+					let (overloaded, _last) = (false, function);
+					//  if function.has_body() {
+					// } else {
+					// 	let last = third_stage_items.find(|f| {
+					// 		if let StatementOrDeclaration::Declaration(Declaration::Function(
+					// 			Decorated { on: function, .. },
+					// 		)) = f
+					// 		{
+					// 			function.has_body()
+					// 		} else {
+					// 			false
+					// 		}
+					// 	});
+					// 	if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+					// 		Decorated { on: function, .. },
+					// 	))) = last
+					// 	{
+					// 		(true, function)
+					// 	} else {
+					// 		// Some error with non-overloads
+					// 		continue;
+					// 	}
+					// };
 
-						let internal_marker = get_internal_function_effect_from_decorators(
-							decorators,
-							function.name.as_option_str().unwrap(),
-							&environment,
-						);
+					let internal_marker = get_internal_function_effect_from_decorators(
+						decorators,
+						function.name.as_option_str().unwrap(),
+						environment,
+					);
 
-						synthesise_declare_statement_function(
-							variable_id,
-							overloaded,
-							is_async,
-							is_generator,
-							location,
-							name.clone(),
-							internal_marker,
-							function,
-							environment,
-							checking_data,
-						)
-					} else {
-						let (overloaded, _last) = (false, function);
-						// if function.has_body() {
-						// } else {
-						// 	let last = third_stage_items.take_while(|f| {
-						// 		if let StatementOrDeclaration::Declaration(Declaration::Function(
-						// 			Decorated { on: function, .. },
-						// 		)) = f
-						// 		{
-						// 			function.has_body()
-						// 		} else {
-						// 			false
-						// 		}
-						// 	});
+					synthesise_declare_statement_function(
+						variable_id,
+						overloaded,
+						is_async,
+						is_generator,
+						location,
+						name.clone(),
+						internal_marker,
+						function,
+						environment,
+						checking_data,
+					)
+				} else {
+					let (overloaded, _last) = (false, function);
+					// if function.has_body() {
+					// } else {
+					// 	let last = third_stage_items.take_while(|f| {
+					// 		if let StatementOrDeclaration::Declaration(Declaration::Function(
+					// 			Decorated { on: function, .. },
+					// 		)) = f
+					// 		{
+					// 			function.has_body()
+					// 		} else {
+					// 			false
+					// 		}
+					// 	});
 
-						// 	if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
-						// 		Decorated { on: function, .. },
-						// 	))) = last
-						// 	{
-						// 		(true, function)
-						// 	} else {
-						// 		// Some error with non-overloads
-						// 		continue;
-						// 	}
-						// };
+					// 	if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+					// 		Decorated { on: function, .. },
+					// 	))) = last
+					// 	{
+					// 		(true, function)
+					// 	} else {
+					// 		// Some error with non-overloads
+					// 		continue;
+					// 	}
+					// };
 
-						synthesise_hoisted_statement_function(
-							variable_id,
-							overloaded,
-							is_async,
-							is_generator,
-							location,
-							name.clone(),
-							function,
-							environment,
-							checking_data,
-						)
-					};
+					synthesise_hoisted_statement_function(
+						variable_id,
+						overloaded,
+						is_async,
+						is_generator,
+						location,
+						name.clone(),
+						function,
+						environment,
+						checking_data,
+					)
+				};
 
-					checking_data
-						.local_type_mappings
-						.variables_to_constraints
-						.0
-						.insert(variable_id, value);
+				checking_data
+					.local_type_mappings
+					.variables_to_constraints
+					.0
+					.insert(variable_id, value);
 
-					if let StatementOrDeclaration::Declaration(Declaration::Export(_)) = item {
-						if let crate::Scope::Module { ref mut exported, .. } =
-							environment.context_type.scope
-						{
-							exported
-								.named
-								.insert(name.clone(), (variable_id, VariableMutability::Constant));
-						}
+				if let StatementOrDeclaration::Declaration(Declaration::Export(_)) = item {
+					if let crate::Scope::Module { ref mut exported, .. } =
+						environment.context_type.scope
+					{
+						exported
+							.named
+							.insert(name.clone(), (variable_id, VariableMutability::Constant));
 					}
 				}
 			}
-			_ => (),
 		}
 	}
 }

@@ -1694,9 +1694,6 @@ x.push("hi");
 
 ```ts
 [6, 8, 10].map(x => x + 1) satisfies [7, 8, 11];
-
-declare let a: Array<string>;
-a.map(s => s.length) satisfies Array<number>
 ```
 
 - Expected [7, 8, 11], found [7, 9, 11]

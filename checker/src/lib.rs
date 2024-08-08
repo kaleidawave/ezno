@@ -114,8 +114,8 @@ pub trait ASTImplementation: Sized {
 	);
 
 	#[allow(clippy::needless_lifetimes)]
-	fn synthesise_definition_file<'a, T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'a>,
+	fn synthesise_definition_module<'a, T: crate::ReadFromFS>(
+		module: &Self::DefinitionFile<'a>,
 		source: SourceId,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
@@ -660,7 +660,7 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 							checking_data.options.measure_time.then(std::time::Instant::now);
 
 						let (names, info) =
-							A::synthesise_definition_file(tdm, source_id, root, checking_data);
+							A::synthesise_definition_module(&tdm, source_id, root, checking_data);
 
 						// TODO bad. should be per file
 						if let Some(current) = current {

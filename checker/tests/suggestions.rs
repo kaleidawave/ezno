@@ -73,7 +73,7 @@ console.log(obj2.proberly);
 					..
 				},
 			] => {},
-			_ => panic!("{:#?} did not match diagnostics", diagnostics),
+			_ => panic!("{diagnostics:#?} did not match diagnostics"),
 		}
 	};
 }

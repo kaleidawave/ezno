@@ -187,7 +187,7 @@ pub enum Type {
 	/// Pretty much same as [`Type::Interface`]
 	Class {
 		name: String,
-		parameters: Option<Vec<TypeId>>,
+		type_parameters: Option<Vec<TypeId>>,
 	},
 	/// *Dependent equality types*
 	Constant(crate::Constant),
@@ -292,7 +292,7 @@ pub enum ObjectNature {
 impl Type {
 	/// These can be referenced by `<...>`
 	pub(crate) fn get_parameters(&self) -> Option<Vec<TypeId>> {
-		if let Type::Class { parameters, .. }
+		if let Type::Class { type_parameters: parameters, .. }
 		| Type::Interface { parameters, .. }
 		| Type::AliasTo { parameters, .. } = self
 		{
@@ -795,7 +795,7 @@ pub(crate) fn as_slice(
 					let not_length_value = !key.is_equal_to("length");
 					not_length_value.then(|| {
 						crate::utilities::notify!("key (should be incremental) {:?}", key);
-						if let Some(_) = key.as_number(types) {
+						if key.as_number(types).is_some() {
 							if let crate::PropertyValue::ConditionallyExists { .. } = value {
 								ArrayItem::Optional(value.as_get_type(types))
 							} else {
@@ -901,6 +901,7 @@ pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 	}
 }
 
+#[allow(clippy::match_like_matches_macro)]
 pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
 	if ty == TypeId::ERROR_TYPE {
 		true
@@ -957,23 +958,4 @@ pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeS
 
 pub fn is_inferrable_type(ty: TypeId) -> bool {
 	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
-}
-
-/// TODO temp
-pub fn type_cardinality(ty: TypeId, types: &TypeStore) -> usize {
-	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: TypeId::CASE_INSENSITIVE,
-		arguments,
-	}) = types.get_type_by_id(ty)
-	{
-		let inner = arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
-		if let Type::Constant(Constant::String(inner)) = types.get_type_by_id(inner) {
-			2u32.pow(inner.chars().filter(|c| c.is_lowercase() == c.is_uppercase()).count() as u32)
-				as usize
-		} else {
-			usize::MAX
-		}
-	} else {
-		usize::MAX
-	}
 }

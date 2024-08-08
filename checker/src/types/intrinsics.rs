@@ -50,7 +50,7 @@ pub(crate) fn distribute_tsc_string_intrinsic(
 			if s.is_empty() {
 				return value;
 			}
-			let transformed = apply_string_intrinsic(on, &s);
+			let transformed = apply_string_intrinsic(on, s);
 			types.new_constant_type(crate::Constant::String(transformed))
 		}
 		Type::AliasTo { to, .. } => distribute_tsc_string_intrinsic(on, *to, types),
@@ -166,6 +166,7 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	}
 }
 
+#[allow(clippy::match_like_matches_macro)]
 pub fn can_be_not_a_number(on: TypeId, types: &TypeStore) -> bool {
 	let on = get_constraint(on, types).unwrap_or(on);
 	if on == TypeId::NOT_NOT_A_NUMBER {

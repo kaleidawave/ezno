@@ -7,14 +7,13 @@ use crate::{
 	diagnostics::{TypeStringRepresentation, TDZ},
 	events::ApplicationResult,
 	features::{
-		functions::ThisValue,
 		iteration::{self, IterationKind},
 		objects::SpecialObject,
 		CannotDeleteFromError,
 	},
 	subtyping::type_is_subtype,
 	types::{
-		calling::{self, CallingDiagnostics, FunctionCallingError, SynthesisedArgument},
+		calling::{self, CallingDiagnostics, FunctionCallingError, SynthesisedArgument, ThisValue},
 		generics::substitution::SubstitutionArguments,
 		is_type_truthy_falsy,
 		printing::print_type,
@@ -154,7 +153,6 @@ pub(crate) fn apply_events(
 					on,
 					*publicity,
 					&under,
-					None,
 					top_environment,
 					(target, diagnostics),
 					types,
@@ -199,7 +197,7 @@ pub(crate) fn apply_events(
 
 					let result = set_property(
 						on,
-						(*publicity, &under, new.clone()),
+						(*publicity, &under, new),
 						*position,
 						top_environment,
 						(target, diagnostics),
@@ -274,42 +272,39 @@ pub(crate) fn apply_events(
 						};
 						let result =
 							on.call(with, input, top_environment, (target, diagnostics), types);
-						match result {
-							Ok(result) => {
-								if let Some(ApplicationResult::Throw { .. }) = result.result {
-									// TODO conditional here
-									return result.result;
-								}
-
-								if let Some(reflects_dependency) = reflects_dependency {
-									let as_type = calling::application_result_to_return_type(
-										result.result,
-										top_environment,
-										types,
-									);
-									type_arguments
-										.set_during_application(*reflects_dependency, as_type);
-								}
-
-								// if result.thrown_type != TypeId::NEVER_TYPE {
-								// 	// TODO
-								// 	// return FinalEvent::Throw {
-								// 	// 	thrown: result.thrown_type,
-								// 	// 	position: source_map::Nullable::NULL,
-								// 	// }
-								// 	// .into();
-								// }
+						if let Ok(result) = result {
+							if let Some(ApplicationResult::Throw { .. }) = result.result {
+								// TODO conditional here
+								return result.result;
 							}
-							Err(_) => {
-								crate::utilities::notify!(
-									"inference and or checking failed at function"
+
+							if let Some(reflects_dependency) = reflects_dependency {
+								let as_type = calling::application_result_to_return_type(
+									result.result,
+									top_environment,
+									types,
 								);
-								if let Some(reflects_dependency) = reflects_dependency {
-									type_arguments.set_during_application(
-										*reflects_dependency,
-										TypeId::ERROR_TYPE,
-									);
-								}
+								type_arguments
+									.set_during_application(*reflects_dependency, as_type);
+							}
+
+						// if result.thrown_type != TypeId::NEVER_TYPE {
+						// 	// TODO
+						// 	// return FinalEvent::Throw {
+						// 	// 	thrown: result.thrown_type,
+						// 	// 	position: source_map::Nullable::NULL,
+						// 	// }
+						// 	// .into();
+						// }
+						} else {
+							crate::utilities::notify!(
+								"inference and or checking failed at function"
+							);
+							if let Some(reflects_dependency) = reflects_dependency {
+								type_arguments.set_during_application(
+									*reflects_dependency,
+									TypeId::ERROR_TYPE,
+								);
 							}
 						}
 					}
@@ -707,7 +702,9 @@ pub(crate) fn apply_events(
 										call_site: input.call_site,
 									}
 								}
-								_ => todo!(),
+								CannotDeleteFromError::NonConfigurable { position: _ } => {
+									todo!()
+								}
 							});
 
 							if let Some(into) = into {
@@ -765,6 +762,15 @@ pub(crate) fn apply_events(
 					let new_function_ty = types.register_type(Type::SpecialObject(
 						SpecialObject::Function(*function, Default::default()),
 					));
+					// Apply curring
+					let new_function_ty = if type_arguments.closures.is_empty() {
+						new_function_ty
+					} else {
+						types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+							on: new_function_ty,
+							arguments:  crate::types::generics::generic_type_arguments::GenericArguments::Closure(type_arguments.closures.clone()),
+						}))
+					};
 					type_arguments.set_during_application(*referenced_in_scope_as, new_function_ty);
 				}
 			},

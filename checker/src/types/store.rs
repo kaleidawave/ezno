@@ -4,13 +4,11 @@ use crate::{types::intrinsics::Intrinsic, Constant, Map as SmallMap};
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
-	features::{
-		functions::{ClosureId, FunctionBehavior},
-		objects::SpecialObject,
-	},
+	features::{functions::ClosureId, objects::SpecialObject},
 	types::{
+		functions::{FunctionBehavior, FunctionType},
 		logical::{Logical, LogicalOrValid},
-		FunctionType, PolyNature, Type,
+		PolyNature, Type,
 	},
 	Environment, FunctionId, TypeId,
 };
@@ -49,24 +47,24 @@ impl Default for TypeStore {
 			Type::RootPolyType(PolyNature::Error(TypeId::ANY_TYPE)),
 			Type::Interface { name: "never".to_owned(), parameters: None, extends: None },
 			Type::Interface { name: "any".to_owned(), parameters: None, extends: None },
-			Type::Class { name: "boolean".to_owned(), parameters: None },
-			Type::Class { name: "number".to_owned(), parameters: None },
-			Type::Class { name: "string".to_owned(), parameters: None },
+			Type::Class { name: "boolean".to_owned(), type_parameters: None },
+			Type::Class { name: "number".to_owned(), type_parameters: None },
+			Type::Class { name: "string".to_owned(), type_parameters: None },
 			// sure?
 			Type::Interface { name: "undefined".to_owned(), parameters: None, extends: None },
 			Type::SpecialObject(SpecialObject::Null),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
-			Type::Class { name: "Array".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
-			Type::Class { name: "Promise".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
+			Type::Class { name: "Array".to_owned(), type_parameters: Some(vec![TypeId::T_TYPE]) },
+			Type::Class { name: "Promise".to_owned(), type_parameters: Some(vec![TypeId::T_TYPE]) },
 			// Array and Promise type parameter. Simplifies things
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "T".into(),
 				extends: TypeId::ANY_TYPE,
 			}),
 			Type::Interface { name: "object".to_owned(), parameters: None, extends: None },
-			Type::Class { name: "Function".to_owned(), parameters: None },
-			Type::Class { name: "RegExp".to_owned(), parameters: None },
+			Type::Class { name: "Function".to_owned(), type_parameters: None },
+			Type::Class { name: "RegExp".to_owned(), type_parameters: None },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
 			Type::Constant(Constant::Boolean(true)),
@@ -79,7 +77,7 @@ impl Default for TypeStore {
 			// NaN
 			Type::Constant(Constant::NaN),
 			// ""
-			Type::Constant(Constant::String("".to_owned())),
+			Type::Constant(Constant::String(String::new())),
 			// inferred this free variable shortcut
 			Type::RootPolyType(PolyNature::FreeVariable {
 				reference: crate::events::RootReference::This,
@@ -215,7 +213,7 @@ impl TypeStore {
 	pub fn new_constant_type(&mut self, constant: Constant) -> crate::TypeId {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
-			Constant::String(s) if s.len() == 0 => TypeId::EMPTY_STRING,
+			Constant::String(s) if s.is_empty() => TypeId::EMPTY_STRING,
 			Constant::Number(number) if number == 0f64 => TypeId::ZERO,
 			Constant::Number(number) if number == 1f64 => TypeId::ONE,
 			Constant::Boolean(value) => {
@@ -342,6 +340,7 @@ impl TypeStore {
 		self.new_conditional_type(on, true_result, false_result)
 	}
 
+	#[allow(clippy::if_same_then_else)]
 	pub fn new_conditional_type(
 		&mut self,
 		condition: TypeId,
@@ -424,7 +423,7 @@ impl TypeStore {
 		environment: &Environment,
 	) -> TypeId {
 		use super::properties::{get_property_unbound, AccessMode, Publicity};
-		if let Some(_) = get_constraint(indexee, self) {
+		if get_constraint(indexee, self).is_some() {
 			let under = PropertyKey::from_type(indexer, self);
 			let ty = Type::Constructor(Constructor::Property {
 				on: indexee,
@@ -461,7 +460,9 @@ impl TypeStore {
 	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {
 		// TODO this has problems if there are two generic types. Aka `(a: T, b: T) -> T`. Although I have
 		// no idea why this is possible so should be fine?
-		if let Type::RootPolyType(_) = self.get_type_by_id(parameter_constraint) {
+		if let Type::RootPolyType(PolyNature::FunctionGeneric { .. }) =
+			self.get_type_by_id(parameter_constraint)
+		{
 			parameter_constraint
 		} else {
 			self.register_type(Type::RootPolyType(crate::types::PolyNature::Parameter {
@@ -550,7 +551,7 @@ impl TypeStore {
 		self.functions.insert(id, constructor);
 		self.register_type(Type::SpecialObject(SpecialObject::Function(
 			id,
-			crate::features::functions::ThisValue::UseParent,
+			crate::types::calling::ThisValue::UseParent,
 		)))
 	}
 
@@ -562,7 +563,7 @@ impl TypeStore {
 		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
 	}
 
-	pub(crate) fn new_intrinsic(&mut self, intrinsic: Intrinsic, argument: TypeId) -> TypeId {
+	pub(crate) fn new_intrinsic(&mut self, intrinsic: &Intrinsic, argument: TypeId) -> TypeId {
 		let (on, to_pair) = match intrinsic {
 			Intrinsic::Uppercase => (TypeId::STRING_UPPERCASE, TypeId::STRING_GENERIC),
 			Intrinsic::Lowercase => (TypeId::STRING_LOWERCASE, TypeId::STRING_GENERIC),
