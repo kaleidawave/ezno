@@ -10,9 +10,11 @@ use crate::{
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{
-		calling::{call_type, CallingInput},
+		calling::{
+			application_result_to_return_type, Callable, CalledWithNew, CallingContext,
+			CallingInput, SynthesisedArgument,
+		},
 		properties::PropertyKey,
-		SynthesisedArgument,
 	},
 	CheckingData, Constant, Environment, TypeId,
 };
@@ -24,7 +26,13 @@ pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
 ) -> TypeId {
 	match jsx_root {
 		JSXRoot::Element(element) => synthesise_jsx_element(element, environment, checking_data),
-		JSXRoot::Fragment(_) => todo!(),
+		JSXRoot::Fragment(fragment) => {
+			checking_data.raise_unimplemented_error(
+				"JSX fragment",
+				fragment.get_position().with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
 	}
 }
 
@@ -53,11 +61,11 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		let (name, attribute_value) = synthesise_attribute(attribute, environment, checking_data);
 		let attribute_position = attribute.get_position().with_source(environment.get_source());
 		attributes_object.append(
-			environment,
 			crate::types::properties::Publicity::Public,
 			name,
 			crate::PropertyValue::Value(attribute_value),
 			attribute_position,
+			&mut environment.info,
 		);
 
 		// let constraint = environment
@@ -154,11 +162,11 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			let child_position = child.get_position().with_source(environment.get_source());
 			let child = synthesise_jsx_child(child, environment, checking_data);
 			synthesised_child_nodes.append(
-				environment,
 				crate::types::properties::Publicity::Public,
 				property,
 				crate::PropertyValue::Value(child),
 				child_position,
+				&mut environment.info,
 			);
 
 			// TODO spread ??
@@ -173,11 +181,11 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 			// TODO: Should there be a position here?
 			synthesised_child_nodes.append(
-				environment,
 				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
 				element.get_position().with_source(environment.get_source()),
+				&mut environment.info,
 			);
 		}
 		// }
@@ -189,11 +197,15 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 
 	let position = element.get_position().with_source(environment.get_source());
 	let jsx_function =
-		match environment.get_variable_handle_error(JSX_NAME, position, checking_data) {
-			Ok(ty) => ty.1,
-			Err(_) => {
-				todo!()
-			}
+		if let Ok(ty) = environment.get_variable_handle_error(JSX_NAME, position, checking_data) {
+			ty.1
+		} else {
+			checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindVariable {
+				variable: JSX_NAME,
+				possibles: Vec::default(),
+				position,
+			});
+			TypeId::ERROR_TYPE
 		};
 
 	let tag_name_argument = SynthesisedArgument {
@@ -218,31 +230,26 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
 
 	let calling_input = CallingInput {
-		called_with_new: crate::types::calling::CalledWithNew::None,
+		called_with_new: CalledWithNew::None,
 		call_site: position,
-		call_site_type_arguments: None,
+		max_inline: checking_data.options.max_inline_count,
 	};
-	match call_type(
-		jsx_function,
+
+	let mut diagnostics = Default::default();
+	let result = Callable::Type(jsx_function).call(
 		args,
-		&calling_input,
+		calling_input,
 		environment,
-		&mut check_things,
+		(&mut check_things, &mut diagnostics),
 		&mut checking_data.types,
-	) {
-		Ok(res) => crate::types::calling::application_result_to_return_type(
-			res.result,
-			environment,
-			&mut checking_data.types,
-		),
-		Err(error) => {
-			error.errors.into_iter().for_each(|error| {
-				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::JSXCallingError(error));
-			});
-			error.returned_type
+	);
+	diagnostics.append_to(CallingContext::JSX, &mut checking_data.diagnostics_container);
+
+	match result {
+		Ok(res) => {
+			application_result_to_return_type(res.result, environment, &mut checking_data.types)
 		}
+		Err(error) => error.returned_type,
 	}
 
 	// else {
@@ -413,13 +420,20 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
 		JSXNode::InterpolatedExpression(expression, _expression_position) => {
 			match &**expression {
-				parser::ast::FunctionArgument::Spread(_, _) => todo!(),
+				parser::ast::FunctionArgument::Spread(_, pos) => {
+					checking_data.raise_unimplemented_error(
+						"spread JSX child",
+						pos.with_source(environment.get_source()),
+					);
+					TypeId::UNDEFINED_TYPE
+				}
 				parser::ast::FunctionArgument::Standard(expression) => {
 					crate::utilities::notify!("Cast JSX interpolated value?");
 					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE)
 				}
 				parser::ast::FunctionArgument::Comment { .. } => {
-					todo!()
+					// TODO?
+					TypeId::UNDEFINED_TYPE
 				}
 			}
 			// function intoNode(data) {
@@ -483,8 +497,20 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 			(name, synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE))
 		}
 		JSXAttribute::BooleanAttribute(name, _) => (name, TypeId::TRUE),
-		JSXAttribute::Spread(_, _) => todo!(),
-		JSXAttribute::Shorthand(_) => todo!(),
+		JSXAttribute::Spread(_, pos) => {
+			checking_data.raise_unimplemented_error(
+				"spread JSX attribute",
+				pos.with_source(environment.get_source()),
+			);
+			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::ERROR_TYPE);
+		}
+		JSXAttribute::Shorthand(expr) => {
+			checking_data.raise_unimplemented_error(
+				"shorthand JSX attribute",
+				expr.get_position().with_source(environment.get_source()),
+			);
+			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::ERROR_TYPE);
+		}
 	};
 
 	(PropertyKey::String(Cow::Owned(key.clone())), value)

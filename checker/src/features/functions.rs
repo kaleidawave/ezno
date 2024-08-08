@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::hash_map::Entry};
 
-use source_map::{SourceId, SpanWithSource};
+use source_map::{Nullable, SourceId, SpanWithSource};
 
 use crate::{
 	context::{
@@ -10,58 +10,30 @@ use crate::{
 		ContextType, Syntax,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
-	events::{Event, FinalEvent, RootReference},
-	features::create_closed_over_references,
+	events::RootReference,
+	features::{create_closed_over_references, objects::ObjectBuilder},
 	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
+		calling::Callable,
 		classes::ClassValue,
-		functions::SynthesisedParameters,
+		functions::{FunctionBehavior, SynthesisedParameters},
 		generics::GenericTypeParameters,
+		logical::{Logical, LogicalOrValid},
 		printing::print_type,
-		properties::{PropertyKey, PropertyValue},
+		properties::{get_property_unbound, PropertyKey, PropertyValue, Publicity},
 		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
 		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
 		SynthesisedRestParameter, TypeStore,
 	},
-	ASTImplementation, CheckingData, Environment, FunctionId, GeneralContext, Map, ReadFromFS,
-	Scope, Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Map,
+	ReadFromFS, Scope, Type, TypeId, VariableId,
 };
-
-#[derive(Clone, Copy, Debug, Default, binary_serialize_derive::BinarySerializable)]
-pub enum ThisValue {
-	Passed(TypeId),
-	/// Or pick from [`Constructor::Property`]
-	#[default]
-	UseParent,
-}
-
-impl ThisValue {
-	pub(crate) fn get(
-		self,
-		environment: &mut Environment,
-		types: &TypeStore,
-		position: SpanWithSource,
-	) -> TypeId {
-		match self {
-			ThisValue::Passed(value) => value,
-			ThisValue::UseParent => environment.get_value_of_this(types, position),
-		}
-	}
-
-	pub(crate) fn get_passed(self) -> Option<TypeId> {
-		match self {
-			ThisValue::Passed(value) => Some(value),
-			ThisValue::UseParent => None,
-		}
-	}
-}
 
 #[derive(Debug, Clone, Copy)]
 pub enum GetterSetter {
 	Getter,
 	Setter,
-	None,
 }
 
 pub fn register_arrow_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -80,22 +52,30 @@ pub fn register_arrow_function<T: crate::ReadFromFS, A: crate::ASTImplementation
 	checking_data.types.new_function_type(function_type)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn register_expression_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-	expecting: TypeId,
+	expected: TypeId,
 	is_async: bool,
 	is_generator: bool,
-	location: Option<String>,
+	location: ContextLocation,
+	name: Option<String>,
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
 ) -> TypeId {
+	let name = if let Some(name) = name {
+		checking_data.types.new_constant_type(Constant::String(name))
+	} else {
+		extract_name(expected, &checking_data.types, environment)
+	};
 	let function_type = synthesise_function(
 		function,
 		FunctionRegisterBehavior::ExpressionFunction {
-			expecting,
+			expecting: expected,
 			is_async,
 			is_generator,
 			location,
+			name,
 		},
 		environment,
 		checking_data,
@@ -110,16 +90,19 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 	is_async: bool,
 	is_generator: bool,
 	location: ContextLocation,
+	name: String,
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
-) {
+) -> TypeId {
+	let name = checking_data.types.new_constant_type(Constant::String(name));
 	let behavior = FunctionRegisterBehavior::StatementFunction {
-		hoisted: variable_id,
+		variable_id,
 		is_async,
 		is_generator,
 		location,
 		internal_marker: None,
+		name,
 	};
 
 	let function = synthesise_function(function, behavior, environment, checking_data);
@@ -135,8 +118,11 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 		crate::utilities::notify!("TODO check that the result is the same");
 	}
 
+	crate::utilities::notify!("function.effect={:?}", function.effect);
+
 	let v = checking_data.types.new_function_type(function);
 	environment.info.variable_current_value.insert(variable_id, v);
+	v
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -145,37 +131,43 @@ pub fn synthesise_declare_statement_function<T: crate::ReadFromFS, A: crate::AST
 	_overloaded: bool,
 	is_async: bool,
 	is_generator: bool,
-	location: Option<String>,
+	location: ContextLocation,
+	name: String,
 	internal_marker: Option<InternalFunctionEffect>,
 	function: &impl SynthesisableFunction<A>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
-) {
+) -> TypeId {
+	let name = checking_data.types.new_constant_type(Constant::String(name));
 	let behavior = FunctionRegisterBehavior::StatementFunction {
-		hoisted: variable_id,
+		variable_id,
 		is_async,
 		is_generator,
 		location,
 		internal_marker,
+		name,
 	};
 
 	let function = synthesise_function(function, behavior, environment, checking_data);
-	environment
-		.info
-		.variable_current_value
-		.insert(variable_id, checking_data.types.new_function_type(function));
+	let ty = checking_data.types.new_function_type(function);
+	environment.info.variable_current_value.insert(variable_id, ty);
+	ty
 }
 
 pub fn function_to_property(
-	getter_setter: GetterSetter,
+	getter_setter: Option<GetterSetter>,
 	function: FunctionType,
 	types: &mut TypeStore,
 	is_declare: bool,
 ) -> PropertyValue {
 	match getter_setter {
-		GetterSetter::Getter => PropertyValue::Getter(Box::new(function)),
-		GetterSetter::Setter => PropertyValue::Setter(Box::new(function)),
-		GetterSetter::None => PropertyValue::Value(
+		Some(GetterSetter::Getter) => {
+			PropertyValue::Getter(Callable::new_from_function(function, types))
+		}
+		Some(GetterSetter::Setter) => {
+			PropertyValue::Setter(Callable::new_from_function(function, types))
+		}
+		None => PropertyValue::Value(
 			if is_declare && matches!(function.effect, FunctionEffect::Unknown) {
 				types.new_hoisted_function_type(function)
 			} else {
@@ -267,47 +259,6 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	result
 }
 
-/// TODO different place
-/// TODO maybe generic
-#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum FunctionBehavior {
-	/// For arrow functions, cannot have `this` bound
-	ArrowFunction {
-		is_async: bool,
-	},
-	Method {
-		free_this_id: TypeId,
-		is_async: bool,
-		is_generator: bool,
-	},
-	/// Functions defined `function`. Extends above by allowing `new`
-	Function {
-		/// This points the general `this` object.
-		/// When calling with:
-		/// - `new`: an arguments should set with (`free_this_id`, *new object*)
-		/// - regularly: bound argument, else parent `this` (I think)
-		free_this_id: TypeId,
-		/// The function type. [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new)
-		prototype: TypeId,
-		is_async: bool,
-		/// Cannot be called with `new` if true
-		is_generator: bool,
-	},
-	/// Constructors, require new
-	Constructor {
-		/// The prototype of the base object
-		prototype: TypeId,
-		/// The id of the generic that needs to be pulled out
-		this_object_type: TypeId,
-	},
-}
-
-impl FunctionBehavior {
-	pub(crate) fn can_be_bound(self) -> bool {
-		matches!(self, Self::Method { .. } | Self::Function { .. })
-	}
-}
-
 #[derive(Clone, Copy)]
 pub struct ReturnType(pub TypeId, pub SpanWithSource);
 
@@ -388,20 +339,23 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		is_async: bool,
 		is_generator: bool,
 		location: ContextLocation,
+		name: TypeId,
 	},
 	StatementFunction {
-		hoisted: VariableId,
+		/// For hoisting cases
+		variable_id: VariableId,
 		is_async: bool,
 		is_generator: bool,
 		location: ContextLocation,
 		internal_marker: Option<InternalFunctionEffect>,
+		name: TypeId,
 	},
 	ObjectMethod {
 		// TODO this will take PartialFunction from hoisted?
 		expecting: TypeId,
 		is_async: bool,
 		is_generator: bool,
-		// location: ContextLocation,
+		name: TypeId, // location: ContextLocation,
 	},
 	ClassMethod {
 		// TODO this will take PartialFunction from hoisted?
@@ -412,6 +366,7 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		internal_marker: Option<InternalFunctionEffect>,
 		/// Used for shape of `this`
 		this_shape: TypeId,
+		name: TypeId,
 	},
 	Constructor {
 		prototype: TypeId,
@@ -419,6 +374,8 @@ pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
 		super_type: Option<TypeId>,
 		properties: ClassPropertiesToRegister<'a, A>,
 		internal_marker: Option<InternalFunctionEffect>,
+		/// Name of the class
+		name: TypeId,
 	},
 }
 
@@ -495,11 +452,13 @@ where
 			prototype,
 			properties,
 			internal_marker,
+			name,
 		} => {
 			FunctionKind {
 				behavior: FunctionBehavior::Constructor {
 					prototype,
 					this_object_type: TypeId::ERROR_TYPE,
+					name,
 				},
 				scope: FunctionScope::Constructor {
 					extends: super_type.is_some(),
@@ -528,6 +487,7 @@ where
 				&mut checking_data.types,
 				base_environment,
 			);
+			crate::utilities::notify!("expected {:?}", expecting);
 
 			if let Some((or, _)) =
 				expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))
@@ -556,6 +516,7 @@ where
 			is_async,
 			is_generator,
 			location,
+			name,
 		} => {
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
@@ -571,8 +532,9 @@ where
 				behavior: FunctionBehavior::Function {
 					is_async,
 					is_generator,
-					free_this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::ERROR_TYPE,
 					prototype,
+					name,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
@@ -590,11 +552,12 @@ where
 			}
 		}
 		FunctionRegisterBehavior::StatementFunction {
-			hoisted: _,
+			variable_id: _variable_id,
 			is_async,
 			is_generator,
 			location,
 			internal_marker,
+			name,
 		} => {
 			let prototype = checking_data
 				.types
@@ -605,7 +568,8 @@ where
 					is_async,
 					is_generator,
 					prototype,
-					free_this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::ERROR_TYPE,
+					name,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
@@ -628,6 +592,7 @@ where
 			expecting,
 			internal_marker,
 			this_shape,
+			name,
 		} => {
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
@@ -640,6 +605,7 @@ where
 					is_async,
 					is_generator,
 					free_this_id: this_shape,
+					name,
 				},
 				scope: FunctionScope::MethodFunction {
 					free_this_type: this_shape,
@@ -653,7 +619,7 @@ where
 				this_shape: Some(this_shape),
 			}
 		}
-		FunctionRegisterBehavior::ObjectMethod { is_async, is_generator, expecting } => {
+		FunctionRegisterBehavior::ObjectMethod { is_async, is_generator, expecting, name } => {
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
 				&mut checking_data.types,
@@ -665,6 +631,7 @@ where
 					is_async,
 					is_generator,
 					free_this_id: TypeId::ERROR_TYPE,
+					name,
 				},
 				scope: FunctionScope::MethodFunction {
 					free_this_type: TypeId::ERROR_TYPE,
@@ -736,7 +703,7 @@ where
 									on: TypeId::NEW_TARGET_ARG,
 									under: PropertyKey::String(Cow::Owned("value".to_owned())),
 									result: this_constraint,
-									bind_this: true,
+									mode: types::properties::AccessMode::Regular,
 								},
 							));
 
@@ -747,12 +714,12 @@ where
 								false,
 							);
 
-							let this_free_variable = checking_data.types.register_type(
-								Type::RootPolyType(PolyNature::FreeVariable {
-									reference: RootReference::This,
-									based_on: this_constraint,
-								}),
-							);
+							let ty = Type::RootPolyType(PolyNature::FreeVariable {
+								reference: RootReference::This,
+								based_on: this_constraint,
+							});
+
+							let this_free_variable = checking_data.types.register_type(ty);
 
 							(this_free_variable, this_constructed_object)
 						} else {
@@ -766,20 +733,22 @@ where
 							(TypeId::ANY_INFERRED_FREE_THIS, this_constructed_object)
 						};
 
-					if let FunctionBehavior::Function { ref mut free_this_id, .. } = behavior {
-						// TODO set object as well
-						*free_this_id = this_free_variable;
-					}
-
 					let new_conditional_type = checking_data.types.new_conditional_type(
 						TypeId::NEW_TARGET_ARG,
 						this_constructed_object,
 						this_free_variable,
 					);
 
-					// TODO set super type as well
+					// TODO ahhhh
+					if let FunctionBehavior::Function { this_id: ref mut free_this_id, .. } =
+						behavior
+					{
+						*free_this_id = new_conditional_type;
+					}
 
+					// TODO set super type as well
 					// TODO what is the union, shouldn't it be the this_constraint?
+
 					*this_type = new_conditional_type;
 				}
 				FunctionScope::Constructor {
@@ -869,28 +838,6 @@ where
 			..
 		} = function_environment.context_type;
 
-		let returned = if function.has_body() {
-			if let Some(event) = function_environment.info.events.last() {
-				match event {
-					// TODO
-					Event::FinalEvent(FinalEvent::Return { returned, position: _ }) => *returned,
-					Event::FinalEvent(FinalEvent::Throw { thrown: _, position: _ }) => {
-						TypeId::NEVER_TYPE
-					}
-					_ => {
-						crate::utilities::notify!("TODO might be others here");
-						TypeId::UNDEFINED_TYPE
-					}
-				}
-			} else {
-				TypeId::UNDEFINED_TYPE
-			}
-		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
-			ty
-		} else {
-			TypeId::UNDEFINED_TYPE
-		};
-
 		// crate::utilities::notify!(
 		// 	"closes_over {:?}, free_variable {:?}, in {:?}",
 		// 	closes_over,
@@ -900,6 +847,14 @@ where
 
 		let info = function_environment.info;
 		let variable_names = function_environment.variable_names;
+
+		let returned = if function.has_body() {
+			info.state.get_returned(&mut checking_data.types)
+		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
+			ty
+		} else {
+			TypeId::UNDEFINED_TYPE
+		};
 
 		{
 			// let mut _back_requests = HashMap::<(), ()>::new();
@@ -919,21 +874,28 @@ where
 			// }
 		}
 
-		// TODO this fixes properties being lost during printing and subtyping
-		for (on, properties) in info.current_properties {
-			match base_environment.info.current_properties.entry(on) {
-				Entry::Occupied(_occupied) => {}
-				Entry::Vacant(vacant) => {
-					vacant.insert(properties);
+		// TODO this fixes prototypes and properties being lost during printing and subtyping of the return type
+		{
+			for (k, v) in &info.prototypes {
+				base_environment.info.prototypes.insert(*k, *v);
+			}
+
+			for (on, properties) in info.current_properties {
+				match base_environment.info.current_properties.entry(on) {
+					Entry::Occupied(_occupied) => {}
+					Entry::Vacant(vacant) => {
+						vacant.insert(properties);
+					}
 				}
 			}
-		}
 
-		for (on, properties) in info.closure_current_values {
-			match base_environment.info.closure_current_values.entry(on) {
-				Entry::Occupied(_occupied) => {}
-				Entry::Vacant(vacant) => {
-					vacant.insert(properties);
+			// TODO explain
+			for (on, properties) in info.closure_current_values {
+				match base_environment.info.closure_current_values.entry(on) {
+					Entry::Occupied(_occupied) => {}
+					Entry::Vacant(vacant) => {
+						vacant.insert(properties);
+					}
 				}
 			}
 		}
@@ -1057,7 +1019,18 @@ fn get_expected_parameters_from_type(
 					.parameters
 					.into_iter()
 					.map(|p| SynthesisedParameter {
-						ty: substitute(p.ty, &type_arguments, environment, types),
+						ty: substitute(
+							if let Type::RootPolyType(PolyNature::Parameter { fixed_to }) =
+								types.get_type_by_id(p.ty)
+							{
+								*fixed_to
+							} else {
+								p.ty
+							},
+							&type_arguments,
+							environment,
+							types,
+						),
 						..p
 					})
 					.collect();
@@ -1072,6 +1045,53 @@ fn get_expected_parameters_from_type(
 			expected_return_type.map(|rt| substitute(rt, &type_arguments, environment, types)),
 		)
 	} else {
+		crate::utilities::notify!("(un)Expected = {:?}", ty);
 		(None, None)
+	}
+}
+
+/// This is to implement <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/name>
+///
+/// Creates (expected & { name }) intersection object
+///
+/// Little bit complex ...
+pub fn new_name_expected_object(
+	name: TypeId,
+	expected: TypeId,
+	types: &mut TypeStore,
+	environment: &mut Environment,
+) -> TypeId {
+	let mut name_object =
+		ObjectBuilder::new(None, types, SpanWithSource::NULL, &mut environment.info);
+
+	name_object.append(
+		types::properties::Publicity::Public,
+		PropertyKey::String(Cow::Borrowed("name")),
+		PropertyValue::Value(name),
+		SpanWithSource::NULL,
+		&mut environment.info,
+	);
+
+	types.new_and_type(expected, name_object.build_object()).unwrap()
+}
+
+/// Reverse of the above
+pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environment) -> TypeId {
+	if let Type::And(_, rhs) = types.get_type_by_id(expecting) {
+		if let Ok(LogicalOrValid::Logical(Logical::Pure(PropertyValue::Value(ty)))) =
+			get_property_unbound(
+				(*rhs, None),
+				(Publicity::Public, &PropertyKey::String(Cow::Borrowed("name")), None),
+				false,
+				environment,
+				types,
+			) {
+			ty
+		} else {
+			crate::utilities::notify!("Here");
+			TypeId::EMPTY_STRING
+		}
+	} else {
+		TypeId::EMPTY_STRING
 	}
 }

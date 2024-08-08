@@ -18,13 +18,18 @@ pub enum Assignable<A: crate::ASTImplementation> {
 #[derive(Clone)]
 pub enum Reference {
 	Variable(String, SpanWithSource),
-	Property { on: TypeId, with: PropertyKey<'static>, publicity: Publicity, span: SpanWithSource },
+	Property {
+		on: TypeId,
+		with: PropertyKey<'static>,
+		publicity: Publicity,
+		position: SpanWithSource,
+	},
 }
 
 pub enum AssignableObjectDestructuringField<A: crate::ASTImplementation> {
 	/// `{ x: y }`
 	Mapped {
-		on: PropertyKey<'static>,
+		key: PropertyKey<'static>,
 		name: Assignable<A>,
 		default_value: Option<Box<A::Expression<'static>>>,
 		position: SpanWithSource,
@@ -65,7 +70,7 @@ impl Reference {
 	#[must_use]
 	pub fn get_position(&self) -> SpanWithSource {
 		match self {
-			Reference::Variable(_, span) | Reference::Property { span, .. } => *span,
+			Reference::Variable(_, position) | Reference::Property { position, .. } => *position,
 		}
 	}
 
