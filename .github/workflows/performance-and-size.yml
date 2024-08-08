@@ -61,7 +61,7 @@ jobs:
           diagnostics=""; statistics=""; found_splitter=false;
 
           while IFS= read -r line; do
-              if [[ "$line" == *"---"* ]]; then found_splitter=true;
+              if [[ "$line" == "---"* ]]; then found_splitter=true;
               elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
               else statistics+="$line"$'\n'; fi
           done <<< "$command_output"
@@ -86,19 +86,17 @@ jobs:
       - name: Run checker performance w/staging
         shell: bash
         if: github.ref_name != 'main'
-        continue-on-error: true
         run: |
           echo "::group::Running all"
           
           cat ./checker/specification/specification.md ./checker/specification/staging.md > all.md
           cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./all.tsx
 
-          ./target/release/ezno check all.tsx --timings
+          ./target/release/ezno check all.tsx --timings || true
           echo "::endgroup::"
             
       - name: Run checker performance on large file
         shell: bash
-        continue-on-error: true
         run: |
           echo "::group::Running large"
 
@@ -108,7 +106,7 @@ jobs:
             cat ./code.tsx >> large.tsx
           done
 
-          ./target/release/ezno check large.tsx --timings --max-diagnostics 0
+          ./target/release/ezno check large.tsx --timings --max-diagnostics 0 || true
           echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance

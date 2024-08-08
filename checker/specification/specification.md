@@ -121,16 +121,16 @@ let second = 2;
 
 ```ts
 {
-    // Fine
-    var x = 2;
-    x satisfies 2;
-    var x = 3;
-    x satisfies 3;
+	// Fine
+	var x = 2;
+	x satisfies 2;
+	var x = 3;
+	x satisfies 3;
 }
 
 {
-    let b = 2;
-    var b = 2;
+	let b = 2;
+	var b = 2;
 }
 ```
 
@@ -229,7 +229,7 @@ obj.x satisfies 5;
 
 ```ts
 const obj = {
-   set value(v: string) { }
+	set value(v: string) { }
 }
 
 obj.value = 5;
@@ -322,11 +322,11 @@ Object.entries({ a: 1, b: 2 }) satisfies boolean;
 declare let condition: boolean;
 
 const obj = {
-  foo: 1,
-  ...(condition ? {
-    bar: 2,
-    non_existent: 3,
-  } : {}),
+	foo: 1,
+	...(condition ? {
+		bar: 2,
+		non_existent: 3,
+	} : {}),
 };
 
 obj.foo satisfies number;
@@ -550,8 +550,8 @@ Object.isFrozen(obj) satisfies true;
 ```ts
 const obj = {};
 Object.defineProperty(obj, 'property', {
-  value: 42,
-  writable: false,
+	value: 42,
+	writable: false,
 });
 obj.property satisfies string;
 obj.property = 70;
@@ -567,10 +567,10 @@ obj.property = 70;
 ```ts
 const obj = {};
 Object.defineProperty(obj, 'property', {
-  value: 42,
-  enumerable: false,
+	value: 42,
+	enumerable: false,
 	// needed as all properties default to false
-  writable: true,
+	writable: true,
 });
 obj.property = 70;
 Object.getOwnPropertyDescriptor(obj, 'property') satisfies string;
@@ -586,7 +586,7 @@ Object.getOwnPropertyDescriptor(obj, 'property') satisfies string;
 const obj = {};
 let b = 0;
 Object.defineProperty(obj, 'property', {
-  get: () => b,
+	get: () => b,
 });
 obj.property satisfies 0;
 b++;
@@ -683,21 +683,21 @@ function returnNewObject(): MyObject {
 type MyObject = { foo: number; bar?: number };
 
 const b: MyObject = {
-  foo: 1,
-  ...{
-    bar: 2,
-    invalid: 3,
-  },
+	foo: 1,
+	...{
+	bar: 2,
+	invalid: 3,
+	},
 };
 
 declare let condition: boolean;
 
 const c: MyObject = {
-  foo: 1,
-  ...(condition ? {
-    bar: 2,
-    non_existent: 3,
-  } : {}),
+	foo: 1,
+	...(condition ? {
+	bar: 2,
+	non_existent: 3,
+	} : {}),
 };
 ```
 
@@ -828,8 +828,8 @@ function func(a: number) {
 
 ```ts
 function outer(a: number) {
-    function inner(b: string = Math.floor(a)) {
-    }
+	function inner(b: string = Math.floor(a)) {
+	}
 }
 ```
 
@@ -976,11 +976,11 @@ myFunction({ a: 6 }) satisfies string;
 
 ```ts
 function getNumber1(): number {
-    return 4
+	return 4
 }
 
 function getNumber2() {
-    return 6
+	return 6
 }
 
 getNumber1 satisfies () => 4;
@@ -999,15 +999,15 @@ getNumber2() satisfies 6;
 
 ```ts
 function x() {
-    getString(3)
+	getString(3)
 }
 
 function y() {
-    getString("something") satisfies string;
+	getString("something") satisfies string;
 }
 
 function getString(param: string): string {
-    return "hi"
+	return "hi"
 }
 ```
 
@@ -1340,7 +1340,7 @@ b satisfies 1;
 
 ```ts
 function optionally(p?: number) {
-  p satisfies string;
+	p satisfies string;
 }
 ```
 
@@ -1350,7 +1350,7 @@ function optionally(p?: number) {
 
 ```ts
 function optionally(p?: number) {
-  return p
+	return p
 }
 
 // Fine
@@ -1418,16 +1418,16 @@ createNew satisfies string;
 
 ```ts
 class StringBuilder {
-    s: string = ""
+	s: string = ""
 
-    append(s: string) {
-        this.s += s;
-        return this
-    }
+	append(s: string) {
+	this.s += s;
+	return this
+	}
 
-    finish() {
-        return this.s
-    }
+	finish() {
+	return this.s
+	}
 }
 
 (new StringBuilder).append("Hello ").append("Ben").finish() satisfies number
@@ -1667,13 +1667,13 @@ function func() {
 
 ```ts
 function throwGreeting() {
-    throw "Hello";
-    return "Unreachable!"
+	throw "Hello";
+	return "Unreachable!"
 }
 
 function doSomething() {
-    throwGreeting()
-    const unreachable = 2;
+	throwGreeting()
+	const unreachable = 2;
 }
 ```
 
@@ -1853,7 +1853,7 @@ c2.plusB() satisfies string;
 
 ```ts
 function Closure(n: string) {
-	return { get value() { return n }, set value(newValue: string) { n = newValue;  } };
+	return { get value() { return n }, set value(newValue: string) { n = newValue;	} };
 }
 
 let b = Closure("hi");
@@ -1958,9 +1958,9 @@ b satisfies string;
 let i = 0;
 declare let b: boolean;
 if (b) {
-    i = 1
+	i = 1
 } else {
-    i = 2
+	i = 2
 }
 
 i satisfies string;
@@ -1974,10 +1974,10 @@ i satisfies string;
 declare let string: string;
 
 function stringIsHi(s: string) {
-    if (s === "hi") {
-        return true
-    }
-    return false
+	if (s === "hi") {
+	return true
+	}
+	return false
 }
 
 stringIsHi(string) satisfies number;
@@ -2192,7 +2192,7 @@ console.log("Error caught!")
 try {
 	throw 3
 } catch (err: string) {
-    console.log(err)
+	console.log(err)
 }
 
 console.log("Error caught!")
@@ -2204,11 +2204,11 @@ console.log("Error caught!")
 
 ```ts
 function exceptionToResult(cb: () => number) {
-    try {
-        return cb()
-    } catch (e) {
-        return e
-    }
+	try {
+	return cb()
+	} catch (e) {
+	return e
+	}
 }
 
 exceptionToResult(() => 6) satisfies 6;
@@ -2222,11 +2222,11 @@ console.log("Error caught!")
 
 ```ts
 function exceptionToResult(cb: () => number) {
-    try {
-        cb()
-    } catch (e: number) {
-        return e
-    }
+	try {
+	cb()
+	} catch (e: number) {
+	return e
+	}
 }
 
 exceptionToResult(() => { throw "not a number" });
@@ -2239,11 +2239,11 @@ console.log("Error caught!")
 
 ```ts
 function exceptionToResult(s: string) {
-    try {
-        return JSON.parse(s)
-    } catch (e: number) {
-        return e
-    }
+	try {
+	return JSON.parse(s)
+	} catch (e: number) {
+	return e
+	}
 }
 console.log("Error caught!")
 ```
@@ -2257,11 +2257,11 @@ console.log("Error caught!")
 ```ts
 // no complex numbers :(
 function checkedLn(x: number) {
-    if (x > 0) {
-        return Math.log(x)
-    } else {
-        throw new Error("Cannot log")
-    }
+	if (x > 0) {
+	return Math.log(x)
+	} else {
+	throw new Error("Cannot log")
+	}
 }
 
 // Fine
@@ -2634,9 +2634,9 @@ const o = { a: 1, b: { c: 3 } };
 
 let a, b, d;
 ({
-  d = o.a++,
-  b: { c: b = 7 },
-  a,
+	d = o.a++,
+	b: { c: b = 7 },
+	a,
 } = o);
 
 a satisfies string;
@@ -2718,9 +2718,9 @@ x.value satisfies string
 
 ```ts
 class X {
-    method() {
-        return this;
-    }
+	method() {
+	return this;
+	}
 }
 
 const { method } = new X();
@@ -2857,11 +2857,11 @@ const x = X();
 
 ```ts
 class BaseClass {
-    b: boolean = false
+	b: boolean = false
 }
 
 class Class extends BaseClass {
-    a: number = 2
+	a: number = 2
 }
 
 new Class().b satisfies 5
@@ -2873,11 +2873,11 @@ new Class().b satisfies 5
 
 ```ts
 class X {
-    static x = 2;
+	static x = 2;
 
-    static {
-        const property: 4 = ++this.x;
-    }
+	static {
+	const property: 4 = ++this.x;
+	}
 }
 
 X.x satisfies 3;
@@ -2889,19 +2889,19 @@ X.x satisfies 3;
 
 ```ts
 function doThingWithClass(instance: Class) {
-    instance.prop satisfies string;
-    instance.parent_prop satisfies boolean;
-    instance.method(4);
+	instance.prop satisfies string;
+	instance.parent_prop satisfies boolean;
+	instance.method(4);
 }
 
 class BaseClass {
-    parent_prop: number
+	parent_prop: number
 }
 
 class Class extends BaseClass {
-    prop: number
+	prop: number
 
-    method(s: string) {}
+	method(s: string) {}
 }
 ```
 
@@ -2913,16 +2913,16 @@ class Class extends BaseClass {
 
 ```ts
 function doThingWithClass(instance: Class) {
-    instance.a satisfies number;
-    instance.b satisfies string;
+	instance.a satisfies number;
+	instance.b satisfies string;
 }
 
 class BaseClass {
-    b: boolean
+	b: boolean
 }
 
 class Class extends BaseClass {
-    a: number
+	a: number
 }
 ```
 
@@ -2933,16 +2933,16 @@ class Class extends BaseClass {
 ```ts
 let b: number = 0;
 class Y {
-    constructor(a) {
-        this.a = a;
-        b++;
-    }
+	constructor(a) {
+	this.a = a;
+	b++;
+	}
 }
 
 class X extends Y {
-    constructor(a) {
-        super(a);
-    }
+	constructor(a) {
+	super(a);
+	}
 }
 
 const x = new X("hi");
@@ -3211,7 +3211,7 @@ function get(obj: {a: 2} | { b: 3 }) {
 
 ```ts
 interface Optional {
-    a?: "hi"
+	a?: "hi"
 }
 
 const op1: Optional = {}
@@ -3258,15 +3258,15 @@ const x: X = 2;
 
 ```ts
 interface X {
-    a: string
+	a: string
 }
 
 interface Y {
-    b: string
+	b: string
 }
 
 interface Z extends X, Y {
-    c: string
+	c: string
 }
 
 ({ a: "", b: "", c: "hello" }) satisfies Z;
@@ -3358,8 +3358,8 @@ n satisfies ElementOf<"not array">;
 
 ```ts
 interface X {
-    a: string,
-    b: string
+	a: string,
+	b: string
 }
 
 "a" satisfies keyof X; "b" satisfies keyof X; "c" satisfies keyof X;
@@ -3462,8 +3462,8 @@ interface Wrapper<T> {
 
 ```ts
 const numbers1: Array<number> = [1, 2, "3"],
-      numbers2: Array<string> = ["hi", "3"],
-      numbers3: Array<string> = 4;
+		numbers2: Array<string> = ["hi", "3"],
+		numbers3: Array<string> = 4;
 ```
 
 - Type [1, 2, "3"] is not assignable to type Array\<number>
@@ -3582,8 +3582,8 @@ myRecord.hello;
 
 ```ts
 const x: Record<"test", boolean> = { no: false },
-      y: Record<"test", boolean> = { test: 6 },
-      z: Record<"test", boolean> = { test: false };
+		y: Record<"test", boolean> = { test: 6 },
+		z: Record<"test", boolean> = { test: false };
 ```
 
 - 'no' is not a property of { [\"test\"]: boolean }
@@ -3624,7 +3624,7 @@ x.b satisfies number;
 
 ```ts
 type Pick<T, K extends keyof T> = {
-    [P in K]: T[P];
+	[P in K]: T[P];
 };
 
 interface X { a: number, b: string, c: string }
@@ -3647,7 +3647,7 @@ y.a;
 
 ```ts
 type Partial<T> = {
-    [P in keyof T]?: T[P];
+	[P in keyof T]?: T[P];
 };
 
 ({ a: 3 } satisfies Partial<{ a: number, b: string }>);
@@ -3660,7 +3660,7 @@ type Partial<T> = {
 
 ```ts
 type Required<T> = {
-    [P in keyof T]-?: T[P];
+	[P in keyof T]-?: T[P];
 };
 
 ({ a: 3 } satisfies Required<{ a?: number }>);
@@ -3674,7 +3674,7 @@ type Required<T> = {
 
 ```ts
 type Mutable<T> = {
-    readonly [P in keyof T]: T[P];
+	readonly [P in keyof T]: T[P];
 };
 
 interface Y { a: string }
@@ -3688,7 +3688,7 @@ x.a = "hi";
 
 ```ts
 type Mutable<T> = {
-    -readonly [P in keyof T]: T[P];
+	-readonly [P in keyof T]: T[P];
 };
 
 interface Y { readonly a: string }
@@ -3723,7 +3723,7 @@ x.property_b
 
 ```ts
 function x(p: readonly { a: string }) {
-    p.a = "hi";
+	p.a = "hi";
 }
 ```
 
@@ -3753,13 +3753,13 @@ func2(obj)
 
 ```ts
 interface MyObject {
-    a(b: string): any;
+	a(b: string): any;
 }
 
 const obj: MyObject = {
-    a(b) {
-        b satisfies number;
-    }
+	a(b) {
+	b satisfies number;
+	}
 }
 ```
 
@@ -3769,11 +3769,11 @@ const obj: MyObject = {
 
 ```ts
 function callFunction<T>(fn: (p: T) => void) {
-    // ...
+	// ...
 }
 
 callFunction<string>(a => {
-    a satisfies number;
+	a satisfies number;
 })
 ```
 
@@ -3817,20 +3817,20 @@ obj1.a = "hello";
 
 ```ts
 {
-    const obj = { a: true, b: false };
-    const x: { a: boolean } = obj, y: { b: boolean } = obj;
+	const obj = { a: true, b: false };
+	const x: { a: boolean } = obj, y: { b: boolean } = obj;
 
-    obj.a = "yo";
-    obj.b = "wassup";
+	obj.a = "yo";
+	obj.b = "wassup";
 }
 
 {
-    // and in the same assignment through a cycle
-    const obj = { a: 2, b: 3 }; obj.c = obj;
-    const something: { a: number, c: { b: number } } = obj;
+	// and in the same assignment through a cycle
+	const obj = { a: 2, b: 3 }; obj.c = obj;
+	const something: { a: number, c: { b: number } } = obj;
 
-    obj.a = "hi";
-    obj.b = "hello";
+	obj.a = "hi";
+	obj.b = "hello";
 }
 ```
 
@@ -3932,7 +3932,7 @@ lastSet satisfies boolean;
 
 ```ts
 const obj = { a: 2 };
-const proxy1 = new Proxy(obj, {  });
+const proxy1 = new Proxy(obj, {	});
 
 proxy1.a = 6;
 obj.a satisfies 6;
@@ -4209,7 +4209,7 @@ mean_gravity satisfies 2;
 
 // in node_modules/earth/package.json
 {
-    "main": "constants.js"
+	"main": "constants.js"
 }
 
 // in node_modules/earth/constants.js
@@ -4231,7 +4231,7 @@ const x: string = 5;
 const y: string = h;
 
 function getString(a: number): string {
-    return a
+	return a
 }
 
 x satisfies string;
@@ -4271,7 +4271,7 @@ x().nothing
 
 ```tsx
 function JSXH(tag_name: string, attributes: any, children: any) {
-  return { tag_name, attributes, children }
+	return { tag_name, attributes, children }
 }
 
 const x = <h1 title="Example text">Hello World</h1> satisfies string;
@@ -4283,7 +4283,7 @@ const x = <h1 title="Example text">Hello World</h1> satisfies string;
 
 ```ts
 function x(a /** string */) {
-    a satisfies number
+	a satisfies number
 }
 
 const c /** number */ = "hello"
@@ -4296,7 +4296,7 @@ const c /** number */ = "hello"
 
 ```ts
 function register(a: Literal<string>) {
-    // ...
+	// ...
 }
 
 register("something")
