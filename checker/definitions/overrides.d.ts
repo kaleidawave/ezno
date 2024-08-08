@@ -1,7 +1,7 @@
 // Eventually this will be merged with existing TS es5.d.ts files but for now is the standalone see #121
 
 interface ImportEnv {
-    [key: string]: string | undefined;
+    [key: string]: string;
 }
 
 interface ImportMeta {
@@ -11,7 +11,7 @@ interface ImportMeta {
 }
 
 declare class Array<T> {
-    [index: number]: T | undefined;
+    [index: number]: T;
 
     length: number;
 
@@ -140,12 +140,15 @@ declare class Math {
     static sqrt(x: number): number;
     @Constant
     static cbrt(x: number): number;
+    @Constant
+    static log(x: number): number;
 
     // TODO newer method
     @Constant
     static trunc(x: number): number;
 
-    static PI: 3.141592653589793;
+    static PI: 3.141592653589793
+    static E: 2.718281828459045
 
     @InputOutput
     static random(): number;
@@ -153,12 +156,12 @@ declare class Math {
 
 @Primitive("string")
 declare class String {
-    [index: number]: string | undefined;
+    [index: number]: string;
 
     @Constant
-    toUpperCase(): string;
+    toUpperCase(this: string): string;
     @Constant
-    toLowerCase(): string;
+    toLowerCase(this: string): string;
 
     get length(): number;
 
