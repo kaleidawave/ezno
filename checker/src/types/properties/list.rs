@@ -110,6 +110,7 @@ pub fn get_properties_on_single_type(
 		| Type::Or(..)
 		| Type::PartiallyAppliedGenerics(_)
 		| Type::Constant(_)
+		| Type::Narrowed { .. }
 		| Type::AliasTo { .. }
 		| Type::FunctionReference(_)
 		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
@@ -218,6 +219,7 @@ pub fn get_properties_on_single_type2(
 		t @ (Type::SpecialObject(_)
 		| Type::Or(..)
 		| Type::Constant(_)
+		| Type::Narrowed { .. }
 		| Type::AliasTo { .. }
 		| Type::FunctionReference(_)
 		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),

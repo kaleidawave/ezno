@@ -43,7 +43,7 @@ where
 		super::narrowing::narrow_based_on_expression(
 			condition,
 			&mut truthy_environment.info,
-			&checking_data.types,
+			&mut checking_data.types,
 		);
 
 		let result = then_evaluate(&mut truthy_environment, checking_data);

@@ -259,7 +259,7 @@ pub(crate) fn type_is_subtype_with_generics(
 
 	// Eager things
 	match right_ty {
-		Type::AliasTo { to: right, .. } => {
+		Type::Narrowed { narrowed_to: right, .. } | Type::AliasTo { to: right, .. } => {
 			return type_is_subtype_with_generics(
 				(base_type, base_type_arguments),
 				(*right, ty_structure_arguments),
@@ -721,6 +721,9 @@ pub(crate) fn type_is_subtype_with_generics(
 					types,
 				)
 			}
+		}
+		Type::Narrowed { .. } => {
+			todo!()
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
 			match *on {
@@ -1435,7 +1438,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					// TODO
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
-				Type::Constructor(..) | Type::RootPolyType(..) => {
+				Type::Narrowed { .. } | Type::Constructor(..) | Type::RootPolyType(..) => {
 					let arg =
 						base_type_arguments.and_then(|args| args.get_argument_covariant(base_type));
 
@@ -2178,16 +2181,15 @@ pub fn type_is_subtype_of_property_mapped_key(
 		}
 		CovariantContribution::TypeId(key_ty) => {
 			match types.get_type_by_id(key_ty) {
-				Type::AliasTo { to, name: _, parameters: _ } => {
-					type_is_subtype_of_property_mapped_key(
-						MappedKey { value: (*to).into(), key: mapped_key.key },
-						(base, property_generics, optional),
-						(ty, right_type_arguments),
-						state,
-						information,
-						types,
-					)
-				}
+				Type::Narrowed { narrowed_to: to, .. }
+				| Type::AliasTo { to, name: _, parameters: _ } => type_is_subtype_of_property_mapped_key(
+					MappedKey { value: (*to).into(), key: mapped_key.key },
+					(base, property_generics, optional),
+					(ty, right_type_arguments),
+					state,
+					information,
+					types,
+				),
 				Type::And(left, right) => {
 					let left = type_is_subtype_of_property_mapped_key(
 						MappedKey { value: (*left).into(), key: mapped_key.key },
@@ -2526,7 +2528,7 @@ pub(crate) fn slice_matches_type(
 				false
 			}
 		}
-		Type::AliasTo { to, .. } => slice_matches_type(
+		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => slice_matches_type(
 			(*to, base_type_arguments),
 			slice,
 			contributions,

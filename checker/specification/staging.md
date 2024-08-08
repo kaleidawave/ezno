@@ -20,7 +20,7 @@ if (a === "hi") {
 ```ts
 declare let a: string;
 
-const equalsHi = (p: string) => p === "hi";
+function equalsHi(p: string): boolean { return p === "hi" }
 
 if (equalsHi(a)) {
 	a satisfies "hello"
@@ -41,3 +41,27 @@ if (b === "hi") {
 ```
 
 - Expected "hello", found "hi"
+
+#### `typeof` operator
+
+```ts
+function func(param: any) {
+	if (typeof param === "string") {
+		param satisfies number;
+	}
+}
+```
+
+- Expected number, found string
+
+#### Boolean narrowing
+
+```ts
+function func(param: boolean) {
+	if (param) {
+		param satisfies string
+	}
+}
+```
+
+- Expected string, found true

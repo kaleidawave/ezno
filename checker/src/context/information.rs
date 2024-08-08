@@ -42,7 +42,6 @@ pub struct LocalInformation {
 	/// TODO how will chaining but not cycles work
 	pub(crate) narrowed_values: HashMap<TypeId, TypeId>,
 
-	
 	pub(crate) state: ReturnState,
 
 	/// For super calls etc

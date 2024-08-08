@@ -491,6 +491,9 @@ fn get_logical_callable_from_type(
 			}
 			.into())
 		}
+		Type::Narrowed { narrowed_to, .. } => {
+			get_logical_callable_from_type(*narrowed_to, on, from, types)
+		}
 		Type::AliasTo { to, name: _, parameters } => {
 			if parameters.is_some() {
 				todo!()
@@ -950,7 +953,7 @@ fn mark_possible_mutation(
 			crate::utilities::notify!("Unreachable");
 		}
 		Type::Constant(_) => {}
-		Type::RootPolyType(_) | Type::Constructor(_) => {
+		Type::Narrowed { .. } | Type::RootPolyType(_) | Type::Constructor(_) => {
 			// All dependent anyway
 			crate::utilities::notify!("TODO if any properties set etc");
 		}

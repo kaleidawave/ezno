@@ -396,7 +396,7 @@ pub mod tsc {
 
 	use crate::{
 		diagnostics,
-		types::{subtyping, Constructor, PolyNature, TypeStore},
+		types::{subtyping, Constructor, TypeStore},
 		CheckingData, Environment, Type, TypeId,
 	};
 
@@ -429,8 +429,7 @@ pub mod tsc {
 			// TSC compat around `any`
 			let cast_to = if cast_to == TypeId::ANY_TYPE { TypeId::ERROR_TYPE } else { cast_to };
 
-			// TODO Type::Narrowed
-			Ok(types.register_type(Type::RootPolyType(PolyNature::Open(cast_to))))
+			Ok(types.register_type(Type::Narrowed { narrowed_to: cast_to, from: on }))
 		} else {
 			Err(())
 		}
@@ -475,8 +474,7 @@ pub mod tsc {
 		}
 		let cast_to = get_non_null_type(on, types);
 
-		// TODO Type::Narrowed
-		Ok(types.register_type(Type::RootPolyType(PolyNature::Open(cast_to))))
+		Ok(types.register_type(Type::Narrowed { narrowed_to: cast_to, from: on }))
 	}
 
 	pub fn check_satisfies<T: crate::ReadFromFS, A: crate::ASTImplementation>(
@@ -546,6 +544,7 @@ pub(crate) fn has_property(
 		| Type::PartiallyAppliedGenerics(_)
 		| Type::And(_, _)
 		| Type::SpecialObject(_)
+		| Type::Narrowed { .. }
 		| Type::AliasTo { .. } => {
 			let result = properties::get_property_unbound(
 				(rhs, None),

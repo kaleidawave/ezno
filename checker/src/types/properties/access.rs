@@ -193,6 +193,13 @@ pub(crate) fn get_property_unbound(
 			.map(wrap)
 			.map(LogicalOrValid::Logical)
 			.ok_or(Invalid(on)),
+			Type::Narrowed { narrowed_to, .. } => get_property_on_type_unbound(
+				(*narrowed_to, on_type_arguments),
+				(publicity, under, under_type_arguments),
+				require_both_logical,
+				info_chain,
+				types,
+			),
 			Type::AliasTo { to, .. } => {
 				get_property_on_type_unbound(
 					(*to, on_type_arguments),
@@ -807,7 +814,9 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 
 							Some((PropertyKind::Direct, ty))
 						}
-						Type::Constructor(_) | Type::RootPolyType { .. } => {
+						Type::Narrowed { .. }
+						| Type::Constructor(_)
+						| Type::RootPolyType { .. } => {
 							if let Some(generics) = generics {
 								let arguments = generics.build_substitutable(types);
 								let value =
