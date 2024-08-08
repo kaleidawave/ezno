@@ -78,7 +78,11 @@ pub enum TypeAnnotation {
 	/// KeyOf
 	KeyOf(Box<TypeAnnotation>, Span),
 	TypeOf(Box<VariableOrPropertyAccess>, Span),
-	Infer(String, Span),
+	Infer {
+		name: String,
+		extends: Option<Box<TypeAnnotation>>,
+		position: Span,
+	},
 	/// This is technically a special return type in TypeScript but we can make a superset behavior here
 	Asserts(Box<TypeAnnotation>, Span),
 	Extends {
@@ -115,7 +119,9 @@ pub enum TypeAnnotation {
 	Marker(Marker<TypeAnnotation>, Span),
 }
 
-impl ListItem for TypeAnnotation {}
+impl ListItem for TypeAnnotation {
+	type LAST = ();
+}
 
 #[derive(Debug, Clone, PartialEq)]
 #[apply(derive_ASTNode)]
@@ -263,11 +269,19 @@ impl ASTNode for TypeAnnotation {
 				buf.push_str("typeof ");
 				on.to_string_from_buffer(buf, options, local);
 			}
-			Self::Infer(name, _pos) => {
+			Self::Infer { name, extends, position: _ } => {
 				buf.push_str("infer ");
 				buf.push_str(name.as_str());
+				if let Some(ref extends) = extends {
+					buf.push_str(" extends ");
+					extends.to_string_from_buffer(buf, options, local);
+				}
 			}
-			Self::NamespacedName(..) => todo!(),
+			Self::NamespacedName(from, to, _) => {
+				buf.push_str(from);
+				buf.push('.');
+				buf.push_str(to);
+			}
 			Self::ObjectLiteral(members, _) => {
 				to_string_bracketed(members, ('{', '}'), buf, options, local);
 			}
@@ -350,7 +364,12 @@ impl ASTNode for TypeAnnotation {
 				}
 				buf.push('`');
 			}
-			Self::Symbol { .. } => buf.push_str("symbol"),
+			Self::Symbol { unique, .. } => {
+				if *unique {
+					buf.push_str("unique ");
+				}
+				buf.push_str("symbol");
+			}
 			Self::Extends { item, extends, .. } => {
 				item.to_string_from_buffer(buf, options, local);
 				buf.push_str(" extends ");
@@ -442,8 +461,22 @@ impl TypeAnnotation {
 			Token(TSXToken::Keyword(TSXKeyword::Infer), start) => {
 				let token = reader.next().ok_or_else(parse_lexing_error)?;
 				let (name, position) = token_as_identifier(token, "infer name")?;
-				let position = start.union(position);
-				Self::Infer(name, position)
+				let (position, extends) = if reader
+					.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
+					.is_some()
+				{
+					let extends = TypeAnnotation::from_reader_with_config(
+						reader,
+						state,
+						options,
+						Some(TypeOperatorKind::Query),
+						None,
+					)?;
+					(start.union(extends.get_position()), Some(Box::new(extends)))
+				} else {
+					(start.union(position), None)
+				};
+				Self::Infer { name, extends, position }
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Asserts), start) => {
 				let predicate = TypeAnnotation::from_reader_with_config(
@@ -482,8 +515,8 @@ impl TypeAnnotation {
 				}
 			}
 			t @ Token(TSXToken::Keyword(TSXKeyword::Unique), _) => {
-				let sym_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Symbol))?;
-				let position = t.get_span().union(sym_pos.with_length("symbol".len()));
+				let kw_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Symbol))?;
+				let position = t.get_span().union(kw_pos.with_length("symbol".len()));
 				#[cfg(feature = "extras")]
 				let name =
 					reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
@@ -496,7 +529,7 @@ impl TypeAnnotation {
 						},
 					);
 				Self::Symbol {
-					unique: false,
+					unique: true,
 					position,
 					#[cfg(feature = "extras")]
 					name,
@@ -575,7 +608,7 @@ impl TypeAnnotation {
 				}
 			}
 			Token(TSXToken::OpenChevron, start) => {
-				let (type_parameters, _) =
+				let (type_parameters, _, _) =
 					parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
 				let parameters =
 					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
@@ -596,7 +629,7 @@ impl TypeAnnotation {
 			}
 			// Tuple literal type
 			Token(TSXToken::OpenBracket, start) => {
-				let (members, end) =
+				let (members, _, end) =
 					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
 				let position = start.union(end);
 				Self::TupleLiteral(members, position)
@@ -642,7 +675,7 @@ impl TypeAnnotation {
 					.is_some()
 					.then(|| {
 						parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-							.map(|(params, _items)| params)
+							.map(|(params, _, _)| params)
 					})
 					.transpose()?;
 				let parameters =
@@ -1121,9 +1154,7 @@ impl ASTNode for TupleLiteralElement {
 impl ListItem for TupleLiteralElement {
 	const EMPTY: Option<Self> = None;
 
-	fn allow_comma_after(&self) -> bool {
-		true
-	}
+	type LAST = ();
 }
 
 #[cfg(test)]

@@ -23,12 +23,20 @@ Rather than checking whether types are subtypes of some base type, these are con
 ## Checking a program
 Starts with a list of statements.
 
-Before any of the statements are checked, they are first *hoisted*.
+Before any of the statements and declarations are checked, they are first *hoisted*.
+
+After that the checker performs synthesis and checking. It only visits expressions once, the binding happens at the same time as checking.
 
 ### Hoisting
 Both types and variables can be used before their declaration position in the source. Before checking statements, a group of passes 'lifts' certain information.
 
-There are three stages to hoisting.
+There are three stages to hoisting an item
+
+- Declaring an item
+- Registering it
+- Finishing it?
+
+There are four stages to
 
 (1) Firstly
 - Interface and type alias **names** are declared

@@ -6,15 +6,6 @@ use crate::TypeId;
 #[derive(Default, Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub struct GenericTypeParameters(pub Vec<GenericTypeParameter>);
 
-impl GenericTypeParameters {
-	#[must_use]
-	pub fn as_option(&self) -> Option<()> {
-		todo!()
-		// let borrow = self.0.borrow();
-		// (!borrow.is_empty()).then(|| borrow)
-	}
-}
-
 impl FromIterator<GenericTypeParameter> for GenericTypeParameters {
 	fn from_iter<T: IntoIterator<Item = GenericTypeParameter>>(iter: T) -> Self {
 		Self(iter.into_iter().collect())

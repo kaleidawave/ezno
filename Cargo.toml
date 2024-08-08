@@ -46,6 +46,7 @@ enum-variants-strings = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simple-json-parser = "0.0.2"
+glob = "0.3"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # For updating binary
@@ -78,16 +79,20 @@ js-sys = "0.3"
 tsify = "0.4.5"
 
 [workspace.lints.clippy]
-all = "deny"
-pedantic = "deny"
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
 cast_precision_loss = "warn"
 cast_possible_truncation = "warn"
 cast_sign_loss = "warn"
 default_trait_access = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
-implicit_hasher = "allow"
 module_name_repetitions = "allow"
 too_many_lines = "allow"
 new_without_default = "allow"
 result_unit_err = "allow"
+thread_local_initializer_can_be_made_const = "allow"
+implicit_hasher = "allow"
+
+[profile.dev]
+debug = false

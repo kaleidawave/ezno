@@ -274,7 +274,7 @@ pub(crate) fn parse_import_specifier_and_parts(
 		let end = under.get_position().get_end();
 		(ImportedItems::All { under }, end)
 	} else if let Some(Token(TSXToken::OpenBrace, _)) = peek {
-		let (parts, end) = parse_bracketed::<ImportPart>(
+		let (parts, _, end) = parse_bracketed::<ImportPart>(
 			reader,
 			state,
 			options,
@@ -322,7 +322,9 @@ pub enum ImportPart {
 	),
 }
 
-impl ListItem for ImportPart {}
+impl ListItem for ImportPart {
+	type LAST = ();
+}
 
 impl ASTNode for ImportPart {
 	fn get_position(&self) -> Span {

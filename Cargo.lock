@@ -270,6 +270,7 @@ dependencies = [
  "enum-variants-strings",
  "ezno-checker",
  "ezno-parser",
+ "glob",
  "js-sys",
  "multiline-term-input",
  "native-tls",
@@ -307,6 +308,7 @@ dependencies = [
  "ezno-parser",
  "iterator-endiate",
  "levenshtein",
+ "match_deref",
  "ordered-float",
  "path-absolutize",
  "serde",
@@ -426,6 +428,12 @@ checksum = "3931371c1191271ed6608fb4ac821fbab479f0defa5b1d85cdc756736209225c"
 dependencies = [
  "syn-helpers",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
 name = "gloo-utils"

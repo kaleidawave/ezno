@@ -3,19 +3,18 @@
 
 ### Types
 
-#### Resolving value by property on dependent
+#### Array slice matching pattern
 
 ```ts
-function getProperty(property: "a" | "b" | "c") {
-	return { a: 1, b: 2, c: 3 }[property]
-}
+type Head<T> = T extends [infer H, ...Array<any>] ? H : never;
 
-getProperty("d")
-getProperty("c") satisfies 2
+type Tail<T> = T extends [any, ...infer Tail] ? Tail : [];
+
+1 satisfies Head<[1, 2, 3, 4, 5]>;
+[2, 3, 4, 5] satisfies Tail<[1, 2, 3, 4, 5]>;
 ```
 
-- Expected "a" | "b" | "c" found "d"
-- Expected 2 found 3
+- Expected 1, found 2
 
 #### Generic type argument restriction
 
@@ -56,21 +55,31 @@ print_type(mapper)
 
 - TODO
 
-#### Function calling
+#### Calling or
 
-#### Calling on or type
+> *Calling* is distributive `(A | B)()` -> `A() | B()`
 
 ```ts
-type Func1 = () => 3;
-type Func2 = () => 2;
-function callFunc<T, U>(func: (() => T) | (() => U)): 3 | 2 {
-	return func()
-}
+function a(p: string) { return 2 }
+function b(p: string) { return 4 }
 
-print_type(callFunc)
+function c(c: boolean) {
+	const func = c ? a : b;
+	const result = func()
+	result satisfies string;
+	return result
+}
 ```
 
-- Expected "a" | "b" | "c" found "d"
+- Expected string, found 2 | 4
+
+#### Setter or
+
+```ts
+TODO
+```
+
+- Expected string, found 2 | 4
 
 #### Getter and setter through function
 
@@ -92,6 +101,29 @@ x({ get b() { return 2 } })
 ```
 
 - Expected string, found 5
+
+#### Spread object constraint
+
+```ts
+let { a, ...x }: { a: number, b: string } =  { a: "hi", b: "hello" };
+x = 1;
+```
+
+- 1 is not assignable to { b: string }
+
+#### Known symbol inference & checking
+
+> #TODO extra
+
+```ts
+class X {
+	[Symbol.iterator]() {
+		return {}
+	}
+}
+```
+
+- ?
 
 ### Imports
 
@@ -176,22 +208,6 @@ function func(array: Array<string>) {
 ```
 
 - Expected number found string
-
-#### Order of properties
-
-> TODO this is because setting properties are simply appended. There are two straightforward fixes, but I am unsure which one is better...
-
-```ts
-const obj = { a: 1, b: 2 };
-obj.a = 2; obj.c = 6; obj.b = 4;
-let properties: string = "";
-for (const property in obj) {
-	properties += property;
-}
-properties satisfies boolean;
-```
-
-- Expected boolean, found "abc"
 
 ### Inference
 
@@ -334,10 +350,6 @@ function x*() {
 
 - TODO
 
-### `Proxy` and `Object`
-
-> TODO effects, different traps and `Object.defineProperty`
-
 ### Collections
 
 #### `Array.fill`
@@ -366,6 +378,144 @@ declare let aNumber: number;
 ```
 
 - Expected string, found boolean
+
+#### Array filter
+
+```ts
+[1, 2, 3].filter(x => x % 2 == 0) satisfies [2];
+```
+
+- ?
+
+#### Array slice
+
+```ts
+[1, 2, 3, 4, 5].slice(3) satisfies something;
+```
+
+- ?
+
+#### Array splice
+
+```ts
+const array = [1, 2, 3, 4, 5];
+array.splice(2);
+array satisfies something;
+```
+
+- ?
+
+#### Array shift and unshift
+
+```ts
+const array = [1, 2, 3];
+array.shift() satisfies not1;
+```
+
+- ?
+
+#### Array copying methods
+
+```ts
+// toReversed
+// with
+```
+
+- ?
+
+#### Array find & index of
+
+```ts
+// indexOf
+// lastIndexOf
+// find
+// findIndexOf
+```
+
+- ?
+
+#### Array constructor
+
+```ts
+new Array({ length: 5 }, (_, i) => i) satisfies string
+```
+
+- ?
+
+#### Array `concat` and spread push
+
+```ts
+// concat()
+// push(...x)
+```
+
+- ?
+
+#### Array values and entries
+
+> Iterators
+
+```ts
+const x =[1, 2, 3].values();
+```
+
+- ?
+
+#### Array flat
+
+```ts
+// flatten
+// flatMap
+```
+
+- ?
+
+#### Array reducers
+
+> May be hard bc reversed generics order
+
+```ts
+// reduce
+// reduceRight
+```
+
+- ?
+
+#### Map `set` and `get`
+
+```ts
+const x = new Map();
+x.set(4, 2);
+x.set(4, 3);
+x.get(4) satisfies 2;
+x.get(2) satisfies string;
+```
+
+- Expected 2, found 3
+- Expected string, found undefined
+
+#### Map `items`
+
+```ts
+const x = new Map();
+x.items()
+```
+
+- ?
+
+#### Map generics
+
+```ts
+const x: Map<number, string> = new Map();
+x.set(4, false);
+
+const y = new Map();
+y.set(6, 2);
+y.set(4, "hi");
+y satisfies string;
+```
+
+- Expected string, found Map<6 | 4, 2 | "hi">
 
 ### Expressions
 
@@ -416,33 +566,6 @@ declare const global: { a?: string };
 
 - Expected string, found boolean
 - Expected 2, found string | undefined
-
-#### Delete from required propertied
-
-```ts
-declare let global: { a?: string, b: string };
-
-// Fine
-delete global.a;
-// Bad
-delete global.b;
-```
-
-- Cannot delete property "b" off { a?: string, b: string }
-
-#### Optional property access
-
-```ts
-interface X {
-    possibly?: string
-}
-
-declare let x: X;
-
-x?.possibly satisfies number;
-```
-
-- Expected string, found string | undefined
 
 ### Runtime
 
@@ -517,6 +640,21 @@ class Rectangle implements Draw {
 - Class "MyNumber", does not implement draw
 - Expected string, found CanvasRenderingContext2D
 
+#### Via effect
+
+```ts
+function newClass(property, value) {
+	return class {
+		[property] = value
+	}
+}
+
+new (newClass("hello", 2)).hello satisfies 2;
+new (newClass("hi", 6)).hi satisfies string;
+```
+
+- Expected string, found 6
+
 ### Recursion
 
 #### Application
@@ -571,18 +709,6 @@ a satisfies 3; b satisfies string;
 
 ### Functions
 
-#### No generics
-
-```ts
-function id(a) { return a }
-
-id<5>(4)
-```
-
-- Cannot pass generic arguments to function without generic arguments
-
-> Or at least explicit generic arguments
-
 #### Method overloading
 
 ```ts
@@ -633,63 +759,211 @@ function optionalNumber(n: number | undefined): string {
 
 - Cannot return string, found number | 2
 
-### Mapped types
-
-#### Specialisation
+#### Equality
 
 ```ts
-type Pick<T, K extends keyof T> = {
-    [P in K]: T[P];
-};
-
-interface X { a: number, b: string, c: string }
-
-const x: Pick<X, "a"> = { a: 5 };
-
-({ b: "string" }) satisfies Pick<X, "a">;
-```
-
-- TODO
-
-#### Optional
-
-```ts
-type Partial<T> = {
-    [P in keyof T]?: T[P];
-};
-
-const x: Partial<{ a: number, b: string }> = { a: 3 },
-      y: Partial<{ a: number, b: string }> = { a: "hi" }
-```
-
-- Cannot assign { a: "hi" }
-
-#### Negated
-
-```ts
-type Required<T> = {
-    [P in keyof T]-?: T[P];
-};
-
-const x: Required<{ a?: number }> = { a: 3 },
-      y: Required<{ a?: number }> = { };
-```
-
-- Cannot assign { } to required
-
-### Readonly and `as const`
-
-> TODO constrained inference
-
-#### Readonly parameter
-
-```ts
-function x(p: readonly { a: string }) {
-    p.a = 5;
+declare let a: string;
+if (a === "hi") {
+	a satisfies "hello"
 }
 ```
 
-- Cannot assign to immutable property
+- Expected "hello", found "hi"
+
+#### Condition as a function
+
+```ts
+declare let a: string;
+
+const equalsHi = (p: string) => p === "hi";
+
+if (equalsHi(a)) {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Passed around
+
+```ts
+declare let a: string;
+
+const b = a;
+if (b === "hi") {
+	a satisfies "hello"
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Optional property access
+
+```ts
+interface X {
+    a: string
+    b: string
+}
+
+declare let x: X | null;
+
+x.a;
+x?.b satisfies number;
+```
+
+- Cannot get 'a' on null
+- Expected number, found string
+
+### Generics
+
+#### Out of order generics
+
+```ts
+function func<T>(cb: (t: T) => number, value: T) { }
+
+func(cb => { cb satisfies boolean }, "hi")
+```
+
+- Expected boolean, found "hi"
+
+### Broken
+
+> Was working, now broken (or removed)
+
+#### Readonly property
+
+> Should be working but parser current wraps `a` as `Readonly<string>` :(
+
+```ts
+function x(p: { readonly a: string, b: string }) {
+    p.a = "hi";
+	p.b = "hi";
+}
+```
+
+- Cannot write to property 'a'
+
+#### Destructuring using iterator
+
+```ts
+const [a, b, c] = {
+	[Symbol.iterator]() {
+		return {
+			count: 0,
+			next(this: { count: number }) {
+				return { value: this.count++, done: false }
+			}
+		}
+	}
+}
+
+a satisfies 0; b satisfies string;
+```
+
+- Expected string, found 1
+
+#### Always known math
+
+```ts
+function func(a: number) { return a ** 0 }
+
+print_type(func)
+
+declare let x: NotNotANumber;
+
+print_type(x ** 1 === x)
+```
+
+- Expected string, found 1
+- True
+
+#### Less than checks
+
+```ts
+function x(a: GreaterThan<4>) {
+	(a < 3) satisfies false;
+	(a < 10) satisfies string;
+}
+```
+
+- Expected string, found boolean
+
+#### Tagged template literal
+
+> Waiting for parser definition updated to make this easier
+
+```ts
+function myTag(static_parts: Array<string>, other: string) {
+	return { static_parts, other }
+}
+
+const name = "Ben";
+myTag`${name}Hello ` satisfies string
+```
+
+- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
+
+### Control flow
+
+#### Conditional break
+
+```ts
+function getNumber(a: number) {
+	for (let i = 0; i < 10; i++) {
+		if (i === a) {
+			return "found"
+		}
+	}
+	return "not-found"
+}
+
+getNumber(4) satisfies "found";
+getNumber(100) satisfies boolean;
+```
+
+- Expected boolean, found "not-found"
+
+#### *Inconclusive* conditional update
+
+```ts
+declare var value: string;
+let a: string | number = 0;
+
+function conditional(v: string) {
+	if (v === "value") {
+		a = "hi"
+	}
+}
+conditional(value);
+a satisfies string;
+```
+
+- Expected string, found "hi" | 0
+
+#### Break with label
+
+> Note the numbers here, if they are larger they break over the `max_inline` limit and get different results below
+
+```ts
+let a: number = 0;
+let result;
+
+top: while (a++ < 8) {
+	let b: number = 0;
+	while (b++ < 8) {
+		if (a === 3 && b === 2) {
+			result = a * b;
+			break top
+		}
+	}
+}
+
+a satisfies string;
+result satisfies boolean;
+```
+
+- Expected string, found 3
+- Expected boolean, found 6
 
 ### Closures
 
@@ -764,97 +1038,46 @@ x.a = "hi"
 
 - Cannot assign. Restricted to number
 
-### Exceptions and `try-catch-finally`
+### Others
 
-#### Conditional throw
-
-> This emits a warning if a throw was created in a conditional branch
+#### Pure getter assignment
 
 ```ts
-// no complex numbers :(
-function checkedLn(x: number) {
-    if (x > 0) {
-        return Math.log(x)
-    } else {
-        throw new Exception("Cannot log long string")
-    }
+function func(p: Pure<{ prop: number }>) {
+	p.prop = 2;
+	p.prop satisfies string;	
 }
-
-// Fine
-try { checkedLn(Math.E ** 3) satisfies 3 } catch {}
-// Will throw
-try { checkedLn(-5) } catch {}
 ```
 
-- Conditional 'Exception' was thrown in function
+- Expected string, found 2
 
-### Broken
+#### Deep readonly
 
-> Was working, now not
-
-#### `find` and `includes`
-
-> TODO other arguments (index and `this`). and poly
+> TODO implement use mapped type `T & { [P in keyof T]: Readonly<T[P]> }`
 
 ```ts
-[1, 2, 3].find(x => x % 2 === 0) satisfies 4;
-
-// [1, 2, 3].includes(6) satisfies string;
+declare const obj: DeepReadonly<{ a: { b: { c: 2 } } };
+obj.a.b.c = 2;
 ```
 
-- Expected 4, found 2
-<!-- - Expected string, found false -->
+- Cannot assign to readonly
 
-#### Conditional return type inference
+#### Conditionality destructuring from poly
 
 ```ts
-function func(a: boolean) {
-	if (a) {
-		return 2
-	}
-}
-
-func satisfies (a: boolean) => 5;
+declare let x: { a?: 1 }; // also { a: 1 } | { b: 2 }
+let { a = 2 } = x;
+a satisfies 3;
 ```
 
-- Expected (a: boolean) => 5, found (a: boolean) => 2 | undefined
+- Expected 3, found 1 | 2
 
-#### *Inconclusive* conditional update
+### RegExp
+
+#### Regexp patterns
 
 ```ts
-declare var value: string;
-let a: string | number = 0;
-
-function conditional(v: string) {
-	if (v === "value") {
-		a = "hi"
-	}
-}
-conditional(value);
-a satisfies string;
+new RegExp("<string>x").group.string
 ```
 
-- Expected string, found "hi" | 0
-
-#### Break with label
-
-```ts
-let a: number = 0;
-let result;
-
-top: while (a++ < 10) {
-	let b: number = 0;
-	while (b++ < 10) {
-		if (a === 3 && b === 2) {
-			result = a * b;
-			break top
-		}
-	}
-}
-
-a satisfies string;
-result satisfies boolean;
-```
-
-- Expected string, found 3
-- Expected boolean, found 6
+- ?

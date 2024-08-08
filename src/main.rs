@@ -1,5 +1,3 @@
-#![deny(clippy::all)]
-#![deny(clippy::pedantic)]
 #![allow(
     clippy::new_without_default,
     // TODO: Remove when fixed

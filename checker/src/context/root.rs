@@ -1,11 +1,14 @@
-use super::{ClosedOverReferencesInScope, Context, ContextId, ContextType};
+use super::{
+	ClosedOverReferencesInScope, Context, ContextId, ContextType, Environment, GeneralContext,
+	LocalInformation,
+};
 use crate::{
 	features::{
 		modules::{Exported, SynthesisedModule},
 		variables::VariableOrImport,
 	},
 	types::TypeId,
-	CheckingData, Environment, GeneralContext,
+	CheckingData,
 };
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator, mem};
@@ -32,8 +35,6 @@ impl ContextType for Root {
 		None
 	}
 }
-
-const _CONTEXT_FILE_HEADER: &[u8] = b"EZNO\0CONTEXT\0FILE";
 
 impl RootContext {
 	/// Merges two [`RootEnvironments`]. May be used for multiple `.d.ts` files
@@ -68,16 +69,29 @@ impl RootContext {
 			("object".to_owned(), TypeId::OBJECT_TYPE),
 			("Literal".to_owned(), TypeId::LITERAL_RESTRICTION),
 			("Readonly".to_owned(), TypeId::READONLY_RESTRICTION),
+			("Exclusive".to_owned(), TypeId::EXCLUSIVE_RESTRICTION),
+			("Uppercase".to_owned(), TypeId::STRING_UPPERCASE),
+			("Lowercase".to_owned(), TypeId::STRING_LOWERCASE),
+			("Capitalize".to_owned(), TypeId::STRING_CAPITALIZE),
+			("Uncapitalize".to_owned(), TypeId::STRING_UNCAPITALIZE),
+			("NoInfer".to_owned(), TypeId::NO_INFER),
+			("LessThan".to_owned(), TypeId::LESS_THAN),
+			("GreaterThan".to_owned(), TypeId::GREATER_THAN),
+			("MultipleOf".to_owned(), TypeId::MULTIPLE_OF),
+			("NotNotANumber".to_owned(), TypeId::NOT_NOT_A_NUMBER),
+			("Not".to_owned(), TypeId::NOT_RESTRICTION),
+			("CaseInsensitive".to_owned(), TypeId::CASE_INSENSITIVE),
 		]);
 
-		let mut info = crate::LocalInformation::default();
+		let mut info = LocalInformation::default();
 
-		// Add undefined
+		// Add undefined as a variable
 		let variables = {
 			let variable_or_import = VariableOrImport::Variable {
 				mutability: crate::features::variables::VariableMutability::Constant,
 				declared_at: source_map::Nullable::NULL,
 				context: None,
+				allow_reregistration: false,
 			};
 			let undefined_id = variable_or_import.get_id();
 			let variables = [("undefined".to_owned(), variable_or_import)];

@@ -175,6 +175,7 @@ impl tokenizer_lib::TokenTrait for TSXToken {
 }
 
 impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
+	#[allow(clippy::cast_possible_truncation)]
 	fn length(&self) -> u32 {
 		match self {
 			TSXToken::Keyword(kw) => kw.length(),
@@ -355,6 +356,7 @@ impl TSXKeyword {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
 
+	#[allow(clippy::cast_possible_truncation)]
 	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
 	}
@@ -405,7 +407,7 @@ impl TSXToken {
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
-			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::Await)
+			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::In | TSXKeyword::Of | TSXKeyword::Await)
 				| TSXToken::Arrow
 				// for `const x = 2; /something/g`
 				| TSXToken::SemiColon
@@ -417,6 +419,9 @@ impl TSXToken {
 				| TSXToken::LogicalNot
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
+				| TSXToken::BitwiseNot
+				| TSXToken::BitwiseAnd
+				| TSXToken::BitwiseOr
 				| TSXToken::Multiply
 				| TSXToken::Add
 				| TSXToken::Subtract

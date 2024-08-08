@@ -170,7 +170,7 @@ impl ASTNode for ExportDeclaration {
 					state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
 					let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
-					let (parts, _end) = crate::parse_bracketed::<ExportPart>(
+					let (parts, _, _end) = crate::parse_bracketed::<ExportPart>(
 						reader,
 						state,
 						options,
@@ -213,7 +213,7 @@ impl ASTNode for ExportDeclaration {
 				});
 				if let Some(Token(token_type, _)) = after_bracket {
 					if let TSXToken::Keyword(TSXKeyword::From) = token_type {
-						let (parts, _end) = crate::parse_bracketed::<ExportPart>(
+						let (parts, _, _end) = crate::parse_bracketed::<ExportPart>(
 							reader,
 							state,
 							options,
@@ -234,7 +234,7 @@ impl ASTNode for ExportDeclaration {
 							position: start.union(end),
 						})
 					} else {
-						let (parts, end) = crate::parse_bracketed::<ExportPart>(
+						let (parts, _, end) = crate::parse_bracketed::<ExportPart>(
 							reader,
 							state,
 							options,
@@ -405,7 +405,9 @@ pub enum ExportPart {
 	),
 }
 
-impl ListItem for ExportPart {}
+impl ListItem for ExportPart {
+	type LAST = ();
+}
 
 impl ASTNode for ExportPart {
 	fn get_position(&self) -> Span {

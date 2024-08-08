@@ -34,6 +34,8 @@ mod specification {
 const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
 // const SIMPLE_DTS: Option<&str> = None;
 
+const IN_CI: bool = option_env!("CI").is_some();
+
 /// Called by each test
 fn check_errors(
 	heading: &'static str,
@@ -63,31 +65,37 @@ fn check_errors(
 	// eprintln!("{:?}", code);
 
 	// let result = panic::catch_unwind(|| {
-	eprintln!("{:?}", std::env::current_dir());
+
+	if IN_CI {
+		eprintln!("::group::Running {heading}");
+	}
+
 	let definition_file_name: PathBuf = if SIMPLE_DTS.is_some() {
 		"./checker/definitions/simple.d.ts".into()
 	} else {
 		checker::INTERNAL_DEFINITION_FILE_PATH.into()
 	};
-	let type_definition_files = std::iter::once(definition_file_name.clone()).collect();
+	let type_definition_files = vec![definition_file_name.clone()];
+
+	let resolver = |path: &Path| -> Option<Vec<u8>> {
+		if path == definition_file_name.as_path() {
+			Some(SIMPLE_DTS.unwrap().to_owned().into_bytes())
+		} else if code.len() == 1 {
+			Some(code[0].1.to_owned().into())
+		} else {
+			code.iter()
+				.find_map(|(code_path, content)| {
+					(std::path::Path::new(code_path) == path)
+						.then_some(content.to_owned().to_owned())
+				})
+				.map(Into::into)
+		}
+	};
 
 	let result = checker::check_project::<_, EznoParser>(
 		vec![PathBuf::from("main.tsx")],
 		type_definition_files,
-		|path: &Path| -> Option<Vec<u8>> {
-			if path == definition_file_name.as_path() {
-				Some(SIMPLE_DTS.unwrap().to_owned().into_bytes())
-			} else if code.len() == 1 {
-				Some(code[0].1.to_owned().into())
-			} else {
-				code.iter()
-					.find_map(|(code_path, content)| {
-						(std::path::Path::new(code_path) == path)
-							.then_some(content.to_owned().to_owned())
-					})
-					.map(Into::into)
-			}
-		},
+		resolver,
 		type_check_options,
 		(),
 		None,
@@ -110,6 +118,10 @@ fn check_errors(
 			}
 		})
 		.collect();
+
+	if IN_CI {
+		eprintln!("::endgroup::");
+	}
 
 	if diagnostics != expected_diagnostics {
 		panic!(

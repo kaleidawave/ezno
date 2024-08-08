@@ -24,7 +24,7 @@ pub struct TypeCheckOptions {
 	pub debug_types: bool,
 
 	/// Enables `as` casts
-	pub allow_cast: bool,
+	pub allow_type_casts: bool,
 
 	/// For post type check optimisations and LSP. Stores both expressions and type annotations
 	pub store_type_mappings: bool,
@@ -37,6 +37,21 @@ pub struct TypeCheckOptions {
 
 	/// Can be used for linting
 	pub record_all_assignments_and_reads: bool,
+
+	/// Technically the `i` in `for (let i = 0; i < ...)` can be reassigned to `any` type. But this behavior isn't great
+	/// and adds work for the inference engine. So this instead picks a basic type instead. This will
+	/// raise errors in valid javascript
+	pub infer_sensible_constraints_in_for_loops: bool,
+
+	/// Evaluate exports to detect dead code
+	pub evaluate_exports: bool,
+
+	pub max_inline_count: u16,
+
+	pub measure_time: bool,
+
+	/// Printing internal diagnostics in dts
+	pub debug_dts: bool,
 }
 
 impl Default for TypeCheckOptions {
@@ -52,8 +67,13 @@ impl Default for TypeCheckOptions {
 			store_type_mappings: false,
 			lsp_mode: false,
 			record_all_assignments_and_reads: false,
+			infer_sensible_constraints_in_for_loops: true,
 			// TODO false at some point hopefully!
-			allow_cast: true,
+			allow_type_casts: true,
+			evaluate_exports: false,
+			max_inline_count: 300,
+			measure_time: false,
+			debug_dts: false,
 		}
 	}
 }

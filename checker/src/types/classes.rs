@@ -102,6 +102,6 @@ pub(crate) fn register_properties_into_environment<
 		} else {
 			PropertyValue::Value(TypeId::UNDEFINED_TYPE)
 		};
-		environment.info.register_property(on, publicity, key, value, true, position);
+		environment.info.register_property(on, publicity, key, value, position);
 	}
 }

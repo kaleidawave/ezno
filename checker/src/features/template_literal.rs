@@ -2,11 +2,13 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::invocation::CheckThings,
-	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	types::{
-		calling::{application_result_to_return_type, CallingInput},
-		cast_as_string, SynthesisedArgument, TypeStore,
+		calling::{
+			application_result_to_return_type, Callable, CallingContext, CallingInput,
+			SynthesisedArgument,
+		},
+		cast_as_string, TypeStore,
 	},
 	CheckingData, Constant, Environment, Type, TypeId,
 };
@@ -76,12 +78,12 @@ where
 				p @ TemplateLiteralPart::Static(_) => {
 					let value = part_to_type(p, environment, checking_data);
 					static_parts.append(
-						environment,
 						crate::types::properties::Publicity::Public,
 						crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
 						crate::PropertyValue::Value(value),
 						// TODO should static parts should have position?
 						position,
+						&mut environment.info,
 					);
 					static_part_count += 1;
 				}
@@ -109,11 +111,11 @@ where
 
 			// TODO: Should there be a position here?
 			static_parts.append(
-				environment,
 				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::String("length".into()),
 				crate::types::properties::PropertyValue::Value(length),
 				position,
+				&mut environment.info,
 			);
 		}
 
@@ -132,27 +134,23 @@ where
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
 			call_site: position,
-			call_site_type_arguments: None,
+			max_inline: checking_data.options.max_inline_count,
 		};
-		match crate::types::calling::call_type(
-			tag,
+		let mut diagnostics = Default::default();
+		let result = Callable::Type(tag).call(
 			arguments,
-			&input,
+			input,
 			environment,
-			&mut check_things,
+			(&mut check_things, &mut diagnostics),
 			&mut checking_data.types,
-		) {
+		);
+		diagnostics
+			.append_to(CallingContext::TemplateLiteral, &mut checking_data.diagnostics_container);
+		match result {
 			Ok(res) => {
 				application_result_to_return_type(res.result, environment, &mut checking_data.types)
 			}
-			Err(error) => {
-				error.errors.into_iter().for_each(|error| {
-					checking_data
-						.diagnostics_container
-						.add_error(TypeCheckError::TemplateLiteralError(error));
-				});
-				error.returned_type
-			}
+			Err(error) => error.returned_type,
 		}
 	} else {
 		// Bit weird but makes Rust happy
