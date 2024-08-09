@@ -775,15 +775,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push_str(" }");
 			}
-			SpecialObject::RegularExpression { content, .. } => {
-				// TODO flags
-				if let Type::Constant(crate::Constant::String(name)) =
-					types.get_type_by_id(*content)
-				{
-					write!(buf, "/{name}/").unwrap();
-				} else {
-					buf.push_str("RegExp");
-				}
+			SpecialObject::RegularExpression(exp) => {
+				buf.push_str(exp.source());
 			}
 			SpecialObject::Function(..) => unreachable!(),
 		},

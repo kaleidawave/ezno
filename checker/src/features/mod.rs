@@ -16,6 +16,7 @@ pub mod iteration;
 pub mod modules;
 pub mod objects;
 pub mod operations;
+pub mod regexp;
 pub mod template_literal;
 pub mod variables;
 

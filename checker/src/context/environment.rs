@@ -1366,6 +1366,9 @@ impl<'a> Environment<'a> {
 					"Boolean" => {
 						return Ok(TypeId::BOOLEAN_TYPE);
 					}
+					"RegExp" => {
+						return Ok(TypeId::REGEXP_TYPE);
+					}
 					"Function" => {
 						return Ok(TypeId::FUNCTION_TYPE);
 					}

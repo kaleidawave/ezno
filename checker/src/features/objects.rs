@@ -61,10 +61,7 @@ pub enum SpecialObject {
 	/// Needs overrides for calling, getting etc
 	Proxy(Proxy),
 	/// Not a [Constant] as `typeof /hi/ === "object"` and it has state
-	RegularExpression {
-		content: TypeId,
-		// groups: Option<TypeId>,
-	},
+	RegularExpression(super::regexp::RegExp),
 	/// This cannot be a regular object because of is because of let mutations
 	Import(super::modules::Exported),
 	/// Yeah here. Also for classes
