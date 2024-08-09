@@ -1,16 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::Map as SmallMap;
-use source_map::{Span, SpanWithSource};
+use crate::{features::regexp::RegExp, types::intrinsics::Intrinsic, Constant, Map as SmallMap};
+use source_map::{Nullable, Span, SpanWithSource};
 
 use crate::{
-	context::Logical,
-	features::{
-		functions::{ClosureId, FunctionBehavior},
-		objects::SpecialObjects,
-		regexp::RegExp,
+	features::{functions::ClosureId, objects::SpecialObject},
+	types::{
+		functions::{FunctionBehavior, FunctionType},
+		logical::{Logical, LogicalOrValid},
+		PolyNature, Type,
 	},
-	types::{FunctionType, PolyNature, Type},
 	Environment, FunctionId, TypeId,
 };
 
@@ -28,22 +27,10 @@ pub struct TypeStore {
 	/// Some types are prototypes but have generic parameters but
 	pub(crate) lookup_generic_map: HashMap<TypeId, LookUpGenericMap>,
 
-	/// Set after the interface [`Type`] is created, so here
-	/// TODO private
-	pub(crate) interface_extends: HashMap<TypeId, TypeId>,
-
-	/// Set after the interface [`Type`] is created, so here
-	interface_type_parameter_extends: HashMap<TypeId, TypeId>,
-
 	/// Contains all the function types
 	///
 	/// TODO is there a faster alternative to a [`HashMap`] like how [`Type`]s are stored in a [`Vec`]
 	pub(crate) functions: HashMap<FunctionId, FunctionType>,
-
-	// TODO
-	pub(crate) _dependent_dependencies: HashMap<TypeId, HashSet<TypeId>>,
-	// TODO
-	pub(crate) _specialisations: HashMap<TypeId, Vec<TypeId>>,
 
 	/// can be used for tree shaking
 	pub called_functions: HashSet<FunctionId>,
@@ -58,36 +45,39 @@ impl Default for TypeStore {
 		let types = vec![
 			// TODO will `TypeId::ANY_TYPE` cause any problems
 			Type::RootPolyType(PolyNature::Error(TypeId::ANY_TYPE)),
-			Type::Interface { name: "never".to_owned(), parameters: None, nominal: true },
-			Type::Interface { name: "any".to_owned(), parameters: None, nominal: true },
-			Type::Class { name: "boolean".to_owned(), parameters: None },
-			Type::Class { name: "number".to_owned(), parameters: None },
-			Type::Class { name: "string".to_owned(), parameters: None },
-			Type::Constant(crate::Constant::Undefined),
-			Type::Constant(crate::Constant::Null),
+			Type::Interface { name: "never".to_owned(), parameters: None, extends: None },
+			Type::Interface { name: "any".to_owned(), parameters: None, extends: None },
+			Type::Class { name: "boolean".to_owned(), type_parameters: None },
+			Type::Class { name: "number".to_owned(), type_parameters: None },
+			Type::Class { name: "string".to_owned(), type_parameters: None },
+			// sure?
+			Type::Interface { name: "undefined".to_owned(), parameters: None, extends: None },
+			Type::SpecialObject(SpecialObject::Null),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
-			Type::Class { name: "Array".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
-			Type::Class { name: "Promise".to_owned(), parameters: Some(vec![TypeId::T_TYPE]) },
+			Type::Class { name: "Array".to_owned(), type_parameters: Some(vec![TypeId::T_TYPE]) },
+			Type::Class { name: "Promise".to_owned(), type_parameters: Some(vec![TypeId::T_TYPE]) },
 			// Array and Promise type parameter. Simplifies things
 			Type::RootPolyType(PolyNature::StructureGeneric {
 				name: "T".into(),
-				constrained: false,
+				extends: TypeId::ANY_TYPE,
 			}),
-			Type::Interface { name: "object".to_owned(), parameters: None, nominal: false },
-			Type::Class { name: "Function".to_owned(), parameters: None },
-			Type::Class { name: "RegExp".to_owned(), parameters: None },
+			Type::Interface { name: "object".to_owned(), parameters: None, extends: None },
+			Type::Class { name: "Function".to_owned(), type_parameters: None },
+			Type::Class { name: "RegExp".to_owned(), type_parameters: None },
 			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 			// true
-			Type::Constant(crate::Constant::Boolean(true)),
+			Type::Constant(Constant::Boolean(true)),
 			// false
-			Type::Constant(crate::Constant::Boolean(false)),
+			Type::Constant(Constant::Boolean(false)),
 			// zero
-			Type::Constant(crate::Constant::Number(0.into())),
+			Type::Constant(Constant::Number(0.into())),
 			// one
-			Type::Constant(crate::Constant::Number(1.into())),
+			Type::Constant(Constant::Number(1.into())),
 			// NaN
-			Type::Constant(crate::Constant::NaN),
+			Type::Constant(Constant::NaN),
+			// ""
+			Type::Constant(Constant::String(String::new())),
 			// inferred this free variable shortcut
 			Type::RootPolyType(PolyNature::FreeVariable {
 				reference: crate::events::RootReference::This,
@@ -96,18 +86,41 @@ impl Default for TypeStore {
 			Type::RootPolyType(PolyNature::FunctionGeneric {
 				name: "new.target".to_owned(),
 				// TODO
-				eager_fixed: TypeId::ANY_TYPE,
+				extends: TypeId::ANY_TYPE,
 			}),
-			// TODO Symbols, needs Constant::Symbol
+			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, extends: None },
+			Type::Constant(Constant::Symbol { key: "iterator".to_owned() }),
+			Type::Constant(Constant::Symbol { key: "asyncIterator".to_owned() }),
+			Type::Constant(Constant::Symbol { key: "hasInstance".to_owned() }),
+			Type::Constant(Constant::Symbol { key: "toPrimitive".to_owned() }),
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "S".into(),
+				extends: TypeId::STRING_TYPE,
+			}),
 			Type::AliasTo {
-				name: "SymbolToPrimitive".into(),
-				to: TypeId::ANY_TYPE,
-				parameters: None,
+				to: TypeId::STRING_TYPE,
+				name: "Uppercase".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
 			},
-			// TODO WIP
 			Type::AliasTo {
-				name: "Literal".into(),
+				to: TypeId::STRING_TYPE,
+				name: "Lowercase".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Capitalize".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::STRING_TYPE,
+				name: "Uncapitalize".into(),
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
+			// Yeah
+			Type::AliasTo {
 				to: TypeId::T_TYPE,
+				name: "NoInfer".into(),
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
 			Type::AliasTo {
@@ -115,7 +128,63 @@ impl Default for TypeStore {
 				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
 			},
-			Type::Interface { name: "ImportMeta".to_owned(), parameters: None, nominal: false },
+			Type::RootPolyType(PolyNature::MappedGeneric {
+				name: "NonOptional".into(),
+				extends: TypeId::BOOLEAN_TYPE,
+			}),
+			Type::RootPolyType(PolyNature::MappedGeneric {
+				name: "Writable".into(),
+				extends: TypeId::BOOLEAN_TYPE,
+			}),
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "T".into(),
+				extends: TypeId::NUMBER_TYPE,
+			}),
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "LessThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "GreaterThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			Type::AliasTo {
+				to: TypeId::NUMBER_TYPE,
+				name: "MultipleOf".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+			},
+			// Intermediate for the below
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::NOT_RESTRICTION,
+				arguments: GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+					TypeId::T_TYPE,
+					(TypeId::NAN, SpanWithSource::NULL),
+				)])),
+			}),
+			Type::And(TypeId::NUMBER_TYPE, TypeId::NOT_NOT_A_NUMBER),
+			// TODO WIP
+			Type::AliasTo {
+				name: "Literal".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "Exclusive".into(),
+				to: TypeId::T_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "Not".into(),
+				to: TypeId::ANY_TYPE,
+				parameters: Some(vec![TypeId::T_TYPE]),
+			},
+			Type::AliasTo {
+				name: "CaseInsensitive".into(),
+				to: TypeId::STRING_TYPE,
+				parameters: Some(vec![TypeId::STRING_GENERIC]),
+			},
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -129,33 +198,32 @@ impl Default for TypeStore {
 		Self {
 			types,
 			lookup_generic_map,
-			functions: HashMap::new(),
-			_dependent_dependencies: Default::default(),
-			_specialisations: Default::default(),
+			functions: Default::default(),
 			called_functions: Default::default(),
 			closure_counter: 0,
-			interface_extends: Default::default(),
-			interface_type_parameter_extends: Default::default(),
 		}
 	}
 }
 
 impl TypeStore {
-	pub fn new_constant_type(&mut self, constant: crate::Constant) -> crate::TypeId {
+	pub fn count_of_types(&self) -> usize {
+		self.types.len()
+	}
+
+	pub fn new_constant_type(&mut self, constant: Constant) -> crate::TypeId {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
-			crate::Constant::Number(number) if number == 1f64 => TypeId::ONE,
-			crate::Constant::Number(number) if number == 0f64 => TypeId::ZERO,
-			crate::Constant::Boolean(value) => {
+			Constant::String(s) if s.is_empty() => TypeId::EMPTY_STRING,
+			Constant::Number(number) if number == 0f64 => TypeId::ZERO,
+			Constant::Number(number) if number == 1f64 => TypeId::ONE,
+			Constant::Boolean(value) => {
 				if value {
 					TypeId::TRUE
 				} else {
 					TypeId::FALSE
 				}
 			}
-			crate::Constant::Undefined => TypeId::UNDEFINED_TYPE,
-			crate::Constant::Null => TypeId::NULL_TYPE,
-			crate::Constant::NaN => TypeId::NAN_TYPE,
+			Constant::NaN => TypeId::NAN,
 			_ => {
 				let ty = Type::Constant(constant);
 				// TODO maybe separate id
@@ -164,7 +232,8 @@ impl TypeStore {
 		}
 	}
 
-	pub(crate) fn register_type(&mut self, ty: Type) -> TypeId {
+	// pub(crate) fn register_type(&mut self, ty: Type) -> TypeId {
+	pub fn register_type(&mut self, ty: Type) -> TypeId {
 		let id = TypeId(self.types.len().try_into().expect("too many types!"));
 		self.types.push(ty);
 		id
@@ -181,7 +250,7 @@ impl TypeStore {
 		}
 
 		if let (TypeId::TRUE, TypeId::FALSE) | (TypeId::FALSE, TypeId::TRUE) = (lhs, rhs) {
-			return TypeId::BOOLEAN_TYPE;
+			return TypeId::OPEN_BOOLEAN_TYPE;
 		}
 		if let TypeId::NEVER_TYPE = lhs {
 			return rhs;
@@ -271,21 +340,22 @@ impl TypeStore {
 		self.new_conditional_type(on, true_result, false_result)
 	}
 
+	#[allow(clippy::if_same_then_else)]
 	pub fn new_conditional_type(
 		&mut self,
 		condition: TypeId,
 		truthy_result: TypeId,
 		otherwise_result: TypeId,
 	) -> TypeId {
-		// TODO raise warning
+		// TODO raise warning for the first 4 branches
 		if truthy_result == otherwise_result {
-			return truthy_result;
-		}
-
-		// TODO reverse as well
-		if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
+			truthy_result
+		} else if condition == TypeId::TRUE {
+			truthy_result
+		} else if condition == TypeId::FALSE {
+			otherwise_result
+		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
-		// self.new_logical_or_type(condition, otherwise_result)
 		} else {
 			// TODO on is negation then swap operands
 			let ty = Type::Constructor(super::Constructor::ConditionalResult {
@@ -312,6 +382,16 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
+	/// Doesn't evaluate events
+	pub(crate) fn new_logical_and_type(&mut self, left: TypeId, right: TypeId) -> TypeId {
+		self.new_conditional_type(left, right, TypeId::FALSE)
+	}
+
+	/// Doesn't evaluate events
+	pub(crate) fn new_logical_or_type(&mut self, left: TypeId, right: TypeId) -> TypeId {
+		self.new_conditional_type(left, TypeId::TRUE, right)
+	}
+
 	pub fn new_closure_id(&mut self) -> ClosureId {
 		self.closure_counter += 1;
 		ClosureId(self.closure_counter)
@@ -325,7 +405,7 @@ impl TypeStore {
 	pub fn new_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
-		self.register_type(Type::SpecialObject(SpecialObjects::Function(id, Default::default())))
+		self.register_type(Type::SpecialObject(SpecialObject::Function(id, Default::default())))
 	}
 
 	pub fn new_hoisted_function_type(&mut self, function_type: FunctionType) -> TypeId {
@@ -342,33 +422,38 @@ impl TypeStore {
 		indexer: TypeId,
 		environment: &Environment,
 	) -> TypeId {
-		if let Some(base) = get_constraint(indexee, self) {
+		use super::properties::{get_property_unbound, AccessMode, Publicity};
+		if get_constraint(indexee, self).is_some() {
 			let under = PropertyKey::from_type(indexer, self);
 			let ty = Type::Constructor(Constructor::Property {
 				on: indexee,
 				under,
-				result: base,
-				bind_this: true,
+				result: TypeId::ANY_TYPE,
+				mode: AccessMode::Regular,
 			});
 			self.register_type(ty)
-		} else if let Ok(prop) = super::properties::get_property_unbound(
-			(indexee, None),
-			(
-				crate::types::properties::Publicity::Public,
-				&PropertyKey::from_type(indexer, self),
-				None,
-			),
-			environment,
-			self,
-		) {
-			match prop {
-				Logical::Pure(ty) => ty.as_get_type(),
-				Logical::Or { .. } => todo!(),
-				Logical::Implies { .. } => todo!(),
-			}
 		} else {
-			crate::utilities::notify!("Error: no index on type annotation");
-			TypeId::ERROR_TYPE
+			let result = get_property_unbound(
+				(indexee, None),
+				(Publicity::Public, &PropertyKey::from_type(indexer, self), None),
+				false,
+				environment,
+				self,
+			);
+			if let Ok(prop) = result {
+				match prop {
+					LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(self),
+					value => {
+						crate::utilities::notify!("value={:?}", value);
+						TypeId::ERROR_TYPE
+					} // Logical::Or { .. } => todo!(),
+					  // Logical::Implies { .. } => todo!(),
+					  // Logical::BasedOnKey { .. } => todo!(),
+				}
+			} else {
+				crate::utilities::notify!("Error: no index on type annotation");
+				TypeId::ERROR_TYPE
+			}
 		}
 	}
 
@@ -379,7 +464,7 @@ impl TypeStore {
 		_position: &Span,
 	) -> Result<TypeId, String> {
 		let regexp = RegExp::new(pattern, flags.as_ref().map(|s| s.as_str()))?;
-		let ty = Type::SpecialObject(SpecialObjects::RegularExpression(regexp));
+		let ty = Type::SpecialObject(SpecialObject::RegularExpression(regexp));
 
 		Ok(self.register_type(ty))
 	}
@@ -387,7 +472,9 @@ impl TypeStore {
 	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {
 		// TODO this has problems if there are two generic types. Aka `(a: T, b: T) -> T`. Although I have
 		// no idea why this is possible so should be fine?
-		if let Type::RootPolyType(_) = self.get_type_by_id(parameter_constraint) {
+		if let Type::RootPolyType(PolyNature::FunctionGeneric { .. }) =
+			self.get_type_by_id(parameter_constraint)
+		{
 			parameter_constraint
 		} else {
 			self.register_type(Type::RootPolyType(crate::types::PolyNature::Parameter {
@@ -421,12 +508,18 @@ impl TypeStore {
 	}
 
 	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	/// TODO check disjoint
 	pub(crate) fn modify_interface_type_parameter_constraint(
 		&mut self,
 		ty: TypeId,
 		constraint: TypeId,
 	) {
-		self.interface_type_parameter_extends.insert(ty, constraint);
+		let ty = &mut self.types[ty.0 as usize];
+		if let Type::RootPolyType(PolyNature::StructureGeneric { extends, .. }) = ty {
+			*extends = constraint;
+		} else {
+			todo!("{:?}", ty)
+		}
 	}
 
 	/// *Dangerous* . TODO WIP
@@ -442,22 +535,36 @@ impl TypeStore {
 
 	/// *Dangerous* type modifying types. TODO this might be modified in the future
 	pub(crate) fn set_extends_on_interface(&mut self, interface_type: TypeId, extends: TypeId) {
-		self.interface_extends.insert(interface_type, extends);
+		if let Type::Interface { extends: Some(ref mut old), .. } =
+			self.types[interface_type.0 as usize]
+		{
+			*old = extends;
+		}
 	}
 
-	pub(crate) fn new_class_constructor_type(
-		&mut self,
-		name: String,
-		constructor: FunctionType,
-		constructs: TypeId,
-	) -> TypeId {
+	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	pub(crate) fn update_alias(&mut self, alias_type: TypeId, to: TypeId) {
+		if let Type::AliasTo { to: ref mut old, .. } = self.types[alias_type.0 as usize] {
+			*old = to;
+		}
+	}
+
+	/// *Dangerous* type modifying types. TODO this might be modified in the future
+	pub(crate) fn update_generic_extends(&mut self, generic: TypeId, to: TypeId) {
+		if let Type::RootPolyType(PolyNature::StructureGeneric { ref mut extends, .. }) =
+			self.types[generic.0 as usize]
+		{
+			*extends = to;
+		}
+	}
+
+	pub(crate) fn new_class_constructor_type(&mut self, constructor: FunctionType) -> TypeId {
 		let id = constructor.id;
 		self.functions.insert(id, constructor);
-		self.register_type(Type::SpecialObject(SpecialObjects::ClassConstructor {
-			name,
-			constructor: id,
-			prototype: constructs,
-		}))
+		self.register_type(Type::SpecialObject(SpecialObject::Function(
+			id,
+			crate::types::calling::ThisValue::UseParent,
+		)))
 	}
 
 	pub(crate) fn create_this_object(&mut self) -> TypeId {
@@ -466,5 +573,31 @@ impl TypeStore {
 
 	pub(crate) fn new_key_of(&mut self, of: TypeId) -> TypeId {
 		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
+	}
+
+	pub(crate) fn new_intrinsic(&mut self, intrinsic: &Intrinsic, argument: TypeId) -> TypeId {
+		let (on, to_pair) = match intrinsic {
+			Intrinsic::Uppercase => (TypeId::STRING_UPPERCASE, TypeId::STRING_GENERIC),
+			Intrinsic::Lowercase => (TypeId::STRING_LOWERCASE, TypeId::STRING_GENERIC),
+			Intrinsic::Capitalize => (TypeId::STRING_CAPITALIZE, TypeId::STRING_GENERIC),
+			Intrinsic::Uncapitalize => (TypeId::STRING_UNCAPITALIZE, TypeId::STRING_GENERIC),
+			Intrinsic::NoInfer => (TypeId::NO_INFER, TypeId::T_TYPE),
+			Intrinsic::Literal => (TypeId::LITERAL_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::LessThan => (TypeId::LESS_THAN, TypeId::NUMBER_GENERIC),
+			Intrinsic::GreaterThan => (TypeId::GREATER_THAN, TypeId::NUMBER_GENERIC),
+			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
+			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::Not => (TypeId::NOT_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
+		};
+		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+			to_pair,
+			(argument, <SpanWithSource as source_map::Nullable>::NULL),
+		)]));
+
+		self.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on,
+			arguments,
+		}))
 	}
 }

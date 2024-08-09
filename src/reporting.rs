@@ -80,7 +80,7 @@ fn checker_diagnostic_to_codespan_diagnostic(
 	}
 }
 
-pub(crate) fn emit_diagnostics<T: PathMap, I>(
+pub(crate) fn report_diagnostics_to_cli<T: PathMap, I>(
 	diagnostics: I,
 	fs: &MapFileStore<T>,
 	compact: bool,

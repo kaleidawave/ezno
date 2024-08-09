@@ -11,13 +11,13 @@ use crate::{
 		Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
 		AssignableSpread, Reference,
 	},
-	synthesis::expressions::synthesise_expression,
 	types::properties::{PropertyKey, Publicity},
 	CheckingData, TypeId,
 };
 
 use super::{
-	expressions::synthesise_multiple_expression, parser_property_key_to_checker_property_key,
+	expressions::{synthesise_expression, synthesise_multiple_expression},
+	parser_property_key_to_checker_property_key,
 };
 
 pub(super) trait SynthesiseToAssignable {
@@ -89,7 +89,7 @@ fn synthesise_object_to_reference<
 			.map(|item| match item.get_ast_ref() {
 				parser::ObjectDestructuringField::Name(name, _, default_value, position) => {
 					AssignableObjectDestructuringField::Mapped {
-						on: synthesise_object_property_key(name, environment),
+						key: synthesise_object_property_key(name, environment),
 						name: synthesise_object_shorthand_assignable(
 							name,
 							environment,
@@ -106,7 +106,7 @@ fn synthesise_object_to_reference<
 					default_value,
 					position,
 				} => {
-					let on = parser_property_key_to_checker_property_key(
+					let key = parser_property_key_to_checker_property_key(
 						from,
 						environment,
 						checking_data,
@@ -114,7 +114,7 @@ fn synthesise_object_to_reference<
 					);
 
 					AssignableObjectDestructuringField::Mapped {
-						on,
+						key,
 						name: SynthesiseToAssignable::synthesise_to_assignable(
 							name.get_ast_ref(),
 							environment,
@@ -241,14 +241,14 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 					Reference::Property {
 						on: parent_ty,
 						with: PropertyKey::String(Cow::Owned(property.clone())),
-						span: position.with_source(environment.get_source()),
+						position: position.with_source(environment.get_source()),
 						publicity,
 					}
 				}
 				parser::PropertyReference::Marker(_) => Reference::Property {
 					on: parent_ty,
 					with: PropertyKey::new_empty_property_key(),
-					span: position.with_source(environment.get_source()),
+					position: position.with_source(environment.get_source()),
 					publicity: Publicity::Public,
 				},
 			}
@@ -265,7 +265,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 			Reference::Property {
 				on: parent_ty,
 				with: PropertyKey::from_type(key_ty, &checking_data.types),
-				span: position.with_source(environment.get_source()),
+				position: position.with_source(environment.get_source()),
 				publicity: crate::types::properties::Publicity::Public,
 			}
 		}

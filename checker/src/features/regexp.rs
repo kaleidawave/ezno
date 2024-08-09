@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use source_map::SpanWithSource;
 
 use crate::{
@@ -120,11 +118,11 @@ impl RegExp {
 			ObjectBuilder::new(Some(TypeId::ARRAY_TYPE), types, call_site, &mut environment.info);
 
 		object.append(
-			environment,
 			Publicity::Public,
-			PropertyKey::String(Cow::Borrowed("input")),
+			PropertyKey::String("input".into()),
 			PropertyValue::Value(pattern_type_id),
 			call_site,
+			&mut environment.info,
 		);
 
 		match self.re.find(&pattern) {
@@ -134,11 +132,11 @@ impl RegExp {
 						(match_.start() as f64).try_into().unwrap(),
 					));
 					object.append(
-						environment,
 						Publicity::Public,
-						PropertyKey::String(Cow::Borrowed("index")),
+						PropertyKey::String("index".into()),
 						PropertyValue::Value(index),
 						call_site,
+						&mut environment.info,
 					);
 				}
 
@@ -152,11 +150,11 @@ impl RegExp {
 					};
 
 					object.append(
-						environment,
 						Publicity::Public,
 						key,
 						PropertyValue::Value(value),
 						call_site,
+						&mut environment.info,
 					);
 				}
 
@@ -170,7 +168,7 @@ impl RegExp {
 						);
 
 						for (name, group) in match_.named_groups() {
-							let key = PropertyKey::String(Cow::Owned(name.to_string()));
+							let key = PropertyKey::String(name.to_string().into());
 							let value = match group {
 								Some(range) => types.new_constant_type(Constant::String(
 									pattern[range].to_string(),
@@ -179,11 +177,11 @@ impl RegExp {
 							};
 
 							named_groups_object.append(
-								environment,
 								Publicity::Public,
 								key,
 								PropertyValue::Value(value),
 								call_site,
+								&mut environment.info,
 							);
 						}
 
@@ -191,11 +189,11 @@ impl RegExp {
 					};
 
 					object.append(
-						environment,
 						Publicity::Public,
-						PropertyKey::String(Cow::Borrowed("groups")),
+						PropertyKey::String("groups".into()),
 						PropertyValue::Value(named_groups),
 						call_site,
+						&mut environment.info,
 					);
 				}
 
@@ -205,11 +203,11 @@ impl RegExp {
 					));
 
 					object.append(
-						environment,
 						Publicity::Public,
 						PropertyKey::String("length".into()),
 						PropertyValue::Value(length),
 						call_site,
+						&mut environment.info,
 					);
 				}
 
@@ -229,20 +227,20 @@ impl RegExp {
 			ObjectBuilder::new(Some(TypeId::ARRAY_TYPE), types, call_site, &mut environment.info);
 
 		object.append(
-			environment,
 			Publicity::Public,
-			PropertyKey::String(Cow::Borrowed("input")),
+			PropertyKey::String("input".into()),
 			PropertyValue::Value(TypeId::STRING_TYPE),
 			call_site,
+			&mut environment.info,
 		);
 
 		{
 			object.append(
-				environment,
 				Publicity::Public,
-				PropertyKey::String(Cow::Borrowed("index")),
+				PropertyKey::String("index".into()),
 				PropertyValue::Value(TypeId::NUMBER_TYPE),
 				call_site,
+				&mut environment.info,
 			);
 		}
 
@@ -250,11 +248,11 @@ impl RegExp {
 			let key = PropertyKey::from_usize(idx as usize);
 
 			object.append(
-				environment,
 				Publicity::Public,
 				key,
 				PropertyValue::Value(TypeId::STRING_TYPE),
 				call_site,
+				&mut environment.info,
 			);
 		}
 
@@ -268,14 +266,14 @@ impl RegExp {
 				);
 
 				for (name, _i) in self.named_group_indices.iter() {
-					let key = PropertyKey::String(Cow::Owned(name.to_string()));
+					let key = PropertyKey::String(name.to_string().into());
 
 					named_groups_object.append(
-						environment,
 						Publicity::Public,
 						key,
 						PropertyValue::Value(TypeId::STRING_TYPE),
 						call_site,
+						&mut environment.info,
 					);
 				}
 
@@ -283,11 +281,11 @@ impl RegExp {
 			};
 
 			object.append(
-				environment,
 				Publicity::Public,
-				PropertyKey::String(Cow::Borrowed("groups")),
+				PropertyKey::String("groups".into()),
 				PropertyValue::Value(named_groups),
 				call_site,
+				&mut environment.info,
 			);
 		}
 
@@ -296,11 +294,11 @@ impl RegExp {
 				types.new_constant_type(Constant::Number((self.groups as f64).try_into().unwrap()));
 
 			object.append(
-				environment,
 				Publicity::Public,
 				PropertyKey::String("length".into()),
 				PropertyValue::Value(length),
 				call_site,
+				&mut environment.info,
 			);
 		}
 

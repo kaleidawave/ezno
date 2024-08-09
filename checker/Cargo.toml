@@ -49,10 +49,12 @@ tsify = "0.4.5"
 # TODO needs unfixed change in source-map
 wasm-bindgen = "=0.2.89"
 
-
 [dependencies.parser]
 path = "../parser"
 optional = true
 version = "0.1.5"
 features = ["extras"]
 package = "ezno-parser"
+
+[dev-dependencies]
+match_deref = "0.1.1"

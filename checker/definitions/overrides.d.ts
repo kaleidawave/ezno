@@ -1,10 +1,7 @@
-@Constant
-declare function debug_type_independent(t: any): void;
-
 // Eventually this will be merged with existing TS es5.d.ts files but for now is the standalone see #121
 
 interface ImportEnv {
-    [key: string]: string | undefined;
+    [key: string]: string;
 }
 
 interface ImportMeta {
@@ -14,7 +11,7 @@ interface ImportMeta {
 }
 
 declare class Array<T> {
-    [index: number]: T | undefined;
+    [index: number]: T;
 
     length: number;
 
@@ -33,8 +30,7 @@ declare class Array<T> {
             return undefined
         } else {
             const value = this[--this.length];
-            // TODO this currently breaks value?
-            // delete this[this.length];
+            delete this[this.length];
             return value
         }
     }
@@ -101,35 +97,6 @@ declare class Array<T> {
         return false
     }
 
-    // fill(value: T, start: number = 0, end = this.length): this {
-    //     // TODO
-    //     return this
-    // }
-
-    // reduce<U>(cb: (acc: U, t: T, i?: number) => U, initial?: U): U {
-    //     const { length } = this;
-    //     let acc = initial ?? this[0];
-    //     let i: number = typeof initial === "undefined" ? 1 : 0;;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         acc = cb(acc, value, i++);
-    //     }
-    //     return acc;
-    // }
-
-    // includes(searchElement: T, fromIndex?: number): boolean {
-    //     const { length } = this;
-    //     // TODO this is currently broken
-    //     let i: number = fromIndex ?? 0;
-    //     while (i < length) {
-    //         const value = this[i++];
-    //         if (value === searchElement) {
-    //             return true
-    //         }
-    //     }
-    //     return false
-    // }
-
     join(joiner: string = ","): string {
         const { length } = this;
         let i: number = 1;
@@ -173,22 +140,28 @@ declare class Math {
     static sqrt(x: number): number;
     @Constant
     static cbrt(x: number): number;
+    @Constant
+    static log(x: number): number;
 
     // TODO newer method
     @Constant
     static trunc(x: number): number;
 
     static PI: 3.141592653589793
+    static E: 2.718281828459045
+
+    @InputOutput
+    static random(): number;
 }
 
 @Primitive("string")
 declare class String {
-    [index: number]: string | undefined;
+    [index: number]: string;
 
     @Constant
-    toUpperCase(): string;
+    toUpperCase(this: string): string;
     @Constant
-    toLowerCase(): string;
+    toLowerCase(this: string): string;
 
     get length(): number;
 
@@ -325,11 +298,11 @@ declare class SyntaxError extends Error {
 
 declare class JSON {
     // TODO any temp
-    @Constant("json:parse", SyntaxError)
+    @Constant("JSON:parse", SyntaxError)
     static parse(input: string): any;
 
     // TODO any temp
-    @Constant("json:stringify")
+    @Constant("JSON:stringify")
     static stringify(input: any): string;
 }
 
@@ -339,12 +312,24 @@ declare class Function {
 
 declare class Symbols {
     // TODO temp
-    iterator: 199
+    static iterator: unique symbol "iterator"
 }
 
 declare class Proxy {
     @Constant("proxy:constructor")
         constructor(obj: any, cb: any);
+}
+
+// Copied from `es5.d.ts`. Could this be an or
+// TODO string keys temp because parser broke
+interface PropertyDescriptor {
+    value?: any;
+    ["get" ? (): any;
+    ["set" ? (v: any): void;
+
+    writable?: boolean;
+    configurable?: boolean;
+    enumerable?: boolean;
 }
 
 declare class Object {
@@ -354,11 +339,19 @@ declare class Object {
     @Constant
     static getPrototypeOf(on: object): object | null;
 
-    // static create(prototype: object): object {
-    //     const n = {};
-    //     Object.setProtoTypeOf(n, prototype);
-    //     return n
-    // }
+    @Constant
+    static freeze(on: object): object;
+
+    @Constant
+    static isFrozen(on: object): boolean;
+
+    // TODO defineProperties via body (not constant)
+    @Constant
+    static defineProperty(on: object, property: string, discriminator: PropertyDescriptor): boolean;
+
+    // TODO getOwnPropertyDescriptors via body (not constant)
+    @Constant
+    static getOwnPropertyDescriptor(on: object, property: string): PropertyDescriptor;
 
     static keys(on: { [s: string]: any }): Array<string> {
         const keys: Array<string> = [];
@@ -382,6 +375,14 @@ declare class Object {
             entries.push([key, on[key]]);
         }
         return entries
+    }
+
+    // TODO multiple arguments
+    static assign(target: object, source: object): object {
+        for (const key in source) {
+            target[key] = source[key]
+        }
+        return target
     }
 
     // static fromEntries(iterator: any): object {
@@ -446,6 +447,8 @@ declare function debug_context(): void;
 declare function context_id(): void;
 @Constant
 declare function context_id_chain(): void;
+@Constant
+declare function debug_type_independent(t: any): void;
 
 // A function, as it should be!
 @Constant

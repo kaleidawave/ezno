@@ -2,9 +2,9 @@
 #[test]
 fn type_mappings() {
 	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
-	use std::collections::HashSet;
 
 	// Below source has several issues
+	let root = "index.ts";
 	let text = "let x: 2 = 5 + ;
 	const y = 
 	const z = 2;
@@ -13,12 +13,10 @@ fn type_mappings() {
 	func(b)";
 
 	let definition_file = ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into();
-	let type_definition_files = HashSet::from_iter([definition_file]);
+	let type_definition_files = vec![definition_file];
 
 	// `lsp_mode` <=> partial syntax
 	let options = TypeCheckOptions { lsp_mode: true, ..Default::default() };
-
-	let root = "index.ts";
 
 	let result = check_project::<_, synthesis::EznoParser>(
 		vec![root.into()],
@@ -31,8 +29,5 @@ fn type_mappings() {
 
 	let diagnostics: Vec<_> = result.diagnostics.into_iter().collect();
 	assert_eq!(diagnostics.len(), 1);
-	assert_eq!(
-		diagnostics.first().unwrap().reason(),
-		"Could not find variable 'b' in scope. Did you mean x, y or z?"
-	);
+	assert_eq!(diagnostics.first().unwrap().reason(), "Could not find variable 'b' in scope");
 }

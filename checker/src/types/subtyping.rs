@@ -1,22 +1,30 @@
 //! Type subtype checking. (making sure the RHS type contains all the properties the LHS type requires)
 
-use source_map::{Nullable, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
-	context::{information::InformationChain, Environment, GeneralContext, Logical},
-	features::objects::SpecialObjects,
-	types::{
-		generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
-		printing::print_type,
-		properties::{get_property_unbound, key_matches, Publicity},
-		GenericChainLink, ObjectNature, TypeStore,
+	context::{GeneralContext, InformationChain},
+	features::{
+		objects::{self, SpecialObject},
+		operations::MathematicalAndBitwise,
 	},
-	Constant, PropertyValue, TypeId,
+	types::{
+		generics::{
+			chain::{GenericChain, GenericChainLink, SpecialGenericChainLink},
+			contributions::{ContributionDepth, Contributions, CovariantContribution, TriMap},
+			generic_type_arguments::GenericArguments,
+		},
+		intrinsics::apply_string_intrinsic,
+		logical::{BasedOnKey, Logical, LogicalOrValid, NeedsCalculation, PropertyOn},
+		printing::print_type,
+		properties::{get_properties_on_single_type2, get_property_unbound, Publicity},
+		ObjectNature, Type, TypeStore,
+	},
+	Constant, Environment, PropertyValue, TypeId,
 };
 
 use super::{
-	get_constraint, properties::PropertyKey, Constructor, GenericChain, PartiallyAppliedGenerics,
-	PolyNature, Type,
+	get_constraint, properties::PropertyKey, Constructor, PartiallyAppliedGenerics, PolyNature,
 };
 
 pub use super::{NonEqualityReason, PropertyError};
@@ -40,7 +48,6 @@ impl SubTypeResult {
 	}
 }
 
-/// TODO document which one is which
 #[derive(Clone, Copy)]
 pub enum SubTypingMode {
 	/// *output*
@@ -137,7 +144,7 @@ pub fn type_is_subtype_object(
 	let result = type_is_subtype(base_type, ty, &mut state, environment, types);
 
 	environment.add_object_constraints(state.object_constraints.unwrap().into_iter(), types);
-	// TODO environment.add_inferred_constraints(x, types);
+	// TODO information.add_inferred_constraints(x, types);
 
 	result
 }
@@ -150,14 +157,14 @@ pub fn type_is_subtype(
 	base_type: TypeId,
 	ty: TypeId,
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	type_is_subtype_with_generics(
 		(base_type, GenericChain::None),
 		(ty, GenericChain::None),
 		state,
-		environment,
+		information,
 		types,
 	)
 }
@@ -198,32 +205,34 @@ impl<'a> State<'a> {
 		let [already_checked, contributions_covariant, contributions_contravariant, object_constraint_count] =
 			last;
 
-		self.already_checked.drain((already_checked as usize)..);
+		let _ = self.already_checked.drain((already_checked as usize)..);
 		if let Some(ref mut contributions) = self.contributions {
-			contributions.staging_covariant.drop_range((contributions_covariant as usize)..);
-			contributions
+			let _ =
+				contributions.staging_covariant.drop_range((contributions_covariant as usize)..);
+			let _ = contributions
 				.staging_contravariant
 				.drop_range((contributions_contravariant as usize)..);
 		}
 		if let Some(ref mut object_constraints) = self.object_constraints {
-			object_constraints.drain((object_constraint_count as usize)..);
+			let _ = object_constraints.drain((object_constraint_count as usize)..);
 		}
 	}
 }
 
 pub(crate) fn type_is_subtype_with_generics(
-	(base_type, base_structure_arguments): (TypeId, GenericChain),
+	(base_type, base_type_arguments): (TypeId, GenericChain),
 	(ty, ty_structure_arguments): (TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	{
 		let debug = true;
 		crate::utilities::notify!(
-			"Checking {} :>= {}",
-			print_type(base_type, types, environment, debug),
-			print_type(ty, types, environment, debug)
+			"Checking {} :>= {}, with {:?}",
+			print_type(base_type, types, information, debug),
+			print_type(ty, types, information, debug),
+			base_type_arguments
 		);
 	}
 
@@ -238,6 +247,7 @@ pub(crate) fn type_is_subtype_with_generics(
 	{
 		// Prevents cycles
 		if state.already_checked.iter().any(|(a, b)| *a == base_type && *b == ty) {
+			crate::utilities::notify!("Subtyping recursion");
 			return SubTypeResult::IsSubType;
 		}
 
@@ -249,23 +259,32 @@ pub(crate) fn type_is_subtype_with_generics(
 
 	// Eager things
 	match right_ty {
+		Type::AliasTo { to: right, .. } => {
+			return type_is_subtype_with_generics(
+				(base_type, base_type_arguments),
+				(*right, ty_structure_arguments),
+				state,
+				information,
+				types,
+			);
+		}
 		Type::Or(left, right) => {
 			let right = *right;
-			crate::utilities::notify!("OR RHS: left and right");
+			// crate::utilities::notify!("OR RHS: left and right");
 			let left_result = type_is_subtype_with_generics(
-				(base_type, base_structure_arguments),
+				(base_type, base_type_arguments),
 				(*left, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			);
 
 			return if let SubTypeResult::IsSubType = left_result {
 				type_is_subtype_with_generics(
-					(base_type, base_structure_arguments),
+					(base_type, base_type_arguments),
 					(right, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			} else {
@@ -274,65 +293,123 @@ pub(crate) fn type_is_subtype_with_generics(
 			};
 		}
 		// Type::And(left, right) => {
+		// 	let left_is_operator_right_is_not =
+		// 		left_ty.is_operator();
+
+		// 	// edge cases on edge cases
+		// 	// If any of these are true. Then do not perform constraint argument lookup
+		// 	let edge_case = left_is_operator_right_is_not;
+
+		// 	if !edge_case {
+
 		// 	let right = *right;
 		// 	let left_result = type_is_subtype_with_generics(
-		// 		base_type,
-		// 		base_structure_arguments,
-		// 		*left,
-		// 		ty_structure_arguments,
+		// 		(base_type, base_type_arguments),
+		// 		(*left, ty_structure_arguments),
 		// 		state,
-		// 		environment,
+		// 		information,
 		// 		types,
-		// 		mode,
-		// 		already_checked
 		// 	);
 
 		// 	return if let SubTypeResult::IsSubType = left_result {
 		// 		left_result
 		// 	} else {
 		// 		type_is_subtype_with_generics(
-		// 			base_type,
-		// 			base_structure_arguments,
-		// 			right,
-		// 			ty_structure_arguments,
+		// 			(base_type, base_type_arguments),
+		// 			(right, ty_structure_arguments),
 		// 			state,
-		// 			environment,
+		// 			information,
 		// 			types,
-		// 			mode,
-		// 			already_checked
 		// 		)
 		// 	};
 		// }
-		Type::PartiallyAppliedGenerics(..) => {}
+		// }
+		// TODO others
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: on @ TypeId::NOT_RESTRICTION,
+			arguments,
+		}) => {
+			match *on {
+				TypeId::NOT_RESTRICTION => {
+					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+					// https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Set/Basic.html#Set.subset_compl_comm -> https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Set/Basic.html#Set.subset_compl_iff_disjoint_left
+
+					// Swapped
+					let result = super::disjoint::types_are_disjoint(
+						inner,
+						ty,
+						&mut state.already_checked,
+						information,
+						types,
+					);
+					// crate::utilities::notify!("Here {:?}", (&result, inner));
+					return if result {
+						SubTypeResult::IsSubType
+					} else {
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					};
+				}
+				_ => unreachable!(),
+			}
+		}
 		t @ (Type::RootPolyType(..) | Type::Constructor(..)) => {
 			if let Type::RootPolyType(PolyNature::Error(to)) = t {
 				// (unless specified) treat as subtype as error would have already been thrown
 				return if state.others.allow_errors && *to == TypeId::ANY_TYPE {
 					SubTypeResult::IsSubType
 				} else {
-					type_is_subtype(base_type, *to, state, environment, types)
+					type_is_subtype(base_type, *to, state, information, types)
 				};
 			}
 
-			if let Some(args) =
-				ty_structure_arguments.and_then(|tas| tas.get_argument(ty, environment, types))
+			crate::utilities::notify!("Looking for {:?} with {:?}", ty, ty_structure_arguments);
+
+			if let Some(arg) = ty_structure_arguments.and_then(|tas| tas.get_argument_covariant(ty))
 			{
-				// TODO what
-				for arg in args {
-					let result = type_is_subtype_with_generics(
-						(base_type, base_structure_arguments),
-						(arg, ty_structure_arguments),
+				return match arg {
+					CovariantContribution::TypeId(ty) => type_is_subtype_with_generics(
+						(base_type, base_type_arguments),
+						(ty, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
-					);
-
-					if let e @ SubTypeResult::IsNotSubType(_) = result {
-						return e;
+					),
+					CovariantContribution::String(string) => {
+						let contributions =
+							state.contributions.as_mut().map(|n| &mut n.staging_contravariant);
+						let matches = slice_matches_type(
+							(base_type, base_type_arguments),
+							&string,
+							contributions,
+							information,
+							types,
+							false,
+						);
+						if matches {
+							SubTypeResult::IsSubType
+						} else {
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						}
 					}
-				}
-
-				return SubTypeResult::IsSubType;
+					CovariantContribution::SliceOf(s, (l, r)) => todo!("{:?}", (s, (l, r))),
+					CovariantContribution::CaseInsensitive(ci) => todo!("{:?}", ci),
+					CovariantContribution::Number(n) => {
+						let contributions =
+							state.contributions.as_mut().map(|n| &mut n.staging_contravariant);
+						let matches = number_matches_type(
+							(base_type, base_type_arguments),
+							n,
+							contributions,
+							information,
+							types,
+						);
+						if matches {
+							SubTypeResult::IsSubType
+						} else {
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						}
+					}
+				};
 			}
 
 			if let SubTypingMode::Covariant { position: _ } = state.mode {
@@ -346,6 +423,16 @@ pub(crate) fn type_is_subtype_with_generics(
 			// If lhs is not operator unless argument is operator
 			// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
 			let right_arg = get_constraint(ty, types).unwrap();
+
+			crate::utilities::notify!(
+				"edge case {:?}",
+				(
+					types.get_type_by_id(ty),
+					types.get_type_by_id(right_arg),
+					types.get_type_by_id(right_arg).is_operator()
+				)
+			);
+
 			// This is important that LHS is not operator
 			let left_is_operator_right_is_not =
 				left_ty.is_operator() && !types.get_type_by_id(right_arg).is_operator();
@@ -361,10 +448,10 @@ pub(crate) fn type_is_subtype_with_generics(
 
 			if !edge_case {
 				let result = type_is_subtype_with_generics(
-					(base_type, base_structure_arguments),
+					(base_type, base_type_arguments),
 					(right_arg, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				);
 
@@ -380,16 +467,17 @@ pub(crate) fn type_is_subtype_with_generics(
 				};
 			}
 		}
+		Type::PartiallyAppliedGenerics(..) => {}
 		_ => (),
 	}
 
 	match left_ty {
 		Type::FunctionReference(left_func)
-		| Type::SpecialObject(SpecialObjects::Function(left_func, _)) => subtype_function(
-			(*left_func, base_structure_arguments),
+		| Type::SpecialObject(SpecialObject::Function(left_func, _)) => subtype_function(
+			(*left_func, base_type_arguments),
 			(right_ty, ty, ty_structure_arguments),
 			state,
-			environment,
+			information,
 			types,
 		),
 		Type::Constant(lhs) => {
@@ -415,14 +503,14 @@ pub(crate) fn type_is_subtype_with_generics(
 			// assert!(matches!(nature, ObjectNature::AnonymousTypeAnnotation));
 
 			subtype_properties(
-				(base_type, base_structure_arguments),
+				(base_type, base_type_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			)
 
-			// let _left = print_type(base_type, types, environment, true);
+			// let _left = print_type(base_type, types, information, true);
 
 			// crate::utilities::notify!("Left object {}", left);
 
@@ -434,21 +522,21 @@ pub(crate) fn type_is_subtype_with_generics(
 		}
 		Type::And(left, right) => {
 			let right = *right;
-			crate::utilities::notify!("AND: Checking left and right");
+			// crate::utilities::notify!("AND: Checking left and right");
 			let left_result = type_is_subtype_with_generics(
-				(*left, base_structure_arguments),
+				(*left, base_type_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			);
 
 			if let SubTypeResult::IsSubType = left_result {
 				type_is_subtype_with_generics(
-					(right, base_structure_arguments),
+					(right, base_type_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			} else {
@@ -461,10 +549,10 @@ pub(crate) fn type_is_subtype_with_generics(
 			let save_point = state.produce_save_point();
 
 			let left_result = type_is_subtype_with_generics(
-				(*left, base_structure_arguments),
+				(*left, base_type_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			);
 
@@ -472,10 +560,10 @@ pub(crate) fn type_is_subtype_with_generics(
 				if state.contributions.is_some() {
 					// only for double generics specialisation. Otherwise short-circuiting is fine
 					let _res = type_is_subtype_with_generics(
-						(right, base_structure_arguments),
+						(right, base_type_arguments),
 						(ty, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
 					);
 				}
@@ -485,10 +573,10 @@ pub(crate) fn type_is_subtype_with_generics(
 				state.reset(save_point);
 
 				type_is_subtype_with_generics(
-					(right, base_structure_arguments),
+					(right, base_type_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			}
@@ -499,30 +587,54 @@ pub(crate) fn type_is_subtype_with_generics(
 			}
 
 			// TODO little weird, handing two very different cases beside each other. Might introduce bugs.. :(
-			let base_argument_for_current = base_structure_arguments
-				.and_then(|args| args.get_argument(base_type, environment, types));
+			let base_arg =
+				base_type_arguments.and_then(|args| args.get_argument_covariant(base_type));
 
-			if let Some(args) = base_argument_for_current {
-				// TODO what
-				for arg in args {
-					let result = type_is_subtype_with_generics(
-						(arg, base_structure_arguments),
+			if let Some(base_arg) = base_arg {
+				match base_arg {
+					CovariantContribution::TypeId(base_arg) => type_is_subtype_with_generics(
+						(base_arg, base_type_arguments),
 						(ty, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
-					);
-
-					if let e @ SubTypeResult::IsNotSubType(_) = result {
-						return e;
+					),
+					CovariantContribution::String(left_string) => {
+						if let Type::Constant(Constant::String(right_string)) = right_ty {
+							if &left_string == right_string {
+								SubTypeResult::IsSubType
+							} else {
+								SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+							}
+						} else {
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						}
+					}
+					CovariantContribution::SliceOf(s, (l, r)) => todo!("{:?}", (s, (l, r))),
+					CovariantContribution::CaseInsensitive(ci) => todo!("{:?}", (ci)),
+					CovariantContribution::Number(n) => {
+						unreachable!("{:?}", n)
+						// crate::utilities::notify!("Here?");
+						// if let Type::Constant(Constant::String(right_string)) = right_ty {
+						// 	if left_string == right_string {
+						// 		SubTypeResult::IsSubType
+						// 	} else {
+						// 		SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						// 	}
+						// } else {
+						// 	SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						// }
 					}
 				}
-
-				SubTypeResult::IsSubType
 			} else if let Some(ref mut contributions) = state.contributions {
 				match state.mode {
 					SubTypingMode::Contravariant { depth } => {
 						// With <*base_type* extends *under> check ty is under
+
+						crate::utilities::notify!(
+							"contributions.parent={:?}",
+							contributions.parent
+						);
 
 						let result = if let Some(under) =
 							contributions.get_standard_restriction(base_type)
@@ -531,20 +643,17 @@ pub(crate) fn type_is_subtype_with_generics(
 								(under, GenericChain::None),
 								(ty, ty_structure_arguments),
 								state,
-								environment,
-								types,
-							)
-						} else if let Some(constraint) = nature.try_get_constraint() {
-							type_is_subtype_with_generics(
-								(constraint, GenericChain::None),
-								(ty, ty_structure_arguments),
-								state,
-								environment,
+								information,
 								types,
 							)
 						} else {
-							crate::utilities::notify!("TODO no constraint for {:?}", nature);
-							SubTypeResult::IsSubType
+							type_is_subtype_with_generics(
+								(nature.get_constraint(), GenericChain::None),
+								(ty, ty_structure_arguments),
+								state,
+								information,
+								types,
+							)
 						};
 
 						state
@@ -605,15 +714,201 @@ pub(crate) fn type_is_subtype_with_generics(
 				let constraint = get_constraint(base_type, types).unwrap();
 
 				type_is_subtype_with_generics(
-					(constraint, base_structure_arguments),
+					(constraint, base_type_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				)
 			}
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
+			match *on {
+				TypeId::READONLY_RESTRICTION => {
+					crate::utilities::notify!("TODO temp readonly inner check");
+					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+					// Some(GenericChainLink::SpecialGenericChainLink {
+					// 	parent_link: ty_structure_arguments.as_ref(),
+					// 	special: SpecialGenericChainLink::Readonly,
+					// })
+					return if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on: TypeId::READONLY_RESTRICTION,
+						arguments,
+					}) = right_ty
+					{
+						let ty = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+						type_is_subtype_with_generics(
+							(inner, ty_structure_arguments),
+							(ty, base_type_arguments),
+							state,
+							information,
+							types,
+						)
+					} else if information.get_chain_of_info().any(|info| info.frozen.contains(&ty))
+						|| matches!(right_ty, Type::Constant(_))
+						|| matches!(
+							ty,
+							TypeId::STRING_TYPE | TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE
+						) {
+						type_is_subtype_with_generics(
+							(inner, ty_structure_arguments),
+							(ty, base_type_arguments),
+							state,
+							information,
+							types,
+						)
+					} else {
+						// TODO is not readonly
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					};
+				}
+				TypeId::EXCLUSIVE_RESTRICTION => {
+					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+					return type_is_subtype_with_generics(
+						(
+							inner,
+							Some(GenericChainLink::SpecialGenericChainLink {
+								parent_link: ty_structure_arguments.as_ref(),
+								special: SpecialGenericChainLink::Exclusive,
+							}),
+						),
+						(ty, base_type_arguments),
+						state,
+						information,
+						types,
+					);
+				}
+				TypeId::NOT_RESTRICTION => {
+					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+					// https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Set/Basic.html#Set.subset_compl_iff_disjoint_left
+
+					let result = super::disjoint::types_are_disjoint(
+						ty,
+						inner,
+						&mut state.already_checked,
+						information,
+						types,
+					);
+					// crate::utilities::notify!("Here {:?}", (&result, inner));
+					return if result {
+						SubTypeResult::IsSubType
+					} else {
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					};
+				}
+				// TSC intrinsics
+				TypeId::STRING_CAPITALIZE
+				| TypeId::STRING_UNCAPITALIZE
+				| TypeId::STRING_LOWERCASE
+				| TypeId::STRING_UPPERCASE => {
+					if let Type::Constant(Constant::String(rs)) = right_ty {
+						let contributions =
+							state.contributions.as_mut().map(|n| &mut n.staging_contravariant);
+						let matches = slice_matches_type(
+							(base_type, base_type_arguments),
+							rs,
+							contributions,
+							information,
+							types,
+							false,
+						);
+						return if matches {
+							SubTypeResult::IsSubType
+						} else {
+							// TODO remove contributions
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						};
+					}
+				}
+				// Ezno intrinsic
+				TypeId::LITERAL_RESTRICTION => {
+					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+					return if let Type::Constant(rhs_constant) = right_ty {
+						type_is_subtype_with_generics(
+							(inner, base_type_arguments),
+							(rhs_constant.get_backing_type_id(), ty_structure_arguments),
+							state,
+							information,
+							types,
+						)
+					} else {
+						// TODO what about if the rhs == TypeId::CONSTANT_RESTRICTION
+						// TODO non-constant error
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					};
+				}
+				TypeId::NO_INFER => {
+					let on = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+					let current_contributing =
+						state.contributions.as_ref().map(|c| c.staging_contravariant.len());
+					let result = type_is_subtype_with_generics(
+						(on, base_type_arguments),
+						(ty, ty_structure_arguments),
+						state,
+						information,
+						types,
+					);
+					// Drop any infer-ed results
+					if let (Some(contributions), Some(current_contributing)) =
+						(state.contributions.as_mut(), current_contributing)
+					{
+						let _ =
+							contributions.staging_contravariant.drop_range(current_contributing..);
+					}
+					return result;
+				}
+				TypeId::LESS_THAN | TypeId::GREATER_THAN | TypeId::MULTIPLE_OF => {
+					let argument =
+						arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+					return if let (
+						Type::Constant(Constant::Number(argument)),
+						Type::Constant(Constant::Number(value)),
+					) = (types.get_type_by_id(argument), right_ty)
+					{
+						let result = match *on {
+							TypeId::LESS_THAN => value < argument,
+							TypeId::GREATER_THAN => value > argument,
+							TypeId::MULTIPLE_OF => value % argument == 0f64,
+							_ => unreachable!(),
+						};
+						if result {
+							SubTypeResult::IsSubType
+						} else {
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						}
+					} else {
+						crate::utilities::notify!(
+							"Returning NonEqualityReason::Mismatch {:?}",
+							right_ty
+						);
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					};
+				}
+				TypeId::CASE_INSENSITIVE => {
+					if let Type::Constant(Constant::String(rs)) = right_ty {
+						let contributions =
+							state.contributions.as_mut().map(|n| &mut n.staging_contravariant);
+						// Slice matches handles this
+						let matches = slice_matches_type(
+							(base_type, base_type_arguments),
+							rs,
+							contributions,
+							information,
+							types,
+							false,
+						);
+
+						return if matches {
+							SubTypeResult::IsSubType
+						} else {
+							// TODO remove contributions
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						};
+					}
+				}
+				_ => {}
+			}
+
 			if let Some(lookup) = types.lookup_generic_map.get(on) {
 				fn get_structure_generics_on(
 					r#type: &Type,
@@ -642,10 +937,10 @@ pub(crate) fn type_is_subtype_with_generics(
 							for (lk, (lv, _)) in left.iter() {
 								let (rv, _) = right.get(lk).unwrap();
 								let argument_is_subtype = type_is_subtype_with_generics(
-									(*lv, base_structure_arguments),
+									(*lv, base_type_arguments),
 									(*rv, ty_structure_arguments),
 									state,
-									environment,
+									information,
 									types,
 								);
 								if let err @ SubTypeResult::IsNotSubType(_) = argument_is_subtype {
@@ -658,7 +953,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					}
 				} else if let Type::Object(super::ObjectNature::RealDeal) = right_ty {
 					let prototype =
-						environment.get_chain_of_info().find_map(|info| info.prototypes.get(&ty));
+						information.get_chain_of_info().find_map(|info| info.prototypes.get(&ty));
 
 					crate::utilities::notify!("prototype is {:?}", prototype);
 
@@ -667,9 +962,9 @@ pub(crate) fn type_is_subtype_with_generics(
 							// TODO no vec
 							let backing_type =
 								arguments.get_structure_restriction(*argument).unwrap();
-							for value in lookup.calculate_lookup(environment, ty) {
+							for value in lookup.calculate_lookup(information, types, ty) {
 								let type_is_subtype =
-									type_is_subtype(backing_type, value, state, environment, types);
+									type_is_subtype(backing_type, value, state, information, types);
 								if let e @ SubTypeResult::IsNotSubType(_) = type_is_subtype {
 									return e;
 								}
@@ -691,7 +986,7 @@ pub(crate) fn type_is_subtype_with_generics(
 
 				crate::utilities::notify!(
 					"Array type is {}",
-					print_type(backing_type, types, environment, false)
+					print_type(backing_type, types, information, false)
 				);
 
 				// TODO temp fix for general parameters
@@ -704,7 +999,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					// };
 
 					// TODO don't create vec
-					// for value in lookup_restriction.calculate_lookup(environment) {
+					// for value in lookup_restriction.calculate_lookup(information) {
 
 					// }
 
@@ -726,10 +1021,10 @@ pub(crate) fn type_is_subtype_with_generics(
 
 					// TODO unsure about arguments here
 					type_is_subtype_with_generics(
-						(left_arg, base_structure_arguments),
+						(left_arg, base_type_arguments),
 						(right_arg, ty_structure_arguments),
 						state,
-						environment,
+						information,
 						types,
 					)
 				} else {
@@ -737,39 +1032,71 @@ pub(crate) fn type_is_subtype_with_generics(
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			} else {
-				let into = arguments.clone();
+				fn is_arguments_cyclic(a: &GenericArguments) -> bool {
+					if let GenericArguments::ExplicitRestrictions(arguments) = a {
+						arguments.iter().any(|(left, (right, _))| left == right)
+					} else {
+						false
+					}
+				}
+				// TODO temp fix
+				if is_arguments_cyclic(arguments) {
+					let GenericArguments::ExplicitRestrictions(arguments) = arguments else {
+						unreachable!();
+					};
 
-				let base_type_arguments =
-					GenericChainLink::append(base_type, base_structure_arguments.as_ref(), &into);
+					let filtered: crate::Map<_, _> = arguments
+						.iter()
+						.filter(|(left, (right, _))| left != right)
+						.copied()
+						.collect();
+					let refe = GenericArguments::ExplicitRestrictions(filtered);
+					let base_type_arguments =
+						GenericChainLink::append(base_type, base_type_arguments.as_ref(), &refe);
 
-				type_is_subtype_with_generics(
-					(*on, base_type_arguments),
-					(ty, ty_structure_arguments),
-					state,
-					environment,
-					types,
-				)
+					type_is_subtype_with_generics(
+						(*on, base_type_arguments),
+						(ty, ty_structure_arguments),
+						state,
+						information,
+						types,
+					)
+				} else {
+					let base_type_arguments = GenericChainLink::append(
+						base_type,
+						base_type_arguments.as_ref(),
+						arguments,
+					);
+
+					type_is_subtype_with_generics(
+						(*on, base_type_arguments),
+						(ty, ty_structure_arguments),
+						state,
+						information,
+						types,
+					)
+				}
 			}
 		}
 		Type::Constructor(cst) => match cst {
 			// For template literal types
 			Constructor::BinaryOperator {
-				lhs,
-				rhs,
 				operator: crate::types::MathematicalAndBitwise::Add,
+				..
 			} => {
 				if let Type::Constant(Constant::String(rs)) = right_ty {
-					// TODO abstract
-					if let Type::Constant(Constant::String(ls)) = types.get_type_by_id(*lhs) {
-						let matches = rs.starts_with(ls);
-						if let (true, TypeId::STRING_TYPE) = (matches, *rhs) {
-							SubTypeResult::IsSubType
-						} else {
-							crate::utilities::notify!("TODO more complex {:?}", (matches, rhs));
-							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-						}
+					let matches = slice_matches_type(
+						(base_type, base_type_arguments),
+						rs,
+						state.contributions.as_mut().map(|n| &mut n.staging_contravariant),
+						information,
+						types,
+						false,
+					);
+					if matches {
+						SubTypeResult::IsSubType
 					} else {
-						crate::utilities::notify!("TODO prefix equality");
+						// TODO clear contributions
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				} else {
@@ -782,21 +1109,27 @@ pub(crate) fn type_is_subtype_with_generics(
 			| Constructor::UnaryOperator { .. } => unreachable!("invalid constructor on LHS"),
 			Constructor::TypeOperator(_) => todo!(),
 			Constructor::TypeRelationOperator(_) => todo!(),
-			Constructor::ConditionalResult {
+			Constructor::Image { on: _, with: _, result }
+			| Constructor::ConditionalResult {
 				condition: _,
 				truthy_result: _,
 				otherwise_result: _,
-				result_union: _,
-			} => todo!(),
-			Constructor::Image { on: _, with: _, result: _ } => todo!(),
-			Constructor::Property { on, under, result: _, bind_this: _ } => {
+				result_union: result,
+			} => type_is_subtype_with_generics(
+				(*result, base_type_arguments),
+				(ty, ty_structure_arguments),
+				state,
+				information,
+				types,
+			),
+			Constructor::Property { on, under, result: _, mode: _ } => {
 				// Ezno custom state
 				// TODO might be based of T
 				if let Type::Constructor(Constructor::Property {
 					on: r_on,
 					under: r_under,
 					result: _,
-					bind_this: _,
+					mode: _,
 				}) = right_ty
 				{
 					if on == r_on && under == r_under {
@@ -805,65 +1138,163 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 
 				// TODO this only seems to work in simple cases. For mapped types
-				if let Some(on) =
-					base_structure_arguments.and_then(|args| args.get_single_argument(*on))
+				// crate::utilities::notify!(
+				// 	"base_structure_arguments={:?}, ty_structure_arguments={:?}, *on={:?}",
+				// 	base_type_arguments,
+				// 	ty_structure_arguments,
+				// 	on
+				// );
+
+				if let Some(on) = base_type_arguments.and_then(|args| args.get_single_argument(*on))
 				{
-					crate::utilities::notify!("Here got on");
-					if let PropertyKey::Type(under) = under {
+					let new_under;
+					let under = if let PropertyKey::Type(original) = under {
+						// let ty = types.get_type_by_id(*original);
 						crate::utilities::notify!(
-							"{:?} with {:?}",
-							under,
-							base_structure_arguments.as_ref()
+							"original={:?}, bta={:?}",
+							original,
+							base_type_arguments
 						);
-						if let Some(under) = base_structure_arguments
-							.and_then(|args| args.get_single_argument(*under))
+						// let original = if let Type::RootPolyType(
+						// 	crate::types::PolyNature::MappedGeneric { name, extends },
+						// ) = ty
+						// {
+						// 	*extends
+						// } else {
+						// 	*original
+						// };
+
+						let original = *original;
+						new_under = if let Some(under) = base_type_arguments
+							.and_then(|args| args.get_argument_covariant(original))
 						{
-							crate::utilities::notify!("Here 2");
-							let property = get_property_unbound(
-								(on, base_structure_arguments),
-								(
-									Publicity::Public,
-									&PropertyKey::Type(under),
-									ty_structure_arguments,
-								),
-								environment,
-								types,
+							under.into_property_key()
+						} else {
+							crate::utilities::notify!(
+								"Could not find key type {:?} {:?}",
+								original,
+								base_type_arguments
 							);
-							if let Ok(property) = property {
-								crate::utilities::notify!("Here 3");
-								match property {
-									Logical::Pure(PropertyValue::Value(property)) => {
-										crate::utilities::notify!("Here 4");
-										return type_is_subtype_with_generics(
-											(property, base_structure_arguments),
-											(ty, ty_structure_arguments),
-											state,
-											environment,
-											types,
-										);
-									}
-									value => todo!("{:?}", value), // Logical::Or { based_on, left, right } => todo!(),
-									                               // Logical::Implies { on, antecedent } => todo!(),
-								}
+							PropertyKey::from_type(original, types)
+						};
+						&new_under
+					} else {
+						under
+					};
+
+					crate::utilities::notify!(
+						"Here got under={:?}, on={:?}",
+						under,
+						types.get_type_by_id(on)
+					);
+					let property = get_property_unbound(
+						(on, base_type_arguments),
+						(Publicity::Public, under, ty_structure_arguments),
+						false,
+						information,
+						types,
+					);
+					if let Ok(LogicalOrValid::Logical(property)) = property {
+						crate::utilities::notify!("Here 3");
+						match property {
+							Logical::Pure(property) => {
+								crate::utilities::notify!("Here 4 {:?}", property);
+								let property_value = property.as_get_type(types);
+								return type_is_subtype_with_generics(
+									(property_value, base_type_arguments),
+									(ty, ty_structure_arguments),
+									state,
+									information,
+									types,
+								);
 							}
+							Logical::BasedOnKey(BasedOnKey::Right(PropertyOn { on, key })) => {
+								crate::utilities::notify!("TODO {:?}", (on, key));
+								// let filter = get_constraint(key, types).unwrap_or(key);
+
+								// let properties =
+								// 	crate::types::properties::get_properties_on_single_type(
+								// 		on,
+								// 		types,
+								// 		information,
+								// 		false,
+								// 		filter,
+								// 	);
+
+								// for (_, _, value) in properties {
+								// 	crate::utilities::notify!("{:?}", value);
+								// let result = type_is_subtype_with_generics(
+								// 	(property, base_type_arguments),
+								// 	(value.as_set_type(), ty_structure_arguments),
+								// 	state,
+								// 	information,
+								// 	types,
+								// );
+
+								// if let SubTypeResult::IsNotSubType(_) = result {
+								// 	return result;
+								// }
+								// }
+							}
+							value => {
+								crate::utilities::notify!("TODO not checking with {:?}", value);
+								// SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+							} // Logical::Or { based_on, left, right } => todo!(),
+							  // Logical::Implies { on, antecedent } => todo!(),
 						}
 					}
+				} else {
+					crate::utilities::notify!(
+						"Could not find argument for {:?}",
+						(on, base_type_arguments)
+					);
 				}
+				// else if let Type::Interface { .. }
+				// | Type::Object(ObjectNature::AnonymousTypeAnnotation)
+				// | Type::AliasTo { .. } = types.get_type_by_id(*on)
+				// {
+				// 	let property = get_property_unbound(
+				// 		(*on, base_structure_arguments),
+				// 		(Publicity::Public, under, ty_structure_arguments),
+				// 		information,
+				// 		types,
+				// 	);
+				// 	if let Ok(property) = property {
+				// 		crate::utilities::notify!("Here");
+				// 		match property {
+				// 			Logical::Pure(PropertyValue::Value(property)) => {
+				// 				crate::utilities::notify!("Here");
+				// 				return type_is_subtype_with_generics(
+				// 					(property, base_structure_arguments),
+				// 					(ty, ty_structure_arguments),
+				// 					state,
+				// 					information,
+				// 					types,
+				// 				);
+				// 			}
+				// 			value => todo!("{:?}", value), // Logical::Or { based_on, left, right } => todo!(),
+				// 			                               // Logical::Implies { on, antecedent } => todo!(),
+				// 		}
+				// 	}
+				// }
 
+				crate::utilities::notify!("Here *on={:?}", types.get_type_by_id(*on));
 				crate::utilities::notify!("Mismatched property");
+
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 			Constructor::Awaited { .. } => todo!(),
 			Constructor::KeyOf(on) => {
 				if let Type::Constant(crate::Constant::String(s)) = right_ty {
-					let get_property_unbound = &get_property_unbound(
-						(*on, base_structure_arguments),
+					let get_property_unbound = get_property_unbound(
+						(*on, base_type_arguments),
 						(
 							Publicity::Public,
 							&PropertyKey::String(std::borrow::Cow::Borrowed(s)),
 							ty_structure_arguments,
 						),
-						environment,
+						false,
+						information,
 						types,
 					);
 					if get_property_unbound.is_ok() {
@@ -872,46 +1303,28 @@ pub(crate) fn type_is_subtype_with_generics(
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				} else {
-					crate::utilities::notify!("TODO");
+					crate::utilities::notify!("TODO keyof stuff");
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			}
 		},
-		// TODO aliasing might work differently
 		Type::AliasTo { to, parameters, name: _ } => {
-			if base_type == TypeId::LITERAL_RESTRICTION {
-				crate::utilities::notify!("Here");
-				return if let Type::Constant(rhs_constant) = right_ty {
-					type_is_subtype_with_generics(
-						(*to, base_structure_arguments),
-						(rhs_constant.get_backing_type_id(), ty_structure_arguments),
-						state,
-						environment,
-						types,
-					)
-				} else {
-					// TODO what about if the rhs == TypeId::CONSTANT_RESTRICTION
-					// TODO non-constant error
-					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-				};
-			}
-
 			let base_structure_arguments = if let Some(parameters) = parameters {
 				crate::utilities::notify!("Skipping looking at parameters {:?}", parameters);
-				base_structure_arguments
+				base_type_arguments
 			} else {
-				base_structure_arguments
+				base_type_arguments
 			};
 
 			type_is_subtype_with_generics(
 				(*to, base_structure_arguments),
 				(ty, ty_structure_arguments),
 				state,
-				environment,
+				information,
 				types,
 			)
 		}
-		// TODO WIP
+		// TODO WIP nominal mechanism
 		Type::Class { .. } => match right_ty {
 			Type::Constant(constant) => {
 				if constant.get_backing_type_id() == base_type {
@@ -923,7 +1336,7 @@ pub(crate) fn type_is_subtype_with_generics(
 			Type::Object(..) => {
 				// WIP Nominal-ness for #128
 				if let Some(prototype) =
-					environment.get_chain_of_info().find_map(|info| info.prototypes.get(&ty))
+					information.get_chain_of_info().find_map(|info| info.prototypes.get(&ty))
 				{
 					if *prototype == base_type {
 						SubTypeResult::IsSubType
@@ -939,37 +1352,37 @@ pub(crate) fn type_is_subtype_with_generics(
 				let right =
 					(*on, GenericChainLink::append(ty, ty_structure_arguments.as_ref(), &into));
 				type_is_subtype_with_generics(
-					(base_type, base_structure_arguments),
+					(base_type, base_type_arguments),
 					right,
 					state,
-					environment,
+					information,
 					types,
 				)
 			}
-			_ => SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch),
+			Type::And(a, b) => {
+				// TODO more
+				crate::utilities::notify!("Here LHS class, RHS and");
+				if *a == base_type || *b == base_type {
+					SubTypeResult::IsSubType
+				} else {
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+				}
+			}
+			Type::SpecialObject(SpecialObject::Function(..)) | Type::FunctionReference(..)
+				if base_type == TypeId::FUNCTION_TYPE =>
+			{
+				SubTypeResult::IsSubType
+			}
+			ty => {
+				crate::utilities::notify!("Does {:?} not match class", ty);
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			}
 		},
-		Type::Interface { nominal: base_type_nominal, .. } => {
-			// If type matched type it would have been cleared before. So looking at properties and
-			// prototypes here
-
-			// These do **NOT** check for properties
-			let skip_nominal_branch = *base_type_nominal
-				&& !matches!(
-					right_ty,
-					Type::RootPolyType(..)
-						| Type::Constructor(..) | Type::Constant(..)
-						| Type::Or(..) | Type::And(..)
-				);
-
-			if skip_nominal_branch {
-				crate::utilities::notify!(
-					"Short circuited {:?} is nominal and RHS={:?}",
-					left_ty,
-					right_ty
-				);
-				// TODO not primitive error
-				// TODO this might break with *properties* proofs on primitives
-				// e.g. number :< Nat
+		Type::Interface { .. } => {
+			// TODO weird that these are interfaces
+			// If not captured above
+			if matches!(base_type, TypeId::UNDEFINED_TYPE | TypeId::NULL_TYPE | TypeId::NEVER_TYPE)
+			{
 				return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
 			}
 
@@ -983,13 +1396,13 @@ pub(crate) fn type_is_subtype_with_generics(
 					}
 				}
 				Type::Object(..) => subtype_properties(
-					(base_type, base_structure_arguments),
+					(base_type, base_type_arguments),
 					(ty, ty_structure_arguments),
 					state,
-					environment,
+					information,
 					types,
 				),
-				Type::SpecialObject(SpecialObjects::Function(..)) => {
+				Type::SpecialObject(SpecialObject::Function(..)) => {
 					crate::utilities::notify!("TODO implement function checking");
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
@@ -1004,39 +1417,16 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 				Type::Or(_left, _right) => {
 					unreachable!()
-					// TODO fails if RHS is also OR type :(
-					// let right = *right;
-					// let left = type_is_subtype2(
-					// 	base_type,
-					// 	*left,
-					// 	ty_arguments.as_deref(),
-					// 	state,
-					// 	environment,
-					// 	types,
-					// );
-					// if let SubTypeResult::IsSubType = left {
-					// 	type_is_subtype2(
-					// 		base_type,
-					// 		right,
-					// 		ty_arguments,
-					// 		state,
-					// 		environment,
-					// 		types,
-					// 	)
-					// } else {
-					// 	crate::utilities::notify!("Left failed");
-					// 	SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-					// }
 				}
 				Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
 					let into = arguments.clone();
 					let append =
 						GenericChainLink::append(ty, ty_structure_arguments.as_ref(), &into);
 					type_is_subtype_with_generics(
-						(base_type, base_structure_arguments),
+						(base_type, base_type_arguments),
 						(*on, append),
 						state,
-						environment,
+						information,
 						types,
 					)
 				}
@@ -1046,44 +1436,51 @@ pub(crate) fn type_is_subtype_with_generics(
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 				Type::Constructor(..) | Type::RootPolyType(..) => {
-					let arg = base_structure_arguments
-						.and_then(|args| args.get_argument(base_type, environment, types));
+					let arg =
+						base_type_arguments.and_then(|args| args.get_argument_covariant(base_type));
 
-					if let Some(args) = arg {
-						for arg in args {
-							let result = type_is_subtype_with_generics(
-								(arg, base_structure_arguments),
-								(ty, ty_structure_arguments),
-								state,
-								environment,
-								types,
-							);
+					crate::utilities::notify!("TODO {:?}", arg);
+					SubTypeResult::IsSubType
 
-							if let e @ SubTypeResult::IsNotSubType(_) = result {
-								return e;
-							}
-						}
-						SubTypeResult::IsSubType
-					} else {
-						let to = get_constraint(ty, types).unwrap();
+					// if let Some(args) = arg {
+					// 	for arg in args {
+					// 		let result = type_is_subtype_with_generics(
+					// 			(arg, base_type_arguments),
+					// 			(ty, ty_structure_arguments),
+					// 			state,
+					// 			information,
+					// 			types,
+					// 		);
 
-						if to == TypeId::ANY_TYPE {
-							crate::utilities::notify!("Modify constraint for equality");
-						}
+					// 		if let e @ SubTypeResult::IsNotSubType(_) = result {
+					// 			return e;
+					// 		}
+					// 	}
+					// 	SubTypeResult::IsSubType
+					// } else {
+					// 	let to = get_constraint(ty, types).unwrap();
 
-						type_is_subtype_with_generics(
-							(base_type, base_structure_arguments),
-							(to, ty_structure_arguments),
-							state,
-							environment,
-							types,
-						)
-					}
+					// 	if to == TypeId::ANY_TYPE {
+					// 		crate::utilities::notify!("Modify constraint for equality");
+					// 	}
+
+					// 	type_is_subtype_with_generics(
+					// 		(base_type, base_type_arguments),
+					// 		(to, ty_structure_arguments),
+					// 		state,
+					// 		information,
+					// 		types,
+					// 	)
+					// }
 				}
 				Type::FunctionReference(_) => todo!(),
 				Type::SpecialObject(_) => todo!(),
 				Type::Class { .. } => todo!(),
 			}
+		}
+		Type::SpecialObject(SpecialObject::Null) => {
+			crate::utilities::notify!("rhs={:?}", right_ty);
+			SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 		}
 		Type::SpecialObject(_) => todo!(),
 	}
@@ -1093,20 +1490,20 @@ fn subtype_function(
 	(left_func, base_type_arguments): (crate::FunctionId, GenericChain),
 	(right_ty, ty, right_type_arguments): (&Type, TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	crate::utilities::notify!("Subtyping a function");
 
 	let right_func = if let Type::FunctionReference(right_func)
-	| Type::SpecialObject(SpecialObjects::Function(right_func, _)) = right_ty
+	| Type::SpecialObject(SpecialObject::Function(right_func, _)) = right_ty
 	{
 		right_func
 	} else if let Some(constraint) = get_constraint(ty, types) {
 		// TODO explain why get_constraint early breaks a bunch of tests
 		let right_ty = types.get_type_by_id(constraint);
 		if let Type::FunctionReference(right_func)
-		| Type::SpecialObject(SpecialObjects::Function(right_func, _)) = right_ty
+		| Type::SpecialObject(SpecialObject::Function(right_func, _)) = right_ty
 		{
 			right_func
 		} else {
@@ -1122,44 +1519,45 @@ fn subtype_function(
 	let right_func = types.functions.get(right_func).unwrap();
 
 	for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
-		match right_func.parameters.get_parameter_type_at_index(idx) {
-			Some((right_param_ty, position)) => {
-				let last_mode =
-					std::mem::replace(&mut state.mode, SubTypingMode::Covariant { position });
+		if let Some((right_param_ty, position)) =
+			right_func.parameters.get_parameter_type_at_index(idx)
+		{
+			let last_mode =
+				std::mem::replace(&mut state.mode, SubTypingMode::Covariant { position });
 
-				// Reverse is important
-				let result = type_is_subtype_with_generics(
-					(right_param_ty, right_type_arguments),
-					(lhs_param.ty, base_type_arguments),
-					state,
-					environment,
-					types,
+			// Reverse is important
+			let result = type_is_subtype_with_generics(
+				(right_param_ty, right_type_arguments),
+				(lhs_param.ty, base_type_arguments),
+				state,
+				information,
+				types,
+			);
+
+			if let err @ SubTypeResult::IsNotSubType(_) = result {
+				let lhs = print_type(right_param_ty, types, information, true);
+				let rhs = print_type(lhs_param.ty, types, information, true);
+				crate::utilities::notify!(
+					"Parameter invalid rhs ({:?} {:?}) <- lhs ({:?} {:?})",
+					rhs,
+					right_type_arguments,
+					lhs,
+					base_type_arguments
 				);
-
-				if let err @ SubTypeResult::IsNotSubType(_) = result {
-					let lhs = print_type(right_param_ty, types, environment, true);
-					let rhs = print_type(lhs_param.ty, types, environment, true);
-					crate::utilities::notify!(
-						"Parameter invalid rhs ({:?} {:?}) <- lhs ({:?} {:?})",
-						rhs,
-						right_type_arguments,
-						lhs,
-						base_type_arguments
-					);
-					// TODO don't short circuit
-					return err;
-				}
-
-				state.mode = last_mode;
+				// TODO don't short circuit
+				return err;
 			}
-			None => {
-				if !lhs_param.is_optional {
-					crate::utilities::notify!("Expected parameter, for non optional parameter");
-					return SubTypeResult::IsNotSubType(NonEqualityReason::MissingParameter);
-				}
-			}
+
+			state.mode = last_mode;
+		} else {
+			// This is allowed. TODO only in some cases
+			// if !lhs_param.is_optional {
+			// 	crate::utilities::notify!("Expected parameter, for non optional parameter");
+			// 	return SubTypeResult::IsNotSubType(NonEqualityReason::MissingParameter);
+			// }
 		}
 	}
+
 	// TODO optional and rest parameters
 
 	// `void` return type means anything goes here
@@ -1170,7 +1568,7 @@ fn subtype_function(
 			(left_func.return_type, base_type_arguments),
 			(right_func.return_type, right_type_arguments),
 			state,
-			environment,
+			information,
 			types,
 		);
 
@@ -1186,7 +1584,7 @@ fn subtype_properties(
 	(base_type, base_type_arguments): (TypeId, GenericChain),
 	(ty, right_type_arguments): (TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	// TODO this will cause problems
@@ -1203,36 +1601,39 @@ fn subtype_properties(
 	// }
 
 	let mut property_errors = Vec::new();
-	let reversed_flattened_properties_on_on = environment
+	let reversed_flattened_properties_on_base = information
 		.get_chain_of_info()
 		.filter_map(|info| info.current_properties.get(&base_type).map(|v| v.iter().rev()))
 		.flatten();
 
-	for (publicity, key, lhs_property) in reversed_flattened_properties_on_on {
+	// Note this won't check for conditional stuff being true etc or things being deleted
+	for (publicity, key, lhs_property) in reversed_flattened_properties_on_base {
 		// crate::utilities::notify!(
 		// 	"key {:?} with base_type_arguments={:?}",
 		// 	key,
 		// 	base_type_arguments
 		// );
-
+		let holding_key;
 		let key = match key {
-			PropertyKey::Type(ty) => {
+			PropertyKey::Type(key_ty) => {
 				if let Some(base_type_arguments) = base_type_arguments {
-					let ty = base_type_arguments.get_single_argument(*ty).unwrap_or(*ty);
-					PropertyKey::from_type(ty, types)
+					let key_ty =
+						base_type_arguments.get_single_argument(*key_ty).unwrap_or(*key_ty);
+					holding_key = PropertyKey::from_type(key_ty, types);
+					&holding_key
 				} else {
-					key.clone()
+					key
 				}
 			}
-			PropertyKey::String(_) => key.clone(),
+			PropertyKey::String(_) => key,
 		};
 
 		let result = check_lhs_property_is_super_type_of_rhs(
-			(*publicity, &key),
-			(lhs_property, base_type_arguments),
+			(*publicity, key),
+			(lhs_property, base_type_arguments, false),
 			(ty, right_type_arguments),
 			state,
-			environment,
+			information,
 			types,
 		);
 
@@ -1241,169 +1642,259 @@ fn subtype_properties(
 		}
 	}
 
-	let result = if property_errors.is_empty() {
-		// TODO type arguments
-		if let Some(ref mut object_constraints) = state.object_constraints {
-			let base_type =
-				if let Some(GenericChainLink::Link { ref from, parent_link, value: _ }) =
-					base_type_arguments
-				{
-					if parent_link.is_none() {
-						crate::utilities::notify!("TODO recursive get_from");
-					}
-					*from
-				} else {
-					base_type
-				};
-			object_constraints.push((ty, base_type));
-		}
+	state.mode = state.mode.one_shallower();
 
-		if let Some(extends) = types.interface_extends.get(&base_type) {
-			type_is_subtype_with_generics(
+	if property_errors.is_empty() {
+		if let Type::Interface { extends: Some(extends), .. } = types.get_type_by_id(base_type) {
+			let extends_result = type_is_subtype_with_generics(
 				(*extends, base_type_arguments),
 				(ty, right_type_arguments),
 				state,
-				environment,
+				information,
 				types,
-			)
-		} else {
-			SubTypeResult::IsSubType
+			);
+			if let e @ SubTypeResult::IsNotSubType(_) = extends_result {
+				return e;
+			}
 		}
+
+		// Exclusive check
+		if base_type_arguments.is_some_and(|base| base.exclusive_mode()) {
+			use crate::types::properties;
+
+			let get_properties = properties::get_properties_on_single_type(
+				ty,
+				types,
+				information,
+				false,
+				TypeId::ANY_TYPE,
+			);
+
+			// Assert base_type contains all the keys of the LHS
+			for (publicity, key, _value) in get_properties {
+				let result = properties::get_property_unbound(
+					(base_type, base_type_arguments),
+					(publicity, &key, None),
+					true,
+					information,
+					types,
+				);
+
+				// TODO more
+				if result.is_err() {
+					// TODO excess property
+					return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+				}
+			}
+		}
+
+		// TODO type arguments
+		if let Some(ref mut object_constraints) = state.object_constraints {
+			let base_type = if let Some(GenericChainLink::PartiallyAppliedGenericArgumentsLink {
+				ref from,
+				parent_link,
+				value: _,
+			}) = base_type_arguments
+			{
+				if parent_link.is_some() {
+					crate::utilities::notify!("TODO recursive get_from");
+				}
+				*from
+			} else {
+				base_type
+			};
+			object_constraints.push((ty, base_type));
+		}
+
+		SubTypeResult::IsSubType
 	} else {
 		SubTypeResult::IsNotSubType(NonEqualityReason::PropertiesInvalid {
 			errors: property_errors,
 		})
-	};
-
-	state.mode = state.mode.one_shallower();
-
-	result
+	}
 }
 
 fn check_lhs_property_is_super_type_of_rhs(
 	(publicity, key): (Publicity, &PropertyKey<'_>),
-	(lhs_property, base_type_arguments): (&PropertyValue, GenericChain),
+	(lhs_property, base_type_arguments, optional): (&PropertyValue, GenericChain, bool),
 	(ty, right_type_arguments): (TypeId, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> Result<(), PropertyError> {
 	match lhs_property {
 		PropertyValue::Value(lhs_value) => {
-			// TODO should all values do this or is it only mapped generic ids
-			let root;
-			let base_type_arguments = if let Some((id, to)) = key.mapped_generic_id(types) {
-				// WIP, need to work for ors etc
-				// let to = base_type_arguments.and_then(|args| args.get_single_argument(to)).unwrap_or(to);
-				let mut map = crate::Map::default();
-				map.insert(id, (to, SpanWithSource::NULL));
-				root = GenericArguments::ExplicitRestrictions(map);
-				Some(GenericChainLink::append_to_link(id, base_type_arguments.as_ref(), &root))
-			} else {
-				base_type_arguments
-			};
+			let right_result = get_property_unbound(
+				(ty, right_type_arguments),
+				(publicity, key, base_type_arguments),
+				false,
+				information,
+				types,
+			);
 
-			// Fix for mapped types and where { [x: string]: ... } etc
-			if let PropertyKey::Type(TypeId::STRING_TYPE | TypeId::NUMBER_TYPE) = key {
-				if let Type::Object(..) = types.get_type_by_id(ty) {
-					let reversed_flattened_properties_on_on = environment
-						.get_chain_of_info()
-						.filter_map(|info| info.current_properties.get(&ty).map(|v| v.iter().rev()))
-						.flatten();
+			// {
+			// 	crate::utilities::notify!("LHS value is {:?}", lhs_value);
+			// 	crate::utilities::notify!(
+			// 		"RHS value is {:?} {:?}",
+			// 		right_result,
+			// 		(key, base_type_arguments)
+			// 	);
+			// }
 
-					for (_rhs_publicity, rhs_key, rhs_property) in
-						reversed_flattened_properties_on_on
-					{
-						if key_matches(
-							(key, base_type_arguments),
-							(rhs_key, right_type_arguments),
-							types,
-						) {
-							let res = check_logical_property(
-								(*lhs_value, base_type_arguments),
-								(Logical::Pure(rhs_property.clone()), right_type_arguments),
-								state,
-								environment,
-								types,
-							);
-							if let SubTypeResult::IsNotSubType(err) = res {
-								return Err(PropertyError::Invalid {
-									expected: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-									found: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-									mismatch: err,
-								});
-							}
-						} else {
-							crate::utilities::notify!("Here key does not match");
-						}
-					}
-					Ok(())
-				} else {
-					crate::utilities::notify!("TODO more complex keys");
-					Err(PropertyError::Missing)
-				}
-			} else {
-				let property = get_property_unbound(
-					(ty, right_type_arguments),
-					(publicity, key, base_type_arguments),
-					environment,
-					types,
-				);
-
-				match property {
-					Ok(rhs_value) => {
-						let res = check_logical_property(
-							(*lhs_value, base_type_arguments),
-							(rhs_value, right_type_arguments),
-							state,
-							environment,
-							types,
-						);
-						match res {
-							SubTypeResult::IsSubType => Ok(()),
-							SubTypeResult::IsNotSubType(err) => Err(PropertyError::Invalid {
-								expected: *lhs_value,
-								// TODO logical -> TypeId
-								found: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-								mismatch: err,
-							}),
-						}
-					}
-					// TODO
-					Err(..) => Err(PropertyError::Missing),
-				}
-			}
-		}
-		PropertyValue::Getter(getter) => {
-			let res = get_property_unbound((ty, None), (publicity, key, None), environment, types);
-			crate::utilities::notify!("looking for {:?} found {:?}", key, res);
-
-			match res {
-				Ok(res) => {
+			match right_result {
+				Ok(LogicalOrValid::Logical(res)) => {
 					let res = check_logical_property(
-						(getter.return_type, base_type_arguments),
+						(*lhs_value, base_type_arguments, optional),
 						(res, right_type_arguments),
 						state,
-						environment,
+						information,
 						types,
 					);
 					match res {
 						SubTypeResult::IsSubType => Ok(()),
 						SubTypeResult::IsNotSubType(err) => Err(PropertyError::Invalid {
-							expected: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+							expected: *lhs_value,
+							// TODO logical -> TypeId
 							found: TypeId::UNIMPLEMENTED_ERROR_TYPE,
 							mismatch: err,
 						}),
 					}
 				}
-				// TODO
-				Err(..) => Err(PropertyError::Missing),
+				// PROXY HANDLING!!
+				Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(
+					objects::Proxy { handler, over },
+					_,
+				))) => {
+					crate::utilities::notify!("TODO set as well?");
+					let get_handler = get_property_unbound(
+						(handler, right_type_arguments),
+						(
+							Publicity::Public,
+							&PropertyKey::String(std::borrow::Cow::Borrowed("get")),
+							base_type_arguments,
+						),
+						false,
+						information,
+						types,
+					);
+
+					if let Ok(LogicalOrValid::Logical(Logical::Pure(get_res))) = get_handler {
+						let function = get_res.as_get_type(types);
+						if let Type::SpecialObject(SpecialObject::Function(id, _)) =
+							types.get_type_by_id(function)
+						{
+							let function = types.get_function_from_id(*id);
+							let mut map = crate::Map::new();
+							// `Some` weird but accounts for missing parameters
+							if let Some((first, _)) =
+								function.parameters.get_parameter_type_at_index(0)
+							{
+								map.insert(first, (CovariantContribution::TypeId(over), 0));
+							}
+							if let Some((second, _)) =
+								function.parameters.get_parameter_type_at_index(1)
+							{
+								map.insert(
+									second,
+									(CovariantContribution::from(key.clone().into_owned()), 0),
+								);
+							}
+							if let Some((third, _)) =
+								function.parameters.get_parameter_type_at_index(2)
+							{
+								map.insert(third, (CovariantContribution::TypeId(handler), 0));
+							}
+
+							let right_type_arguments = Some(GenericChainLink::MappedPropertyLink {
+								parent_link: right_type_arguments.as_ref(),
+								value: &map,
+							});
+
+							let result = type_is_subtype_with_generics(
+								(*lhs_value, base_type_arguments),
+								(function.return_type, right_type_arguments),
+								state,
+								information,
+								types,
+							);
+							if let SubTypeResult::IsSubType = result {
+								Ok(())
+							} else {
+								// crate::utilities::notify!("One missing");
+								Err(PropertyError::Missing)
+							}
+						} else {
+							crate::utilities::notify!("{:?}", get_res);
+
+							check_lhs_property_is_super_type_of_rhs(
+								(publicity, key),
+								(lhs_property, base_type_arguments, optional),
+								(handler, right_type_arguments),
+								state,
+								information,
+								types,
+							)
+						}
+					} else {
+						check_lhs_property_is_super_type_of_rhs(
+							(publicity, key),
+							(lhs_property, base_type_arguments, optional),
+							(handler, right_type_arguments),
+							state,
+							information,
+							types,
+						)
+					}
+				}
+				Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { .. })) => {
+					crate::utilities::notify!("TODO add constraint candidate");
+					Ok(())
+				}
+				Err(_) => {
+					if optional {
+						Ok(())
+					} else {
+						// crate::utilities::notify!("One missing");
+						Err(PropertyError::Missing)
+					}
+				}
 			}
 		}
-		PropertyValue::Setter(_) => todo!(),
+		PropertyValue::GetterAndSetter { getter, setter } => {
+			todo!("{:?}", (getter, setter));
+		}
+		PropertyValue::Getter(_getter) => {
+			let res =
+				get_property_unbound((ty, None), (publicity, key, None), true, information, types);
+			crate::utilities::notify!("looking for {:?} found {:?}", key, res);
+
+			match res {
+				Ok(LogicalOrValid::Logical(_res)) => {
+					todo!("get get return type")
+				}
+				// TODO
+				res => {
+					crate::utilities::notify!("res={:?}", res);
+					Err(PropertyError::Missing)
+				}
+			}
+		}
+		PropertyValue::Setter(_) => {
+			let rhs =
+				get_property_unbound((ty, None), (publicity, key, None), true, information, types);
+
+			match rhs {
+				Ok(ok) => {
+					crate::utilities::notify!("Set vs {:?}", ok);
+					Ok(())
+				}
+				Err(_err) => Err(PropertyError::Missing),
+			}
+		}
 		PropertyValue::Deleted => {
 			// TODO WIP
-			let res = get_property_unbound((ty, None), (publicity, key, None), environment, types);
+			let res =
+				get_property_unbound((ty, None), (publicity, key, None), true, information, types);
 			if res.is_ok() {
 				// TODO the opposite of missing
 				Err(PropertyError::Missing)
@@ -1412,84 +1903,430 @@ fn check_lhs_property_is_super_type_of_rhs(
 				Ok(())
 			}
 		}
-		PropertyValue::ConditionallyExists { on: _, truthy } => {
-			if let PropertyValue::Value(lhs_value) = &**truthy {
-				let property = get_property_unbound(
-					(ty, right_type_arguments),
-					(publicity, key, base_type_arguments),
-					environment,
-					types,
-				);
-				if let Ok(property) = property {
-					// TODO
-					let found = if let Logical::Pure(PropertyValue::Value(ref found)) = property {
-						*found
-					} else {
-						TypeId::ERROR_TYPE
-					};
+		PropertyValue::ConditionallyExists { condition, truthy } => {
+			crate::utilities::notify!("Here {:?}", (key, ty, condition, truthy));
 
-					let res = check_logical_property(
-						(*lhs_value, base_type_arguments),
-						(property, right_type_arguments),
-						state,
-						environment,
-						types,
-					);
+			// TODO `NON_OPTIONAL_KEY_ARGUMENT` temp
+			let is_optional =
+				!matches!(*condition, TypeId::TRUE | TypeId::NON_OPTIONAL_KEY_ARGUMENT);
 
-					if let SubTypeResult::IsNotSubType(reason) = res {
-						Err(PropertyError::Invalid {
-							expected: *lhs_value,
-							found,
-							mismatch: reason,
-						})
-					} else {
-						Ok(())
-					}
-				} else {
-					// Okay if missing because of the above
-					Ok(())
-				}
-			} else {
-				todo!()
-			}
+			check_lhs_property_is_super_type_of_rhs(
+				(publicity, key),
+				(truthy, base_type_arguments, is_optional),
+				(ty, right_type_arguments),
+				state,
+				information,
+				types,
+			)
+			// if let PropertyValue::Value(lhs_value) = &**truthy {
+			// let property = get_property_unbound(
+			// 	(ty, right_type_arguments),
+			// 	(publicity, key, base_type_arguments),
+			// 	information,
+			// 	types,
+			// );
+			// crate::utilities::notify!("property={:?}", property);
+
+			// if let Ok(LogicalOrValid::Logical(property)) = property {
+			// 	// TODO for error reporting
+			// 	let found = if let Logical::Pure(PropertyValue::Value(ref found)) = property {
+			// 		*found
+			// 	} else {
+			// 		TypeId::ERROR_TYPE
+			// 	};
+
+			// 	crate::utilities::notify!("{:?}", property);
+
+			// 	let res = check_logical_property(
+			// 		(*lhs_value, base_type_arguments),
+			// 		(property, right_type_arguments),
+			// 		state,
+			// 		information,
+			// 		types,
+			// 	);
+
+			// 	if let SubTypeResult::IsNotSubType(reason) = res {
+			// 		Err(PropertyError::Invalid {
+			// 			expected: *lhs_value,
+			// 			found,
+			// 			mismatch: reason,
+			// 		})
+			// 	} else {
+			// 		Ok(())
+			// 	}
+			// } else {
+			// 	crate::utilities::notify!("Here");
+			// 	// Err(PropertyError::Missing)
+			// 	// Okay if missing because of the above
+			// 	Ok(())
+			// }
+			// } else {
+			// 	crate::utilities::notify!("Here maybe errors needs to continue checking {:?}", truthy);
+			// 	Ok(())
+			// }
+		}
+		PropertyValue::Configured { on, .. } => {
+			crate::utilities::notify!("TODO check readonly");
+			check_lhs_property_is_super_type_of_rhs(
+				(publicity, key),
+				(on, base_type_arguments, optional),
+				(ty, right_type_arguments),
+				state,
+				information,
+				types,
+			)
 		}
 	}
 }
 
 fn check_logical_property(
-	(base, base_type_arguments): (TypeId, GenericChain),
+	(lhs_property_value, lhs_property_value_type_arguments, optional): (TypeId, GenericChain, bool),
 	(rhs_property, right_type_arguments): (Logical<PropertyValue>, GenericChain),
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	match rhs_property {
 		Logical::Pure(rhs_property) => {
-			let rhs_type = rhs_property.as_set_type();
+			let rhs_type = rhs_property.as_get_type(types);
 			// crate::utilities::notify!(
 			// 	"Checking {} with {}, against {}, left={:?}",
-			// 	print_type(key, types, environment, true),
-			// 	print_type(property, types, environment, true),
-			// 	print_type(rhs_type, types, environment, true),
-			// 	base_type_arguments
+			// 	print_type(key, types, information, true),
+			// 	print_type(property, types, information, true),
+			// 	print_type(rhs_type, types, information, true),
+			// 	lhs_property_value_type_arguments
 			// );
 
 			type_is_subtype_with_generics(
-				(base, base_type_arguments),
+				(lhs_property_value, lhs_property_value_type_arguments),
 				(rhs_type, right_type_arguments),
 				state,
-				environment,
+				information,
 				types,
 			)
 		}
-		Logical::Or { .. } => todo!(),
-		Logical::Implies { on, antecedent } => check_logical_property(
-			(base, GenericChainLink::append(base, base_type_arguments.as_ref(), &antecedent)),
-			(*on, right_type_arguments),
-			state,
-			environment,
-			types,
-		),
+		Logical::Or { condition, left, right } => {
+			crate::utilities::notify!("{:?}", (condition, &left, &right));
+
+			if let (LogicalOrValid::Logical(left), LogicalOrValid::Logical(right)) = (*left, *right)
+			{
+				let left_result = check_logical_property(
+					(lhs_property_value, lhs_property_value_type_arguments, optional),
+					(left, right_type_arguments),
+					state,
+					information,
+					types,
+				);
+
+				if let SubTypeResult::IsSubType = left_result {
+					check_logical_property(
+						(lhs_property_value, lhs_property_value_type_arguments, optional),
+						(right, right_type_arguments),
+						state,
+						information,
+						types,
+					)
+				} else {
+					// else return the failing result
+					left_result
+				}
+			} else if optional {
+				SubTypeResult::IsSubType
+			} else {
+				crate::utilities::notify!("One missing");
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			}
+		}
+		Logical::Implies { on, antecedent } => {
+			crate::utilities::notify!("{:?}", antecedent);
+			check_logical_property(
+				(lhs_property_value, lhs_property_value_type_arguments, optional),
+				(
+					*on,
+					GenericChainLink::append(
+						TypeId::ERROR_TYPE,
+						right_type_arguments.as_ref(),
+						&antecedent,
+					),
+				),
+				state,
+				information,
+				types,
+			)
+		}
+		Logical::BasedOnKey(kind) => match kind {
+			BasedOnKey::Left { value, key_arguments } => {
+				let property_generics = Some(GenericChainLink::MappedPropertyLink {
+					parent_link: right_type_arguments.as_ref(),
+					value: &key_arguments,
+				});
+				check_logical_property(
+					(lhs_property_value, lhs_property_value_type_arguments, optional),
+					(*value, property_generics),
+					state,
+					information,
+					types,
+				)
+			}
+			BasedOnKey::Right(PropertyOn { on, key }) => {
+				if let Type::RootPolyType(PolyNature::MappedGeneric { name: _, extends }) =
+					types.get_type_by_id(key)
+				{
+					type_is_subtype_of_property_mapped_key(
+						MappedKey { value: (*extends).into(), key },
+						(lhs_property_value, lhs_property_value_type_arguments, optional),
+						(on, right_type_arguments),
+						state,
+						information,
+						types,
+					)
+				} else {
+					let filter = get_constraint(key, types).unwrap_or(key);
+
+					let properties = get_properties_on_single_type2(
+						(on, right_type_arguments),
+						types,
+						information,
+						filter,
+					);
+					for (_key, rhs_property, _args) in properties {
+						let result = check_logical_property(
+							(lhs_property_value, lhs_property_value_type_arguments, optional),
+							(Logical::Pure(rhs_property), right_type_arguments),
+							state,
+							information,
+							types,
+						);
+						if result.is_mismatch() {
+							return result;
+						}
+					}
+					SubTypeResult::IsSubType
+				}
+			}
+		},
+	}
+}
+
+pub struct MappedKey {
+	/// covariant contribution allows for slices and `PropertyKey::String`
+	pub value: CovariantContribution,
+	/// This points towards the `Type::RootPolyType(PolyNature::MappedGeneric)`
+	pub key: TypeId,
+}
+
+pub fn type_is_subtype_of_property_mapped_key(
+	mapped_key: MappedKey,
+	(base, property_generics, optional): (TypeId, GenericChain, bool),
+	(ty, right_type_arguments): (TypeId, GenericChain),
+	state: &mut State,
+	information: &impl InformationChain,
+	types: &TypeStore,
+) -> SubTypeResult {
+	// TODO use covariant contribution as property key. Also what about slices on types?
+	match mapped_key.value {
+		CovariantContribution::String(ref s) => {
+			{
+				crate::utilities::notify!(
+					"Reading {:?}, with {:?} {:?}",
+					types.get_type_by_id(ty),
+					s,
+					(property_generics.as_ref(), right_type_arguments.as_ref())
+				);
+			}
+			let right_property = get_property_unbound(
+				(ty, right_type_arguments),
+				(
+					Publicity::Public,
+					&PropertyKey::String(std::borrow::Cow::Owned(s.to_owned())),
+					None,
+				),
+				false,
+				information,
+				types,
+			);
+
+			match right_property {
+				Ok(LogicalOrValid::Logical(right_property)) => {
+					let map = crate::Map::from_iter([(mapped_key.key, (mapped_key.value, 0))]);
+					let property_generics = Some(GenericChainLink::MappedPropertyLink {
+						parent_link: property_generics.as_ref(),
+						value: &map,
+					});
+					let result = check_logical_property(
+						(base, property_generics, optional),
+						(right_property, right_type_arguments),
+						state,
+						information,
+						types,
+					);
+
+					crate::utilities::notify!("Got {:?}", result);
+
+					result
+				}
+				// TODO
+				_res => {
+					crate::utilities::notify!("Missing");
+					if optional {
+						SubTypeResult::IsSubType
+					} else {
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					}
+				}
+			}
+		}
+		CovariantContribution::TypeId(key_ty) => {
+			match types.get_type_by_id(key_ty) {
+				Type::AliasTo { to, name: _, parameters: _ } => {
+					type_is_subtype_of_property_mapped_key(
+						MappedKey { value: (*to).into(), key: mapped_key.key },
+						(base, property_generics, optional),
+						(ty, right_type_arguments),
+						state,
+						information,
+						types,
+					)
+				}
+				Type::And(left, right) => {
+					let left = type_is_subtype_of_property_mapped_key(
+						MappedKey { value: (*left).into(), key: mapped_key.key },
+						(base, property_generics, optional),
+						(ty, right_type_arguments),
+						state,
+						information,
+						types,
+					);
+					if left.is_mismatch() {
+						type_is_subtype_of_property_mapped_key(
+							MappedKey { value: (*right).into(), key: mapped_key.key },
+							(base, property_generics, optional),
+							(ty, right_type_arguments),
+							state,
+							information,
+							types,
+						)
+					} else {
+						left
+					}
+				}
+				Type::Or(left, right) => {
+					let left = type_is_subtype_of_property_mapped_key(
+						MappedKey { value: (*left).into(), key: mapped_key.key },
+						(base, property_generics, optional),
+						(ty, right_type_arguments),
+						state,
+						information,
+						types,
+					);
+					if left.is_mismatch() {
+						left
+					} else {
+						type_is_subtype_of_property_mapped_key(
+							MappedKey { value: (*right).into(), key: mapped_key.key },
+							(base, property_generics, optional),
+							(ty, right_type_arguments),
+							state,
+							information,
+							types,
+						)
+					}
+				}
+				Type::RootPolyType(_) => {
+					// TODO get_covariant contribution
+					if let Some(value) =
+						property_generics.and_then(|args| args.get_single_argument(key_ty))
+					{
+						type_is_subtype_of_property_mapped_key(
+							MappedKey { value: value.into(), key: mapped_key.key },
+							(base, property_generics, optional),
+							(ty, right_type_arguments),
+							state,
+							information,
+							types,
+						)
+					} else {
+						todo!("no value {:?}", (ty, property_generics))
+					}
+				}
+				Type::Constructor(Constructor::Property { .. }) => {
+					todo!()
+				}
+				Type::Constructor(Constructor::KeyOf(key_of_ty)) => {
+					let properties = get_properties_on_single_type2(
+						(*key_of_ty, property_generics),
+						types,
+						information,
+						TypeId::ANY_TYPE,
+					);
+					for (key, _, _) in properties {
+						let value = match key {
+							PropertyKey::Type(ty) => CovariantContribution::TypeId(ty),
+							PropertyKey::String(str) => {
+								CovariantContribution::String(str.into_owned())
+							}
+						};
+						crate::utilities::notify!("Here {:?}", value);
+						let result = type_is_subtype_of_property_mapped_key(
+							MappedKey { value, key: mapped_key.key },
+							(base, property_generics, optional),
+							(ty, right_type_arguments),
+							state,
+							information,
+							types,
+						);
+
+						if result.is_mismatch() {
+							return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
+						}
+					}
+					SubTypeResult::IsSubType
+				}
+				Type::Constructor(_) => todo!(),
+				Type::PartiallyAppliedGenerics(_) => todo!(),
+				Type::Interface { .. } => todo!(),
+				Type::Class { .. } => todo!(),
+				Type::Constant(_) => {
+					let right_property = get_property_unbound(
+						(ty, right_type_arguments),
+						(Publicity::Public, &PropertyKey::Type(key_ty), right_type_arguments),
+						true,
+						information,
+						types,
+					);
+
+					match right_property {
+						Ok(LogicalOrValid::Logical(right_property)) => {
+							let map =
+								crate::Map::from_iter([(mapped_key.key, (mapped_key.value, 0))]);
+							let property_generics = Some(GenericChainLink::MappedPropertyLink {
+								parent_link: property_generics.as_ref(),
+								value: &map,
+							});
+							check_logical_property(
+								(base, property_generics, optional),
+								(right_property, right_type_arguments),
+								state,
+								information,
+								types,
+							)
+						}
+						// TODO
+						_res => {
+							if optional {
+								SubTypeResult::IsSubType
+							} else {
+								SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+							}
+						}
+					}
+				}
+				Type::FunctionReference(_) => todo!(),
+				Type::Object(_) => todo!(),
+				Type::SpecialObject(_) => todo!(),
+			}
+		}
+		value => todo!("{:?}", value),
 	}
 }
 
@@ -1499,59 +2336,78 @@ pub fn type_is_subtype_of_property(
 	(property, property_generics): (&Logical<PropertyValue>, GenericChain),
 	ty: TypeId,
 	state: &mut State,
-	environment: &Environment,
+	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
 	match property {
 		Logical::Pure(prop) => type_is_subtype_with_generics(
-			(prop.as_set_type(), property_generics),
+			(prop.as_set_type(types), property_generics),
 			(ty, GenericChain::None),
 			state,
-			environment,
+			information,
 			types,
 		),
-		Logical::Or { .. } => {
-			todo!()
-			// let left_result = type_is_subtype_of_property(
-			// 	left,
-			// 	property_generics,
-			// 	ty,
-			// 	state,
-			// 	environment,
-			// 	types,
-			// );
-			// if let SubTypeResult::IsSubType = left_result {
-			// 	left_result
+		Logical::Or { condition: _, left, right } => {
+			let left_result = if let LogicalOrValid::Logical(left) = &**left {
+				type_is_subtype_of_property(
+					(left, property_generics),
+					ty,
+					state,
+					information,
+					types,
+				)
+			} else {
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			};
+			if let SubTypeResult::IsSubType = left_result {
+				left_result
+			} else if let LogicalOrValid::Logical(right) = &**right {
+				type_is_subtype_of_property(
+					(right, property_generics),
+					ty,
+					state,
+					information,
+					types,
+				)
+			} else {
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			}
+		}
+		Logical::Implies { on, antecedent } => {
+			let property_generics = GenericChainLink::append(
+				TypeId::UNIMPLEMENTED_ERROR_TYPE,
+				property_generics.as_ref(),
+				antecedent,
+			);
+			type_is_subtype_of_property((on, property_generics), ty, state, information, types)
+		}
+		Logical::BasedOnKey(on) => {
+			// if let BasedOnKey::Right { on, key } = on {
+			// 	if let Type::RootPolyType(PolyNature::MappedGeneric { name: _, extends }) =
+			// 		types.get_type_by_id(*filter)
+			// 	{
+			// 		type_is_subtype_of_(
+			// 			Some(MappedKey { value: *extends, key: *filter }),
+			// 			(property, property_generics),
+			// 			ty,
+			// 			state,
+			// 			information,
+			// 			types,
+			// 		)
+			// 	} else {
+			// 		crate::utilities::notify!("TODO, returning IsSubType {:?}", on);
+			// 		SubTypeResult::IsSubType
+			// 	}
 			// } else {
-			// 	type_is_subtype_of_property(
-			// 		right,
-			// 		property_generics,
-			// 		ty,
-			// 		state,
-			// 		environment,
-			// 		types,
-			// 	)
+			crate::utilities::notify!("TODO, returning IsSubType {:?}", on);
+			SubTypeResult::IsSubType
 			// }
 		}
-		Logical::Implies { on, antecedent } => type_is_subtype_of_property(
-			(
-				on,
-				GenericChainLink::append(
-					TypeId::UNIMPLEMENTED_ERROR_TYPE,
-					property_generics.as_ref(),
-					antecedent,
-				),
-			),
-			ty,
-			state,
-			environment,
-			types,
-		),
 	}
 }
 
 impl NonEqualityReason {
-	pub(crate) fn _into_error_message(self, _environment: &GeneralContext) -> Vec<String> {
+	pub(crate) fn _into_error_message(self, _information: &GeneralContext) -> Vec<String> {
 		match self {
 			NonEqualityReason::GenericParameterMismatch
 			| NonEqualityReason::MissingParameter
@@ -1560,6 +2416,516 @@ impl NonEqualityReason {
 				errors.into_iter().map(|error| format!("{error:?}")).collect()
 			}
 			NonEqualityReason::TooStrict => todo!(),
+			NonEqualityReason::Excess => todo!(),
+		}
+	}
+}
+
+pub type SliceArguments =
+	TriMap<TypeId, super::generics::contributions::CovariantContribution, ContributionDepth>;
+
+// #[derive(Debug, Default)]
+// pub struct SliceArguments {
+// 	pub(crate) covariant: TriMap<TypeId, super::generics::contributions::CovariantContribution, ContributionDepth>,
+// 	/// WIP for mapped inference
+// 	pub(crate) contravariant: TriMap<TypeId, super::generics::contributions::CovariantContribution, ContributionDepth>
+// }
+
+/// `allow_casts=true` is for property keys
+pub(crate) fn slice_matches_type(
+	(base, base_type_arguments): (TypeId, Option<super::GenericChainLink>),
+	slice: &str,
+	mut contributions: Option<&mut SliceArguments>,
+	information: &impl InformationChain,
+	types: &TypeStore,
+	allow_casts: bool,
+) -> bool {
+	let base_ty = types.get_type_by_id(base);
+
+	// {
+	// 	crate::utilities::notify!(
+	// 		"Slice checking {} ({:?}) :>= '{}'",
+	// 		print_type(base, types, information, true),
+	// 		base_type_arguments,
+	// 		slice
+	// 	);
+	// }
+
+	// TODO cast string
+	if allow_casts {
+		if base == TypeId::ANY_TYPE {
+			return true;
+		} else if base == TypeId::BOOLEAN_TYPE {
+			return slice == "true" || slice == "false";
+		} else if base == TypeId::NUMBER_TYPE {
+			return slice.parse::<usize>().is_ok();
+		} else if base == TypeId::STRING_TYPE {
+			// crate::utilities::notify!("Here!");
+			// TODO is this okay?
+			return slice.parse::<usize>().is_err();
+		}
+	}
+	match base_ty {
+		Type::Constant(Constant::String(base_string)) => {
+			if let Some(transform) = base_type_arguments.and_then(|a| a.get_string_transform()) {
+				apply_string_intrinsic(transform, base_string).as_str() == slice
+			} else if base_type_arguments.is_some_and(|a| a.is_case_insensitive()) {
+				base_string.to_lowercase() == slice.to_lowercase()
+			} else {
+				base_string == slice
+			}
+		}
+		Type::RootPolyType(rpt) => {
+			// TODO temp fix to set keyof arguments
+			{
+				let constraint = rpt.get_constraint();
+				if let Type::Constructor(Constructor::KeyOf { .. }) =
+					types.get_type_by_id(constraint)
+				{
+					let mut new_contributions = SliceArguments::default();
+					let _ = slice_matches_type(
+						(constraint, base_type_arguments),
+						slice,
+						Some(&mut new_contributions),
+						information,
+						types,
+						allow_casts,
+					);
+					if let Some(ref mut contributions) = contributions {
+						contributions.extend(new_contributions);
+					}
+				}
+			}
+
+			if let Some(argument) = base_type_arguments.and_then(|v| v.get_single_argument(base)) {
+				slice_matches_type(
+					(argument, base_type_arguments),
+					slice,
+					contributions,
+					information,
+					types,
+					allow_casts,
+				)
+			} else if let Some(contributions) = contributions {
+				assert!(rpt.is_substitutable());
+				let constraint = rpt.get_constraint();
+				let res = slice_matches_type(
+					(constraint, base_type_arguments),
+					slice,
+					Some(contributions),
+					information,
+					types,
+					allow_casts,
+				);
+				if res {
+					contributions
+						.insert(base, (CovariantContribution::String(slice.to_owned()), 0));
+				}
+				res
+			} else {
+				false
+			}
+		}
+		Type::AliasTo { to, .. } => slice_matches_type(
+			(*to, base_type_arguments),
+			slice,
+			contributions,
+			information,
+			types,
+			allow_casts,
+		),
+		Type::Or(l, r) => {
+			// TODO temp for
+			let mut new_contributions = SliceArguments::default();
+			let matches = slice_matches_type(
+				(*l, base_type_arguments),
+				slice,
+				Some(&mut new_contributions),
+				information,
+				types,
+				allow_casts,
+			);
+			if matches {
+				if let Some(ref mut contributions) = contributions {
+					contributions.extend(new_contributions);
+				}
+				true
+			} else {
+				// TODO clear contributions
+				slice_matches_type(
+					(*r, base_type_arguments),
+					slice,
+					contributions,
+					information,
+					types,
+					allow_casts,
+				)
+			}
+		}
+		Type::And(l, r) => {
+			let mut new_contributions = SliceArguments::default();
+			let matches = slice_matches_type(
+				(*l, base_type_arguments),
+				slice,
+				Some(&mut new_contributions),
+				information,
+				types,
+				allow_casts,
+			);
+			if matches {
+				if let Some(ref mut contributions) = contributions {
+					contributions.extend(new_contributions);
+				}
+				slice_matches_type(
+					(*r, base_type_arguments),
+					slice,
+					contributions,
+					information,
+					types,
+					allow_casts,
+				)
+			} else {
+				false
+			}
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on:
+				transform @ (TypeId::STRING_CAPITALIZE
+				| TypeId::STRING_UNCAPITALIZE
+				| TypeId::STRING_LOWERCASE
+				| TypeId::STRING_UPPERCASE),
+			arguments,
+		}) => {
+			let matches_constraint = match *transform {
+				TypeId::STRING_CAPITALIZE => slice.chars().next().map_or(true, char::is_uppercase),
+				TypeId::STRING_UNCAPITALIZE => {
+					slice.chars().next().map_or(true, char::is_lowercase)
+				}
+				TypeId::STRING_LOWERCASE => slice.chars().all(char::is_lowercase),
+				TypeId::STRING_UPPERCASE => slice.chars().all(char::is_uppercase),
+				_ => unreachable!(),
+			};
+
+			if matches_constraint {
+				let generic_chain_link = Some(GenericChainLink::SpecialGenericChainLink {
+					parent_link: base_type_arguments.as_ref(),
+					special: SpecialGenericChainLink::CaseTransform { transform: *transform },
+				});
+				let inner = arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
+
+				let mut new_contributions = SliceArguments::default();
+				// TODO any contributions in here SHOULD be wrapped in case insensitive
+				let matches = slice_matches_type(
+					(inner, generic_chain_link),
+					slice,
+					Some(&mut new_contributions),
+					information,
+					types,
+					allow_casts,
+				);
+				if let (true, Some(current)) = (matches, contributions) {
+					crate::utilities::notify!("{:?}", new_contributions);
+					for (id, (c, d)) in new_contributions {
+						current
+							.insert(id, (CovariantContribution::CaseInsensitive(Box::new(c)), d));
+					}
+					crate::utilities::notify!("{:?}", current);
+				}
+				matches
+			} else {
+				false
+			}
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::CASE_INSENSITIVE,
+			arguments,
+		}) => {
+			let base_type_arguments = Some(GenericChainLink::SpecialGenericChainLink {
+				parent_link: base_type_arguments.as_ref(),
+				special: SpecialGenericChainLink::CaseInsensitive,
+			});
+			let inner = arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
+			slice_matches_type(
+				(inner, base_type_arguments),
+				slice,
+				contributions,
+				information,
+				types,
+				allow_casts,
+			)
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::MULTIPLE_OF | TypeId::LESS_THAN | TypeId::GREATER_THAN,
+			arguments: _,
+		}) if allow_casts => {
+			// Special behavior here to treat numerical property keys (which are strings) as numbers
+			if let Ok(value) = slice.parse::<f64>() {
+				number_matches_type(
+					(base, base_type_arguments),
+					value,
+					contributions,
+					information,
+					types,
+				)
+			} else {
+				false
+			}
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::NOT_RESTRICTION,
+			arguments,
+		}) => {
+			// Here don't have to use disjoint
+			let argument = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			// TODO what to do about contributions :/
+			let matches = slice_matches_type(
+				(argument, base_type_arguments),
+				slice,
+				contributions,
+				information,
+				types,
+				allow_casts,
+			);
+			// crate::utilities::notify!("negated slice arguments={:?}", _k);
+			!matches
+		}
+		Type::Constructor(super::Constructor::KeyOf(on)) => {
+			let argument =
+				(Publicity::Public, &PropertyKey::String(std::borrow::Cow::Borrowed(slice)), None);
+
+			let arg = base_type_arguments
+				.as_ref()
+				.and_then(|link| link.get_single_argument(*on))
+				.unwrap_or(*on);
+
+			let property = get_property_unbound(
+				(arg, base_type_arguments),
+				argument,
+				true,
+				information,
+				types,
+			);
+
+			// crate::utilities::notify!("Here {:?}", property);
+
+			if let Ok(LogicalOrValid::Logical(property)) = property {
+				// For mapped types
+				if let Some(contributions) = contributions {
+					// WIP!!
+					let is_writable =
+						if let Logical::Pure(PropertyValue::Configured { on: _, ref descriptor }) =
+							property
+						{
+							descriptor.writable
+						} else {
+							// TODO might be missing something here via LogicalOr etc
+							crate::utilities::notify!("Might be missing {:?}", property);
+							TypeId::TRUE
+						};
+
+					// WIP!!
+					let is_defined = if let Logical::Pure(PropertyValue::ConditionallyExists {
+						ref condition,
+						..
+					}) = property
+					{
+						*condition
+					} else {
+						// TODO might be missing something here via LogicalOr etc
+						crate::utilities::notify!("Might be missing {:?}", property);
+						TypeId::TRUE
+					};
+
+					contributions.insert(
+						TypeId::WRITABLE_KEY_ARGUMENT,
+						(CovariantContribution::TypeId(is_writable), 0),
+					);
+					contributions.insert(
+						TypeId::NON_OPTIONAL_KEY_ARGUMENT,
+						(CovariantContribution::TypeId(is_defined), 0),
+					);
+					crate::utilities::notify!(
+						"For MT set: (is_writable, is_defined)={:?}",
+						(is_writable, is_defined)
+					);
+				}
+
+				true
+			} else {
+				false
+			}
+		}
+		Type::Constructor(super::Constructor::BinaryOperator {
+			lhs,
+			rhs,
+			operator: MathematicalAndBitwise::Add,
+		}) => {
+			let lhs = base_type_arguments
+				.as_ref()
+				.and_then(|link| link.get_single_argument(*lhs))
+				.unwrap_or(*lhs);
+
+			let rhs = base_type_arguments
+				.as_ref()
+				.and_then(|link| link.get_single_argument(*rhs))
+				.unwrap_or(*rhs);
+
+			if let Type::Constant(Constant::String(prefix)) = types.get_type_by_id(lhs) {
+				if let Some(after) = slice.strip_prefix(prefix) {
+					slice_matches_type(
+						(rhs, base_type_arguments),
+						after,
+						contributions,
+						information,
+						types,
+						allow_casts,
+					)
+				} else {
+					false
+				}
+			} else if let Type::Constant(Constant::String(suffix)) = types.get_type_by_id(rhs) {
+				if let Some(before) = slice.strip_suffix(suffix) {
+					slice_matches_type(
+						(lhs, base_type_arguments),
+						before,
+						contributions,
+						information,
+						types,
+						allow_casts,
+					)
+				} else {
+					false
+				}
+			} else {
+				let lhs = types.get_type_by_id(lhs);
+				let rhs = types.get_type_by_id(rhs);
+				crate::utilities::notify!(
+					"More complex type here, returning false. lhs={:?}, rhs={:?}, {:?}",
+					lhs,
+					rhs,
+					base_type_arguments
+				);
+				false
+			}
+		}
+		_ => {
+			if base == TypeId::STRING_TYPE || base == TypeId::ANY_TYPE {
+				true
+			} else {
+				crate::utilities::notify!("Cannot match key {:?}", base_ty);
+				false
+			}
+		}
+	}
+}
+
+// TODO keyof
+#[allow(clippy::only_used_in_recursion)]
+pub(crate) fn number_matches_type(
+	(base, base_type_arguments): (TypeId, Option<super::GenericChainLink>),
+	number: f64,
+	mut contributions: Option<&mut SliceArguments>,
+	information: &impl InformationChain,
+	types: &TypeStore,
+) -> bool {
+	match types.get_type_by_id(base) {
+		Type::Constant(cst) => {
+			if let Constant::Number(base_number) = cst {
+				*base_number == number
+			} else {
+				false
+			}
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: on @ (TypeId::MULTIPLE_OF | TypeId::LESS_THAN | TypeId::GREATER_THAN),
+			arguments,
+		}) => {
+			// Special behavior here to treat numerical property keys (which are strings) as numbers
+			// TODO unify with the subtyping
+			let argument = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+
+			let arg_ty = types.get_type_by_id(argument);
+			if let Type::Constant(Constant::Number(argument)) = arg_ty {
+				let number: ordered_float::NotNan<f64> = number.try_into().unwrap();
+				crate::utilities::notify!("value={:?}, arg={:?}", number, argument);
+				match *on {
+					TypeId::LESS_THAN => *argument < number,
+					TypeId::GREATER_THAN => *argument > number,
+					TypeId::MULTIPLE_OF => number % *argument == 0f64,
+					_ => unreachable!(),
+				}
+			} else {
+				crate::utilities::notify!("TODO argument is dependent {:?}", arg_ty);
+				false
+			}
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::NOT_RESTRICTION,
+			arguments,
+		}) => {
+			let argument = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+
+			!number_matches_type(
+				(argument, base_type_arguments),
+				number,
+				contributions,
+				information,
+				types,
+			)
+		}
+		Type::Or(l, r) => {
+			// TODO temp for
+			let mut new_contributions = SliceArguments::default();
+			let matches = number_matches_type(
+				(*l, base_type_arguments),
+				number,
+				Some(&mut new_contributions),
+				information,
+				types,
+			);
+			if matches {
+				if let Some(ref mut contributions) = contributions {
+					contributions.extend(new_contributions);
+				}
+				true
+			} else {
+				// TODO clear contributions
+				number_matches_type(
+					(*r, base_type_arguments),
+					number,
+					contributions,
+					information,
+					types,
+				)
+			}
+		}
+		Type::And(l, r) => {
+			let mut new_contributions = SliceArguments::default();
+			let matches = number_matches_type(
+				(*l, base_type_arguments),
+				number,
+				Some(&mut new_contributions),
+				information,
+				types,
+			);
+			if matches {
+				if let Some(ref mut contributions) = contributions {
+					contributions.extend(new_contributions);
+				}
+				number_matches_type(
+					(*r, base_type_arguments),
+					number,
+					contributions,
+					information,
+					types,
+				)
+			} else {
+				false
+			}
+		}
+		ty => {
+			crate::utilities::notify!("TODO number matches ty={:?}", ty);
+			true
 		}
 	}
 }

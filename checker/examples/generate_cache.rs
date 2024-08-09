@@ -17,5 +17,5 @@ fn main() {
 
 	let cache = generate_cache::<_, EznoParser>(PathBuf::from(input).as_path(), &reader, ());
 	write(output, cache).unwrap();
-	eprintln!("Cache generated 🏧💵✅")
+	eprintln!("Cache generated 🏧💵✅");
 }
