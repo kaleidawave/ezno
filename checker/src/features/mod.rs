@@ -26,7 +26,6 @@ use crate::{
 	context::{get_value_of_variable, ClosedOverReferencesInScope, InformationChain},
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
-	features::functions::ClosedOverVariables,
 	types::{
 		get_constraint,
 		logical::{Logical, LogicalOrValid},
@@ -35,7 +34,7 @@ use crate::{
 	CheckingData, Environment, PropertyValue, Type, TypeId,
 };
 
-use self::objects::SpecialObject;
+use self::{functions::ClosedOverVariables, objects::SpecialObject};
 
 /// Returns result of `typeof *on*`
 pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {

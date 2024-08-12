@@ -61,7 +61,57 @@ function func(param: boolean) {
 	if (param) {
 		param satisfies string
 	}
+	if (!param) {
+		param satisfies number
+	}
 }
 ```
 
 - Expected string, found true
+- Expected number, found false
+
+#### Narrowing from operators
+
+```ts
+function func(thing: string | null) {
+	(thing ?? "something") satisfies string;
+	(thing || "something") satisfies number;
+	
+	const result = thing === "hi" && (thing satisfies boolean);
+}
+```
+
+- Expected number, found string | "something"
+- Expected boolean, found "hi"
+
+#### Conjugtions
+
+```ts
+function func(thing: any, other: any) {
+	if (typeof thing === "string" && other === 4) {
+		({ thing, other }) satisfies string;
+	}
+	
+	if (typeof thing === "string" || typeof thing === "number") {
+		thing satisfies null;
+	}
+}
+```
+
+- Expected string, found { thing: string, other: 4 }
+- Expected null, found string | number
+
+#### Eating cases
+
+> TODO This tests two things. Context negation through final event and negating effect of typeof
+
+```ts
+function func(param: boolean | string | number) {
+    if (typeof param === "boolean") {
+        return 5
+    }
+    param satisfies null;
+}
+```
+
+- Expected null, found string | number

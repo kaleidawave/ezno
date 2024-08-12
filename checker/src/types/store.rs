@@ -263,6 +263,10 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
+	pub fn new_or_type_from_iterator(&mut self, iter: impl IntoIterator<Item = TypeId>) -> TypeId {
+		iter.into_iter().reduce(|acc, n| self.new_or_type(acc, n)).unwrap_or(TypeId::NEVER_TYPE)
+	}
+
 	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> Result<TypeId, ()> {
 		if lhs == rhs {
 			return Ok(lhs);
@@ -575,7 +579,18 @@ impl TypeStore {
 			Intrinsic::GreaterThan => (TypeId::GREATER_THAN, TypeId::NUMBER_GENERIC),
 			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
 			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::Not => (TypeId::NOT_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::Not => {
+				// Double negation
+				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+					on: TypeId::NOT_RESTRICTION,
+					arguments: GenericArguments::ExplicitRestrictions(args),
+				}) = self.get_type_by_id(argument)
+				{
+					return args.get(&TypeId::T_TYPE).unwrap().0;
+				} else {
+					(TypeId::NOT_RESTRICTION, TypeId::T_TYPE)
+				}
+			}
 			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
 		};
 		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(

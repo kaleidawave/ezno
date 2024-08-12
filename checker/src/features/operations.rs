@@ -238,6 +238,17 @@ pub fn evaluate_equality_inequality_operation(
 
 			// TODO check lhs and rhs type to see if they overlap
 			if is_dependent {
+				if crate::types::disjoint::types_are_disjoint(
+					lhs,
+					rhs,
+					&mut Vec::new(),
+					&crate::context::LocalInformation::default(),
+					types,
+				) {
+					// TODO warning with types disjoint
+					return TypeId::FALSE;
+				}
+
 				let constructor = crate::types::Constructor::CanonicalRelationOperator {
 					lhs,
 					operator: CanonicalEqualityAndInequality::StrictEqual,
@@ -414,6 +425,7 @@ pub fn is_null_or_undefined(ty: TypeId, types: &mut TypeStore) -> TypeId {
 		types,
 		false,
 	);
+
 	types.new_logical_or_type(is_null, is_undefined)
 }
 
@@ -451,18 +463,58 @@ pub fn evaluate_logical_operation_with_expression<
 		LogicalOperator::Or => Ok(new_conditional_context(
 			environment,
 			lhs,
-			|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
+			|env: &mut Environment, checking_data: &mut CheckingData<T, A>| {
+				if let Some(constraint) = crate::types::get_constraint(lhs.0, &checking_data.types) {
+					let mut result = Vec::new();
+					let falsy_types = &[
+						TypeId::NULL_TYPE,
+						TypeId::UNDEFINED_TYPE,
+						TypeId::FALSE,
+						TypeId::EMPTY_STRING,
+						TypeId::ZERO,
+					];
+					super::narrowing::build_union_from_filter_slice(
+						constraint,
+						falsy_types,
+						&mut result,
+						env,
+						&mut checking_data.types,
+					);
+					let narrowed_to = checking_data.types.new_or_type_from_iterator(result);
+					checking_data.types.register_type(Type::Narrowed { from: lhs.0, narrowed_to })
+				} else {
+					lhs.0
+				}
+			},
 			Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, expecting, env, data)
 			}),
 			checking_data,
 		)),
 		LogicalOperator::NullCoalescing => {
-			let null_or_undefined = is_null_or_undefined(lhs.0, &mut checking_data.types);
+			let is_lhs_null_or_undefined = is_null_or_undefined(lhs.0, &mut checking_data.types);
+			// Equivalent to: `(lhs is null or undefined) ? lhs : rhs`
 			Ok(new_conditional_context(
 				environment,
-				(null_or_undefined, lhs.1),
-				|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0,
+				(is_lhs_null_or_undefined, lhs.1),
+				|env: &mut Environment, checking_data: &mut CheckingData<T, A>| {
+					if let Some(constraint) = crate::types::get_constraint(lhs.0, &checking_data.types) {
+						let mut result = Vec::new();
+						super::narrowing::build_union_from_filter_slice(
+							constraint,
+							&[TypeId::NULL_TYPE, TypeId::UNDEFINED_TYPE],
+							&mut result,
+							env,
+							&mut checking_data.types,
+						);
+						let narrowed_to = checking_data.types.new_or_type_from_iterator(result);
+						checking_data
+							.types
+							.register_type(Type::Narrowed { from: lhs.0, narrowed_to })
+					} else {
+						lhs.0
+					}
+				},
 				Some(|env: &mut Environment, data: &mut CheckingData<T, A>| {
 					A::synthesise_expression(rhs, expecting, env, data)
 				}),

@@ -480,9 +480,6 @@ pub(crate) fn substitute(
 					let ty = substitute(ty, arguments, environment, types);
 					crate::features::type_of_operator(ty, types)
 				}
-				crate::types::TypeOperator::PrototypeOf(_) => {
-					unreachable!("'PrototypeOf' should be specialised by events")
-				}
 				crate::types::TypeOperator::HasProperty(_, _) => {
 					unreachable!("'HasProperty' should be specialised by events")
 				}

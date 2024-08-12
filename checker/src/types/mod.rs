@@ -422,6 +422,45 @@ impl Constructor {
 	}
 }
 
+pub fn as_logical_and(constructor: &Constructor, types: &TypeStore) -> Option<(TypeId, TypeId)> {
+	if let Constructor::ConditionalResult {
+		condition,
+		truthy_result,
+		otherwise_result,
+		result_union: _,
+	} = constructor
+	{
+		let (condition, truthy_result, otherwise_result) = (
+			get_origin(*condition, types),
+			get_origin(*truthy_result, types),
+			get_origin(*otherwise_result, types),
+		);
+		(condition == otherwise_result).then_some((truthy_result, otherwise_result))
+	} else {
+		None
+	}
+}
+
+pub fn as_logical_or(constructor: &Constructor, types: &TypeStore) -> Option<(TypeId, TypeId)> {
+	if let Constructor::ConditionalResult {
+		condition,
+		truthy_result,
+		otherwise_result,
+		result_union: _,
+	} = constructor
+	{
+		let (condition, truthy_result, otherwise_result) = (
+			get_origin(*condition, types),
+			get_origin(*truthy_result, types),
+			get_origin(*otherwise_result, types),
+		);
+		(condition == truthy_result || truthy_result == TypeId::TRUE)
+			.then_some((condition, otherwise_result))
+	} else {
+		None
+	}
+}
+
 /// Closed over arguments
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub struct PartiallyAppliedGenerics {
@@ -431,8 +470,6 @@ pub struct PartiallyAppliedGenerics {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeOperator {
-	/// Gets the prototype
-	PrototypeOf(TypeId),
 	/// The `typeof` unary operator
 	TypeOf(TypeId),
 	HasProperty(TypeId, properties::PropertyKey<'static>),
@@ -580,8 +617,12 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// TODO dynamic and open poly
 				Some(result_union)
 			}
-			Constructor::TypeOperator(_) | Constructor::CanonicalRelationOperator { .. } => {
-				// TODO open poly
+			Constructor::TypeOperator(op) => match op {
+				// TODO union of names
+				TypeOperator::TypeOf(_) => Some(TypeId::STRING_TYPE),
+				TypeOperator::HasProperty(..) => Some(TypeId::BOOLEAN_TYPE)
+			}
+			Constructor::CanonicalRelationOperator { .. } => {
 				Some(TypeId::BOOLEAN_TYPE)
 			}
 			Constructor::TypeRelationOperator(op) => match op {
@@ -968,4 +1009,14 @@ pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeS
 
 pub fn is_inferrable_type(ty: TypeId) -> bool {
 	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
+}
+
+// unfolds narrowing
+pub fn get_origin(ty: TypeId, types: &TypeStore) -> TypeId {
+	if let Type::Narrowed { from, .. } = types.get_type_by_id(ty) {
+		// Hopefully don't have a nested from
+		*from
+	} else {
+		ty
+	}
 }

@@ -19,7 +19,9 @@ pub fn types_are_disjoint(
 		false
 	} else if already_checked.iter().any(|pair| *pair == (left, right)) {
 		// TODO explain why `true`
-		true
+		false
+	} else if left == TypeId::ANY_TYPE || right == TypeId::ANY_TYPE {
+		false
 	} else {
 		let left_ty = types.get_type_by_id(left);
 		let right_ty = types.get_type_by_id(right);
@@ -31,10 +33,10 @@ pub fn types_are_disjoint(
 			if let Type::Constant(right_cst) = right_ty {
 				left_cst != right_cst
 			} else {
-				left_cst.get_backing_type_id() != right
+				types_are_disjoint(left_cst.get_backing_type_id(), right, already_checked, information, types)
 			}
 		} else if let Type::Constant(right_cst) = right_ty {
-			right_cst.get_backing_type_id() != left
+			types_are_disjoint(left, right_cst.get_backing_type_id(), already_checked, information, types)
 		} else if let Type::Or(left_left, left_right) = left_ty {
 			types_are_disjoint(*left_left, right, already_checked, information, types)
 				&& types_are_disjoint(*left_right, right, already_checked, information, types)
@@ -81,6 +83,16 @@ pub fn types_are_disjoint(
 		| (_, Type::Object(super::ObjectNature::RealDeal)) = (left_ty, right_ty)
 		{
 			true
+		} else if let Some(left) = super::get_constraint(left, types) {
+			types_are_disjoint(left, right, already_checked, information, types)
+		} else if let Some(right) = super::get_constraint(right, types) {
+			types_are_disjoint(left, right, already_checked, information, types)
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on: TypeId::NOT_RESTRICTION, arguments: _arguments, }) = left_ty {
+			crate::utilities::notify!("TODO not restriction requires subtyping, skipping for now");
+			false
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on: TypeId::NOT_RESTRICTION, arguments: _arguments, }) = right_ty {
+			crate::utilities::notify!("TODO not restriction requires subtyping, skipping for now");
+			false
 		} else {
 			crate::utilities::notify!(
 				"{:?} cap {:?} == empty ? cases. Might be missing, calling disjoint",

@@ -76,7 +76,7 @@ declare class Array<T> {
         const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
         while (i < length) {
-            const value = this?.[i];
+            const value = this[i];
             const newValue = cb(value, i++);
             mapped.push(newValue)
         }
@@ -361,6 +361,38 @@ declare class Object {
     //     Object.setProtoTypeOf(n, prototype);
     //     return n
     // }
+
+    static keys(on: { [s: string]: any }): Array<string> {
+        const keys: Array<string> = [];
+        for (const key in on) {
+            keys.push(key);
+        }
+        return keys
+    }
+
+    static values(on: { [s: string]: any }): Array<any> {
+        const values: Array<any> = [];
+        for (const key in on) {
+            values.push(on[key]);
+        }
+        return values
+    }
+
+    static entries(on: { [s: string]: any }): Array<[string, any]> {
+        const entries: Array<[string, any]> = [];
+        for (const key in on) {
+            entries.push([key, on[key]]);
+        }
+        return entries
+    }
+
+    // TODO multiple arguments
+    static assign(target: object, source: object): object {
+        for (const key in source) {
+            target[key] = source[key]
+        }
+        return target
+    }
 }
 
 declare class RegExp {

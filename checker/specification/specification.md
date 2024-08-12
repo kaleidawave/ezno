@@ -685,8 +685,8 @@ type MyObject = { foo: number; bar?: number };
 const b: MyObject = {
 	foo: 1,
 	...{
-	bar: 2,
-	invalid: 3,
+		bar: 2,
+		invalid: 3,
 	},
 };
 
@@ -695,8 +695,8 @@ declare let condition: boolean;
 const c: MyObject = {
 	foo: 1,
 	...(condition ? {
-	bar: 2,
-	non_existent: 3,
+		bar: 2,
+		non_existent: 3,
 	} : {}),
 };
 ```
@@ -953,7 +953,7 @@ function variadic(...r: string[]) {
 }
 ```
 
-- Expected boolean, found Array\<string\>
+- Expected boolean, found Array\<string>
 
 #### Destructuring parameter
 
@@ -1048,7 +1048,7 @@ func satisfies string;
 
 > There are some issues around printing here, when to include the generic etc
 
-- Expected string, found \<T\>(condition: T) => T ? 4 : 3
+- Expected string, found \<T>(condition: T) => T ? 4 : 3
 
 #### Early return
 
@@ -1410,7 +1410,7 @@ function createNew(cb: { f<T>(t: T): { a: T }}["f"]) {
 createNew satisfies string;
 ```
 
-- Expected string, found (cb: \<T\>(t: T) => { a: T }) => { a: 4 }
+- Expected string, found (cb: \<T>(t: T) => { a: T }) => { a: 4 }
 
 #### Builder pattern
 
@@ -1421,12 +1421,12 @@ class StringBuilder {
 	s: string = ""
 
 	append(s: string) {
-	this.s += s;
-	return this
+		this.s += s;
+		return this
 	}
 
 	finish() {
-	return this.s
+		return this.s
 	}
 }
 
@@ -1975,7 +1975,7 @@ declare let string: string;
 
 function stringIsHi(s: string) {
 	if (s === "hi") {
-	return true
+		return true
 	}
 	return false
 }
@@ -2205,9 +2205,9 @@ console.log("Error caught!")
 ```ts
 function exceptionToResult(cb: () => number) {
 	try {
-	return cb()
+		return cb()
 	} catch (e) {
-	return e
+		return e
 	}
 }
 
@@ -2223,9 +2223,9 @@ console.log("Error caught!")
 ```ts
 function exceptionToResult(cb: () => number) {
 	try {
-	cb()
+		cb()
 	} catch (e: number) {
-	return e
+		return e
 	}
 }
 
@@ -2240,9 +2240,9 @@ console.log("Error caught!")
 ```ts
 function exceptionToResult(s: string) {
 	try {
-	return JSON.parse(s)
+		return JSON.parse(s)
 	} catch (e: number) {
-	return e
+		return e
 	}
 }
 console.log("Error caught!")
@@ -2258,9 +2258,9 @@ console.log("Error caught!")
 // no complex numbers :(
 function checkedLn(x: number) {
 	if (x > 0) {
-	return Math.log(x)
+		return Math.log(x)
 	} else {
-	throw new Error("Cannot log")
+		throw new Error("Cannot log")
 	}
 }
 
@@ -2692,7 +2692,7 @@ const resp = await (fetch("/some-endpoint") satisfies string);
 resp.ok satisfies number;
 ```
 
-- Expected string, found Promise\<Response\>
+- Expected string, found Promise\<Response>
 - Expected number, found boolean
 
 ### Classes
@@ -2719,7 +2719,7 @@ x.value satisfies string
 ```ts
 class X {
 	method() {
-	return this;
+		return this;
 	}
 }
 
@@ -2876,7 +2876,7 @@ class X {
 	static x = 2;
 
 	static {
-	const property: 4 = ++this.x;
+		const property: 4 = ++this.x;
 	}
 }
 
@@ -2934,14 +2934,14 @@ class Class extends BaseClass {
 let b: number = 0;
 class Y {
 	constructor(a) {
-	this.a = a;
-	b++;
+		this.a = a;
+		b++;
 	}
 }
 
 class X extends Y {
 	constructor(a) {
-	super(a);
+		super(a);
 	}
 }
 
@@ -3419,7 +3419,7 @@ const a: Uppercase<"something" |"hi"> = "HI";
 const b: Uppercase<string> = "hi"
 ```
 
-- Type \"hi\" is not assignable to type Uppercase\<string\>
+- Type \"hi\" is not assignable to type Uppercase\<string>
 
 #### `NoInfer`
 
@@ -3735,6 +3735,7 @@ function x(p: readonly { a: string }) {
 function func1(p: { a: string, b: string }) {
 	func2(p)
 }
+
 function func2(p: readonly { a: string }) { }
 
 const obj = Object.freeze({ a: "hi" });
@@ -3758,7 +3759,7 @@ interface MyObject {
 
 const obj: MyObject = {
 	a(b) {
-	b satisfies number;
+		b satisfies number;
 	}
 }
 ```
@@ -3944,13 +3945,13 @@ proxy1.a satisfies string;
 #### Proxy subtyping
 
 ```ts
-const proxy1 = new Proxy({}, { get(_target, prop, _recivier) { return prop } });
+const proxy1 = new Proxy({}, { get(_target, prop, _receiver) { return prop } });
 
 proxy1 satisfies { a: "a", b: "b" };
 proxy1 satisfies { c: "d" };
 ```
 
-- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _recivier: any) => any } ]
+- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _receiver: any) => any } ]
 
 #### Proxy across functions
 
@@ -4243,7 +4244,7 @@ const z: number = getString(2);
 - Cannot return number because the function is expected to return string
 - Type 5 is not assignable to type string
 - Could not find variable 'h' in scope
-- Type (error) string is not assignable to type number
+- Type string is not assignable to type number
 
 #### Errors carries
 
@@ -4304,7 +4305,7 @@ register("something")
 register(document.title)
 ```
 
-- Argument of type string is not assignable to parameter of type Literal\<string\>
+- Argument of type string is not assignable to parameter of type Literal\<string>
 
 #### Number intrinsics
 
@@ -4319,9 +4320,9 @@ register(document.title)
 -4 satisfies LessThan<2>;
 ```
 
-- Expected MultipleOf\<2\>, found 5
-- Expected GreaterThan\<2\>, found -4
-- Expected LessThan\<2\>, found 6
+- Expected MultipleOf\<2>, found 5
+- Expected GreaterThan\<2>, found -4
+- Expected LessThan\<2>, found 6
 
 #### `Not`
 
@@ -4341,7 +4342,7 @@ b satisfies 5;
 
 - Expected Not<4>, found 4
 - Expected Not<8>, found number
-- Expected Not\<string\>, found "hi"
+- Expected Not\<string>, found "hi"
 - Expected string, found Not<5> & number
 - Expected 5, found Not<5> & number
 
@@ -4355,7 +4356,7 @@ x satisfies Exclusive<X>;
 ({ a: 6 } satisfies Exclusive<X>);
 ```
 
-- Expected Exclusive\<X\>, found { a: 1, b: 2 }
+- Expected Exclusive\<X>, found { a: 1, b: 2 }
 
 #### `CaseInsensitive`
 

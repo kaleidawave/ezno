@@ -89,6 +89,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
 		Type::Narrowed { narrowed_to, .. } => {
+			if debug {
+				buf.push_str("(narrowed) ");
+			}
 			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
 		}
 		Type::RootPolyType(nature) => match nature {
@@ -172,9 +175,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::Error(to) => {
 				if debug {
-					write!(buf, "[error {}] ", ty.0).unwrap();
+					buf.push_str("(error) ");
 				}
-				buf.push_str("(error) ");
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
 			PolyNature::RecursiveFunction(..) => {
