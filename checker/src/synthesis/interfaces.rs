@@ -5,11 +5,12 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{Context, Environment},
-	features::functions::{self, GetterSetter},
+	features::functions::GetterSetter,
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		properties::{PropertyKey, PropertyValue, Publicity},
-		FunctionType, Type,
+		calling::Callable,
+		properties::{Descriptor, PropertyKey, PropertyValue, Publicity},
+		references_key_of, FunctionType, Type,
 	},
 	CheckingData, Scope, TypeId,
 };
@@ -18,11 +19,29 @@ use super::{
 	functions::synthesise_function_annotation, type_annotations::synthesise_type_annotation,
 };
 
+/// inverse of readonly. Closer to JS semantics
+pub struct Writable(pub TypeId);
+
+impl Writable {
+	fn from_readonly(is_readonly: bool) -> Self {
+		Self(if is_readonly { TypeId::FALSE } else { TypeId::TRUE })
+	}
+}
+
+/// inverse of optional. Closer to implementation
+pub struct IsDefined(pub TypeId);
+
+impl IsDefined {
+	fn from_optionality(is_optional: bool) -> Self {
+		Self(if is_optional { TypeId::OPEN_BOOLEAN_TYPE } else { TypeId::TRUE })
+	}
+}
+
 pub(crate) trait SynthesiseInterfaceBehavior {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
-		key: ParserPropertyKeyType,
-		value: InterfaceValue,
+		key: InterfaceKey,
+		value: (InterfaceValue, IsDefined, Writable),
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
 		position: SpanWithSource,
@@ -31,16 +50,15 @@ pub(crate) trait SynthesiseInterfaceBehavior {
 	fn interface_type(&self) -> Option<TypeId>;
 }
 
-pub(crate) enum InterfaceValue {
-	Function(FunctionType, GetterSetter),
-	Value(TypeId),
-	Optional(TypeId),
-}
-
-pub(crate) enum ParserPropertyKeyType<'a> {
+pub(crate) enum InterfaceKey<'a> {
 	ClassProperty(&'a ParserPropertyKey<parser::property_key::PublicOrPrivate>),
 	// ObjectProperty(&'a ParserPropertyKey<parser::property_key::AlwaysPublic>),
 	Type(TypeId),
+}
+
+pub(crate) enum InterfaceValue {
+	Function(FunctionType, Option<GetterSetter>),
+	Value(TypeId),
 }
 
 pub(crate) struct OnToType(pub(crate) TypeId);
@@ -48,29 +66,18 @@ pub(crate) struct OnToType(pub(crate) TypeId);
 impl SynthesiseInterfaceBehavior for OnToType {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
-		key: ParserPropertyKeyType,
-		value: InterfaceValue,
+		key: InterfaceKey,
+		(value, always_defined, writable): (InterfaceValue, IsDefined, Writable),
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
-		position: SpanWithSource,
+		_position: SpanWithSource,
 	) {
 		let (publicity, under) = match key {
-			ParserPropertyKeyType::ClassProperty(key) => {
+			InterfaceKey::ClassProperty(key) => {
 				// TODO
 				let perform_side_effect_computed = true;
 				(
-					if matches!(
-						key,
-						parser::PropertyKey::Identifier(
-							_,
-							_,
-							parser::property_key::PublicOrPrivate::Private
-						)
-					) {
-						Publicity::Private
-					} else {
-						Publicity::Public
-					},
+					if key.is_private() { Publicity::Private } else { Publicity::Public },
 					parser_property_key_to_checker_property_key(
 						key,
 						environment,
@@ -79,33 +86,48 @@ impl SynthesiseInterfaceBehavior for OnToType {
 					),
 				)
 			}
-			// ParserPropertyKeyType::ObjectProperty(key) => (
-			// 	Publicity::Public,
-			// 	parser_property_key_to_checker_property_key(key, environment, checking_data),
-			// ),
-			ParserPropertyKeyType::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
+			InterfaceKey::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
 		};
-		let ty = match value {
-			InterfaceValue::Function(function, getter_setter) => match getter_setter {
-				GetterSetter::Getter => PropertyValue::Getter(Box::new(function)),
-				GetterSetter::Setter => PropertyValue::Setter(Box::new(function)),
-				GetterSetter::None => {
-					let function_id = function.id;
-					checking_data.types.functions.insert(function.id, function);
-					let ty = Type::FunctionReference(function_id);
-					PropertyValue::Value(checking_data.types.register_type(ty))
-				}
-			},
-			InterfaceValue::Value(value) => PropertyValue::Value(value),
-			// optional properties (`?:`) is implemented here:
-			InterfaceValue::Optional(value) => PropertyValue::ConditionallyExists {
-				on: TypeId::BOOLEAN_TYPE,
-				truthy: PropertyValue::Value(value).into(),
-			},
+		let value =
+			match value {
+				InterfaceValue::Function(function, getter_setter) => match getter_setter {
+					Some(GetterSetter::Getter) => PropertyValue::Getter(
+						Callable::new_from_function(function, &mut checking_data.types),
+					),
+					Some(GetterSetter::Setter) => PropertyValue::Setter(
+						Callable::new_from_function(function, &mut checking_data.types),
+					),
+					None => {
+						let function_id = function.id;
+						checking_data.types.functions.insert(function.id, function);
+						let ty = Type::FunctionReference(function_id);
+						PropertyValue::Value(checking_data.types.register_type(ty))
+					}
+				},
+				InterfaceValue::Value(value) => PropertyValue::Value(value),
+			};
+		let value = if let Writable(TypeId::TRUE) = writable {
+			value
+		} else {
+			let descriptor = Descriptor {
+				writable: writable.0,
+				enumerable: TypeId::TRUE,
+				configurable: TypeId::TRUE,
+			};
+			PropertyValue::Configured { on: Box::new(value), descriptor }
+		};
+		// optional properties (`?:`) is implemented here:
+		let value = if let IsDefined(TypeId::TRUE) = always_defined {
+			value
+		} else {
+			// crate::utilities::notify!("always_defined.0 {:?}", always_defined.0);
+			PropertyValue::ConditionallyExists {
+				condition: always_defined.0,
+				truthy: Box::new(value),
+			}
 		};
 
-		// None position should be fine here
-		environment.info.register_property(self.0, publicity, under, ty, false, position);
+		environment.info.register_property_on_type(self.0, publicity, under, value);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {
@@ -137,7 +159,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					type_parameters,
 					parameters,
 					return_type,
-					is_optional: _,
+					is_optional,
 					position,
 				} => {
 					// Fix for performing const annotations. TODO want to do better
@@ -146,19 +168,22 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						.iter()
 						.any(|a| a.name.first().cloned().as_deref() == Some("DoNotIncludeThis"))
 					{
-						functions::FunctionBehavior::ArrowFunction { is_async: header.is_async() }
+						crate::types::functions::FunctionBehavior::ArrowFunction {
+							is_async: header.is_async(),
+						}
 					} else {
-						functions::FunctionBehavior::Method {
+						crate::types::functions::FunctionBehavior::Method {
 							is_async: header.is_async(),
 							is_generator: header.is_generator(),
 							// TODO ...
 							free_this_id: TypeId::ERROR_TYPE,
+							name: TypeId::EMPTY_STRING,
 						}
 					};
 					let getter = match header {
-						parser::functions::MethodHeader::Get => GetterSetter::Getter,
-						parser::functions::MethodHeader::Set => GetterSetter::Setter,
-						parser::functions::MethodHeader::Regular { .. } => GetterSetter::None,
+						parser::functions::MethodHeader::Get => Some(GetterSetter::Getter),
+						parser::functions::MethodHeader::Set => Some(GetterSetter::Setter),
+						parser::functions::MethodHeader::Regular { .. } => None,
 					};
 
 					let position_with_source = position.with_source(environment.get_source());
@@ -174,8 +199,12 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 
 					interface_register_behavior.register(
-						ParserPropertyKeyType::ClassProperty(name),
-						InterfaceValue::Function(function, getter),
+						InterfaceKey::ClassProperty(name),
+						(
+							InterfaceValue::Function(function, getter),
+							IsDefined::from_optionality(*is_optional),
+							Writable::from_readonly(false),
+						),
 						checking_data,
 						environment,
 						position_with_source,
@@ -188,25 +217,16 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					is_optional,
 					position,
 				} => {
-					if *is_readonly {
-						checking_data.raise_unimplemented_error(
-							"readonly items",
-							position.with_source(environment.get_source()),
-						);
-					}
-
 					let value =
 						synthesise_type_annotation(type_annotation, environment, checking_data);
 
-					let value = if *is_optional {
-						InterfaceValue::Optional(value)
-					} else {
-						InterfaceValue::Value(value)
-					};
-
 					interface_register_behavior.register(
-						ParserPropertyKeyType::ClassProperty(name),
-						value,
+						InterfaceKey::ClassProperty(name),
+						(
+							InterfaceValue::Value(value),
+							IsDefined::from_optionality(*is_optional),
+							Writable::from_readonly(*is_readonly),
+						),
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),
@@ -216,15 +236,22 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					name: _,
 					indexer_type,
 					return_type,
-					is_readonly: _,
+					is_readonly,
 					position,
 				} => {
 					// TODO think this is okay
 					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 					let value = synthesise_type_annotation(return_type, environment, checking_data);
+
+					let value = InterfaceValue::Value(value);
+
 					interface_register_behavior.register(
-						ParserPropertyKeyType::Type(key),
-						InterfaceValue::Value(value),
+						InterfaceKey::Type(key),
+						(
+							value,
+							IsDefined::from_optionality(false),
+							Writable::from_readonly(*is_readonly),
+						),
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),
@@ -254,43 +281,91 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					parameter,
 					matching_type,
 					as_type,
-					optionality: _,
-					is_readonly: _,
+					optionality,
+					is_readonly,
 					output_type,
 					position,
 				} => {
+					// For mapped types: https://www.typescriptlang.org/docs/handbook/2/mapped-types.html
 					let matching_type =
 						synthesise_type_annotation(matching_type, environment, checking_data);
 
 					let (key, value) = {
 						// TODO special scope here
-						let mut environment = environment.new_lexical_environment(Scope::Block {});
+						let mut sub_environment =
+							environment.new_lexical_environment(Scope::Block {});
 						let parameter_type = checking_data.types.register_type(Type::RootPolyType(
 							crate::types::PolyNature::MappedGeneric {
 								name: parameter.clone(),
-								eager_fixed: matching_type,
+								extends: matching_type,
 							},
 						));
-						environment.named_types.insert(parameter.clone(), parameter_type);
+						sub_environment.named_types.insert(parameter.clone(), parameter_type);
 
 						let key = if let Some(as_type) = as_type {
-							synthesise_type_annotation(as_type, &mut environment, checking_data)
+							synthesise_type_annotation(as_type, &mut sub_environment, checking_data)
 						} else {
 							parameter_type
 						};
 
+						// crate::utilities::notify!("output_type {:?}", output_type);
+
 						let value = synthesise_type_annotation(
 							output_type,
-							&mut environment,
+							&mut sub_environment,
 							checking_data,
 						);
+
+						environment
+							.info
+							.current_properties
+							.extend(sub_environment.info.current_properties);
 
 						(key, value)
 					};
 
+					// wrg to `references_key_of`, it is TSC behavior for the conditionality and
+					// writable of the property to be based on the argument from keyof.
+					// if keyof is not present this argument is not set and so breaks things.
+					// This `keyof` could be collected during synthesising but doing here as easier
+					// + edge cases around alias and generics
+
+					let always_defined = match optionality {
+						parser::types::interface::Optionality::Default => {
+							if references_key_of(key, &checking_data.types) {
+								IsDefined(TypeId::NON_OPTIONAL_KEY_ARGUMENT)
+							} else {
+								IsDefined::from_optionality(false)
+							}
+						}
+						parser::types::interface::Optionality::Optional => {
+							IsDefined::from_optionality(true)
+						}
+						parser::types::interface::Optionality::Required => {
+							IsDefined::from_optionality(false)
+						}
+					};
+
+					let writable = match is_readonly {
+						parser::types::interface::MappedReadonlyKind::Negated => {
+							Writable::from_readonly(false)
+						}
+						parser::types::interface::MappedReadonlyKind::Always => {
+							Writable::from_readonly(true)
+						}
+						parser::types::interface::MappedReadonlyKind::False => {
+							if references_key_of(key, &checking_data.types) {
+								crate::utilities::notify!("Here");
+								Writable(TypeId::WRITABLE_KEY_ARGUMENT)
+							} else {
+								Writable::from_readonly(false)
+							}
+						}
+					};
+
 					interface_register_behavior.register(
-						ParserPropertyKeyType::Type(key),
-						InterfaceValue::Value(value),
+						InterfaceKey::Type(key),
+						(InterfaceValue::Value(value), always_defined, writable),
 						checking_data,
 						environment,
 						position.with_source(environment.get_source()),

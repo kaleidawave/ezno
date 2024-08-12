@@ -9,6 +9,10 @@ These can all be ran as tests using the markdown to Rust test code transpiler in
 - Comments can be in block quotes to explain additional details in the tests
 - Sections are at level three headings (`###`), tests are at level four headings (`####`), the tested code goes a code block with the language tag `ts` and errors in a bullet list after in order
 - Blocks can be split into files with a `// in file.ts` comment, below which all code is in the `file.ts` file. Default is `main.tsx`
+- **Code in blocks is indented with tabs not spaces**
 
 ---
 Other tests unrelated to specific checking features can be found in `checker/tests`
+
+> [!IMPORTANT]
+> Any tests that throw or produce unreachables must be contained as it breaks the total concatenation.

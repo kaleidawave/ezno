@@ -1,37 +1,86 @@
-use source_map::SpanWithSource;
+use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	subtyping::{type_is_subtype_with_generics, State, SubTypeResult},
-	types::{properties::PropertyKey, GenericChain, TypeRestrictions, TypeStore},
+	types::{GenericChain, PartiallyAppliedGenerics, PropertyKey, TypeRestrictions, TypeStore},
 	Environment, TypeId,
 };
 
 use super::generic_type_arguments::GenericArguments;
 
-pub type DoubleMap<T, U> = crate::Map<T, U>;
 pub type TriMap<T, U, V> = crate::Map<T, (U, V)>;
 
 /// How deep through the contribution is ()
-pub type Depth = u8;
+pub type ContributionDepth = u8;
 
 /// This is something that is generated inferred during subtyping
 #[derive(Debug, Clone)]
 pub enum CovariantContribution {
+	/// Note this can reference array
 	TypeId(TypeId),
-	// SliceOf(Box<Self>, (u32, u32)),
-	PropertyKey(PropertyKey<'static>),
+	/// This can be set by property keys in mapped types. Also `[x]` on a constant string
+	String(String),
+	SliceOf(Box<Self>, (u32, u32)),
+	CaseInsensitive(Box<Self>),
+	/// This can be from `.length` on a constant string
+	Number(f64),
 }
 
 impl CovariantContribution {
 	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
 			CovariantContribution::TypeId(ty) => ty,
-			// CovariantContribution::SliceOf(inner, _) => {
-			// 	let inner = inner.into_type(types);
-			// 	crate::utilities::notify!("TODO as slice");
-			// 	inner
-			// }
-			CovariantContribution::PropertyKey(p) => p.into_type(types),
+			CovariantContribution::SliceOf(inner, (start, end)) => {
+				let inner = inner.into_type(types);
+				if let crate::Type::Constant(crate::types::Constant::String(s)) =
+					types.get_type_by_id(inner)
+				{
+					let slice: String = s.chars().skip(start as usize).take(end as usize).collect();
+					types.new_constant_type(crate::Constant::String(slice))
+				} else {
+					todo!("slice type")
+				}
+			}
+			CovariantContribution::String(slice) => {
+				types.new_constant_type(crate::Constant::String(slice))
+			}
+			CovariantContribution::Number(number) => {
+				if let Ok(number) = number.try_into() {
+					types.new_constant_type(crate::Constant::Number(number))
+				} else {
+					TypeId::NAN
+				}
+			}
+			CovariantContribution::CaseInsensitive(on) => {
+				let inner = on.into_type(types);
+				types.register_type(crate::Type::PartiallyAppliedGenerics(
+					PartiallyAppliedGenerics {
+						on: TypeId::CASE_INSENSITIVE,
+						arguments: GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+							(TypeId::STRING_GENERIC, (inner, SpanWithSource::NULL)),
+						])),
+					},
+				))
+			}
+		}
+	}
+
+	// TODO maybe return modifier for generic chain
+	pub(crate) fn into_property_key(self) -> PropertyKey<'static> {
+		match self {
+			CovariantContribution::TypeId(ty) => PropertyKey::Type(ty),
+			CovariantContribution::SliceOf(inner, (start, end)) => {
+				todo!("{:?}", (inner, (start, end)));
+			}
+			CovariantContribution::String(slice) => {
+				PropertyKey::String(std::borrow::Cow::Owned(slice.clone()))
+			}
+			CovariantContribution::Number(number) => {
+				PropertyKey::String(std::borrow::Cow::Owned(number.to_string()))
+			}
+			CovariantContribution::CaseInsensitive(on) => {
+				todo!("{:?}", on)
+			}
 		}
 	}
 }
@@ -39,6 +88,15 @@ impl CovariantContribution {
 impl From<TypeId> for CovariantContribution {
 	fn from(value: TypeId) -> Self {
 		CovariantContribution::TypeId(value)
+	}
+}
+
+impl From<PropertyKey<'static>> for CovariantContribution {
+	fn from(value: PropertyKey<'static>) -> Self {
+		match value {
+			PropertyKey::String(s) => CovariantContribution::String(s.to_string()),
+			PropertyKey::Type(value) => CovariantContribution::TypeId(value),
+		}
 	}
 }
 
@@ -62,7 +120,7 @@ pub struct Contributions<'a> {
 	// pub existing_covariant: &'a mut X<TypeId, TypeId>,
 	/// Only for explicit generic parameters
 	pub staging_covariant: TriMap<TypeId, TypeId, SpanWithSource>,
-	pub staging_contravariant: TriMap<TypeId, CovariantContribution, Depth>,
+	pub staging_contravariant: TriMap<TypeId, CovariantContribution, ContributionDepth>,
 }
 
 impl<'a> Contributions<'a> {

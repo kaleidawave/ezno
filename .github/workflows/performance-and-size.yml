@@ -29,18 +29,6 @@ jobs:
         with:
           packages: hyperfine
 
-      # For displaying line count in file
-      - name: Download scc
-        run: |
-          mkdir scc
-          cd scc
-          gh release download v3.1.0 -R boyter/scc -p '*Linux_x86_64.tar.gz' -O scc.tar.gz
-          tar -xf scc.tar.gz
-          chmod +x scc
-          pwd >> $GITHUB_PATH
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Build Ezno
         run: cargo build --release
         env:
@@ -52,8 +40,6 @@ jobs:
           # Generate a file which contains everything that Ezno currently implements  
           cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md --comment-headers --out ./demo.tsx
 
-          LINES_OF_CODE=$(scc -c --no-cocomo -f json demo.tsx | jq ".[0].Code")
-
           echo "### Checking
           \`\`\`shell
           $(hyperfine -i './target/release/ezno check demo.tsx')
@@ -62,10 +48,8 @@ jobs:
           echo "<details>
           <summary>Input</summary>
 
+          > Code generated from specification.md. this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
           \`\`\`tsx
-          // $LINES_OF_CODE lines of TypeScript generated from specification.md
-          // this is not meant to accurately represent a program but instead give an idea 
-          // for how it scales across all the type checking features
           $(cat ./demo.tsx)
           \`\`\`
           </details>
@@ -73,22 +57,65 @@ jobs:
 
           echo "::info::Wrote code to summary"
           
+          command_output=$(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+          diagnostics=""; statistics=""; found_splitter=false;
+
+          while IFS= read -r line; do
+              if [[ "$line" == "---"* ]]; then found_splitter=true;
+              elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
+              else statistics+="$line"$'\n'; fi
+          done <<< "$command_output"
+
           echo "<details>
           <summary>Diagnostics</summary>
-          
+
           \`\`\`
-          $(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+          $diagnostics
+          \`\`\`
+          </details>
+
+          <details>
+          <summary>Statistics</summary>
+
+          \`\`\`
+          $statistics
           \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
+
+      - name: Run checker performance w/staging
+        shell: bash
+        if: github.ref_name != 'main'
+        run: |
+          echo "::group::Running all"
+          
+          cat ./checker/specification/specification.md ./checker/specification/staging.md > all.md
+          cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./all.tsx
+
+          ./target/release/ezno check all.tsx --timings || true
+          echo "::endgroup::"
+            
+      - name: Run checker performance on large file
+        shell: bash
+        run: |
+          echo "::group::Running large"
+
+          cat ./checker/specification/specification.md > main.md
+          cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./code.tsx
+          for i in {1..10}; do
+            cat ./code.tsx >> large.tsx
+          done
+
+          ./target/release/ezno check large.tsx --timings --max-diagnostics 0 || true
+          echo "::endgroup::"
 
       - name: Run parser, minfier/stringer performance
         shell: bash
         run: |
           strings=(
             "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
-            "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
           )
+          # Currently broken "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
 
           for url in "${strings[@]}"; do
               curl -sS $url > input.js

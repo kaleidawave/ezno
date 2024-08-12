@@ -308,6 +308,7 @@ dependencies = [
  "ezno-parser",
  "iterator-endiate",
  "levenshtein",
+ "match_deref",
  "ordered-float",
  "path-absolutize",
  "serde",

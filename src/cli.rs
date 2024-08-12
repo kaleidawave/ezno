@@ -11,11 +11,11 @@ use std::{
 use crate::{
 	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
 	check::check,
-	reporting::emit_diagnostics,
+	reporting::report_diagnostics_to_cli,
 	utilities::{self, print_to_cli, MaxDiagnostics},
 };
 use argh::FromArgs;
-use checker::CheckOutput;
+use checker::{CheckOutput, TypeCheckOptions};
 use parser::ParseOptions;
 
 /// The Ezno type-checker & compiler
@@ -200,30 +200,30 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				max_diagnostics,
 			} = check_arguments;
 
-			#[cfg(not(target_family = "wasm"))]
-			let start = timings.then(std::time::Instant::now);
+			let mut type_check_options: TypeCheckOptions = Default::default();
 
-			let type_check_options = Default::default();
+			#[cfg(not(target_family = "wasm"))]
+			{
+				type_check_options.measure_time = timings;
+			}
 
 			let entry_points = match get_entry_points(input) {
 				Ok(entry_points) => entry_points,
 				Err(_) => return ExitCode::FAILURE,
 			};
 
-			let CheckOutput { diagnostics, module_contents, .. } =
+			let CheckOutput { diagnostics, module_contents, chronometer, types, .. } =
 				check(entry_points, read_file, definition_file.as_deref(), type_check_options);
 
-			#[cfg(not(target_family = "wasm"))]
-			if let Some(start) = start {
-				eprintln!("Checked in {:?}", start.elapsed());
-			};
+			let diagnostics_count = diagnostics.count();
+			let current = timings.then(std::time::Instant::now);
 
-			if diagnostics.has_error() {
+			let result = if diagnostics.has_error() {
 				if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
 					let count = diagnostics.into_iter().count();
 					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
 				} else {
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						diagnostics,
 						&module_contents,
 						compact_diagnostics,
@@ -234,7 +234,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				ExitCode::FAILURE
 			} else {
 				// May be warnings or information here
-				emit_diagnostics(
+				report_diagnostics_to_cli(
 					diagnostics,
 					&module_contents,
 					compact_diagnostics,
@@ -243,7 +243,23 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				.unwrap();
 				print_to_cli(format_args!("No type errors found 🎉"));
 				ExitCode::SUCCESS
+			};
+
+			#[cfg(not(target_family = "wasm"))]
+			if timings {
+				let reporting = current.unwrap().elapsed();
+				eprintln!("---\n");
+				eprintln!("Diagnostics:\t{}", diagnostics_count);
+				eprintln!("Types:      \t{}", types.count_of_types());
+				eprintln!("Lines:      \t{}", chronometer.lines);
+				eprintln!("Cache read: \t{:?}", chronometer.cached);
+				eprintln!("FS read:    \t{:?}", chronometer.fs);
+				eprintln!("Parsed in:  \t{:?}", chronometer.parse);
+				eprintln!("Checked in: \t{:?}", chronometer.check);
+				eprintln!("Reporting:  \t{:?}", reporting);
 			}
+
+			result
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Build(build_config),
@@ -294,7 +310,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					for output in outputs {
 						write_file(output.output_path.as_path(), output.content);
 					}
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						diagnostics,
 						&fs,
 						compact_diagnostics,
@@ -305,7 +321,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						diagnostics,
 						&fs,
 						compact_diagnostics,
@@ -347,7 +363,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					ExitCode::SUCCESS
 				}
 				Err(err) => {
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						std::iter::once((err, source_id).into()),
 						&files,
 						false,

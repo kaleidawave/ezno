@@ -5,6 +5,8 @@ declare function print_type<T>(...args: Array<T>): void
 @Constant
 declare function debug_type<T>(...args: Array<T>): void
 @Constant
+declare function debug_type_independent<T>(...args: Array<T>): void
+@Constant
 declare function print_and_debug_type<T>(...args: Array<T>): void
 @Constant
 declare function print_constraint(t: any): void
@@ -38,7 +40,7 @@ declare function satisfies<T>(t: T): T
 declare function compile_type_to_object<T>(): any
 
 interface ImportEnv {
-    [key: string]: string | undefined;
+    [key: string]: string;
 }
 
 interface ImportMeta {
@@ -48,13 +50,14 @@ interface ImportMeta {
 }
 
 declare class Array<T> {
-    [index: number]: T | undefined;
+    [index: number]: T;
 
     length: number;
 
     push(item: T) {
-        this[this.length] = item;
-        return ++this.length
+        let at = this.length++;
+        this[at] = item;
+        return at + 1
     }
 
     pop(): T | undefined {
@@ -62,62 +65,83 @@ declare class Array<T> {
             return undefined
         } else {
             const value = this[--this.length];
-            // TODO this breaks things
-            // delete this[this.length];
-            // debug_type_rust_independent(value);
+            delete this[this.length];
             return value
         }
     }
 
-    // // TODO this argument
+    // map<U>(cb: (t: T, i?: number) => U): Array<U> {
+    // TODO this argument
     map<U>(cb: (t: T, i?: number) => U): Array<U> {
         const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
         while (i < length) {
-            const value = this[i];
-            mapped.push(cb(value, i++))
+            const value = this?.[i];
+            const newValue = cb(value, i++);
+            mapped.push(newValue)
         }
         return mapped;
     }
 
+    // copy(): Array<T> {
+    //     const { length } = this, mapped: Array<T> = [];
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         mapped.push(this?.[i])
+    //     }
+    //     return mapped;
+    // }
+
+    // // // TODO any is debatable
+    // filter(cb: (t: T, i?: number) => any): Array<T> {
+    //     const { length } = this, filtered: Array<T> = [];
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (cb(value, i++)) {
+    //             filtered.push(value)
+    //         }
+    //     }
+    //     return filtered;
+    // }
+
     // // TODO any is debatable
-    filter(cb: (t: T, i?: number) => any): Array<T> {
-        const { length } = this, filtered: Array<T> = [];
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (cb(value, i++)) {
-                filtered.push(value)
-            }
-        }
-        return filtered;
-    }
+    // find(cb: (t: T, i?: number) => any): T | undefined {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (cb(value, i++)) {
+    //             return value
+    //         }
+    //     }
+    // }
 
-    // TODO any is debatable
-    find(cb: (t: T, i?: number) => any): T | undefined {
-        const { length } = this;
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (cb(value, i++)) {
-                return value
-            }
-        }
-    }
+    // // TODO any is debatable
+    // every(cb: (t: T, i?: number) => any): boolean {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i];
+    //         if (!cb(value, i++)) {
+    //             return false
+    //         }
+    //     }
+    //     // Vacuous truth
+    //     return true
+    // }
 
-    // TODO any is debatable
-    every(cb: (t: T, i?: number) => any): boolean {
-        const { length } = this;
-        let i: number = 0;
-        while (i < length) {
-            const value = this[i];
-            if (!cb(value, i++)) {
-                return false
-            }
-        }
-        // Vacuous truth
-        return true
-    }
+    // includes(looking_for: T): boolean {
+    //     const { length } = this;
+    //     let i: number = 0;
+    //     while (i < length) {
+    //         const value = this[i++];
+    //         if (value === looking_for) {
+    //             return true
+    //         }
+    //     }
+    //     return false
+    // }
 
     // some(cb: (t: T, i?: number) => any): boolean {
     //     const { length } = this;
@@ -131,35 +155,66 @@ declare class Array<T> {
     //     return false
     // }
 
-    join(joiner: string = ","): string {
-        const { length } = this;
-        let i: number = 1;
-        if (length === 0) {
-            return ""
-        }
-        let s: string = "" + this[0];
-        while (i < length) {
-            s += joiner;
-            s += this[i++];
-        }
-        return s
+    // join(joiner: string = ","): string {
+    //     const { length } = this;
+    //     let i: number = 1;
+    //     if (length === 0) {
+    //         return ""
+    //     }
+    //     let s: string = "" + this[0];
+    //     while (i < length) {
+    //         s += joiner;
+    //         s += this[i++];
+    //     }
+    //     return s
+    // }
+
+    // at(index: number) {
+    //     if (index < 0) {
+    //         return this[index + this.length]
+    //     } else {
+    //         return this[index]
+    //     }
+    // }
+}
+
+declare class Map<K, V> {
+    #keys: Array<K>;
+    #values: Array<V>;
+
+    constructor() {
+        this.#keys = []
+        this.#values = []
     }
 
-    at(index: number) {
-        if (index < 0) {
-            return this[index + this.length]
-        } else {
-            return this[index]
-        }
-    }
+    // get(key: K): V | undefined {
+    //     // return this.#keys;
+    //     const { length } = this.#keys;
+    //     for (let i = 0; i < length; i++) {
+    //         const s = length - 1 - i;
+    //         if (this.#keys[s] === key) {
+    //             return this.#values[s]
+    //         }
+    //     }
+    // }
+
+    // set(key: K, value: V) {
+    //     this.#keys.push(key);
+    //     this.#values.push(value);
+    // }
 }
 
 type Record<K extends string, T> = { [P in K]: T }
 
-declare class Map<T, U> {
-    #keys: Array<T> = [];
-    #value: Array<T> = [];
-}
+/**
+ * Exclude from T those types that are assignable to U
+ */
+type Exclude<T, U> = T extends U ? never : T;
+
+/**
+ * Extract from T those types that are assignable to U
+ */
+type Extract<T, U> = T extends U ? T : never;
 
 declare class Math {
     @Constant
@@ -174,22 +229,28 @@ declare class Math {
     static sqrt(x: number): number;
     @Constant
     static cbrt(x: number): number;
+    @Constant
+    static log(x: number): number;
 
     // TODO newer method
     @Constant
     static trunc(x: number): number;
 
     static PI: 3.141592653589793
+    static E: 2.718281828459045
+
+    @InputOutput
+    static random(): number;
 }
 
 @Primitive("string")
 declare class String {
-    [index: number]: string | undefined;
+    [index: number]: string;
 
     @Constant
-    toUpperCase(): string;
+    toUpperCase(this: string): string;
     @Constant
-    toLowerCase(): string;
+    toLowerCase(this: string): string;
 
     get length(): number;
 
@@ -233,16 +294,18 @@ declare class Error {
 }
 
 declare class SyntaxError extends Error {
-    constructor() { super("syntax error") }
+    constructor() {
+        super("syntax error");
+    }
 }
 
 declare class JSON {
     // TODO any temp
-    @Constant("json:parse", SyntaxError)
+    @Constant("JSON:parse", SyntaxError)
     static parse(input: string): any;
 
     // TODO any temp
-    @Constant("json:stringify")
+    @Constant("JSON:stringify")
     static stringify(input: any): string;
 }
 
@@ -250,14 +313,26 @@ declare class Function {
     bind(this_ty: any): Function;
 }
 
-declare class Symbols {
+declare class Symbol {
     // TODO temp
-    iterator: 199
+    static iterator: unique symbol "iterator"
 }
 
 declare class Proxy {
     @Constant("proxy:constructor")
         constructor(obj: any, cb: any);
+}
+
+// Copied from `es5.d.ts`. Could this be an or
+// TODO string keys temp because parser broke
+interface PropertyDescriptor {
+    value?: any;
+    ["get" ? (): any;
+    ["set" ? (v: any): void;
+
+    writable?: boolean;
+    configurable?: boolean;
+    enumerable?: boolean;
 }
 
 declare class Object {
@@ -267,45 +342,36 @@ declare class Object {
     @Constant
     static getPrototypeOf(on: object): object | null;
 
+    @Constant
+    static freeze(on: object): object;
+
+    @Constant
+    static isFrozen(on: object): boolean;
+
+    // TODO defineProperties via body (not constant)
+    @Constant
+    static defineProperty(on: object, property: string, discriminator: PropertyDescriptor): boolean;
+
+    // TODO getOwnPropertyDescriptors via body (not constant)
+    @Constant
+    static getOwnPropertyDescriptor(on: object, property: string): PropertyDescriptor;
+
     // static create(prototype: object): object {
     //     const n = {};
     //     Object.setProtoTypeOf(n, prototype);
     //     return n
     // }
-
-    static keys(on: { [s: string]: any }): Array<string> {
-        const keys: Array<string> = [];
-        for (const key in on) {
-            keys.push(key);
-        }
-        return keys
-    }
-
-    static values(on: { [s: string]: any }): Array<any> {
-        const values: Array<any> = [];
-        for (const key in on) {
-            values.push(on[key]);
-        }
-        return values
-    }
-
-    static entries(on: { [s: string]: any }): Array<[string, any]> {
-        const entries: Array<[string, any]> = [];
-        for (const key in on) {
-            entries.push([key, on[key]]);
-        }
-        return entries
-    }
-
-    // static fromEntries(iterator: any): object {
-    //     const obj = {};
-    //     for (const item of iterator) {
-    //         const { 0: key, 1: value } = item;
-    //         obj[key] = value;
-    //     }
-    //     return obj
-    // }
 }
+
+declare class RegExp {
+    @Constant("RegExp:constructor")
+        constructor(s: string)
+}
+
+// WIP
+// interface SymbolImplementations {
+//     [Symbol.iterator]: () => { next(): { value: any, done: boolean } }
+// }
 
 // TODO wip
 declare function JSXH(tag: string, attributes: any, children?: any) {

@@ -2,7 +2,7 @@
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
 use crate::{
-	context::information::InformationChain,
+	context::InformationChain,
 	features::functions::ClosureId,
 	types::{SubstitutionArguments, TypeRestrictions, TypeStore},
 	TypeId,
@@ -11,6 +11,8 @@ use crate::{
 use std::fmt::Debug;
 
 /// These are curried between structures
+///
+/// It is also part of [`GenericChainLink`]
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum GenericArguments {
 	/// This is from a specialised result
@@ -56,14 +58,14 @@ impl GenericArguments {
 					.and_then(|lookup| lookup.get(&under))?;
 
 				crate::utilities::notify!("Hopefully here {:?}", prototype);
-				let res = lookup.calculate_lookup(info, *on);
+				let res = lookup.calculate_lookup(info, types, *on);
 				Some(res)
 			}
 		}
 	}
 
 	#[must_use]
-	pub fn into_substitutable(&self) -> SubstitutionArguments<'static> {
+	pub fn build_substitutable(&self) -> SubstitutionArguments<'static> {
 		match self {
 			GenericArguments::ExplicitRestrictions(res) => SubstitutionArguments {
 				parent: None,
