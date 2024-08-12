@@ -620,11 +620,9 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			Constructor::TypeOperator(op) => match op {
 				// TODO union of names
 				TypeOperator::TypeOf(_) => Some(TypeId::STRING_TYPE),
-				TypeOperator::HasProperty(..) => Some(TypeId::BOOLEAN_TYPE)
-			}
-			Constructor::CanonicalRelationOperator { .. } => {
-				Some(TypeId::BOOLEAN_TYPE)
-			}
+				TypeOperator::HasProperty(..) => Some(TypeId::BOOLEAN_TYPE),
+			},
+			Constructor::CanonicalRelationOperator { .. } => Some(TypeId::BOOLEAN_TYPE),
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { .. } => Some(TypeId::BOOLEAN_TYPE),
 			},

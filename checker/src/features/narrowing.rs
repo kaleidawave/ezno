@@ -224,6 +224,7 @@ pub fn narrow_based_on_expression(
 }
 
 /// 'string | number | boolean', filter=boolean => 'string | number'
+#[allow(clippy::used_underscore_binding)]
 fn build_union_from_filter(
 	on: TypeId,
 	filter: TypeId,
@@ -242,6 +243,7 @@ fn build_union_from_filter(
 	}
 }
 
+#[allow(clippy::used_underscore_binding)]
 pub(crate) fn build_union_from_filter_slice(
 	on: TypeId,
 	filter: &[TypeId],

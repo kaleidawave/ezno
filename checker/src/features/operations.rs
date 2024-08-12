@@ -238,17 +238,6 @@ pub fn evaluate_equality_inequality_operation(
 
 			// TODO check lhs and rhs type to see if they overlap
 			if is_dependent {
-				if crate::types::disjoint::types_are_disjoint(
-					lhs,
-					rhs,
-					&mut Vec::new(),
-					&crate::context::LocalInformation::default(),
-					types,
-				) {
-					// TODO warning with types disjoint
-					return TypeId::FALSE;
-				}
-
 				let constructor = crate::types::Constructor::CanonicalRelationOperator {
 					lhs,
 					operator: CanonicalEqualityAndInequality::StrictEqual,
@@ -410,6 +399,7 @@ pub fn evaluate_equality_inequality_operation(
 	}
 }
 
+#[allow(clippy::let_and_return)]
 pub fn is_null_or_undefined(ty: TypeId, types: &mut TypeStore) -> TypeId {
 	let is_null = evaluate_equality_inequality_operation(
 		ty,
@@ -418,15 +408,17 @@ pub fn is_null_or_undefined(ty: TypeId, types: &mut TypeStore) -> TypeId {
 		types,
 		false,
 	);
-	let is_undefined = evaluate_equality_inequality_operation(
-		ty,
-		&EqualityAndInequality::StrictEqual,
-		TypeId::UNDEFINED_TYPE,
-		types,
-		false,
-	);
+	// TODO temp to fix narrowing
+	// let is_undefined = evaluate_equality_inequality_operation(
+	// 	ty,
+	// 	&EqualityAndInequality::StrictEqual,
+	// 	TypeId::UNDEFINED_TYPE,
+	// 	types,
+	// 	false,
+	// );
 
-	types.new_logical_or_type(is_null, is_undefined)
+	// types.new_logical_or_type(is_null, is_undefined)
+	is_null
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -464,7 +456,8 @@ pub fn evaluate_logical_operation_with_expression<
 			environment,
 			lhs,
 			|env: &mut Environment, checking_data: &mut CheckingData<T, A>| {
-				if let Some(constraint) = crate::types::get_constraint(lhs.0, &checking_data.types) {
+				if let Some(constraint) = crate::types::get_constraint(lhs.0, &checking_data.types)
+				{
 					let mut result = Vec::new();
 					let falsy_types = &[
 						TypeId::NULL_TYPE,
@@ -478,7 +471,7 @@ pub fn evaluate_logical_operation_with_expression<
 						falsy_types,
 						&mut result,
 						env,
-						&mut checking_data.types,
+						&checking_data.types,
 					);
 					let narrowed_to = checking_data.types.new_or_type_from_iterator(result);
 					checking_data.types.register_type(Type::Narrowed { from: lhs.0, narrowed_to })
@@ -498,14 +491,16 @@ pub fn evaluate_logical_operation_with_expression<
 				environment,
 				(is_lhs_null_or_undefined, lhs.1),
 				|env: &mut Environment, checking_data: &mut CheckingData<T, A>| {
-					if let Some(constraint) = crate::types::get_constraint(lhs.0, &checking_data.types) {
+					if let Some(constraint) =
+						crate::types::get_constraint(lhs.0, &checking_data.types)
+					{
 						let mut result = Vec::new();
 						super::narrowing::build_union_from_filter_slice(
 							constraint,
 							&[TypeId::NULL_TYPE, TypeId::UNDEFINED_TYPE],
 							&mut result,
 							env,
-							&mut checking_data.types,
+							&checking_data.types,
 						);
 						let narrowed_to = checking_data.types.new_or_type_from_iterator(result);
 						checking_data

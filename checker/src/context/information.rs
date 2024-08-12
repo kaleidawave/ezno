@@ -225,7 +225,7 @@ impl LocalInformation {
 		self.closure_current_values
 			.extend(other.closure_current_values.iter().map(|(l, r)| (l.clone(), *r)));
 		self.frozen.extend(other.frozen.iter().clone());
-		self.narrowed_values.extend(other.narrowed_values.iter().cloned());
+		self.narrowed_values.extend(other.narrowed_values.iter().copied());
 		self.state = other.state.clone();
 	}
 
@@ -340,6 +340,7 @@ pub fn merge_info(
 	}
 
 	if let Some(carry_information_from) = carry_information_from {
+		#[allow(clippy::match_bool)]
 		match carry_information_from {
 			true => {
 				onto.extend(truthy, None);
@@ -350,12 +351,9 @@ pub fn merge_info(
 				} else {
 					// Could negate existing, but starting again handles types better
 					let values = crate::features::narrowing::narrow_based_on_expression_into_vec(
-						condition,
-						true,
-						parents,
-						types,
+						condition, true, parents, types,
 					);
-			
+
 					onto.narrowed_values = values;
 					onto.state = new_state;
 				}

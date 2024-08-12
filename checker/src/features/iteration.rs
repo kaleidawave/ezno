@@ -751,7 +751,7 @@ impl LoopStructure {
 	}
 
 	pub fn known_to_never_exist(self, types: &TypeStore) -> bool {
-		self.calculate_iterations_f64(types).map_or(false, |result| result.is_infinite())
+		self.calculate_iterations_f64(types).map_or(false, f64::is_infinite)
 	}
 
 	fn calculate_iterations_f64(self, types: &TypeStore) -> Result<f64, Self> {

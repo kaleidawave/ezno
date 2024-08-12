@@ -587,9 +587,9 @@ impl TypeStore {
 				}) = self.get_type_by_id(argument)
 				{
 					return args.get(&TypeId::T_TYPE).unwrap().0;
-				} else {
-					(TypeId::NOT_RESTRICTION, TypeId::T_TYPE)
 				}
+
+				(TypeId::NOT_RESTRICTION, TypeId::T_TYPE)
 			}
 			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
 		};
