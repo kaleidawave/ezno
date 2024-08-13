@@ -99,8 +99,7 @@ impl ASTNode for Statement {
 					reader,
 					&state.line_starts,
 					statement.get_position().start,
-					// TODO
-					false,
+					options,
 				)?;
 			}
 			// TODO statement.can_be_labelled()

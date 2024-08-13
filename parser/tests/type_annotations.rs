@@ -138,7 +138,7 @@ type Something<T, V extends keyof T> = { [P in keyof T]: V }
 	let module = Module::from_string(input.to_owned(), parse_options).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 
-	assert_eq!(output, input.clone());
+	assert_eq!(output, input);
 }
 
 #[test]
@@ -155,5 +155,5 @@ type B<T extends boolean> = T ? string : <U>(a: number, b: U) => T;
 	let module = Module::from_string(input.to_owned(), parse_options).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 
-	assert_eq!(output, input.clone());
+	assert_eq!(output, input);
 }

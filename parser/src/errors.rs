@@ -34,6 +34,7 @@ pub enum ParseErrors<'a> {
 	InvalidRegexFlag,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
+	InvalidLHSOfIs,
 }
 
 impl<'a> Display for ParseErrors<'a> {
@@ -132,6 +133,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::CannotHaveRegularMemberAfterSpread => {
 				write!(f, "Cannot have regular member after spread")
+			}
+			ParseErrors::InvalidLHSOfIs => {
+				write!(f, "LHS must be variable reference")
 			}
 		}
 	}

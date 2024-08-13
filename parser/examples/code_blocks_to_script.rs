@@ -17,9 +17,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
 		matches!(item[0].as_str(), "--into-files").then_some((item[1].clone(), item[2].clone()))
 	});
+
 	let out_file = args
 		.windows(2)
 		.find_map(|item| matches!(item[0].as_str(), "--out").then_some(item[1].clone()));
+
+	let repeat = args.windows(2).find_map(|item| {
+		matches!(item[0].as_str(), "--repeat")
+			.then_some(item[1].parse::<u16>().expect("--repeat must be integer"))
+	});
 
 	let content = std::fs::read_to_string(&path)?;
 
@@ -63,8 +69,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			// Fix for FLow
 			let code =
 				if replace_satisfies_with_as { code.replace(" satisfies ", " as ") } else { code };
-			for line in code.lines() {
-				writeln!(file, "{}", line.strip_prefix('\t').unwrap_or(line))?;
+
+			if let Some(repeat) = repeat {
+				for _ in 0..repeat {
+					writeln!(file, "() => {{\n{code}\n}};")?;
+				}
+			} else {
+				for line in code.lines() {
+					writeln!(file, "{}", line.strip_prefix('\t').unwrap_or(line))?;
+				}
 			}
 		}
 		return Ok(());

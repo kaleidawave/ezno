@@ -360,10 +360,12 @@ impl ASTNode for InterfaceMember {
 					let name = match reader.next().ok_or_else(parse_lexing_error)? {
 						Token(TSXToken::StringLiteral(name, quoted), start) => {
 							let position = start.with_length(name.len() + 2);
+							let _end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
 							PropertyKey::StringLiteral(name, quoted, position)
 						}
 						Token(TSXToken::NumberLiteral(value), start) => {
 							let position = start.with_length(value.len());
+							let _end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
 							PropertyKey::NumberLiteral(
 								value.parse::<NumberRepresentation>().unwrap(),
 								position,
@@ -386,7 +388,7 @@ impl ASTNode for InterfaceMember {
 								let start_span = readonly_position.as_ref().unwrap_or(&name_span);
 								match reader.next().ok_or_else(parse_lexing_error)? {
 									// Indexed type
-									Token(TSXToken::Colon, _) => {
+									Token(TSXToken::Colon, _start) => {
 										let indexer_type =
 											TypeAnnotation::from_reader(reader, state, options)?;
 										reader.expect_next(TSXToken::CloseBracket)?;
@@ -410,15 +412,14 @@ impl ASTNode for InterfaceMember {
 										});
 
 										let as_type = if next_is_as.is_some() {
-											Some(Box::new(TypeAnnotation::from_reader_with_config(
-												reader, state, options, None, None,
+											Some(Box::new(TypeAnnotation::from_reader(
+												reader, state, options,
 											)?))
 										} else {
 											None
 										};
 
 										reader.expect_next(TSXToken::CloseBracket)?;
-										// TODO the -?: ?: : stuff '-?:' should be a token
 										let token = reader.next().ok_or_else(parse_lexing_error)?;
 										let optionality = match token {
 											Token(TSXToken::Colon, _) => Optionality::Default,
@@ -549,15 +550,7 @@ impl ASTNode for InterfaceMember {
 						})
 					}
 					Token(TSXToken::Colon, _) => {
-						let mut type_annotation =
-							TypeAnnotation::from_reader(reader, state, options)?;
-
-						if readonly_position.is_some() {
-							// TODO positioning:
-							let position = start.union(type_annotation.get_position());
-							type_annotation =
-								TypeAnnotation::Readonly(Box::new(type_annotation), position);
-						}
+						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
 						let position = start.union(type_annotation.get_position());
 						Ok(InterfaceMember::Property {
 							position,

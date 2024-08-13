@@ -38,7 +38,7 @@ pub mod operators;
 pub mod template_literal;
 pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 
-pub use template_literal::{TemplateLiteral, TemplateLiteralPart};
+pub use template_literal::TemplateLiteral;
 
 use operators::{
 	AssociativityDirection, BinaryAssignmentOperator, BinaryOperator, UnaryOperator,
@@ -243,9 +243,11 @@ impl Expression {
 
 			if next_is_not_expression_like {
 				let point = start.unwrap_or(*at);
+				// take up the whole next part for checker suggestions
+				let position = point.union(source_map::End(at.0));
 				return Ok(Expression::Marker {
 					marker_id: state.new_partial_point_marker(point),
-					position: point.with_length(0),
+					position,
 				});
 			}
 		}
@@ -963,7 +965,8 @@ impl Expression {
 
 					let (property, position) = if options.partial_syntax && is_next_not_identifier {
 						let marker = state.new_partial_point_marker(accessor_position);
-						(PropertyReference::Marker(marker), accessor_position.with_length(1))
+						let position = accessor_position.union(source_map::End(at.0));
+						(PropertyReference::Marker(marker), position)
 					} else {
 						let is_private =
 							reader.conditional_next(|t| matches!(t, TSXToken::HashTag)).is_some();
@@ -1058,9 +1061,10 @@ impl Expression {
 							value: top.into(),
 							rhs: match reference {
 								// TODO temp :0
-								TypeAnnotation::Name(name, span) if name == "const" => {
-									TypeOrConst::Const(span)
-								}
+								TypeAnnotation::Name(
+									crate::type_annotations::TypeName::Name(name),
+									span,
+								) if name == "const" => TypeOrConst::Const(span),
 								reference => TypeOrConst::Type(Box::new(reference)),
 							},
 						},
@@ -1758,22 +1762,19 @@ impl Expression {
 				}
 			}
 			Self::TemplateLiteral(template_literal) => {
+				// Doing here because of tag precedence
 				if let Some(tag) = &template_literal.tag {
 					tag.to_string_using_precedence(buf, options, local, local2);
 				}
 				buf.push('`');
-				for part in &template_literal.parts {
-					match part {
-						TemplateLiteralPart::Static(content) => {
-							buf.push_str_contains_new_line(content.as_str());
-						}
-						TemplateLiteralPart::Dynamic(expression) => {
-							buf.push_str("${");
-							expression.to_string_from_buffer(buf, options, local);
-							buf.push('}');
-						}
-					}
+				for (static_part, dynamic_part) in &template_literal.parts {
+					buf.push_str_contains_new_line(static_part.as_str());
+
+					buf.push_str("${");
+					dynamic_part.to_string_from_buffer(buf, options, local);
+					buf.push('}');
 				}
+				buf.push_str_contains_new_line(template_literal.last.as_str());
 				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {

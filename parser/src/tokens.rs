@@ -404,8 +404,7 @@ impl TSXToken {
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
-			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::In | TSXKeyword::Of | TSXKeyword::Await)
-			| TSXToken::Keyword(TSXKeyword::Do)
+			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::In | TSXKeyword::Of | TSXKeyword::Await | TSXKeyword::Do)
 				| TSXToken::Arrow
 				// for `const x = 2; /something/g`
 				| TSXToken::SemiColon

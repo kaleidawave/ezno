@@ -622,6 +622,7 @@ impl TryFrom<NumberRepresentation> for f64 {
 			| NumberRepresentation::Bin { sign, value, .. }
 			| NumberRepresentation::Octal { sign, value, .. } => {
 				// TODO `value as f64` can lose information? If so should return f64::INFINITY
+				#[allow(clippy::cast_precision_loss)]
 				Ok(sign.apply(value as f64))
 			}
 			NumberRepresentation::Exponential { sign, value, exponent } => {
@@ -1123,7 +1124,7 @@ pub(crate) fn expect_semi_colon(
 	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 	line_starts: &source_map::LineStarts,
 	statement_end: u32,
-	record_new_lines: bool,
+	options: &ParseOptions,
 ) -> ParseResult<usize> {
 	if let Some(token) = reader.peek() {
 		let Token(kind, start) = token;
@@ -1139,7 +1140,7 @@ pub(crate) fn expect_semi_colon(
 		} else if let TSXToken::SemiColon = kind {
 			let Token(_, semicolon_end) = reader.next().unwrap();
 			let Token(kind, next) = reader.peek().unwrap();
-			if record_new_lines {
+			if options.retain_blank_lines {
 				let byte_indexes_crosses_lines = line_starts
 					.byte_indexes_crosses_lines(semicolon_end.0 as usize, next.0 as usize + 1);
 
@@ -1156,7 +1157,11 @@ pub(crate) fn expect_semi_colon(
 			let line_difference = line_starts
 				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1);
 			if line_difference == 0 {
-				throw_unexpected_token(reader, &[TSXToken::SemiColon])
+				if options.partial_syntax {
+					Ok(0)
+				} else {
+					throw_unexpected_token(reader, &[TSXToken::SemiColon])
+				}
 			} else {
 				Ok(line_difference - 1)
 			}

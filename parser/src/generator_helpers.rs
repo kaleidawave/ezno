@@ -13,6 +13,12 @@ impl<T: ASTNode> IntoAST<T> for T {
 
 pub struct Ident<'a>(&'a str);
 
+impl<'a> From<&'a str> for Ident<'a> {
+	fn from(name: &'a str) -> Self {
+		Self(name)
+	}
+}
+
 impl<'a> IntoAST<Expression> for Ident<'a> {
 	fn into_ast(self) -> Expression {
 		Expression::VariableReference(self.0.to_owned(), source_map::Nullable::NULL)
