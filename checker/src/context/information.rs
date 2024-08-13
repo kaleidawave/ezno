@@ -281,7 +281,6 @@ pub fn merge_info(
 		otherwise.as_ref().map_or(ReturnState::Continued, |o| o.state.clone()),
 	) {
 		(ReturnState::Continued, ReturnState::Continued) => (ReturnState::Continued, None),
-		(ReturnState::Continued, ReturnState::Rolling { .. }) => todo!(),
 		(ReturnState::Finished(returned), ReturnState::Continued) => {
 			(ReturnState::Rolling { under: condition, returned }, Some(false))
 		}
@@ -289,6 +288,7 @@ pub fn merge_info(
 			ReturnState::Rolling { under: types.new_logical_negation_type(condition), returned },
 			Some(true),
 		),
+		(ReturnState::Continued, rhs @ ReturnState::Rolling { .. }) => (rhs, None),
 		(ReturnState::Rolling { under, returned }, ReturnState::Continued) => (
 			ReturnState::Rolling { under: types.new_logical_and_type(condition, under), returned },
 			None,
@@ -302,8 +302,8 @@ pub fn merge_info(
 				types.new_conditional_type(condition, truthy_returned, otherwise_returned);
 			(ReturnState::Rolling { under, returned }, None)
 		}
-		(ReturnState::Rolling { .. }, ReturnState::Finished(_)) => todo!(),
-		(ReturnState::Finished(_), ReturnState::Rolling { .. }) => todo!(),
+		(lhs @ ReturnState::Rolling { .. }, ReturnState::Finished(_)) => (lhs, Some(true)),
+		(ReturnState::Finished(_), rhs @ ReturnState::Rolling { .. }) => (rhs, Some(false)),
 		(ReturnState::Finished(truthy_return), ReturnState::Finished(otherwise_return)) => (
 			ReturnState::Finished(types.new_conditional_type(
 				condition,

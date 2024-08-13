@@ -1,11 +1,12 @@
 use source_map::SpanWithSource;
 
-use super::{CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference};
+use super::{
+	ApplicationResult, CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference,
+};
 
 use crate::{
 	context::{get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior},
 	diagnostics::{TypeStringRepresentation, TDZ},
-	events::ApplicationResult,
 	features::{
 		iteration::{self, IterationKind},
 		objects::SpecialObject,

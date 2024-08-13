@@ -483,6 +483,16 @@ pub(crate) fn substitute(
 				crate::types::TypeOperator::HasProperty(_, _) => {
 					unreachable!("'HasProperty' should be specialised by events")
 				}
+				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
+					let lhs = substitute(lhs, arguments, environment, types);
+					crate::features::instance_of_operator_rhs_prototype(
+						lhs,
+						rhs_prototype,
+						environment,
+						types,
+					)
+					// unreachable!("'HasProperty' should be specialised by events")
+				}
 			},
 			Constructor::TypeRelationOperator(op) => match op {
 				crate::types::TypeRelationOperator::Extends { item, extends } => {

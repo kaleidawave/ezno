@@ -233,11 +233,13 @@ pub fn evaluate_equality_inequality_operation(
 		EqualityAndInequality::StrictEqual => {
 			// crate::utilities::notify!("{:?} === {:?}", lhs, rhs);
 
-			let is_dependent = types.get_type_by_id(lhs).is_dependent()
-				|| types.get_type_by_id(rhs).is_dependent();
+			let left_dependent = types.get_type_by_id(lhs).is_dependent();
+			let is_dependent = left_dependent || types.get_type_by_id(rhs).is_dependent();
 
 			// TODO check lhs and rhs type to see if they overlap
 			if is_dependent {
+				// Sort if `*constant* == ...`. Ideally want constant type on the RHS
+				let (lhs, rhs) = if left_dependent { (lhs, rhs) } else { (rhs, rhs) };
 				let constructor = crate::types::Constructor::CanonicalRelationOperator {
 					lhs,
 					operator: CanonicalEqualityAndInequality::StrictEqual,

@@ -491,6 +491,10 @@ impl TypeStore {
 		self.register_type(Type::RootPolyType(PolyNature::Open(base)))
 	}
 
+	pub fn new_narrowed(&mut self, from: TypeId, narrowed_to: TypeId) -> TypeId {
+		self.register_type(Type::Narrowed { from, narrowed_to })
+	}
+
 	/// For any synthesis errors to keep the program going a type is needed.
 	/// Most of the time use [`TypeId:ERROR_TYPE`] which is generic any like type.
 	/// However sometimes we can use some type annotation instead to still leave some information.

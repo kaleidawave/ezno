@@ -63,12 +63,10 @@ pub fn narrow_based_on_expression(
 								types,
 							);
 							let narrowed_to = types.new_or_type_from_iterator(result);
-							let narrowed =
-								types.register_type(Type::Narrowed { from, narrowed_to });
+							let narrowed = types.new_narrowed(from, narrowed_to);
 							into.insert(from, narrowed);
 						} else {
-							let narrowed =
-								types.register_type(Type::Narrowed { from, narrowed_to });
+							let narrowed = types.new_narrowed(from, narrowed_to);
 							into.insert(from, narrowed);
 						}
 					} else {
@@ -91,7 +89,7 @@ pub fn narrow_based_on_expression(
 							&crate::types::intrinsics::Intrinsic::MultipleOf,
 							modulo,
 						);
-						let narrowed = types.register_type(Type::Narrowed { from, narrowed_to });
+						let narrowed = types.new_narrowed(from, narrowed_to);
 						into.insert(from, narrowed);
 					} else {
 						crate::utilities::notify!("maybe subtract LHS");
@@ -118,11 +116,11 @@ pub fn narrow_based_on_expression(
 							crate::utilities::notify!("Here {:?} {:?}", (filter, lhs), result);
 
 							let narrowed_to = types.new_or_type_from_iterator(result);
-							types.register_type(Type::Narrowed { from: lhs, narrowed_to })
+							types.new_narrowed(lhs, narrowed_to)
 						} else {
 							types.new_intrinsic(&crate::types::intrinsics::Intrinsic::Not, *rhs)
 						};
-						types.register_type(Type::Narrowed { from: lhs, narrowed_to })
+						types.new_narrowed(lhs, narrowed_to)
 					} else {
 						*rhs
 					};
@@ -146,17 +144,49 @@ pub fn narrow_based_on_expression(
 				if types.get_type_by_id(lhs).is_dependent() {
 					let narrowed_to =
 						types.new_intrinsic(&crate::types::intrinsics::Intrinsic::LessThan, rhs);
-					let narrowed = types.register_type(Type::Narrowed { from: lhs, narrowed_to });
+					let narrowed = types.new_narrowed(lhs, narrowed_to);
 					into.insert(lhs, narrowed);
 				} else if types.get_type_by_id(rhs).is_dependent() {
 					let narrowed_to =
 						types.new_intrinsic(&crate::types::intrinsics::Intrinsic::GreaterThan, lhs);
-					let narrowed = types.register_type(Type::Narrowed { from: rhs, narrowed_to });
+					let narrowed = types.new_narrowed(rhs, narrowed_to);
 					into.insert(rhs, narrowed);
 				}
 			}
 			Constructor::UnaryOperator { operator: PureUnary::LogicalNot, operand } => {
 				narrow_based_on_expression(*operand, !negate, into, information, types);
+			}
+			Constructor::TypeOperator(TypeOperator::IsPrototype { lhs, rhs_prototype }) => {
+				let (lhs, rhs_prototype) = (*lhs, *rhs_prototype);
+				let constraint = crate::types::get_constraint(lhs, types).unwrap_or(lhs);
+				// TODO want a mix of two
+				let narrowed_to = if constraint == TypeId::ANY_TYPE {
+					prototype_narrowing::generate_item(rhs_prototype, types)
+				} else {
+					let mut items = Vec::new();
+					prototype_narrowing::pick_items_with_protoypes(
+						lhs,
+						rhs_prototype,
+						negate,
+						&mut items,
+						information,
+						types,
+					);
+					types.new_or_type_from_iterator(items)
+				};
+				let narrowed = types.new_narrowed(lhs, narrowed_to);
+				into.insert(lhs, narrowed);
+			}
+			Constructor::TypeOperator(TypeOperator::HasProperty(on, _key)) => {
+				let lhs = *on;
+				let constraint = crate::types::get_constraint(lhs, types).unwrap_or(lhs);
+				// TODO want a mix of two
+				let _narrowed_to = if constraint == TypeId::ANY_TYPE {
+					crate::utilities::notify!("TODO");
+				} else {
+				};
+				// let narrowed = types.new_narrowed(lhs, narrowed_to);
+				// into.insert(lhs, narrowed);
 			}
 			constructor => {
 				if let Some((lhs, rhs)) = as_logical_and(constructor, types) {
@@ -202,7 +232,7 @@ pub fn narrow_based_on_expression(
 					for (on, lhs_request) in lhs_requests {
 						if let Some(rhs_request) = rhs_requests.get(&on) {
 							// TODO
-							// let narrowed = types.register_type(Type::Narrowed { from: rhs, narrowed_to });
+							// let narrowed = types.new_narrowed(rhs, narrowed_to);
 							into.insert(on, types.new_or_type(lhs_request, *rhs_request));
 						} else {
 							// Only when we have two results is it useful
@@ -224,6 +254,8 @@ pub fn narrow_based_on_expression(
 }
 
 /// 'string | number | boolean', filter=boolean => 'string | number'
+///
+/// TODO: - negation, property, combine with equality
 #[allow(clippy::used_underscore_binding)]
 fn build_union_from_filter(
 	on: TypeId,
@@ -259,5 +291,62 @@ pub(crate) fn build_union_from_filter_slice(
 		build_union_from_filter_slice(constraint, filter, found, _information, types);
 	} else if !filter.contains(&on) {
 		found.push(on);
+	}
+}
+
+mod prototype_narrowing {
+	use super::*;
+
+	pub fn pick_items_with_protoypes(
+		on: TypeId,
+		prototype: TypeId,
+		negate: bool,
+		found: &mut Vec<TypeId>,
+		information: &impl InformationChain,
+		types: &TypeStore,
+	) {
+		if let Some((_condition, lhs, rhs)) = get_conditional(on, types) {
+			pick_items_with_protoypes(lhs, prototype, negate, found, information, types);
+			pick_items_with_protoypes(rhs, prototype, negate, found, information, types);
+		} else if let Some(constraint) = crate::types::get_constraint(on, types) {
+			pick_items_with_protoypes(constraint, prototype, negate, found, information, types);
+		} else if let Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
+			on: gen_on,
+			arguments: _,
+		}) = types.get_type_by_id(on)
+		{
+			if !negate && prototype == *gen_on {
+				found.push(on);
+			} else if negate && prototype != *gen_on {
+				found.push(on);
+			}
+		} else if let Type::Object(crate::types::ObjectNature::RealDeal) = types.get_type_by_id(on)
+		{
+			let extends = crate::features::extends_prototype(on, prototype, information);
+			if !negate && extends {
+				found.push(on);
+			} else if negate && !extends {
+				found.push(on);
+			}
+		}
+	}
+
+	/// Takes `Array` constructor and generates `Array<any>`
+	pub fn generate_item(constructor: TypeId, types: &mut TypeStore) -> TypeId {
+		use source_map::{Nullable, SpanWithSource};
+
+		if let Some(parameters) = types.get_type_by_id(constructor).get_parameters() {
+			let arguments = crate::types::GenericArguments::ExplicitRestrictions(
+				parameters
+					.into_iter()
+					.map(|key| (key, (TypeId::ANY_TYPE, SpanWithSource::NULL)))
+					.collect(),
+			);
+			types.register_type(Type::PartiallyAppliedGenerics(
+				crate::types::PartiallyAppliedGenerics { on: constructor, arguments },
+			))
+		} else {
+			constructor
+		}
 	}
 }

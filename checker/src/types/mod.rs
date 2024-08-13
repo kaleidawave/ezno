@@ -12,33 +12,35 @@ pub mod store;
 pub mod subtyping;
 mod terms;
 
-use derive_debug_extras::DebugExtras;
+pub(crate) use self::{
+	casts::*,
+	generics::contributions::CovariantContribution,
+	generics::{
+		chain::{GenericChain, GenericChainLink},
+		substitution::*,
+	},
+	properties::AccessMode,
+	properties::*,
+};
 
-use derive_enum_from_into::EnumFrom;
-pub(crate) use generics::{
-	chain::{GenericChain, GenericChainLink},
-	substitution::*,
+pub use self::{
+	functions::*, generics::generic_type_arguments::GenericArguments, store::TypeStore,
+	terms::Constant,
 };
 
 pub use crate::features::objects::SpecialObject;
-pub(crate) use casts::*;
-pub use logical::*;
-use source_map::SpanWithSource;
-pub use store::TypeStore;
-pub use terms::Constant;
 
 use crate::{
 	context::InformationChain,
 	events::RootReference,
 	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
 	subtyping::SliceArguments,
-	types::{generics::contributions::CovariantContribution, properties::AccessMode},
 	Decidable, FunctionId,
 };
 
-pub use self::functions::*;
-
-use self::{generics::generic_type_arguments::GenericArguments, properties::PropertyKey};
+use derive_debug_extras::DebugExtras;
+use derive_enum_from_into::EnumFrom;
+use source_map::SpanWithSource;
 
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
 
@@ -391,7 +393,7 @@ pub enum Constructor {
 	/// Access
 	Property {
 		on: TypeId,
-		under: PropertyKey<'static>,
+		under: properties::PropertyKey<'static>,
 		result: TypeId,
 		mode: AccessMode,
 	},
@@ -470,6 +472,10 @@ pub struct PartiallyAppliedGenerics {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeOperator {
+	IsPrototype {
+		lhs: TypeId,
+		rhs_prototype: TypeId,
+	},
 	/// The `typeof` unary operator
 	TypeOf(TypeId),
 	HasProperty(TypeId, properties::PropertyKey<'static>),
@@ -530,7 +536,7 @@ pub enum ArgumentOrLookup {
 pub enum NonEqualityReason {
 	Mismatch,
 	PropertiesInvalid {
-		errors: Vec<(PropertyKey<'static>, PropertyError)>,
+		errors: Vec<(properties::PropertyKey<'static>, PropertyError)>,
 	},
 	TooStrict,
 	/// TODO more information
@@ -556,7 +562,7 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 		types.get_type_by_id(on)
 	{
 		is_explicit_generic(*on, types)
-			|| matches!(under, PropertyKey::Type(under) if is_explicit_generic(*under, types))
+			|| matches!(under, properties::PropertyKey::Type(under) if is_explicit_generic(*under, types))
 	} else {
 		false
 	}
@@ -620,7 +626,9 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 			Constructor::TypeOperator(op) => match op {
 				// TODO union of names
 				TypeOperator::TypeOf(_) => Some(TypeId::STRING_TYPE),
-				TypeOperator::HasProperty(..) => Some(TypeId::BOOLEAN_TYPE),
+				TypeOperator::IsPrototype { .. } | TypeOperator::HasProperty(..) => {
+					Some(TypeId::BOOLEAN_TYPE)
+				}
 			},
 			Constructor::CanonicalRelationOperator { .. } => Some(TypeId::BOOLEAN_TYPE),
 			Constructor::TypeRelationOperator(op) => match op {
@@ -670,7 +678,7 @@ impl LookUpGeneric {
 					.flatten()
 					.filter_map(|(_publicity, key, value)| {
 						// TODO filter more
-						if matches!(key, PropertyKey::String(s) if s == "length") {
+						if matches!(key, properties::PropertyKey::String(s) if s == "length") {
 							None
 						} else {
 							Some(value.as_get_type(types))
@@ -777,13 +785,13 @@ pub(crate) fn _assign_to_tuple(_ty: TypeId) -> TypeId {
 fn get_simple_value(
 	ctx: &impl InformationChain,
 	on: TypeId,
-	property: &PropertyKey,
+	property: &properties::PropertyKey,
 	types: &TypeStore,
 ) -> Option<TypeId> {
-	fn get_logical(v: Logical<crate::PropertyValue>) -> Option<TypeId> {
+	fn get_logical(v: logical::Logical<properties::PropertyValue>) -> Option<TypeId> {
 		match v {
-			Logical::Pure(crate::PropertyValue::Value(t)) => Some(t),
-			Logical::Implies { on, antecedent: _ } => get_logical(*on),
+			logical::Logical::Pure(properties::PropertyValue::Value(t)) => Some(t),
+			logical::Logical::Implies { on, antecedent: _ } => get_logical(*on),
 			_ => None,
 		}
 	}
@@ -797,7 +805,7 @@ fn get_simple_value(
 	)
 	.ok()?;
 
-	if let LogicalOrValid::Logical(value) = value {
+	if let logical::LogicalOrValid::Logical(value) = value {
 		get_logical(value)
 	} else {
 		None
@@ -809,7 +817,7 @@ fn get_array_length(
 	on: TypeId,
 	types: &TypeStore,
 ) -> Result<ordered_float::NotNan<f64>, Option<TypeId>> {
-	let length_property = PropertyKey::String(std::borrow::Cow::Borrowed("length"));
+	let length_property = properties::PropertyKey::String(std::borrow::Cow::Borrowed("length"));
 	let id = get_simple_value(ctx, on, &length_property, types).ok_or(None)?;
 	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
 		Ok(*n)
@@ -898,10 +906,10 @@ impl Counter {
 		*self = Counter::AddTo(new);
 	}
 
-	pub(crate) fn into_property_key(self) -> PropertyKey<'static> {
+	pub(crate) fn into_property_key(self) -> properties::PropertyKey<'static> {
 		match self {
-			Counter::On(value) => PropertyKey::from_usize(value),
-			Counter::AddTo(ty) => PropertyKey::Type(ty),
+			Counter::On(value) => properties::PropertyKey::from_usize(value),
+			Counter::AddTo(ty) => properties::PropertyKey::Type(ty),
 		}
 	}
 

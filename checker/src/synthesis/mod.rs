@@ -143,7 +143,12 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_type_annotation(annotation, environment, checking_data)
 	}
 
-	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions {
+	fn parse_options(
+		is_js: bool,
+		extra_syntax: bool,
+		parse_comments: bool,
+		lsp_mode: bool,
+	) -> Self::ParseOptions {
 		parser::ParseOptions {
 			comments: if parse_comments {
 				parser::Comments::JustDocumentation
@@ -152,6 +157,7 @@ impl crate::ASTImplementation for EznoParser {
 			},
 			type_annotations: !is_js,
 			partial_syntax: lsp_mode,
+			is_expressions: extra_syntax,
 			..Default::default()
 		}
 	}

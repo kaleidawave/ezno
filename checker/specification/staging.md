@@ -130,6 +130,67 @@ function func(param: boolean | string | number) {
 
 - Expected null, found string | number
 
+#### Prototype narrowed
+
+```ts
+function func(param: Array<string> | string) {
+    if (param instanceof Array) {
+		param satisfies null;
+    }
+}
+```
+
+- Expected null, found Array\<string>
+
+#### Type generated from prototype
+
+```ts
+function func(param: any) {
+    if (param instanceof Array) {
+		param satisfies null;
+    }
+}
+```
+
+- Expected null, found Array\<any>
+
+#### Hmm
+
+```ts
+function func(param: any, other: any) {
+    if (param !== 10) {
+		console.log("here");
+
+		if (other !== 20) {
+			return;
+		}
+    } else {
+		return;
+	}
+
+	other satisfies 15;
+}
+```
+
+- Expected 15, found 20
+
+#### Mutation
+
+> TODO test more
+
+```ts
+function func(param: boolean) {
+	let a = param;
+	const inner = (value: boolean) => a = value;
+    if (a) {
+		inner(false);
+		a satisfies null;
+    }
+}
+```
+
+- Expected null, found false
+
 ### Control flow
 
 #### Early return
@@ -150,3 +211,22 @@ function func(param: boolean) {
 > Note not `3 | 7`
 
 - Expected string, found 7
+
+#### Dependent `instanceof`
+
+> TODO combine with prevoous
+
+```ts
+function isArray(param: any): boolean {
+	return param instanceof Array;
+}
+
+declare let myArray: Array<string>;
+
+isArray([1, 2, 3]) satisfies true;
+isArray(myArray) satisfies string;
+isArray({ }) satisfies null;
+```
+
+- Expected string, found true
+- Expected null, found false

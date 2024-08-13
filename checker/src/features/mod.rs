@@ -80,7 +80,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 }
 
 // TODO think this is okay
-fn extends_prototype(lhs: TypeId, rhs: TypeId, information: &impl InformationChain) -> bool {
+pub fn extends_prototype(lhs: TypeId, rhs: TypeId, information: &impl InformationChain) -> bool {
 	for info in information.get_chain_of_info() {
 		if let Some(lhs_prototype) = info.prototypes.get(&lhs).copied() {
 			let prototypes_equal = lhs_prototype == rhs;
@@ -101,26 +101,50 @@ pub fn instance_of_operator(
 	information: &impl InformationChain,
 	types: &mut TypeStore,
 ) -> TypeId {
-	// TODO frozen prototypes
-	if let Some(_constraint) = get_constraint(lhs, types) {
-		todo!()
-	} else {
-		use crate::types::functions;
-		let rhs_prototype = if let Type::SpecialObject(SpecialObject::Function(func, _)) =
-			types.get_type_by_id(rhs)
-		{
+	let rhs_prototype =
+		if let Type::SpecialObject(SpecialObject::Function(func, _)) = types.get_type_by_id(rhs) {
+			use crate::types::functions::FunctionBehavior;
+
 			let func = types.get_function_from_id(*func);
 			match &func.behavior {
-				functions::FunctionBehavior::ArrowFunction { .. }
-				| functions::FunctionBehavior::Method { .. } => TypeId::UNDEFINED_TYPE,
-				functions::FunctionBehavior::Function { prototype, .. }
-				| functions::FunctionBehavior::Constructor { prototype, .. } => *prototype,
+				FunctionBehavior::ArrowFunction { .. } | FunctionBehavior::Method { .. } => {
+					TypeId::UNDEFINED_TYPE
+				}
+				FunctionBehavior::Function { prototype, .. }
+				| FunctionBehavior::Constructor { prototype, .. } => *prototype,
 			}
 		} else {
-			// TODO err
+			crate::utilities::notify!("Instanceof RHS dependent or not constructor");
 			rhs
 		};
 
+	instance_of_operator_rhs_prototype(lhs, rhs_prototype, information, types)
+}
+
+pub(crate) fn instance_of_operator_rhs_prototype(
+	lhs: TypeId,
+	rhs_prototype: TypeId,
+	information: &impl InformationChain,
+	types: &mut TypeStore,
+) -> TypeId {
+	// TODO frozen prototypes
+	if let Some(constraint) = get_constraint(lhs, types) {
+		if let Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
+			on,
+			arguments: _,
+		}) = types.get_type_by_id(constraint)
+		{
+			if *on == rhs_prototype {
+				return TypeId::TRUE;
+			} else {
+				crate::utilities::notify!("Here?");
+			}
+		}
+
+		types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
+			crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype },
+		)))
+	} else {
 		if extends_prototype(lhs, rhs_prototype, information) {
 			TypeId::TRUE
 		} else {
