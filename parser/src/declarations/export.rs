@@ -1,12 +1,12 @@
 use crate::{
 	derive_ASTNode, errors::parse_lexing_error, throw_unexpected_token,
-	type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression, ListItem, ParseError,
+	type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression, ParseError,
 	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
 	TypeAnnotation, VariableIdentifier,
 };
 
 use super::{
-	variable::VariableDeclaration, ClassDeclaration, ImportExportName, ImportLocation,
+	variable::VariableDeclaration, ClassDeclaration, ImportExportPart, ImportLocation,
 	InterfaceDeclaration, StatementFunction, TypeAlias,
 };
 
@@ -24,13 +24,11 @@ pub enum ExportDeclaration {
 		exported: Exportable,
 		position: Span,
 	},
-
 	// `export default ...`
 	Default {
 		expression: Box<Expression>,
 		position: Span,
 	},
-
 	DefaultFunction {
 		/// Technically not allowed in TypeScript
 		is_async: bool,
@@ -50,9 +48,17 @@ pub enum Exportable {
 	Variable(VariableDeclaration),
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
-	Parts(Vec<ExportPart>),
-	ImportAll { r#as: Option<VariableIdentifier>, from: ImportLocation },
-	ImportParts { parts: Vec<ExportPart>, from: ImportLocation, type_definitions_only: bool },
+	Parts(Vec<ImportExportPart<ExportDeclaration>>),
+	ImportAll {
+		r#as: Option<VariableIdentifier>,
+		from: ImportLocation,
+	},
+	ImportParts {
+		// yah `super::ImportDeclaration` here
+		parts: Vec<ImportExportPart<super::ImportDeclaration>>,
+		from: ImportLocation,
+		type_definitions_only: bool,
+	},
 }
 
 impl ASTNode for ExportDeclaration {
@@ -170,7 +176,7 @@ impl ASTNode for ExportDeclaration {
 					state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
 					let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
-					let (parts, _, _end) = crate::parse_bracketed::<ExportPart>(
+					let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
 						reader,
 						state,
 						options,
@@ -213,7 +219,7 @@ impl ASTNode for ExportDeclaration {
 				});
 				if let Some(Token(token_type, _)) = after_bracket {
 					if let TSXToken::Keyword(TSXKeyword::From) = token_type {
-						let (parts, _, _end) = crate::parse_bracketed::<ExportPart>(
+						let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
 							reader,
 							state,
 							options,
@@ -234,7 +240,7 @@ impl ASTNode for ExportDeclaration {
 							position: start.union(end),
 						})
 					} else {
-						let (parts, _, end) = crate::parse_bracketed::<ExportPart>(
+						let (parts, _, end) = crate::parse_bracketed::<ImportExportPart<_>>(
 							reader,
 							state,
 							options,
@@ -374,127 +380,6 @@ impl ASTNode for ExportDeclaration {
 						buf.push_str(": ");
 						return_type.to_string_from_buffer(buf, options, local);
 					}
-				}
-			}
-		}
-	}
-}
-
-/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
-///
-/// Similar to [`ImportPart`] but reversed
-#[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
-#[get_field_by_type_target(Span)]
-pub enum ExportPart {
-	Name(VariableIdentifier),
-	NameWithAlias {
-		name: String,
-		alias: ImportExportName,
-		position: Span,
-	},
-	PrefixComment(
-		String,
-		#[cfg_attr(target_family = "wasm", tsify(type = "ExportPart | null"))] Option<Box<Self>>,
-		Span,
-	),
-	PostfixComment(
-		#[cfg_attr(target_family = "wasm", tsify(type = "ExportPart"))] Box<Self>,
-		String,
-		Span,
-	),
-}
-
-impl ListItem for ExportPart {
-	type LAST = ();
-}
-
-impl ASTNode for ExportPart {
-	fn get_position(&self) -> Span {
-		*GetFieldByType::get(self)
-	}
-
-	// TODO also single line comments here
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		if let Token(TSXToken::MultiLineComment(comment), start) = token {
-			let (position, under) =
-				if let Some(Token(TSXToken::CloseBrace | TSXToken::Comma, _)) = reader.peek() {
-					(start.with_length(comment.len() + 2), None)
-				} else {
-					let part = Self::from_reader(reader, state, options)?;
-					(start.union(part.get_position()), Some(Box::new(part)))
-				};
-			Ok(Self::PrefixComment(comment, under, position))
-		} else {
-			let (name, pos) = crate::tokens::token_as_identifier(token, "export name")?;
-			let mut value = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
-			{
-				reader.next();
-				let (alias, end) = ImportExportName::from_reader(reader, state, options)?;
-				let position = pos.union(end);
-				Self::NameWithAlias { name, alias, position }
-			} else {
-				Self::Name(VariableIdentifier::Standard(name, pos))
-			};
-
-			while let Some(Token(TSXToken::MultiLineComment(_), _)) = reader.peek() {
-				let Some(Token(TSXToken::MultiLineComment(c), start)) = reader.next() else {
-					unreachable!()
-				};
-				let pos = value.get_position().union(start.get_end_after(c.len() + 2));
-				value = Self::PostfixComment(Box::new(value), c, pos);
-			}
-			Ok(value)
-		}
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		match self {
-			ExportPart::Name(name) => {
-				name.to_string_from_buffer(buf, options, local);
-			}
-			ExportPart::NameWithAlias { name, alias, .. } => {
-				buf.push_str(name);
-				buf.push_str(" as ");
-				match alias {
-					ImportExportName::Reference(alias) => buf.push_str(alias),
-					ImportExportName::Quoted(alias, q) => {
-						buf.push(q.as_char());
-						buf.push_str(alias);
-						buf.push(q.as_char());
-					}
-					ImportExportName::Marker(_) => {}
-				}
-			}
-			ExportPart::PrefixComment(comment, inner, _) => {
-				if options.should_add_comment(comment.starts_with('.')) {
-					buf.push_str("/*");
-					buf.push_str(comment);
-					buf.push_str("*/");
-					if inner.is_some() {
-						buf.push(' ');
-					}
-				}
-				if let Some(inner) = inner {
-					inner.to_string_from_buffer(buf, options, local);
-				}
-			}
-			ExportPart::PostfixComment(inner, comment, _) => {
-				inner.to_string_from_buffer(buf, options, local);
-				if options.should_add_comment(comment.starts_with('.')) {
-					buf.push_str("/*");
-					buf.push_str(comment);
-					buf.push_str("*/ ");
 				}
 			}
 		}

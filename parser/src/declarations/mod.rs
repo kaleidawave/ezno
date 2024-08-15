@@ -1,3 +1,15 @@
+pub mod classes;
+pub mod export;
+pub mod import;
+pub mod variable;
+
+pub use super::types::{
+	declare_variable::*,
+	enum_declaration::{EnumDeclaration, EnumMember},
+	interface::InterfaceDeclaration,
+	type_alias::TypeAlias,
+};
+
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use get_field_by_type::GetFieldByType;
 use source_map::Span;
@@ -11,7 +23,9 @@ use crate::{
 };
 
 pub use self::{
+	classes::ClassDeclaration,
 	export::ExportDeclaration,
+	import::ImportDeclaration,
 	variable::{VariableDeclaration, VariableDeclarationItem},
 };
 
@@ -28,20 +42,6 @@ const TYPES_STATEMENT_FUNCTION: &str = r"
 		name: StatementPosition
 	}
 ";
-
-pub mod classes;
-pub mod export;
-pub mod import;
-pub mod variable;
-
-pub use super::types::{
-	declare_variable::*,
-	enum_declaration::{EnumDeclaration, EnumMember},
-	interface::InterfaceDeclaration,
-	type_alias::TypeAlias,
-};
-pub use classes::ClassDeclaration;
-pub use import::{ImportDeclaration, ImportExportName, ImportPart};
 
 #[apply(derive_ASTNode)]
 #[derive(
@@ -361,5 +361,176 @@ impl crate::ASTNode for Declaration {
 
 	fn get_position(&self) -> Span {
 		*self.get()
+	}
+}
+
+pub trait ImportOrExport: std::fmt::Debug + Clone + PartialEq + Sync + Send + 'static {
+	const PREFIX: bool;
+}
+
+impl ImportOrExport for ImportDeclaration {
+	const PREFIX: bool = true;
+}
+
+impl ImportOrExport for ExportDeclaration {
+	const PREFIX: bool = false;
+}
+
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
+#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
+#[get_field_by_type_target(Span)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+pub struct ImportExportPart<T: ImportOrExport> {
+	pub just_type: bool,
+	pub name: crate::VariableIdentifier,
+	pub alias: Option<ImportExportName>,
+	pub position: Span,
+	#[visit_skip_field]
+	pub _marker: std::marker::PhantomData<T>,
+}
+
+impl<T: ImportOrExport> crate::ListItem for ImportExportPart<T> {
+	type LAST = ();
+}
+
+impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
+	}
+
+	// TODO also single line comments here
+	fn from_reader(
+		reader: &mut impl crate::TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> crate::ParseResult<Self> {
+		let just_type =
+			reader.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type))).is_some();
+
+		if U::PREFIX {
+			let (alias, position) = ImportExportName::from_reader(reader, state, options)?;
+			if reader.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::As))).is_some()
+			{
+				let name = crate::VariableIdentifier::from_reader(reader, state, options)?;
+				let position = position.union(name.get_position());
+				Ok(Self {
+					just_type,
+					name,
+					alias: Some(alias),
+					position,
+					_marker: Default::default(),
+				})
+			} else if let ImportExportName::Reference(name) = alias {
+				let name = crate::VariableIdentifier::Standard(name, position);
+				Ok(Self { just_type, name, alias: None, position, _marker: Default::default() })
+			} else {
+				crate::throw_unexpected_token(reader, &[TSXToken::Keyword(TSXKeyword::As)])
+			}
+		} else {
+			let name = crate::VariableIdentifier::from_reader(reader, state, options)?;
+			let mut position = name.get_position().clone();
+			let alias = if reader
+				.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::As)))
+				.is_some()
+			{
+				let (alias, end) = ImportExportName::from_reader(reader, state, options)?;
+				position = position.union(end);
+				Some(alias)
+			} else {
+				None
+			};
+			Ok(Self { just_type, name, alias, position, _marker: Default::default() })
+		}
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		if self.just_type && options.include_type_annotations {
+			buf.push_str("type ");
+		}
+		if let Some(ref alias) = self.alias {
+			if U::PREFIX {
+				alias.to_string_from_buffer(buf, options, local);
+				buf.push_str(" as ");
+				self.name.to_string_from_buffer(buf, options, local);
+			} else {
+				self.name.to_string_from_buffer(buf, options, local);
+				buf.push_str(" as ");
+				alias.to_string_from_buffer(buf, options, local);
+			}
+		} else {
+			self.name.to_string_from_buffer(buf, options, local);
+		}
+	}
+}
+
+#[cfg(feature = "self-rust-tokenize")]
+impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPart<U> {
+	fn append_to_token_stream(
+		&self,
+		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
+	) {
+		todo!("")
+	}
+}
+
+/// TODO `default` should have its own variant?
+#[derive(Debug, Clone, PartialEq)]
+#[apply(derive_ASTNode)]
+pub enum ImportExportName {
+	Reference(String),
+	Quoted(String, Quoted),
+	/// For typing here
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
+	Marker(
+		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportExportName>"))] Marker<Self>,
+	),
+}
+
+impl ImportExportName {
+	pub(crate) fn from_reader(
+		reader: &mut impl crate::TokenReader<TSXToken, crate::TokenStart>,
+		state: &mut crate::ParsingState,
+		options: &ParseOptions,
+	) -> crate::ParseResult<(Self, Span)> {
+		if let Some(Token(TSXToken::Comma, pos)) = reader.peek() {
+			let marker = state.new_partial_point_marker(*pos);
+			return Ok((ImportExportName::Marker(marker), pos.union(source_map::End(pos.0))));
+		}
+		let token = reader.next().unwrap();
+		if let Token(TSXToken::StringLiteral(alias, quoted), start) = token {
+			let with_length = start.with_length(alias.len() + 1);
+			state.constant_imports.push(alias.clone());
+			Ok((ImportExportName::Quoted(alias, quoted), with_length))
+		} else {
+			let (ident, pos) = crate::tokens::token_as_identifier(token, "import alias")?;
+			if options.interpolation_points && ident == crate::marker::MARKER {
+				Ok((ImportExportName::Marker(state.new_partial_point_marker(pos.get_start())), pos))
+			} else {
+				Ok((ImportExportName::Reference(ident), pos))
+			}
+		}
+	}
+
+	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		_options: &crate::ToStringOptions,
+		_local: crate::LocalToStringInformation,
+	) {
+		match self {
+			ImportExportName::Reference(alias) => buf.push_str(alias),
+			ImportExportName::Quoted(alias, q) => {
+				buf.push(q.as_char());
+				buf.push_str(alias);
+				buf.push(q.as_char());
+			}
+			ImportExportName::Marker(_) => {}
+		}
 	}
 }

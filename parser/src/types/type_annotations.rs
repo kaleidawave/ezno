@@ -19,8 +19,8 @@ use super::{
 };
 
 use crate::{
-	tokens::token_as_identifier, ASTNode, NumberRepresentation, ParseError, ParseOptions, Span,
-	TSXKeyword, TSXToken, Token, TokenReader,
+	number::NumberRepresentation, tokens::token_as_identifier, ASTNode, ParseError, ParseOptions,
+	Span, TSXKeyword, TSXToken, Token, TokenReader,
 };
 
 /// A reference to a type
@@ -828,6 +828,27 @@ impl TypeAnnotation {
 			}
 		}
 
+		if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek() {
+			if let Some(_) = parent_kind {
+				return Ok(reference);
+			}
+			reader.next();
+			let extends_type = TypeAnnotation::from_reader_with_config(
+				reader,
+				state,
+				options,
+				Some(TypeOperatorKind::Query),
+				start,
+			)?;
+			// TODO local
+			let position = reference.get_position().union(extends_type.get_position());
+			reference = TypeAnnotation::Extends {
+				item: Box::new(reference),
+				extends: Box::new(extends_type),
+				position,
+			};
+		}
+
 		// Extends, intersections, unions or (special)implicit function literals
 		match reader.peek() {
 			Some(Token(TSXToken::BitwiseOr, _)) => {
@@ -923,26 +944,6 @@ impl TypeAnnotation {
 					condition: Box::new(reference),
 					resolve_true: Box::new(lhs),
 					resolve_false: Box::new(rhs),
-					position,
-				})
-			}
-			Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) => {
-				if let Some(_) = parent_kind {
-					return Ok(reference);
-				}
-				reader.next();
-				let extends_type = TypeAnnotation::from_reader_with_config(
-					reader,
-					state,
-					options,
-					Some(TypeOperatorKind::Query),
-					start,
-				)?;
-				// TODO local
-				let position = reference.get_position().union(extends_type.get_position());
-				Ok(TypeAnnotation::Extends {
-					item: Box::new(reference),
-					extends: Box::new(extends_type),
 					position,
 				})
 			}

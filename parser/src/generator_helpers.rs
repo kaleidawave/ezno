@@ -51,7 +51,7 @@ impl<'a> IntoAST<VariableIdentifier> for &'a str {
 impl IntoAST<Expression> for usize {
 	fn into_ast(self) -> Expression {
 		Expression::NumberLiteral(
-			crate::NumberRepresentation::from(self as f64),
+			crate::number::NumberRepresentation::from(self as f64),
 			source_map::Nullable::NULL,
 		)
 	}
@@ -60,7 +60,7 @@ impl IntoAST<Expression> for usize {
 impl IntoAST<Expression> for f64 {
 	fn into_ast(self) -> Expression {
 		Expression::NumberLiteral(
-			crate::NumberRepresentation::from(self),
+			crate::number::NumberRepresentation::from(self),
 			source_map::Nullable::NULL,
 		)
 	}

@@ -1,9 +1,9 @@
 use crate::{
 	are_nodes_over_length, declarations::ClassDeclaration, derive_ASTNode,
-	errors::parse_lexing_error, functions, parse_bracketed, throw_unexpected_token_with_token,
-	to_string_bracketed, type_annotations::generic_arguments_from_reader_sub_open_angle,
-	ExpressionPosition, FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors,
-	ParseResult, Quoted, TSXKeyword,
+	errors::parse_lexing_error, functions, number::NumberRepresentation, parse_bracketed,
+	throw_unexpected_token_with_token, to_string_bracketed,
+	type_annotations::generic_arguments_from_reader_sub_open_angle, ExpressionPosition,
+	FunctionHeader, ListItem, Marker, ParseErrors, ParseResult, Quoted, TSXKeyword,
 };
 
 use self::{

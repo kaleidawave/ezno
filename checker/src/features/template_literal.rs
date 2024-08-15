@@ -84,6 +84,7 @@ where
 				position,
 				&mut environment.info,
 			);
+			static_part_count += 1;
 		}
 
 		{

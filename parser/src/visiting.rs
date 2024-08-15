@@ -234,7 +234,7 @@ mod ast {
 		source_map::Span,
 		crate::TypeAnnotation,
 		crate::types::Visibility,
-		crate::NumberRepresentation,
+		crate::number::NumberRepresentation,
 		crate::expressions::operators::BinaryOperator,
 		crate::expressions::operators::BinaryAssignmentOperator,
 		crate::expressions::operators::UnaryOperator,
