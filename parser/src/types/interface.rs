@@ -363,6 +363,7 @@ impl ASTNode for InterfaceMember {
 									_
 								))
 							) && matches!(reader.peek_n(1), Some(Token(TSXToken::OpenBracket, _)));
+
 						if is_get_set_async_index_type {
 							let token = reader.next().unwrap();
 							let header = match token.0 {
@@ -729,14 +730,14 @@ impl ASTNode for InterfaceMember {
 				});
 				output_type.to_string_from_buffer(buf, options, local);
 			}
-			InterfaceMember::Comment(c, is_multiline, _) => {
+			InterfaceMember::Comment(content, is_multiline, _) => {
 				if *is_multiline {
 					buf.push_str("/*");
-					buf.push_str(c);
+					buf.push_str(content);
 					buf.push_str("*/");
 				} else {
 					buf.push_str("//");
-					buf.push_str(c);
+					buf.push_str(content);
 					buf.push_new_line();
 				}
 			}
@@ -759,11 +760,18 @@ pub(crate) fn parse_interface_members(
 			break;
 		}
 		let decorated_member = WithComment::from_reader(reader, state, options)?;
-		members.push(decorated_member);
-		// Semi colons and commas are optional here
-		if let Some(Token(TSXToken::SemiColon | TSXToken::Comma, _)) = reader.peek() {
+		// Semi colons and commas are optional here. Should expect_semi_colon
+		if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 			reader.next();
+		} else {
+			let _ = crate::expect_semi_colon(
+				reader,
+				&state.line_starts,
+				decorated_member.get_position().end,
+				options,
+			)?;
 		}
+		members.push(decorated_member);
 	}
 	Ok(members)
 }

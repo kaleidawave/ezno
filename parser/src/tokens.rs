@@ -360,6 +360,19 @@ impl TSXKeyword {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
 
+	#[cfg(feature = "extras")]
+	pub(crate) fn is_in_method_header(self) -> bool {
+		matches!(
+			self,
+			TSXKeyword::Generator | TSXKeyword::Get | TSXKeyword::Set | TSXKeyword::Async
+		)
+	}
+
+	#[cfg(not(feature = "extras"))]
+	pub(crate) fn is_in_method_header(self) -> bool {
+		matches!(self, TSXKeyword::Get | TSXKeyword::Set | TSXKeyword::Async)
+	}
+
 	#[allow(clippy::cast_possible_truncation)]
 	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
