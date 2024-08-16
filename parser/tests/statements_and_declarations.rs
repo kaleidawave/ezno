@@ -293,3 +293,18 @@ let a, b, a1, b1, c, d, rest, pop, push;
 	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
 	assert_eq!(output, input);
 }
+
+#[test]
+fn comments() {
+	let input = r"
+#!/usr/bin/env node
+"
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}

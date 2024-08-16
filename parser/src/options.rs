@@ -48,6 +48,8 @@ impl ParseOptions {
 			comments: self.comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
+			allow_expressions_in_jsx: true,
+			top_level_html: false,
 		}
 	}
 
@@ -163,9 +165,8 @@ impl ToStringOptions {
 	}
 
 	/// Whether to include comment in source
-	pub(crate) fn should_add_comment(&self, is_document_comment: bool) -> bool {
-		matches!(self.comments, Comments::All)
-			|| (matches!(self.comments, Comments::JustDocumentation) && is_document_comment)
+	pub(crate) fn should_add_comment(&self, content: &str) -> bool {
+		self.comments.should_add_comment(content)
 	}
 
 	pub(crate) fn add_indent<T: source_map::ToString>(&self, indent: u8, buf: &mut T) {
@@ -195,4 +196,17 @@ pub enum Comments {
 	/// Only multiline comments starting with `/**`
 	JustDocumentation,
 	None,
+}
+
+impl Comments {
+	/// Whether to include comment in source
+	pub(crate) fn should_add_comment(self, content: &str) -> bool {
+		match self {
+			Comments::All => true,
+			Comments::None => false,
+			Comments::JustDocumentation => {
+				content.starts_with("*") || content.trim_start().starts_with('@')
+			}
+		}
+	}
 }

@@ -429,7 +429,7 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 			}
 		} else {
 			let name = crate::VariableIdentifier::from_reader(reader, state, options)?;
-			let mut position = name.get_position().clone();
+			let mut position = name.get_position();
 			let alias = if reader
 				.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::As)))
 				.is_some()
@@ -467,6 +467,41 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 			self.name.to_string_from_buffer(buf, options, local);
 		}
 	}
+}
+
+// If `options.pretty` sort by name
+fn import_export_parts_to_string_from_buffer<T: source_map::ToString, U: ImportOrExport>(
+	parts: &[ImportExportPart<U>],
+	buf: &mut T,
+	options: &crate::ToStringOptions,
+	local: crate::LocalToStringInformation,
+) {
+	use super::ASTNode;
+	use iterator_endiate::EndiateIteratorExt;
+
+	buf.push('{');
+	options.push_gap_optionally(buf);
+	if options.pretty {
+		let mut parts: Vec<&ImportExportPart<U>> = parts.iter().collect();
+		parts.sort_unstable_by_key(|part| part.name.as_option_str().unwrap_or_default());
+		for (at_end, part) in parts.iter().endiate() {
+			part.to_string_from_buffer(buf, options, local);
+			if !at_end {
+				buf.push(',');
+				options.push_gap_optionally(buf);
+			}
+		}
+	} else {
+		for (at_end, part) in parts.iter().endiate() {
+			part.to_string_from_buffer(buf, options, local);
+			if !at_end {
+				buf.push(',');
+				options.push_gap_optionally(buf);
+			}
+		}
+	}
+	options.push_gap_optionally(buf);
+	buf.push('}');
 }
 
 #[cfg(feature = "self-rust-tokenize")]

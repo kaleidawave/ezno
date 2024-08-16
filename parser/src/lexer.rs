@@ -23,6 +23,8 @@ pub struct LexerOptions {
 	pub lex_jsx: bool,
 	/// TODO temp
 	pub allow_unsupported_characters_in_jsx_attribute_keys: bool,
+	pub allow_expressions_in_jsx: bool,
+	pub top_level_html: bool,
 }
 
 impl Default for LexerOptions {
@@ -31,6 +33,8 @@ impl Default for LexerOptions {
 			comments: Comments::All,
 			lex_jsx: true,
 			allow_unsupported_characters_in_jsx_attribute_keys: true,
+			allow_expressions_in_jsx: true,
+			top_level_html: false,
 		}
 	}
 }
@@ -144,7 +148,7 @@ pub fn lex_script(
 			no_inner_tags_or_expressions: bool,
 			is_self_closing_tag: bool,
 		},
-		Comment,
+		SingleLineComment,
 		MultiLineComment {
 			last_char_was_star: bool,
 		},
@@ -192,7 +196,27 @@ pub fn lex_script(
 		}};
 	}
 
-	for (idx, chr) in script.char_indices() {
+	let mut characters = script.char_indices();
+	if script.starts_with("#!") {
+		while let Some((idx, c)) = characters.next() {
+			if c == '\n' {
+				sender.push(Token(
+					TSXToken::HashBangComment(script[2..idx].to_owned()),
+					TokenStart::new(0),
+				));
+				break;
+			}
+		}
+	} else if options.top_level_html && script.starts_with("<!DOCTYPE html>") {
+		while let Some((_idx, c)) = characters.next() {
+			if c == '>' {
+				sender.push(Token(TSXToken::DocTypeHTML, TokenStart::new(0)));
+				break;
+			}
+		}
+	}
+
+	for (idx, chr) in characters {
 		// dbg!(chr, &state);
 
 		// Sets current parser state and updates start track
@@ -365,7 +389,7 @@ pub fn lex_script(
 						// Handle comments
 						match result {
 							TSXToken::Comment(_) => {
-								state = LexingState::Comment;
+								state = LexingState::SingleLineComment;
 								continue;
 							}
 							TSXToken::MultiLineComment(_) => {
@@ -433,12 +457,11 @@ pub fn lex_script(
 					*escaped = false;
 				}
 			},
-			LexingState::Comment => {
+			LexingState::SingleLineComment => {
 				if let '\n' = chr {
-					if matches!(options.comments, Comments::All) {
-						push_token!(TSXToken::Comment(
-							script[(start + 2)..idx].trim_end().to_owned()
-						),);
+					let content = &script[(start + 2)..idx];
+					if options.comments.should_add_comment(content) {
+						push_token!(TSXToken::Comment(content.trim_end().to_owned()));
 					}
 					set_state!(LexingState::None);
 					continue;
@@ -446,12 +469,9 @@ pub fn lex_script(
 			}
 			LexingState::MultiLineComment { ref mut last_char_was_star } => match chr {
 				'/' if *last_char_was_star => {
-					let comment = &script[(start + 2)..(idx - 1)];
-					let include = matches!(options.comments, Comments::All)
-						|| (matches!(options.comments, Comments::JustDocumentation)
-							&& comment.starts_with('*'));
-					if include {
-						push_token!(TSXToken::MultiLineComment(comment.to_owned()));
+					let content = &script[(start + 2)..(idx - 1)];
+					if options.comments.should_add_comment(content) {
+						push_token!(TSXToken::MultiLineComment(content.to_owned()));
 					}
 					set_state!(LexingState::None);
 					continue;
@@ -475,7 +495,7 @@ pub fn lex_script(
 				} else {
 					match chr {
 						'/' if start + 1 == idx => {
-							state = LexingState::Comment;
+							state = LexingState::SingleLineComment;
 							continue;
 						}
 						'*' if start + 1 == idx => {
@@ -1078,7 +1098,7 @@ pub fn lex_script(
 				}
 			}
 		}
-		LexingState::Comment => {
+		LexingState::SingleLineComment => {
 			sender.push(Token(
 				TSXToken::Comment(script[(start + 2)..].trim_end().to_owned()),
 				TokenStart::new(start as u32 + offset),

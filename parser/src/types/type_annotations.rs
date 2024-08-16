@@ -823,13 +823,13 @@ impl TypeAnnotation {
 			} else {
 				return Err(ParseError::new(
 					crate::ParseErrors::InvalidLHSOfIs,
-					reference.get_position().clone(),
+					reference.get_position(),
 				));
 			}
 		}
 
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek() {
-			if let Some(_) = parent_kind {
+			if parent_kind.is_some() {
 				return Ok(reference);
 			}
 			reader.next();
@@ -1222,7 +1222,7 @@ impl ListItem for TupleLiteralElement {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{assert_matches_ast, span, NumberRepresentation};
+	use crate::{assert_matches_ast, number::NumberRepresentation, span};
 
 	#[test]
 	fn name() {

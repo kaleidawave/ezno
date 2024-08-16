@@ -1,6 +1,7 @@
+use super::{Expression, MultipleExpression};
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression, ParseOptions, ParseResult,
-	Span, TSXToken, Token, TokenReader,
+	derive_ASTNode, errors::parse_lexing_error, ASTNode, ParseOptions, ParseResult, Span, TSXToken,
+	Token, TokenReader,
 };
 use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
@@ -10,7 +11,7 @@ use visitable_derive::Visitable;
 #[get_field_by_type_target(Span)]
 pub struct TemplateLiteral {
 	pub tag: Option<Box<Expression>>,
-	pub parts: Vec<(String, Expression)>,
+	pub parts: Vec<(String, MultipleExpression)>,
 	pub last: String,
 	pub position: Span,
 }
@@ -67,13 +68,9 @@ impl TemplateLiteral {
 					last = chunk;
 				}
 				Token(TSXToken::TemplateLiteralExpressionStart, _) => {
-					let expression = Expression::from_reader(reader, state, options)?;
+					let expression = MultipleExpression::from_reader(reader, state, options)?;
 					parts.push((std::mem::take(&mut last), expression));
-					let next = reader.next();
-					debug_assert!(matches!(
-						next,
-						Some(Token(TSXToken::TemplateLiteralExpressionEnd, _))
-					));
+					reader.expect_next(TSXToken::TemplateLiteralExpressionEnd)?;
 				}
 				t @ Token(TSXToken::TemplateLiteralEnd, _) => {
 					return Ok(Self { parts, last, tag, position: start.union(t.get_end()) });

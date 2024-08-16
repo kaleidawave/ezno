@@ -535,16 +535,18 @@ impl Expression {
 					prefix: true,
 				}
 			}
+			// TODO not great
+			Token(TSXToken::DocTypeHTML, _) => {
+				JSXRoot::from_reader(reader, state, options).map(Expression::JSXRoot)?
+			}
 			Token(tok @ (TSXToken::JSXOpeningTagStart | TSXToken::JSXFragmentStart), span) => {
 				let var_name = matches!(tok, TSXToken::JSXFragmentStart);
-				let root = JSXRoot::from_reader_sub_start(reader, state, options, var_name, span)?;
-				Expression::JSXRoot(root)
+				JSXRoot::from_reader_sub_start(reader, state, options, var_name, span)
+					.map(Expression::JSXRoot)?
 			}
 			Token(TSXToken::TemplateLiteralStart, start) => {
-				let template_literal = TemplateLiteral::from_reader_sub_start_with_tag(
-					reader, state, options, None, start,
-				)?;
-				Expression::TemplateLiteral(template_literal)
+				TemplateLiteral::from_reader_sub_start_with_tag(reader, state, options, None, start)
+					.map(Expression::TemplateLiteral)?
 			}
 			Token(TSXToken::Keyword(kw), start) if function_header_ish(kw, reader) => {
 				// TODO not great to recreate token, but that is how Rust works :)
@@ -567,14 +569,14 @@ impl Expression {
 					}
 
 					let (name, position) = token_as_identifier(token, "function parameter")?;
-					let function = ArrowFunction::from_reader_with_first_parameter(
+					ArrowFunction::from_reader_with_first_parameter(
 						reader,
 						state,
 						options,
 						(name, position),
 						is_async,
-					)?;
-					Expression::ArrowFunction(function)
+					)
+					.map(Expression::ArrowFunction)?
 				} else {
 					#[cfg(feature = "extras")]
 					{
@@ -1737,7 +1739,7 @@ impl Expression {
 				}
 			}
 			Self::Comment { content, on, is_multiline, prefix, position: _ } => {
-				if *prefix && options.should_add_comment(content.starts_with('*')) {
+				if *prefix && options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
 						buf.push_str_contains_new_line(content);
@@ -1749,7 +1751,7 @@ impl Expression {
 					}
 				}
 				on.to_string_using_precedence(buf, options, local, local2);
-				if !prefix && options.should_add_comment(content.starts_with('*')) {
+				if !prefix && options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
 						buf.push_str_contains_new_line(content);
@@ -2217,8 +2219,8 @@ impl ASTNode for FunctionArgument {
 			FunctionArgument::Standard(expression) => {
 				expression.to_string_from_buffer(buf, options, local);
 			}
-			FunctionArgument::Comment { content, is_multiline, position: _ } => {
-				if options.should_add_comment(*is_multiline && content.starts_with('*')) {
+			FunctionArgument::Comment { content, is_multiline: _is_multiline, position: _ } => {
+				if options.should_add_comment(content) {
 					buf.push_str("/*");
 					buf.push_str(content);
 					buf.push_str("*/");
@@ -2492,7 +2494,9 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 #[cfg(test)]
 mod tests {
 	use super::{ASTNode, BinaryOperator, Expression, Expression::*, MultipleExpression};
-	use crate::{assert_matches_ast, ast::FunctionArgument, span, NumberRepresentation, Quoted};
+	use crate::{
+		assert_matches_ast, ast::FunctionArgument, number::NumberRepresentation, span, Quoted,
+	};
 
 	#[test]
 	fn literal() {

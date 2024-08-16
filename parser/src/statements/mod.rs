@@ -236,13 +236,13 @@ impl ASTNode for Statement {
 			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, local),
 			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, local),
 			Statement::Comment(comment, _) => {
-				if options.should_add_comment(false) {
+				if options.should_add_comment(comment.as_str()) {
 					buf.push_str("//");
 					buf.push_str_contains_new_line(comment.as_str().trim_end());
 				}
 			}
 			Statement::MultiLineComment(comment, _) => {
-				if options.should_add_comment(comment.starts_with('*')) {
+				if options.should_add_comment(comment) {
 					buf.push_str("/*");
 					if options.pretty {
 						// Perform indent correction

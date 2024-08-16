@@ -1,4 +1,3 @@
-use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
@@ -110,17 +109,9 @@ impl ASTNode for ImportDeclaration {
 						if self.default.is_some() {
 							buf.push_str(", ");
 						}
-						buf.push('{');
-						options.push_gap_optionally(buf);
-						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, local);
-							if !at_end {
-								buf.push(',');
-								options.push_gap_optionally(buf);
-							}
-						}
-						options.push_gap_optionally(buf);
-						buf.push('}');
+						super::import_export_parts_to_string_from_buffer(
+							parts, buf, options, local,
+						);
 						options.push_gap_optionally(buf);
 					}
 				}

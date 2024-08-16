@@ -11,7 +11,6 @@ use super::{
 };
 
 use get_field_by_type::GetFieldByType;
-use iterator_endiate::EndiateIteratorExt;
 use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
 
@@ -308,17 +307,9 @@ impl ASTNode for ExportDeclaration {
 						type_alias.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Parts(parts) => {
-						buf.push('{');
-						options.push_gap_optionally(buf);
-						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, local);
-							if !at_end {
-								buf.push(',');
-								options.push_gap_optionally(buf);
-							}
-						}
-						options.push_gap_optionally(buf);
-						buf.push('}');
+						super::import_export_parts_to_string_from_buffer(
+							parts, buf, options, local,
+						);
 					}
 					Exportable::ImportAll { r#as, from } => {
 						buf.push_str("* ");
@@ -335,18 +326,9 @@ impl ASTNode for ExportDeclaration {
 						if *type_definitions_only {
 							buf.push_str("type ");
 						}
-
-						buf.push('{');
-						options.push_gap_optionally(buf);
-						for (at_end, part) in parts.iter().endiate() {
-							part.to_string_from_buffer(buf, options, local);
-							if !at_end {
-								buf.push(',');
-								options.push_gap_optionally(buf);
-							}
-						}
-						options.push_gap_optionally(buf);
-						buf.push('}');
+						super::import_export_parts_to_string_from_buffer(
+							parts, buf, options, local,
+						);
 						options.push_gap_optionally(buf);
 						buf.push_str("from \"");
 						from.to_string_from_buffer(buf);

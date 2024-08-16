@@ -9,6 +9,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None
+	} else if args.iter().any(|item| item == "--doc-comments") {
+		Comments::JustDocumentation
 	} else {
 		Comments::All
 	};

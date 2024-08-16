@@ -1,7 +1,10 @@
 use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
 
 fn main() {
-	let input = r#"const x = something ? "hello world something x" : "another thing quite long, lolmao. another thing quite long, lolmao";
+	let input = r#"
+import { something, aaa, another_thing, bbb } from "./x.js";
+	
+const x = something ? "hello world something x" : "another thing quite long, lolmao. another thing quite long, lolmao";
 const y = "hello world something x", z = "another thing quite long, lolmao. another thing quite long, lolmao";
 
 function x(a: { something: string, another: number, third: "yes" }, b: Array<{ everything: any }>) {
