@@ -7,7 +7,7 @@ name: Rust
 # - That crates that are published are publish-able (works most of the time)
 # - Testing 
 #   - Standard Rust integration and unit tests
-#   - Fuzz tests
+#   - Fuzz tests (parser and checker)
 #   - WASM edition works tests
 
 on:
@@ -280,10 +280,9 @@ jobs:
           rustup install nightly
           rustup default nightly
 
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      - name: Install cargo-fuzz
         if: steps.changes.outputs.checker == 'true'
-        with:
-          packages: cargo-fuzz
+        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
 
       - name: Run fuzzing
         env:
@@ -300,6 +299,7 @@ jobs:
             # fi
           fi
         working-directory: checker/fuzz
+  
   clippy:
     needs: validity
     runs-on: ubuntu-latest
