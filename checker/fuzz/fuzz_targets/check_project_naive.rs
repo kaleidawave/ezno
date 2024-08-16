@@ -10,7 +10,7 @@ fn do_fuzz(data: &str) -> Corpus {
 	let input = data.trim_start();
 
 	let definition_file = ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into();
-	let type_definition_files = HashSet::from_iter([definition_file]);
+	let type_definition_files = vec![definition_file];
 
 	// `lsp_mode` <=> partial syntax
 	let options = TypeCheckOptions { lsp_mode: true, ..Default::default() };
