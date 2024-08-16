@@ -390,7 +390,6 @@ impl ImportOrExport for ExportDeclaration {
 #[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ImportExportPart<T: ImportOrExport> {
 	pub just_type: bool,
 	pub name: crate::VariableIdentifier,
@@ -399,6 +398,12 @@ pub struct ImportExportPart<T: ImportOrExport> {
 	#[visit_skip_field]
 	pub _marker: std::marker::PhantomData<T>,
 }
+
+#[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
+#[allow(dead_code)]
+const IMPORT_EXPORT_PART_TYPE: &str = r"
+	type ImportExportPart<_T> = { just_type: boolean, name: VariableIdentifier, alias: ImportExportName | null, position: Span };
+";
 
 impl<T: ImportOrExport> crate::ListItem for ImportExportPart<T> {
 	type LAST = ();

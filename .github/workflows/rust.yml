@@ -139,7 +139,7 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
-          packages: wasm-pack@0.12.1
+          packages: wasm-pack@0.13.0
       - uses: denoland/setup-deno@v1
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
