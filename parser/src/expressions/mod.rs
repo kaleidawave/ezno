@@ -1898,6 +1898,13 @@ impl MultipleExpression {
 		}
 	}
 
+	#[must_use]
+	pub fn get_rhs(&self) -> &Expression {
+		match self {
+			MultipleExpression::Multiple { rhs, .. } | MultipleExpression::Single(rhs) => rhs,
+		}
+	}
+
 	pub(crate) fn to_string_on_left<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
