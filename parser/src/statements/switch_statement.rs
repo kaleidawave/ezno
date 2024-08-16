@@ -92,7 +92,7 @@ impl ASTNode for SwitchStatement {
 						reader,
 						&state.line_starts,
 						value.get_position().end,
-						false,
+						options,
 					)?;
 				}
 				// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️

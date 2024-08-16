@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-/// Places in the AST which
+/// Places in the AST which are either partial OR will recieve data from the generator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Marker<T>(pub u8, pub PhantomData<T>);
 

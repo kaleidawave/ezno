@@ -113,7 +113,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					}
 					parser::declarations::export::Exportable::Parts(parts) => {
 						for part in parts {
-							let pair = super::hoisting::export_part_to_name_pair(part);
+							let pair = super::hoisting::part_to_name_pair(part);
 							if let Some(pair) = pair {
 								let position = pair.position.with_source(environment.get_source());
 								let value = environment.get_variable_handle_error(

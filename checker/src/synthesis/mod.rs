@@ -113,6 +113,12 @@ impl crate::ASTImplementation for EznoParser {
 		ASTNode::get_position(expression)
 	}
 
+	fn multiple_expression_position<'_a>(
+		expression: &'_a Self::MultipleExpression<'_a>,
+	) -> source_map::Span {
+		ASTNode::get_position(expression)
+	}
+
 	fn type_parameter_name<'_a>(parameter: &'_a Self::TypeParameter<'_a>) -> &'_a str {
 		&parameter.name
 	}

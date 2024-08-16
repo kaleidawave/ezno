@@ -10,8 +10,8 @@ use temporary_annex::Annex;
 use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression,
-	NumberRepresentation, ParseOptions, ParseResult,
+	errors::parse_lexing_error, number::NumberRepresentation, tokens::token_as_identifier, ASTNode,
+	Expression, ParseOptions, ParseResult,
 };
 
 pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {

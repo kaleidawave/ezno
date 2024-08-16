@@ -1,9 +1,9 @@
 use crate::{
 	are_nodes_over_length, declarations::ClassDeclaration, derive_ASTNode,
-	errors::parse_lexing_error, functions, parse_bracketed, throw_unexpected_token_with_token,
-	to_string_bracketed, type_annotations::generic_arguments_from_reader_sub_open_angle,
-	ExpressionPosition, FunctionHeader, ListItem, Marker, NumberRepresentation, ParseErrors,
-	ParseResult, Quoted, TSXKeyword,
+	errors::parse_lexing_error, functions, number::NumberRepresentation, parse_bracketed,
+	throw_unexpected_token_with_token, to_string_bracketed,
+	type_annotations::generic_arguments_from_reader_sub_open_angle, ExpressionPosition,
+	FunctionHeader, ListItem, Marker, ParseErrors, ParseResult, Quoted, TSXKeyword,
 };
 
 use self::{
@@ -38,7 +38,7 @@ pub mod operators;
 pub mod template_literal;
 pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 
-pub use template_literal::{TemplateLiteral, TemplateLiteralPart};
+pub use template_literal::TemplateLiteral;
 
 use operators::{
 	AssociativityDirection, BinaryAssignmentOperator, BinaryOperator, UnaryOperator,
@@ -243,9 +243,11 @@ impl Expression {
 
 			if next_is_not_expression_like {
 				let point = start.unwrap_or(*at);
+				// take up the whole next part for checker suggestions
+				let position = point.union(source_map::End(at.0));
 				return Ok(Expression::Marker {
 					marker_id: state.new_partial_point_marker(point),
-					position: point.with_length(0),
+					position,
 				});
 			}
 		}
@@ -533,16 +535,18 @@ impl Expression {
 					prefix: true,
 				}
 			}
+			// TODO not great
+			Token(TSXToken::DocTypeHTML, _) => {
+				JSXRoot::from_reader(reader, state, options).map(Expression::JSXRoot)?
+			}
 			Token(tok @ (TSXToken::JSXOpeningTagStart | TSXToken::JSXFragmentStart), span) => {
 				let var_name = matches!(tok, TSXToken::JSXFragmentStart);
-				let root = JSXRoot::from_reader_sub_start(reader, state, options, var_name, span)?;
-				Expression::JSXRoot(root)
+				JSXRoot::from_reader_sub_start(reader, state, options, var_name, span)
+					.map(Expression::JSXRoot)?
 			}
 			Token(TSXToken::TemplateLiteralStart, start) => {
-				let template_literal = TemplateLiteral::from_reader_sub_start_with_tag(
-					reader, state, options, None, start,
-				)?;
-				Expression::TemplateLiteral(template_literal)
+				TemplateLiteral::from_reader_sub_start_with_tag(reader, state, options, None, start)
+					.map(Expression::TemplateLiteral)?
 			}
 			Token(TSXToken::Keyword(kw), start) if function_header_ish(kw, reader) => {
 				// TODO not great to recreate token, but that is how Rust works :)
@@ -565,14 +569,14 @@ impl Expression {
 					}
 
 					let (name, position) = token_as_identifier(token, "function parameter")?;
-					let function = ArrowFunction::from_reader_with_first_parameter(
+					ArrowFunction::from_reader_with_first_parameter(
 						reader,
 						state,
 						options,
 						(name, position),
 						is_async,
-					)?;
-					Expression::ArrowFunction(function)
+					)
+					.map(Expression::ArrowFunction)?
 				} else {
 					#[cfg(feature = "extras")]
 					{
@@ -963,7 +967,8 @@ impl Expression {
 
 					let (property, position) = if options.partial_syntax && is_next_not_identifier {
 						let marker = state.new_partial_point_marker(accessor_position);
-						(PropertyReference::Marker(marker), accessor_position.with_length(1))
+						let position = accessor_position.union(source_map::End(at.0));
+						(PropertyReference::Marker(marker), position)
 					} else {
 						let is_private =
 							reader.conditional_next(|t| matches!(t, TSXToken::HashTag)).is_some();
@@ -1058,9 +1063,10 @@ impl Expression {
 							value: top.into(),
 							rhs: match reference {
 								// TODO temp :0
-								TypeAnnotation::Name(name, span) if name == "const" => {
-									TypeOrConst::Const(span)
-								}
+								TypeAnnotation::Name(
+									crate::type_annotations::TypeName::Name(name),
+									span,
+								) if name == "const" => TypeOrConst::Const(span),
 								reference => TypeOrConst::Type(Box::new(reference)),
 							},
 						},
@@ -1733,7 +1739,7 @@ impl Expression {
 				}
 			}
 			Self::Comment { content, on, is_multiline, prefix, position: _ } => {
-				if *prefix && options.should_add_comment(content.starts_with('*')) {
+				if *prefix && options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
 						buf.push_str_contains_new_line(content);
@@ -1745,7 +1751,7 @@ impl Expression {
 					}
 				}
 				on.to_string_using_precedence(buf, options, local, local2);
-				if !prefix && options.should_add_comment(content.starts_with('*')) {
+				if !prefix && options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
 						buf.push_str_contains_new_line(content);
@@ -1758,22 +1764,19 @@ impl Expression {
 				}
 			}
 			Self::TemplateLiteral(template_literal) => {
+				// Doing here because of tag precedence
 				if let Some(tag) = &template_literal.tag {
 					tag.to_string_using_precedence(buf, options, local, local2);
 				}
 				buf.push('`');
-				for part in &template_literal.parts {
-					match part {
-						TemplateLiteralPart::Static(content) => {
-							buf.push_str_contains_new_line(content.as_str());
-						}
-						TemplateLiteralPart::Dynamic(expression) => {
-							buf.push_str("${");
-							expression.to_string_from_buffer(buf, options, local);
-							buf.push('}');
-						}
-					}
+				for (static_part, dynamic_part) in &template_literal.parts {
+					buf.push_str_contains_new_line(static_part.as_str());
+
+					buf.push_str("${");
+					dynamic_part.to_string_from_buffer(buf, options, local);
+					buf.push('}');
 				}
+				buf.push_str_contains_new_line(template_literal.last.as_str());
 				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
@@ -2216,8 +2219,8 @@ impl ASTNode for FunctionArgument {
 			FunctionArgument::Standard(expression) => {
 				expression.to_string_from_buffer(buf, options, local);
 			}
-			FunctionArgument::Comment { content, is_multiline, position: _ } => {
-				if options.should_add_comment(*is_multiline && content.starts_with('*')) {
+			FunctionArgument::Comment { content, is_multiline: _is_multiline, position: _ } => {
+				if options.should_add_comment(content) {
 					buf.push_str("/*");
 					buf.push_str(content);
 					buf.push_str("*/");
@@ -2491,7 +2494,9 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 #[cfg(test)]
 mod tests {
 	use super::{ASTNode, BinaryOperator, Expression, Expression::*, MultipleExpression};
-	use crate::{assert_matches_ast, ast::FunctionArgument, span, NumberRepresentation, Quoted};
+	use crate::{
+		assert_matches_ast, ast::FunctionArgument, number::NumberRepresentation, span, Quoted,
+	};
 
 	#[test]
 	fn literal() {

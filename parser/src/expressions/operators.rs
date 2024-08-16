@@ -26,7 +26,6 @@ pub enum BinaryOperator {
     NullCoalescing, 
 
     /// Non standard
-    Divides,
     Pipe,
     Compose
 }
@@ -34,7 +33,7 @@ pub enum BinaryOperator {
 impl BinaryOperator {
 	#[must_use]
 	pub fn is_non_standard(&self) -> bool {
-		matches!(self, BinaryOperator::Divides | BinaryOperator::Pipe | BinaryOperator::Compose)
+		matches!(self, BinaryOperator::Pipe | BinaryOperator::Compose)
 	}
 }
 
@@ -141,7 +140,6 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseAnd => "&",
 			BinaryOperator::BitwiseOr => "|",
 			BinaryOperator::BitwiseXOr => "^",
-			BinaryOperator::Divides => "/%",  // ∣
 			BinaryOperator::Compose => "<@>", // ∘
 			BinaryOperator::Pipe => "|>",
 		}
@@ -151,10 +149,7 @@ impl Operator for BinaryOperator {
 		match self {
 			BinaryOperator::Pipe | BinaryOperator::Compose => 15,
 			BinaryOperator::Exponent => 14,
-			BinaryOperator::Multiply
-			| BinaryOperator::Divide
-			| BinaryOperator::Modulo
-			| BinaryOperator::Divides => 13,
+			BinaryOperator::Multiply | BinaryOperator::Divide | BinaryOperator::Modulo => 13,
 			BinaryOperator::Add | BinaryOperator::Subtract => 12,
 			BinaryOperator::BitwiseShiftLeft
 			| BinaryOperator::BitwiseShiftRightUnsigned
@@ -394,8 +389,6 @@ impl TryFrom<&TSXToken> for BinaryOperator {
 			TSXToken::BitwiseShiftRight => Ok(BinaryOperator::BitwiseShiftRight),
 			TSXToken::BitwiseShiftRightUnsigned => Ok(BinaryOperator::BitwiseShiftRightUnsigned),
 			TSXToken::NullishCoalescing => Ok(BinaryOperator::NullCoalescing),
-			#[cfg(feature = "extras")]
-			TSXToken::DividesOperator => Ok(BinaryOperator::Divides),
 			#[cfg(feature = "extras")]
 			TSXToken::ComposeOperator => Ok(BinaryOperator::Compose),
 			#[cfg(feature = "extras")]
