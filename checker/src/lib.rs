@@ -164,6 +164,8 @@ pub trait ASTImplementation: Sized {
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
 
+	fn multiple_expression_position<'a>(expression: &'a Self::MultipleExpression<'a>) -> Span;
+
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 
 	fn type_annotation_position<'a>(annotation: &'a Self::TypeAnnotation<'a>) -> Span;

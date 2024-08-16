@@ -221,15 +221,15 @@ impl ASTNode for ClassMember {
 				buf.push_str("static ");
 				block.to_string_from_buffer(buf, options, local.next_level());
 			}
-			Self::Comment(c, is_multiline, _) => {
-				if options.should_add_comment(c.starts_with('.')) {
+			Self::Comment(content, is_multiline, _) => {
+				if options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
-						buf.push_str(c);
+						buf.push_str(content);
 						buf.push_str("*/");
 					} else {
 						buf.push_str("//");
-						buf.push_str(c);
+						buf.push_str(content);
 						buf.push_new_line();
 					}
 				}

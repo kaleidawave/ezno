@@ -1,0 +1,28 @@
+[package]
+name = "ezno-parser-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.ezno-checker]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "check_project_naive"
+path = "fuzz_targets/check_project_naive.rs"
+test = false
+doc = false
+bench = false

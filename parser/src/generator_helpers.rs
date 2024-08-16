@@ -13,6 +13,12 @@ impl<T: ASTNode> IntoAST<T> for T {
 
 pub struct Ident<'a>(&'a str);
 
+impl<'a> From<&'a str> for Ident<'a> {
+	fn from(name: &'a str) -> Self {
+		Self(name)
+	}
+}
+
 impl<'a> IntoAST<Expression> for Ident<'a> {
 	fn into_ast(self) -> Expression {
 		Expression::VariableReference(self.0.to_owned(), source_map::Nullable::NULL)
@@ -45,7 +51,7 @@ impl<'a> IntoAST<VariableIdentifier> for &'a str {
 impl IntoAST<Expression> for usize {
 	fn into_ast(self) -> Expression {
 		Expression::NumberLiteral(
-			crate::NumberRepresentation::from(self as f64),
+			crate::number::NumberRepresentation::from(self as f64),
 			source_map::Nullable::NULL,
 		)
 	}
@@ -54,7 +60,7 @@ impl IntoAST<Expression> for usize {
 impl IntoAST<Expression> for f64 {
 	fn into_ast(self) -> Expression {
 		Expression::NumberLiteral(
-			crate::NumberRepresentation::from(self),
+			crate::number::NumberRepresentation::from(self),
 			source_map::Nullable::NULL,
 		)
 	}

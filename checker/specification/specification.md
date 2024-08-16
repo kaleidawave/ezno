@@ -2678,6 +2678,19 @@ class X {}
 
 - Expected 4, found false
 
+#### Tagged template literal
+
+```ts
+function myTag(static_parts: Array<string>, other: string) {
+	return { static_parts, other }
+}
+
+const name = "Ben";
+myTag`${name}Hello ` satisfies string;
+```
+
+- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
+
 ### Async and `Promise`s
 
 > Position of await is not checked (here is fine because top level await)
@@ -3305,14 +3318,15 @@ box(someNumber) satisfies boolean;
 
 #### Template literal type restriction
 
-> TODO dynamic restriction
-
 ```ts
 type Name = "Ben"
 "test" satisfies `Hello ${Name}`;
+"Hello Ben" satisfies `Hello ${Name}`;
 ```
 
-- Expected "Hello Ben", found "test"
+> Should be `Expected "Hello Ben", found "test"`. See #188
+
+- Expected string, found "test"
 
 #### Template literal type specialisation
 
@@ -3719,11 +3733,12 @@ x.property_b
 
 > TODO constrained inference
 
-#### Readonly parameter
+#### Readonly property
 
 ```ts
-function x(p: readonly { a: string }) {
-	p.a = "hi";
+function x(p: { readonly a: string, b: string }) {
+    p.a = "hi";
+	p.b = "hi";
 }
 ```
 

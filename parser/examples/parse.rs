@@ -9,6 +9,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None
+	} else if args.iter().any(|item| item == "--doc-comments") {
+		Comments::JustDocumentation
 	} else {
 		Comments::All
 	};
@@ -21,6 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let render_timings = args.iter().any(|item| item == "--render-timings");
 	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
 	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
+	let top_level_html = args.iter().any(|item| item == "--top-level-html");
 
 	let print_ast = args.iter().any(|item| item == "--ast");
 
@@ -45,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		is_expressions: extras,
 		special_jsx_attributes: extras,
 		extra_operators: extras,
+		top_level_html,
 		..ParseOptions::default()
 	};
 
