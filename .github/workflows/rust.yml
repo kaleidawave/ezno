@@ -7,7 +7,7 @@ name: Rust
 # - That crates that are published are publish-able (works most of the time)
 # - Testing 
 #   - Standard Rust integration and unit tests
-#   - Fuzz tests
+#   - Fuzz tests (parser and checker)
 #   - WASM edition works tests
 
 on:
@@ -193,7 +193,7 @@ jobs:
         working-directory: src/js-cli-and-library
         shell: bash
 
-  fuzzing:
+  fuzzing_parser:
     needs: validity
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -250,6 +250,56 @@ jobs:
           fi
         working-directory: parser/fuzz
 
+  fuzzing_checker:
+    needs: validity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    strategy:
+      matrix:
+        fuzz-target: [check_project_naive]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            checker:
+              - 'checker/**'
+
+      - name: Install latest nightly and set it as default
+        if: steps.changes.outputs.checker == 'true'
+        run: |
+          rustup install nightly
+          rustup default nightly
+
+      - name: Install cargo-fuzz
+        if: steps.changes.outputs.checker == 'true'
+        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
+
+      - name: Run fuzzing
+        env:
+          SHORT_CIRCUIT: true
+        if: steps.changes.outputs.checker == 'true'
+        run: |
+          if ${{ env.SHORT_CIRCUIT }}; then
+            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+          else
+            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
+            
+            # if test -d fuzz/artifacts; then 
+            #   find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
+            # fi
+          fi
+        working-directory: checker/fuzz
+  
   clippy:
     needs: validity
     runs-on: ubuntu-latest
