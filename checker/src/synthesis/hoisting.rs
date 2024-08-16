@@ -588,7 +588,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									checking_data,
 								);
 								(overloads, actual)
-							} else if function.name.declare {
+							} else if function.name.is_declare {
 								let actual = overloads.pop().unwrap();
 								(overloads, actual)
 							} else {
@@ -740,7 +740,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
 				});
 
-				let value = if function.name.declare {
+				let value = if function.name.is_declare {
 					let (overloaded, _last) = (false, function);
 					//  if function.has_body() {
 					// } else {

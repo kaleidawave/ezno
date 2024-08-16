@@ -109,9 +109,9 @@ import { export1 } from "module-name";
 import { export1 as alias1 } from "module-name";
 import { default as alias } from "module-name";
 import { export1, export2 } from "module-name";
-import { export1, export2 as alias2, /* … */ } from "module-name";
+import { export2 as alias2, export1 } from "module-name";
 import { "string name" as alias } from "module-name";
-import defaultExport, { export1, /* … */ } from "module-name";
+import defaultExport, { export1 } from "module-name";
 import defaultExport, * as name from "module-name";
 import "module-name""#
 		.trim_start();
@@ -135,45 +135,36 @@ fn exports() {
 	// Taken from MDN
 	let input = r#"
 // Exporting declarations
-export let name1, name2 /*, … */;
-export const name1 = 1, name2 = 2 /*, … */;
-export function functionName() { 
-    /* … */ 
+export let name1, name2;
+export const name1 = 1, name2 = 2;
+export function functionName() {  
 }
 export class ClassName { 
-    /* … */
 }
-export function* generatorFunctionName() { 
-    /* … */ 
+export function* generatorFunctionName() {  
 }
 export const { name1, name2: bar } = o;
 export const [ name1, name2 ] = array;
 
 // Export list
-export { name1, /* …, */ nameN };
-export { variable1 as name1, variable2 as name2, /* …, */ nameN };
+export { name1, nameN };
+export { variable1 as name1, variable2 as name2, nameN };
 export { variable1 as "string name" };
-export { name1 as default /*, … */ };
+export { name1 as default };
 
 // Default exports
 export default expression;
 export default function functionName() { 
-    /* … */
 }
-export default class ClassName { 
-    /* … */ 
+export default class ClassName {  
 }
-export default function* generatorFunctionName() { 
-    /* … */ 
+export default function* generatorFunctionName() {  
 }
-export default function () { 
-    /* … */ 
+export default function () {  
 }
-export default class { 
-    /* … */ 
+export default class {  
 }
-export default function* () { 
-    /* … */ 
+export default function* () {  
 }
 
 export interface X { property: number }
@@ -181,11 +172,11 @@ export interface X { property: number }
 // Aggregating modules
 export * from "module-name";
 export * as name1 from "module-name";
-export { name1, /* …, */ nameN } from "module-name";
-export { import1 as name1, import2 as name2, /* …, */ nameN } from "module-name";
-export { default, /* …, */ } from "module-name";
+export { name1, nameN } from "module-name";
+export { import1 as name1, import2 as name2, nameN } from "module-name";
+export { default } from "module-name";
 export { default as name1 } from "module-name";
-export type { name1, /* …, */ nameN } from "module-name";"#
+export type { name1, nameN } from "module-name";"#
 		.trim_start();
 
 	let _module = Module::from_string(input.to_owned(), Default::default()).unwrap();
@@ -215,7 +206,7 @@ from "module-name" import defaultExport;
 from "module-name" import * as name;
 from "module-name" import { export1 };
 from "module-name" import { export1, export2 };
-from "module-name" import defaultExport, { export1, /* … */ };
+from "module-name" import defaultExport, { export1 };
 from "module-name" import defaultExport, * as name;
     "#
 	.trim();
@@ -296,8 +287,8 @@ let a, b, a1, b1, c, d, rest, pop, push;
 
 #[test]
 fn comments() {
-	let input = r"
-#!/usr/bin/env node
+	let input = r"#!/usr/bin/env node
+// Hi
 "
 	.trim();
 

@@ -74,6 +74,8 @@ pub enum TypeAnnotation {
 	},
 	/// Declares type as not assignable (still has interior mutability) e.g. `readonly number`
 	Readonly(Box<TypeAnnotation>, Span),
+	/// I have no idea what this is for?
+	Abstract(Box<TypeAnnotation>, Span),
 	/// Declares type as being union type of all property types e.g. `T[K]`
 	Index(Box<TypeAnnotation>, Box<TypeAnnotation>, Span),
 	/// KeyOf
@@ -92,7 +94,7 @@ pub enum TypeAnnotation {
 		position: Span,
 	},
 	Is {
-		reference: String,
+		reference: IsItem,
 		is: Box<TypeAnnotation>,
 		position: Span,
 	},
@@ -205,12 +207,34 @@ pub enum CommonTypes {
 	Never,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl CommonTypes {
+	fn name(&self) -> &'static str {
+		match self {
+			CommonTypes::String => "string",
+			CommonTypes::Number => "number",
+			CommonTypes::Boolean => "boolean",
+			CommonTypes::Any => "any",
+			CommonTypes::Null => "null",
+			CommonTypes::Undefined => "undefined",
+			CommonTypes::Never => "never",
+			CommonTypes::Unknown => "unknown",
+		}
+	}
+}
+
 #[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeName {
 	Name(String),
 	// For `Intl.Int` or something
 	FromNamespace(Vec<String>),
+}
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum IsItem {
+	Reference(String),
+	This,
 }
 
 impl ASTNode for TypeAnnotation {
@@ -232,16 +256,7 @@ impl ASTNode for TypeAnnotation {
 			Self::Marker(..) => {
 				assert!(options.expect_markers,);
 			}
-			Self::CommonName(name, _) => buf.push_str(match name {
-				CommonTypes::String => "string",
-				CommonTypes::Number => "number",
-				CommonTypes::Boolean => "boolean",
-				CommonTypes::Any => "any",
-				CommonTypes::Null => "null",
-				CommonTypes::Undefined => "undefined",
-				CommonTypes::Never => "never",
-				CommonTypes::Unknown => "unknown",
-			}),
+			Self::CommonName(name, _) => buf.push_str(name.name()),
 			Self::Decorated(decorator, on_type_annotation, _) => {
 				decorator.to_string_from_buffer(buf, options, local);
 				buf.push(' ');
@@ -335,6 +350,10 @@ impl ASTNode for TypeAnnotation {
 				with.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
+			Self::Abstract(item, _) => {
+				buf.push_str("abstract ");
+				item.to_string_from_buffer(buf, options, local);
+			}
 			Self::KeyOf(item, _) => {
 				buf.push_str("keyof ");
 				item.to_string_from_buffer(buf, options, local);
@@ -415,7 +434,10 @@ impl ASTNode for TypeAnnotation {
 				extends.to_string_from_buffer(buf, options, local);
 			}
 			Self::Is { reference, is, .. } => {
-				buf.push_str(reference);
+				buf.push_str(match reference {
+					IsItem::Reference(reference) => reference,
+					IsItem::This => "this",
+				});
 				buf.push_str(" is ");
 				is.to_string_from_buffer(buf, options, local);
 			}
@@ -722,6 +744,18 @@ impl TypeAnnotation {
 				let position = start.union(key_of_type.get_position());
 				TypeAnnotation::KeyOf(Box::new(key_of_type), position)
 			}
+			// PLS stop adding **** to the syntax
+			Token(TSXToken::Keyword(TSXKeyword::Abstract), start) => {
+				let inner_type = TypeAnnotation::from_reader_with_config(
+					reader,
+					state,
+					options,
+					Some(TypeOperatorKind::Query),
+					Some(start),
+				)?;
+				let position = start.union(inner_type.get_position());
+				TypeAnnotation::Abstract(Box::new(inner_type), position)
+			}
 			Token(TSXToken::Keyword(TSXKeyword::New), start) => {
 				let type_parameters = reader
 					.conditional_next(|token| *token == TSXToken::OpenChevron)
@@ -807,24 +841,43 @@ impl TypeAnnotation {
 		}
 
 		if let Some(Token(TSXToken::Keyword(TSXKeyword::Is), _)) = reader.peek() {
-			if let Self::Name(TypeName::Name(name), start) = reference {
-				reader.next();
-				let is_type = TypeAnnotation::from_reader_with_config(
-					reader,
-					state,
-					options,
-					Some(TypeOperatorKind::Query),
-					Some(start.get_start()),
-				)?;
-				// TODO local
-				let position = start.union(is_type.get_position());
+			fn type_annotation_as_name(
+				reference: TypeAnnotation,
+			) -> Result<(IsItem, Span), TypeAnnotation> {
+				match reference {
+					TypeAnnotation::CommonName(name, span) => {
+						Ok((IsItem::Reference(name.name().to_owned()), span))
+					}
+					TypeAnnotation::Name(TypeName::Name(name), span) => {
+						Ok((IsItem::Reference(name), span))
+					}
+					TypeAnnotation::This(span) => Ok((IsItem::This, span)),
+					_ => Err(reference),
+				}
+			}
 
-				reference = TypeAnnotation::Is { reference: name, is: Box::new(is_type), position };
-			} else {
-				return Err(ParseError::new(
-					crate::ParseErrors::InvalidLHSOfIs,
-					reference.get_position(),
-				));
+			match type_annotation_as_name(reference) {
+				Ok((item, span)) => {
+					reader.next();
+					let is_type = TypeAnnotation::from_reader_with_config(
+						reader,
+						state,
+						options,
+						Some(TypeOperatorKind::Query),
+						Some(span.get_start()),
+					)?;
+					// TODO local
+					let position = span.union(is_type.get_position());
+
+					reference =
+						TypeAnnotation::Is { reference: item, is: Box::new(is_type), position };
+				}
+				Err(reference) => {
+					return Err(ParseError::new(
+						crate::ParseErrors::InvalidLHSOfIs,
+						reference.get_position(),
+					));
+				}
 			}
 		}
 

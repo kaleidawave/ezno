@@ -385,7 +385,7 @@ pub trait ExpressionOrStatementPosition:
 #[apply(derive_ASTNode)]
 pub struct StatementPosition {
 	pub identifier: VariableIdentifier,
-	pub declare: bool,
+	pub is_declare: bool,
 }
 
 impl ExpressionOrStatementPosition for StatementPosition {
@@ -397,7 +397,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
 		VariableIdentifier::from_reader(reader, state, options)
-			.map(|identifier| Self { identifier, declare: false })
+			.map(|identifier| Self { identifier, is_declare: false })
 	}
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
@@ -413,7 +413,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	}
 
 	fn is_declare(&self) -> bool {
-		self.declare
+		self.is_declare
 	}
 }
 

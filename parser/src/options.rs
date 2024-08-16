@@ -40,6 +40,8 @@ pub struct ParseOptions {
 	pub retain_blank_lines: bool,
 	/// For LSP
 	pub partial_syntax: bool,
+	/// JSX with modifications equiv
+	pub top_level_html: bool,
 }
 
 impl ParseOptions {
@@ -48,8 +50,8 @@ impl ParseOptions {
 			comments: self.comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
-			allow_expressions_in_jsx: true,
-			top_level_html: false,
+			allow_expressions_in_jsx: !self.top_level_html,
+			top_level_html: self.top_level_html,
 		}
 	}
 
@@ -73,6 +75,7 @@ impl ParseOptions {
 			destructuring_type_annotation: true,
 			extra_operators: true,
 			retain_blank_lines: true,
+			top_level_html: false,
 		}
 	}
 }
@@ -97,6 +100,7 @@ impl Default for ParseOptions {
 			destructuring_type_annotation: false,
 			extra_operators: false,
 			retain_blank_lines: false,
+			top_level_html: false,
 		}
 	}
 }
@@ -205,7 +209,7 @@ impl Comments {
 			Comments::All => true,
 			Comments::None => false,
 			Comments::JustDocumentation => {
-				content.starts_with("*") || content.trim_start().starts_with('@')
+				content.starts_with('*') || content.trim_start().starts_with('@')
 			}
 		}
 	}

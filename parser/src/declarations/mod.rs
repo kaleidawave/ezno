@@ -280,21 +280,30 @@ impl crate::ASTNode for Declaration {
 						let mut class = ClassDeclaration::<StatementPosition>::from_reader(
 							reader, state, options,
 						)?;
-						class.name.declare = true;
+						class.name.is_declare = true;
 						class.position.start = start.0;
 						Ok(Declaration::Class(Decorated::new(decorators, class)))
 					}
 					TSXToken::Keyword(TSXKeyword::Function) => {
 						let mut function = StatementFunction::from_reader(reader, state, options)?;
-						function.name.declare = true;
+						function.name.is_declare = true;
 						function.position.start = start.0;
 						Ok(Declaration::Function(Decorated::new(decorators, function)))
 					}
 					TSXToken::Keyword(TSXKeyword::Type) => {
 						let mut alias = TypeAlias::from_reader(reader, state, options)?;
-						alias.name.declare = true;
+						alias.name.is_declare = true;
 						alias.position.start = start.0;
 						Ok(Declaration::TypeAlias(alias))
+					}
+					#[cfg(feature = "full-typescript")]
+					TSXToken::Keyword(TSXKeyword::Namespace) => {
+						let mut namespace = crate::types::namespace::Namespace::from_reader(
+							reader, state, options,
+						)?;
+						namespace.is_declare = true;
+						namespace.position.start = start.0;
+						Ok(Declaration::Namespace(namespace))
 					}
 					_ => throw_unexpected_token_with_token(
 						reader.next().ok_or_else(parse_lexing_error)?,
@@ -305,6 +314,7 @@ impl crate::ASTNode for Declaration {
 							TSXToken::Keyword(TSXKeyword::Function),
 							TSXToken::Keyword(TSXKeyword::Class),
 							TSXToken::Keyword(TSXKeyword::Type),
+							TSXToken::Keyword(TSXKeyword::Namespace),
 						],
 					),
 				}

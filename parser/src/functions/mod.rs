@@ -655,7 +655,8 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 				| TSXToken::OpenChevron
 				| TSXToken::CloseBrace
 				| TSXToken::Comma
-				| TSXToken::QuestionMark,
+				| TSXToken::QuestionMark
+				| TSXToken::OptionalMember,
 			_
 		))
 	);

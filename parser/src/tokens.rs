@@ -93,7 +93,7 @@ pub enum TSXToken {
     NumberLiteral(String),
     StringLiteral(String, Quoted),
     MultiLineComment(String), Comment(String),
-	/// https://262.ecma-international.org/15.0/index.html#sec-hashbang
+	/// <https://262.ecma-international.org/15.0/index.html#sec-hashbang>
     HashBangComment(String),
     RegexLiteral(String), RegexFlagLiteral(String),
     TemplateLiteralStart, TemplateLiteralChunk(String), TemplateLiteralEnd,
@@ -184,7 +184,6 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::JSXClosingTagName(lit)
 			| TSXToken::TemplateLiteralChunk(lit)
 			| TSXToken::JSXAttributeKey(lit)
-			| TSXToken::JSXAttributeValue(lit)
 			| TSXToken::JSXContent(lit)
 			| TSXToken::JSXTagName(lit)
 			| TSXToken::Identifier(lit)
@@ -196,7 +195,9 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::StringLiteral(comment, _)
 			| TSXToken::Comment(comment)
 			| TSXToken::HashBangComment(comment) => comment.len() as u32 + 2,
-			TSXToken::RegexLiteral(regex) => regex.len() as u32 + 2,
+			TSXToken::JSXAttributeValue(value) | TSXToken::RegexLiteral(value) => {
+				value.len() as u32 + 2
+			}
 
 			TSXToken::DocTypeHTML => 15,
 

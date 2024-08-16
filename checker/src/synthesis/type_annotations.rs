@@ -67,7 +67,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::BooleanLiteral(value, _) => {
 			checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
-		TypeAnnotation::Name(name, pos) => {
+		TypeAnnotation::Name(name, position) => {
 			match name {
 				TypeName::Name(name) => {
 					if let Some(ty) = environment.get_type_from_name(name) {
@@ -77,7 +77,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							checking_data.diagnostics_container.add_error(
 								TypeCheckError::TypeNeedsTypeArguments(
 									name,
-									pos.with_source(environment.get_source()),
+									position.with_source(environment.get_source()),
 								),
 							);
 							TypeId::ERROR_TYPE
@@ -96,13 +96,19 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							TypeCheckError::CouldNotFindType(
 								name,
 								possibles,
-								pos.with_source(environment.get_source()),
+								position.with_source(environment.get_source()),
 							),
 						);
 						TypeId::ERROR_TYPE
 					}
 				}
-				TypeName::FromNamespace(_) => todo!(),
+				TypeName::FromNamespace(..) => {
+					checking_data.raise_unimplemented_error(
+						"namespace item",
+						position.with_source(environment.get_source()),
+					);
+					TypeId::ERROR_TYPE
+				}
 			}
 		}
 		TypeAnnotation::Union(type_annotations, _) => {
@@ -156,11 +162,6 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		// This will take the found type and generate a `StructureGeneric` based on the type arguments
 		TypeAnnotation::NameWithGenericArguments(name, arguments, position) => {
-			// match name.as_str() {
-			// 	"ReturnType" => todo!(),
-			// 	"Constructor" => todo!(),
-			// 	_ => {}
-			// }
 			match name {
 				TypeName::Name(name) => {
 					if let Some(inner_type_id) = environment.get_type_from_name(name) {
@@ -325,7 +326,13 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						TypeId::ERROR_TYPE
 					}
 				}
-				_ => todo!(),
+				TypeName::FromNamespace(..) => {
+					checking_data.raise_unimplemented_error(
+						"namespace item",
+						position.with_source(environment.get_source()),
+					);
+					TypeId::ERROR_TYPE
+				}
 			}
 		}
 		TypeAnnotation::FunctionLiteral {
@@ -354,13 +361,20 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				&position,
 			)
 		}
-		TypeAnnotation::Readonly(type_annotation, pos) => {
+		TypeAnnotation::Abstract(_type_annotation, position) => {
+			checking_data.raise_unimplemented_error(
+				"abstact type annotation",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::ERROR_TYPE
+		}
+		TypeAnnotation::Readonly(type_annotation, position) => {
 			let underlying_type =
 				synthesise_type_annotation(type_annotation, environment, checking_data);
 
 			let restrictions = Map::from_iter([(
 				TypeId::T_TYPE,
-				(underlying_type, pos.with_source(environment.get_source())),
+				(underlying_type, position.with_source(environment.get_source())),
 			)]);
 			let ty = Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 				on: TypeId::READONLY_RESTRICTION,
@@ -677,7 +691,9 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				};
 				acc = checking_data.types.register_type(Type::Constructor(constructor));
 			}
-			if !last.is_empty() {
+			if last.is_empty() {
+				acc
+			} else {
 				let lhs = checking_data.types.new_constant_type(Constant::String(last.to_owned()));
 				if let TypeId::EMPTY_STRING = acc {
 					lhs
@@ -690,8 +706,6 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						},
 					))
 				}
-			} else {
-				acc
 			}
 		}
 		TypeAnnotation::Infer { name, extends, position: _ } => {
@@ -726,15 +740,14 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			));
 			checking_data.types.register_type(ty)
 		}
-		TypeAnnotation::Is { reference, is, position } => {
-			// let _item = synthesise_type_annotation(item, environment, checking_data);
-			let _item = environment.get_reference_constraint(
-				crate::features::assignments::Reference::Variable(
-					reference.clone(),
-					position.with_source(environment.get_source()),
-				),
-			);
-			let _is = synthesise_type_annotation(is, environment, checking_data);
+		TypeAnnotation::Is { reference: _, is: _, position } => {
+			// let _item = environment.get_reference_constraint(
+			// 	crate::features::assignments::Reference::Variable(
+			// 		reference.clone(),
+			// 		position.with_source(environment.get_source()),
+			// 	),
+			// );
+			// let _is = synthesise_type_annotation(is, environment, checking_data);
 			checking_data.raise_unimplemented_error(
 				"is type annotation",
 				position.with_source(environment.get_source()),

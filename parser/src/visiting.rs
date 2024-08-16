@@ -242,6 +242,7 @@ mod ast {
 		crate::expressions::operators::UnaryPostfixAssignmentOperator,
 		crate::types::InterfaceDeclaration,
 		crate::types::type_alias::TypeAlias,
+		crate::types::type_annotations::IsItem,
 		crate::types::declare_variable::DeclareVariableDeclaration,
 		crate::VariableIdentifier,
 		crate::PropertyReference,
@@ -251,7 +252,6 @@ mod ast {
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
 		crate::VariableKeyword,
-		crate::types::namespace::Namespace,
 		source_map::SourceId
 	];
 }

@@ -149,12 +149,11 @@ where
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
-			match result {
-				Ok(result) => acc = result,
-				Err(()) => {
-					crate::utilities::notify!("Invalid template literal concatenation");
-					return TypeId::ERROR_TYPE;
-				}
+			if let Ok(result) = result {
+				acc = result;
+			} else {
+				crate::utilities::notify!("Invalid template literal concatenation");
+				return TypeId::ERROR_TYPE;
 			}
 			let rhs = A::synthesise_multiple_expression(
 				dynamic_part,
@@ -169,15 +168,16 @@ where
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
-			match result {
-				Ok(result) => acc = result,
-				Err(()) => {
-					crate::utilities::notify!("Invalid template literal concatenation");
-					return TypeId::ERROR_TYPE;
-				}
+			if let Ok(result) = result {
+				acc = result;
+			} else {
+				crate::utilities::notify!("Invalid template literal concatenation");
+				return TypeId::ERROR_TYPE;
 			}
 		}
-		if !final_part.is_empty() {
+		if final_part.is_empty() {
+			acc
+		} else {
 			let value =
 				checking_data.types.new_constant_type(Constant::String(final_part.to_owned()));
 			let result = super::operations::evaluate_mathematical_operation(
@@ -187,15 +187,12 @@ where
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
-			match result {
-				Ok(result) => result,
-				Err(()) => {
-					crate::utilities::notify!("Invalid template literal concatenation");
-					return TypeId::ERROR_TYPE;
-				}
+			if let Ok(result) = result {
+				result
+			} else {
+				crate::utilities::notify!("Invalid template literal concatenation");
+				TypeId::ERROR_TYPE
 			}
-		} else {
-			acc
 		}
 	}
 }

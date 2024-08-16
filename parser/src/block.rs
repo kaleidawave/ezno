@@ -437,10 +437,10 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			(options.include_type_annotations, item)
 		{
 			match dec {
-				Declaration::Function(item) if item.on.name.declare => {
+				Declaration::Function(item) if item.on.name.is_declare => {
 					continue;
 				}
-				Declaration::Class(item) if item.on.name.declare => {
+				Declaration::Class(item) if item.on.name.is_declare => {
 					continue;
 				}
 				_ => {}

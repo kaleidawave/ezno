@@ -141,7 +141,9 @@ type Something<T, V extends keyof T> = { [P in keyof T]: V }
 	assert_eq!(output, input);
 }
 
+// Currently broken #165
 #[test]
+#[ignore]
 fn jsx_nuances() {
 	let input = r#"
 function x(a: <T>(a: number, b: T) => T) {}

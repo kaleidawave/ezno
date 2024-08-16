@@ -15,7 +15,7 @@ use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 #[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct InterfaceDeclaration {
-	pub is_declare: bool,
+	pub is_is_declare: bool,
 	pub name: StatementPosition,
 	#[cfg(feature = "extras")]
 	pub is_nominal: bool,
@@ -91,7 +91,7 @@ impl ASTNode for InterfaceDeclaration {
 		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 		Ok(InterfaceDeclaration {
 			name,
-			is_declare: false,
+			is_is_declare: false,
 			#[cfg(feature = "extras")]
 			is_nominal,
 			type_parameters,
@@ -255,6 +255,7 @@ impl ASTNode for InterfaceMember {
 			}
 			// Caller self with generic parameters
 			TSXToken::OpenChevron => {
+				let _ = reader.next();
 				let (type_parameters, _, _start_pos) =
 					parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
 				let parameters =
