@@ -387,6 +387,10 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 	#[allow(dead_code)]
 	NotTopLevelImport(SpanWithSource),
+	DuplicateImportName {
+		import_position: SpanWithSource,
+		existing_position: SpanWithSource,
+	},
 	#[allow(dead_code)]
 	DoubleDefaultExport(SpanWithSource),
 	CannotOpenFile {
@@ -673,6 +677,12 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				reason: "Import must be in the top of the scope".to_owned(),
 				position,
 				kind,
+			},
+			TypeCheckError::DuplicateImportName { import_position: position, existing_position, ..} => Diagnostic::PositionWithAdditionalLabels {
+				reason: "Cannot import using conflicting name".to_string(),
+				position,
+				kind,
+				labels: vec![("Existing import with same name".to_string(), existing_position)],
 			},
 			TypeCheckError::DoubleDefaultExport(_) => todo!(),
 			TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {

@@ -157,7 +157,20 @@ pub fn import_items<
 				environment.info.variable_current_value.insert(id, *item);
 				let existing = environment.variables.insert(default_name.to_owned(), v);
 				if let Some(_existing) = existing {
-					todo!("diagnostic")
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::DuplicateImportName {
+							import_position: position.with_source(current_source),
+							existing_position: match _existing {
+								VariableOrImport::Variable { declared_at, .. } => declared_at,
+								VariableOrImport::MutableImport { import_specified_at, .. } => {
+									import_specified_at
+								}
+								VariableOrImport::ConstantImport {
+									import_specified_at, ..
+								} => import_specified_at,
+							},
+						},
+					);
 				}
 			} else {
 				todo!("emit 'no default export' diagnostic")
@@ -244,7 +257,26 @@ pub fn import_items<
 						crate::utilities::notify!("{:?}", part.r#as.to_owned());
 						let existing = environment.variables.insert(part.r#as.to_owned(), v);
 						if let Some(_existing) = existing {
-							todo!("diagnostic")
+							checking_data.diagnostics_container.add_error(
+								crate::diagnostics::TypeCheckError::DuplicateImportName {
+									import_position: part
+										.position
+										.with_source(environment.get_source()),
+									existing_position: match _existing {
+										VariableOrImport::Variable { declared_at, .. } => {
+											declared_at
+										}
+										VariableOrImport::MutableImport {
+											import_specified_at,
+											..
+										} => import_specified_at,
+										VariableOrImport::ConstantImport {
+											import_specified_at,
+											..
+										} => import_specified_at,
+									},
+								},
+							);
 						}
 						if also_export {
 							if let Scope::Module { ref mut exported, .. } =
