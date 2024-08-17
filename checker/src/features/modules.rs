@@ -173,7 +173,12 @@ pub fn import_items<
 					);
 				}
 			} else {
-				todo!("emit 'no default export' diagnostic")
+				checking_data.diagnostics_container.add_error(
+					crate::diagnostics::TypeCheckError::NoDefaultExport {
+						position: position.with_source(current_source),
+						partial_import_path,
+					},
+				);
 			}
 		} else {
 			environment.register_variable_handle_error(
