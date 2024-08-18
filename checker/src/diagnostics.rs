@@ -387,8 +387,16 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 	#[allow(dead_code)]
 	NotTopLevelImport(SpanWithSource),
+	DuplicateImportName {
+		import_position: SpanWithSource,
+		existing_position: SpanWithSource,
+	},
 	#[allow(dead_code)]
 	DoubleDefaultExport(SpanWithSource),
+	NoDefaultExport {
+		position: SpanWithSource,
+		partial_import_path: &'a str,
+	},
 	CannotOpenFile {
 		file: CouldNotOpenFile,
 		import_position: Option<SpanWithSource>,
@@ -674,7 +682,18 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
+			TypeCheckError::DuplicateImportName { import_position: position, existing_position, ..} => Diagnostic::PositionWithAdditionalLabels {
+				reason: "Cannot import using conflicting name".to_string(),
+				position,
+				kind,
+				labels: vec![("Existing import with same name".to_string(), existing_position)],
+			},
 			TypeCheckError::DoubleDefaultExport(_) => todo!(),
+			TypeCheckError::NoDefaultExport { partial_import_path, position, ..} => Diagnostic::Position {
+				reason: format!("Cannot find default export from module '{partial_import_path}'"),
+				position,
+				kind
+			},
 			TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
 				Diagnostic::PositionWithAdditionalLabels {
 					reason: format!("Cannot find {partial_import_path}"),
