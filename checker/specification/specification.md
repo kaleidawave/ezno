@@ -4106,14 +4106,15 @@ export const a = 2;
 #### Import where export does not exist
 
 ```ts
-import { a } from "./export";
+import b, { a } from "./export";
 
 console.log(a.prop);
 
 // in export.ts
-export const b = 2;
+export const c = 2;
 ```
 
+- Cannot find default export from module './export'
 - a not exported from ./export
 
 #### Import from invalid file
