@@ -10,7 +10,10 @@ use super::{Type, TypeStore};
 use crate::{
 	context::InformationChain,
 	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
-	types::{calling::Callable, generics::contributions::Contributions, GenericChain, PolyNature},
+	types::{
+		calling::Callable, generics::contributions::Contributions, logical, GenericChain,
+		PolyNature,
+	},
 	Constant, Environment, TypeId,
 };
 use std::borrow::Cow;
@@ -171,6 +174,32 @@ impl<'a> PropertyKey<'a> {
 	}
 }
 
+/// For getting `length` and stuff
+pub(crate) fn get_simple_value(
+	ctx: &impl InformationChain,
+	on: TypeId,
+	property: &PropertyKey,
+	types: &TypeStore,
+) -> Option<TypeId> {
+	fn get_logical(v: logical::Logical<PropertyValue>) -> Option<TypeId> {
+		match v {
+			logical::Logical::Pure(PropertyValue::Value(t)) => Some(t),
+			logical::Logical::Implies { on, antecedent: _ } => get_logical(*on),
+			_ => None,
+		}
+	}
+
+	let value =
+		get_property_unbound((on, None), (Publicity::Public, property, None), false, ctx, types)
+			.ok()?;
+
+	if let logical::LogicalOrValid::Logical(value) = value {
+		get_logical(value)
+	} else {
+		None
+	}
+}
+
 // WIP quick hack for static property keys under < 10
 static NUMBERS: &str = "0123456789";
 
@@ -273,6 +302,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn inner_simple(&self) -> &Self {
 		if let PropertyValue::ConditionallyExists { truthy: on, .. }
 		| PropertyValue::Configured { on, descriptor: _ } = self
@@ -284,6 +314,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn is_optional_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition, truthy: _ } = self {
 			// crate::utilities::notify!("condition={:?}", *condition);
@@ -294,6 +325,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn is_writable_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
 			truthy.is_writable_simple()
@@ -304,6 +336,7 @@ impl PropertyValue {
 		}
 	}
 
+	#[must_use]
 	pub fn is_configuable_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
 			truthy.is_configuable_simple()

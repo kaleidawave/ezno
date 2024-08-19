@@ -36,26 +36,46 @@ use crate::{
 
 use self::{functions::ClosedOverVariables, objects::SpecialObject};
 
+pub(crate) fn type_to_js_string_name(on: TypeId) -> Option<&'static str> {
+	match on {
+		TypeId::NUMBER_TYPE => Some("number"),
+		TypeId::STRING_TYPE => Some("string"),
+		TypeId::BOOLEAN_TYPE => Some("boolean"),
+		TypeId::SYMBOL_TYPE => Some("symbol"),
+		TypeId::UNDEFINED_TYPE => Some("undefined"),
+		TypeId::NULL_TYPE => Some("object"),
+		_ => None,
+	}
+}
+
+pub(crate) fn string_name_to_type(name: &str) -> Option<TypeId> {
+	match name {
+		"number" => Some(TypeId::NUMBER_TYPE),
+		"string" => Some(TypeId::STRING_TYPE),
+		"boolean" => Some(TypeId::BOOLEAN_TYPE),
+		"function" => Some(TypeId::FUNCTION_TYPE),
+		"undefined" => Some(TypeId::UNDEFINED_TYPE),
+		"object" => Some(TypeId::OBJECT_TYPE),
+		_rhs => None,
+	}
+}
+
 /// Returns result of `typeof *on*`
 pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 	if let Some(constraint) = get_constraint(on, types) {
-		let name = match constraint {
-			TypeId::NUMBER_TYPE => "number",
-			TypeId::STRING_TYPE => "string",
-			TypeId::BOOLEAN_TYPE => "boolean",
-			TypeId::SYMBOL_TYPE => "symbol",
-			_constraint => {
-				return types.register_type(crate::Type::Constructor(
-					crate::types::Constructor::TypeOperator(crate::types::TypeOperator::TypeOf(on)),
-				))
-			}
-		};
-		// TODO could Cow or something to not allocate?
-		types.new_constant_type(crate::Constant::String(name.to_owned()))
+		if let Some(str_name) = type_to_js_string_name(constraint) {
+			// TODO make them interal types under `TypeId::*` as to not recreate types
+			types.new_constant_type(crate::Constant::String(str_name.to_owned()))
+		} else {
+			// TODO if always object or function then could get more accurate tag
+			types.register_type(crate::Type::Constructor(crate::types::Constructor::TypeOperator(
+				crate::types::TypeOperator::TypeOf(on),
+			)))
+		}
 	} else if on == TypeId::UNDEFINED_TYPE {
 		return types.new_constant_type(crate::Constant::String("undefined".to_owned()));
 	} else if on == TypeId::NULL_TYPE {
-		return types.new_constant_type(crate::Constant::String("null".to_owned()));
+		return types.new_constant_type(crate::Constant::String("object".to_owned()));
 	} else {
 		let ty = types.get_type_by_id(on);
 		if let crate::Type::Constant(cst) = ty {
@@ -136,20 +156,17 @@ pub(crate) fn instance_of_operator_rhs_prototype(
 		{
 			if *on == rhs_prototype {
 				return TypeId::TRUE;
-			} else {
-				crate::utilities::notify!("Here?");
 			}
+			crate::utilities::notify!("Here?");
 		}
 
 		types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
 			crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype },
 		)))
+	} else if extends_prototype(lhs, rhs_prototype, information) {
+		TypeId::TRUE
 	} else {
-		if extends_prototype(lhs, rhs_prototype, information) {
-			TypeId::TRUE
-		} else {
-			TypeId::FALSE
-		}
+		TypeId::FALSE
 	}
 }
 
@@ -386,19 +403,12 @@ pub fn in_operator(
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> TypeId {
-	let result = has_property((publicity, under), rhs, environment, types);
-
 	// TODO if any
 	if get_constraint(rhs, types).is_some() {
 		let dependency =
 			types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
 				crate::types::TypeOperator::HasProperty(rhs, under.into_owned()),
 			)));
-
-		{
-			let ty = crate::types::printing::print_type(result, types, environment, true);
-			crate::utilities::notify!("ty={:?}, dependency={:?}", ty, dependency);
-		}
 
 		environment.info.events.push(crate::events::Event::Miscellaneous(
 			crate::events::MiscellaneousEvents::Has {
@@ -410,144 +420,7 @@ pub fn in_operator(
 		));
 		dependency
 	} else {
-		result
-	}
-}
-
-pub mod tsc {
-	use source_map::SpanWithSource;
-
-	use crate::{
-		diagnostics,
-		types::{subtyping, Constructor, TypeStore},
-		CheckingData, Environment, Type, TypeId,
-	};
-
-	/// Returns result of `*on* as *cast_to*`. Returns `Err(())` for invalid casts where invalid casts
-	/// occur for casting a constant
-	pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
-		fn can_cast_type(ty: &Type) -> bool {
-			match ty {
-				// TODO some of these are more correct than the others
-				Type::RootPolyType(_rpt) => true,
-				Type::Constructor(constr) => match constr {
-					Constructor::CanonicalRelationOperator { .. }
-					| Constructor::UnaryOperator { .. }
-					| Constructor::BinaryOperator { .. } => false,
-					Constructor::TypeOperator(_) => todo!(),
-					Constructor::TypeRelationOperator(_) => todo!(),
-					Constructor::Awaited { .. }
-					| Constructor::KeyOf(..)
-					| Constructor::ConditionalResult { .. }
-					| Constructor::Image { .. }
-					| Constructor::Property { .. } => true,
-				},
-				_ => false,
-			}
-		}
-
-		let can_cast = on == TypeId::ERROR_TYPE || can_cast_type(types.get_type_by_id(on));
-
-		if can_cast {
-			// TSC compat around `any`
-			let cast_to = if cast_to == TypeId::ANY_TYPE { TypeId::ERROR_TYPE } else { cast_to };
-
-			Ok(types.register_type(Type::Narrowed { narrowed_to: cast_to, from: on }))
-		} else {
-			Err(())
-		}
-	}
-
-	pub fn non_null_assertion(on: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
-		/// TODO undefined? what about null
-		fn get_non_null_type(on: TypeId, types: &TypeStore) -> TypeId {
-			match types.get_type_by_id(on) {
-				// Type::Constructor(Constructor::ConditionalResult {
-				// 	condition: _,
-				// 	truthy_result,
-				// 	otherwise_result,
-				// 	result_union: _,
-				// }) => {
-				// 	if *truthy_result == TypeId::UNDEFINED_TYPE {
-				// 		*otherwise_result
-				// 	} else if *otherwise_result == TypeId::UNDEFINED_TYPE {
-				// 		*truthy_result
-				// 	} else {
-				// 		on
-				// 	}
-				// }
-				Type::Or(left, right) => {
-					if *left == TypeId::UNDEFINED_TYPE {
-						*right
-					} else if *right == TypeId::UNDEFINED_TYPE {
-						*left
-					} else {
-						on
-					}
-				}
-				ty => {
-					crate::utilities::notify!("{:?}", ty);
-					if let Some(constraint) = crate::types::get_constraint(on, types) {
-						get_non_null_type(constraint, types)
-					} else {
-						on
-					}
-				}
-			}
-		}
-		let cast_to = get_non_null_type(on, types);
-
-		Ok(types.register_type(Type::Narrowed { narrowed_to: cast_to, from: on }))
-	}
-
-	pub fn check_satisfies<T: crate::ReadFromFS, A: crate::ASTImplementation>(
-		expr_ty: TypeId,
-		to_satisfy: TypeId,
-		at: SpanWithSource,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, A>,
-	) {
-		pub(crate) fn check_satisfies(
-			expr_ty: TypeId,
-			to_satisfy: TypeId,
-			types: &TypeStore,
-			environment: &mut Environment,
-		) -> bool {
-			// TODO `behavior.allow_error = true` would be better
-			if expr_ty == TypeId::ERROR_TYPE {
-				false
-			} else {
-				let mut state = subtyping::State {
-					already_checked: Default::default(),
-					mode: Default::default(),
-					contributions: Default::default(),
-					others: subtyping::SubTypingOptions { allow_errors: false },
-					object_constraints: None,
-				};
-				let result =
-					subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, environment, types);
-
-				matches!(result, subtyping::SubTypeResult::IsSubType)
-			}
-		}
-
-		if !check_satisfies(expr_ty, to_satisfy, &checking_data.types, environment) {
-			let expected = diagnostics::TypeStringRepresentation::from_type_id(
-				to_satisfy,
-				environment,
-				&checking_data.types,
-				false,
-			);
-			let found = diagnostics::TypeStringRepresentation::from_type_id(
-				expr_ty,
-				environment,
-				&checking_data.types,
-				false,
-			);
-			checking_data
-				.diagnostics_container
-				.add_error(diagnostics::TypeCheckError::NotSatisfied { at, expected, found });
-		}
+		has_property((publicity, under), rhs, environment, types)
 	}
 }
 
@@ -610,6 +483,99 @@ pub(crate) fn has_property(
 			crate::utilities::notify!("Queue event / create dependent");
 			let constraint = get_constraint(rhs, types).unwrap();
 			has_property((publicity, key), constraint, information, types)
+		}
+	}
+}
+
+pub mod tsc {
+	use source_map::SpanWithSource;
+
+	use crate::{
+		diagnostics,
+		types::{Constructor, TypeStore},
+		CheckingData, Environment, Type, TypeId,
+	};
+
+	/// Returns result of `*on* as *cast_to*`. Returns `Err(())` for invalid casts where invalid casts
+	/// occur for casting a constant
+	pub fn as_cast(on: TypeId, cast_to: TypeId, types: &mut TypeStore) -> Result<TypeId, ()> {
+		fn can_cast_type(ty: &Type) -> bool {
+			match ty {
+				// TODO some of these are more correct than the others
+				Type::RootPolyType(_rpt) => true,
+				Type::Constructor(constr) => match constr {
+					Constructor::CanonicalRelationOperator { .. }
+					| Constructor::UnaryOperator { .. }
+					| Constructor::BinaryOperator { .. } => false,
+					Constructor::TypeOperator(_) => todo!(),
+					Constructor::TypeExtends(_) => todo!(),
+					Constructor::Awaited { .. }
+					| Constructor::KeyOf(..)
+					| Constructor::ConditionalResult { .. }
+					| Constructor::Image { .. }
+					| Constructor::Property { .. } => true,
+				},
+				_ => false,
+			}
+		}
+
+		let can_cast = on == TypeId::ERROR_TYPE || can_cast_type(types.get_type_by_id(on));
+
+		if can_cast {
+			// TSC compat around `any`
+			let cast_to = if cast_to == TypeId::ANY_TYPE { TypeId::ERROR_TYPE } else { cast_to };
+
+			Ok(types.register_type(Type::Narrowed { narrowed_to: cast_to, from: on }))
+		} else {
+			Err(())
+		}
+	}
+
+	pub fn non_null_assertion(
+		on: TypeId,
+		environment: &Environment,
+		types: &mut TypeStore,
+	) -> Result<TypeId, ()> {
+		let mut result = Vec::new();
+		super::narrowing::build_union_from_filter_slice(
+			on,
+			&[TypeId::NULL_TYPE, TypeId::UNDEFINED_TYPE],
+			&mut result,
+			environment,
+			types,
+		);
+		let cast_to = types.new_or_type_from_iterator(result);
+		Ok(types.register_type(Type::Narrowed { narrowed_to: cast_to, from: on }))
+	}
+
+	pub fn check_satisfies<T: crate::ReadFromFS, A: crate::ASTImplementation>(
+		expr_ty: TypeId,
+		to_satisfy: TypeId,
+		at: SpanWithSource,
+		environment: &mut Environment,
+		checking_data: &mut CheckingData<T, A>,
+	) {
+		if !crate::types::helpers::simple_subtype(
+			expr_ty,
+			to_satisfy,
+			environment,
+			&checking_data.types,
+		) {
+			let expected = diagnostics::TypeStringRepresentation::from_type_id(
+				to_satisfy,
+				environment,
+				&checking_data.types,
+				false,
+			);
+			let found = diagnostics::TypeStringRepresentation::from_type_id(
+				expr_ty,
+				environment,
+				&checking_data.types,
+				false,
+			);
+			checking_data
+				.diagnostics_container
+				.add_error(diagnostics::TypeCheckError::NotSatisfied { at, expected, found });
 		}
 	}
 }

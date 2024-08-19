@@ -56,3 +56,20 @@ pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
 
 	returned.unwrap_or(TypeId::UNDEFINED_TYPE)
 }
+
+pub(crate) fn new_is_type<T: crate::ReadFromFS>(
+	item: TypeId,
+	rhs: &parser::TypeAnnotation, 
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
+) -> TypeId {
+	use crate::types::{Type, Constructor, TypeExtends};
+
+	crate::utilities::notify!("{:?}", checking_data.types.get_type_by_id(item));
+	let extends = synthesise_type_annotation(rhs, environment, checking_data);
+	let ty = Type::Constructor(Constructor::TypeExtends(TypeExtends {
+		item,
+		extends,
+	}));
+	checking_data.types.register_type(ty)
+}

@@ -193,13 +193,16 @@ pub(crate) fn get_property_unbound(
 			.map(wrap)
 			.map(LogicalOrValid::Logical)
 			.ok_or(Invalid(on)),
-			Type::Narrowed { narrowed_to, .. } => get_property_on_type_unbound(
-				(*narrowed_to, on_type_arguments),
-				(publicity, under, under_type_arguments),
-				require_both_logical,
-				info_chain,
-				types,
-			),
+			Type::Narrowed { narrowed_to, .. } => {
+				// TODO wrap value to mark that this could be unsafe if mutated somehow
+				get_property_on_type_unbound(
+					(*narrowed_to, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					require_both_logical,
+					info_chain,
+					types,
+				)
+			}
 			Type::AliasTo { to, .. } => {
 				get_property_on_type_unbound(
 					(*to, on_type_arguments),

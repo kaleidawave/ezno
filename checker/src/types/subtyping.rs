@@ -1111,20 +1111,56 @@ pub(crate) fn type_is_subtype_with_generics(
 			| Constructor::CanonicalRelationOperator { .. }
 			| Constructor::UnaryOperator { .. } => unreachable!("invalid constructor on LHS"),
 			Constructor::TypeOperator(_) => todo!(),
-			Constructor::TypeRelationOperator(_) => todo!(),
-			Constructor::Image { on: _, with: _, result }
-			| Constructor::ConditionalResult {
-				condition: _,
+			Constructor::TypeExtends(_) => todo!(),
+			Constructor::Image { on: _, with: _, result } => {
+				crate::utilities::notify!("Here");
+				type_is_subtype_with_generics(
+					(*result, base_type_arguments),
+					(ty, ty_structure_arguments),
+					state,
+					information,
+					types,
+				)
+			}
+			Constructor::ConditionalResult {
+				condition,
 				truthy_result: _,
-				otherwise_result: _,
+				otherwise_result,
 				result_union: result,
-			} => type_is_subtype_with_generics(
-				(*result, base_type_arguments),
-				(ty, ty_structure_arguments),
-				state,
-				information,
-				types,
-			),
+			} => {
+				// implements `assert is condition annotation`
+				if let (
+					Type::Constructor(Constructor::TypeExtends(extends)),
+					TypeId::NEVER_TYPE,
+					Type::Constructor(Constructor::ConditionalResult {
+						condition: rhs_condition,
+						truthy_result: _,
+						otherwise_result: TypeId::NEVER_TYPE,
+						result_union: _,
+					}),
+				) = (types.get_type_by_id(*condition), *otherwise_result, right_ty)
+				{
+					if extends.equal_to_rhs(*rhs_condition, types) {
+						SubTypeResult::IsSubType
+					} else {
+						crate::utilities::notify!(
+							"Here {:?}",
+							types.get_type_by_id(*rhs_condition)
+						);
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					}
+				} else {
+					crate::utilities::notify!("Here {:?}", right_ty);
+
+					type_is_subtype_with_generics(
+						(*result, base_type_arguments),
+						(ty, ty_structure_arguments),
+						state,
+						information,
+						types,
+					)
+				}
+			}
 			Constructor::Property { on, under, result: _, mode: _ } => {
 				// Ezno custom state
 				// TODO might be based of T

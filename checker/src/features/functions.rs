@@ -224,12 +224,10 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	}
 
 	// Abstraction of `typeof parameter === "undefined"` to generate less types.
-	let is_undefined_condition = checking_data.types.register_type(Type::Constructor(
-		Constructor::TypeRelationOperator(types::TypeRelationOperator::Extends {
-			item: parameter_ty,
-			extends: TypeId::UNDEFINED_TYPE,
-		}),
-	));
+	let is_undefined_condition =
+		checking_data.types.register_type(Type::Constructor(Constructor::TypeExtends(
+			types::TypeExtends { item: parameter_ty, extends: TypeId::UNDEFINED_TYPE },
+		)));
 
 	// TODO is this needed
 	// let union = checking_data.types.new_or_type(parameter_ty, value);
@@ -849,7 +847,54 @@ where
 		let variable_names = function_environment.variable_names;
 
 		let returned = if function.has_body() {
-			info.state.get_returned(&mut checking_data.types)
+			let returned = info.state.get_returned(&mut checking_data.types);
+
+			// TODO temp fix for predicates. This should be really be done in `environment.throw` ()?
+			if let Some(ReturnType(expected, _)) = return_type_annotation {
+				if crate::types::type_is_assert_is_type(expected, &checking_data.types).is_ok() {
+					let mut state = crate::subtyping::State {
+						already_checked: Default::default(),
+						mode: Default::default(),
+						contributions: Default::default(),
+						others: crate::subtyping::SubTypingOptions::satisfies(),
+						// TODO don't think there is much case in constraining it here
+						object_constraints: None,
+					};
+
+					let result = crate::subtyping::type_is_subtype(
+						expected,
+						returned,
+						&mut state,
+						base_environment,
+						&checking_data.types,
+					);
+
+					if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::ReturnedTypeDoesNotMatch {
+								expected_return_type: TypeStringRepresentation::from_type_id(
+									expected,
+									base_environment,
+									&checking_data.types,
+									checking_data.options.debug_types,
+								),
+								returned_type: TypeStringRepresentation::from_type_id(
+									returned,
+									base_environment,
+									&checking_data.types,
+									checking_data.options.debug_types,
+								),
+								annotation_position: position,
+								returned_position: function
+									.get_position()
+									.with_source(base_environment.get_source()),
+							},
+						);
+					}
+				}
+			}
+
+			returned
 		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
 			ty
 		} else {

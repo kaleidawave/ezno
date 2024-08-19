@@ -892,15 +892,10 @@ impl<'a> Environment<'a> {
 
 					// TODO temp
 					{
-						let current_value = get_value_of_variable(
-							self,
-							og_var.get_id(),
-							None::<
-								&crate::types::generics::substitution::SubstitutionArguments<
-									'static,
-								>,
-							>,
-						);
+						let temp_fix = None::<
+							&crate::types::generics::substitution::SubstitutionArguments<'static>,
+						>;
+						let current_value = get_value_of_variable(self, og_var.get_id(), temp_fix);
 
 						if let Some(current_value) = current_value {
 							let ty = checking_data.types.get_type_by_id(current_value);
@@ -1124,13 +1119,15 @@ impl<'a> Environment<'a> {
 
 					// Add the expected return type instead here
 					// if it fell through to another then it could be bad
-					let expected_return = checking_data.types.new_error_type(expected);
-					let final_event = FinalEvent::Return {
-						returned: expected_return,
-						position: returned_position,
-					};
-					self.info.events.push(final_event.into());
-					return;
+					{
+						let expected_return = checking_data.types.new_error_type(expected);
+						let final_event = FinalEvent::Return {
+							returned: expected_return,
+							position: returned_position,
+						};
+						self.info.events.push(final_event.into());
+						return;
+					}
 				}
 			}
 		}

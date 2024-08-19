@@ -11,8 +11,7 @@ use crate::{
 		generics::generic_type_arguments::GenericArguments,
 		get_array_length, get_constraint, get_simple_value,
 		properties::{get_properties_on_single_type, AccessMode, PropertyKey, Publicity},
-		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
-		TypeRelationOperator,
+		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, TypeExtends,
 	},
 	PropertyValue,
 };
@@ -262,6 +261,16 @@ pub fn print_type_into_buf<C: InformationChain>(
 				otherwise_result,
 				result_union: _,
 			} => {
+				if let (TypeId::NEVER_TYPE, Ok(crate::types::TypeExtends { item, extends })) =
+					(TypeId::NEVER_TYPE, crate::types::TypeExtends::from_type(*condition, types))
+				{
+					buf.push_str("asserts ");
+					print_type_into_buf(item, buf, cycles, args, types, info, debug);
+					buf.push_str(" is ");
+					print_type_into_buf(extends, buf, cycles, args, types, info, debug);
+					return;
+				}
+
 				// TODO nested on constructor
 				let is_standard_generic = matches!(
 					types.get_type_by_id(*condition),
@@ -388,10 +397,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				Constructor::TypeOperator(to) => {
 					write!(buf, "TypeOperator.{to:?}").unwrap();
 				}
-				Constructor::TypeRelationOperator(TypeRelationOperator::Extends {
-					item,
-					extends,
-				}) => {
+				Constructor::TypeExtends(TypeExtends { item, extends }) => {
 					print_type_into_buf(*item, buf, cycles, args, types, info, debug);
 					buf.push_str(" extends ");
 					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);

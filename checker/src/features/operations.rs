@@ -7,7 +7,7 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::conditional::new_conditional_context,
 	types::{
-		cast_as_number, cast_as_string, is_type_truthy_falsy, new_logical_or_type, Constructor,
+		cast_as_number, cast_as_string, is_type_truthy_falsy, Constructor,
 		PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
@@ -314,7 +314,13 @@ pub fn evaluate_equality_inequality_operation(
 				};
 				types.register_type(crate::Type::Constructor(constructor))
 			} else {
-				attempt_less_than(lhs, rhs, types, strict_casts).unwrap()
+				match attempt_less_than(lhs, rhs, types, strict_casts) {
+					Ok(result) => result,
+					Err(()) => {
+						crate::utilities::notify!("Less than unreachable {:?}", (types.get_type_by_id(lhs), types.get_type_by_id(rhs)));
+						TypeId::ERROR_TYPE
+					}
+				}
 			}
 		}
 		// equal OR less than
@@ -345,7 +351,7 @@ pub fn evaluate_equality_inequality_operation(
 					types,
 					strict_casts,
 				);
-				new_logical_or_type(equality_result, less_than_result, types)
+				types.new_logical_or_type(equality_result, less_than_result)
 			}
 		}
 		EqualityAndInequality::StrictNotEqual => {

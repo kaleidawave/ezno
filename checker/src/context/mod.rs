@@ -390,7 +390,10 @@ impl<T: ContextType> Context<T> {
 						VariableOrImport::Variable { mutability, .. } => match mutability {
 							// TODO get value + object constraint
 							VariableMutability::Mutable { reassignment_constraint: None }
-							| VariableMutability::Constant => TypeId::ERROR_TYPE,
+							| VariableMutability::Constant => {
+								crate::utilities::notify!("TODO get value");
+								TypeId::ERROR_TYPE
+							}
 							VariableMutability::Mutable {
 								reassignment_constraint: Some(value),
 							} => *value,
@@ -408,7 +411,10 @@ impl<T: ContextType> Context<T> {
 					}
 				})
 			}
-			Reference::Property { .. } => todo!("keyof on?"),
+			Reference::Property { .. } => {
+				crate::utilities::notify!("TODO get object constraint on object");
+				Some(TypeId::ERROR_TYPE)
+			}
 		}
 	}
 

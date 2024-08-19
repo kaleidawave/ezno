@@ -154,25 +154,47 @@ function func(param: any) {
 
 - Expected null, found Array\<any>
 
-#### Hmm
+#### Narrowing via property result
 
 ```ts
-function func(param: any, other: any) {
-    if (param !== 10) {
-		console.log("here");
-
-		if (other !== 20) {
-			return;
-		}
-    } else {
-		return;
-	}
-
-	other satisfies 15;
+function func(param: { tag: "a", a: string } | { tag: "b", b: number }) {
+    if (param.tag === "a") {
+        param.a satisfies string;
+        param satisfies null;
+    }
 }
 ```
 
-- Expected 15, found 20
+- Expected null, found { tag: "a", a: string }
+
+#### Narrowing via `in`
+
+```ts
+function func(param: { tag: "a", a: string } | { tag: "b", b: number }) {
+    if ("a" in param) {
+        param.a satisfies string;
+        param satisfies null;
+    }
+}
+```
+
+- Expected null, found { tag: "a", a: string }
+
+#### Edge case
+
+> De-Morgans laws for and
+
+```ts
+function func(param: string | number) {
+    if (typeof param === "number" && param > 0) {
+        param satisfies number;
+    } else {
+        param satisfies null;
+	}
+}
+```
+
+- Expected null, found string | number
 
 #### Mutation
 
@@ -190,6 +212,26 @@ function func(param: boolean) {
 ```
 
 - Expected null, found false
+
+#### Assertions annotation
+
+```ts
+function func1(param: any): asserts param is number {
+    if (typeof param !== "string") {
+        throw "bad"
+    }
+}
+
+function func2(param: any): asserts param is boolean {
+    if (typeof param !== "boolean") {
+        throw "bad"
+    }
+}
+```
+
+> TODO `any` should be parameter name
+
+- Cannot return asserts any is string because the function is expected to return asserts any is number
 
 ### Control flow
 

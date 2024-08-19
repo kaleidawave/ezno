@@ -264,9 +264,10 @@ pub(crate) fn substitute(
 				result_union: _,
 			} => {
 				// TSC behavior, use `compute_extends_rule` which does distribution
-				if let Type::Constructor(Constructor::TypeRelationOperator(
-					crate::types::TypeRelationOperator::Extends { item, extends },
-				)) = types.get_type_by_id(condition)
+				if let Type::Constructor(Constructor::TypeExtends(crate::types::TypeExtends {
+					item,
+					extends,
+				})) = types.get_type_by_id(condition)
 				{
 					// crate::utilities::notify!("Here!");
 
@@ -494,8 +495,8 @@ pub(crate) fn substitute(
 					// unreachable!("'HasProperty' should be specialised by events")
 				}
 			},
-			Constructor::TypeRelationOperator(op) => match op {
-				crate::types::TypeRelationOperator::Extends { item, extends } => {
+			Constructor::TypeExtends(op) => match op {
+				crate::types::TypeExtends { item, extends } => {
 					let before = item;
 					let item = substitute(item, arguments, environment, types);
 					let extends = substitute(extends, arguments, environment, types);

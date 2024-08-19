@@ -373,8 +373,10 @@ pub enum Constructor {
 		operator: PureUnary,
 		operand: TypeId,
 	},
+	/// JS type based operations
 	TypeOperator(TypeOperator),
-	TypeRelationOperator(TypeRelationOperator),
+	/// TS operation
+	TypeExtends(TypeExtends),
 	/// TODO constraint is res
 	ConditionalResult {
 		/// TODO this can only be poly types
@@ -383,7 +385,7 @@ pub enum Constructor {
 		otherwise_result: TypeId,
 		result_union: TypeId,
 	},
-	/// output of a function where on is dependent (or sometimes for const functions one of `with` is dependent)
+	/// Output of a function where on is dependent (or sometimes for const functions one of `with` is dependent)
 	Image {
 		on: TypeId,
 		// TODO I don't think this is necessary, maybe for debugging. In such case should be an Rc to share with events
@@ -416,7 +418,7 @@ impl Constructor {
 			Constructor::BinaryOperator { .. }
 			| Constructor::CanonicalRelationOperator { .. }
 			| Constructor::UnaryOperator { .. }
-			| Constructor::TypeRelationOperator(_)
+			| Constructor::TypeExtends(_)
 			| Constructor::TypeOperator(_) => None,
 			// TODO or symbol
 			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
@@ -424,6 +426,7 @@ impl Constructor {
 	}
 }
 
+#[must_use]
 pub fn as_logical_and(constructor: &Constructor, types: &TypeStore) -> Option<(TypeId, TypeId)> {
 	if let Constructor::ConditionalResult {
 		condition,
@@ -433,9 +436,9 @@ pub fn as_logical_and(constructor: &Constructor, types: &TypeStore) -> Option<(T
 	} = constructor
 	{
 		let (condition, truthy_result, otherwise_result) = (
-			get_origin(*condition, types),
-			get_origin(*truthy_result, types),
-			get_origin(*otherwise_result, types),
+			helpers::get_origin(*condition, types),
+			helpers::get_origin(*truthy_result, types),
+			helpers::get_origin(*otherwise_result, types),
 		);
 		(condition == otherwise_result).then_some((truthy_result, otherwise_result))
 	} else {
@@ -443,6 +446,7 @@ pub fn as_logical_and(constructor: &Constructor, types: &TypeStore) -> Option<(T
 	}
 }
 
+#[must_use]
 pub fn as_logical_or(constructor: &Constructor, types: &TypeStore) -> Option<(TypeId, TypeId)> {
 	if let Constructor::ConditionalResult {
 		condition,
@@ -452,9 +456,9 @@ pub fn as_logical_or(constructor: &Constructor, types: &TypeStore) -> Option<(Ty
 	} = constructor
 	{
 		let (condition, truthy_result, otherwise_result) = (
-			get_origin(*condition, types),
-			get_origin(*truthy_result, types),
-			get_origin(*otherwise_result, types),
+			helpers::get_origin(*condition, types),
+			helpers::get_origin(*truthy_result, types),
+			helpers::get_origin(*otherwise_result, types),
 		);
 		(condition == truthy_result || truthy_result == TypeId::TRUE)
 			.then_some((condition, otherwise_result))
@@ -481,14 +485,80 @@ pub enum TypeOperator {
 	HasProperty(TypeId, properties::PropertyKey<'static>),
 }
 
-/// TODO instance of?
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum TypeRelationOperator {
-	Extends { item: TypeId, extends: TypeId },
+/// This if from the type annotation `is`
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct TypeExtends {
+	pub item: TypeId,
+	pub extends: TypeId,
 }
 
-pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStore) -> TypeId {
-	types.new_conditional_type(lhs, lhs, rhs)
+impl TypeExtends {
+	/// This does `typeof`, `===` and `instanceof`
+	///
+	/// Because of type representation and the fact this cannot generate types the following are not covered
+	/// - negation. Cannot create `Not`
+	/// - number intrinsincs. Cannot create `LessThan`, `GreaterThan`, etc
+	/// - has property. Cannot create new object
+	pub fn from_type(rhs: TypeId, types: &TypeStore) -> Result<Self, ()> {
+		let rhs_ty = types.get_type_by_id(rhs);
+		if let Type::Constructor(Constructor::CanonicalRelationOperator {
+			lhs,
+			operator: CanonicalEqualityAndInequality::StrictEqual,
+			rhs,
+		}) = rhs_ty
+		{
+			if let (
+				Type::Constructor(Constructor::TypeOperator(TypeOperator::TypeOf(on))),
+				Type::Constant(Constant::String(s)),
+			) = (types.get_type_by_id(*lhs), types.get_type_by_id(*rhs))
+			{
+				if let Some(extends_ty_name) = crate::features::string_name_to_type(&s) {
+					Ok(Self { item: *on, extends: extends_ty_name })
+				} else {
+					Err(())
+				}
+			} else {
+				// === rhs
+				Ok(Self { item: *lhs, extends: *rhs })
+			}
+		} else if let Type::Constructor(Constructor::TypeOperator(TypeOperator::IsPrototype {
+			lhs,
+			rhs_prototype,
+		})) = rhs_ty
+		{
+			// TODO this loses generics etc
+			Ok(Self { item: *lhs, extends: *rhs_prototype })
+		} else if let Type::Constructor(Constructor::TypeExtends(extends)) = rhs_ty {
+			Ok(*extends)
+		} else {
+			Err(())
+		}
+	}
+
+	pub fn equal_to_rhs(&self, rhs: TypeId, types: &TypeStore) -> bool {
+		if let Ok(TypeExtends { item, extends }) = Self::from_type(rhs, types) {
+			// TODO get origin on item
+			item == self.item && extends == self.extends
+		} else {
+			// crate::utilities::notify!("Here {:?}", rhs_ty);
+			false
+		}
+	}
+}
+
+/// If `assert x is y` annotation
+pub fn type_is_assert_is_type(ty: TypeId, types: &TypeStore) -> Result<TypeExtends, ()> {
+	if let Type::Constructor(Constructor::ConditionalResult {
+		condition,
+		truthy_result: _,
+		otherwise_result: TypeId::NEVER_TYPE,
+		result_union: _,
+	}) = types.get_type_by_id(ty)
+	{
+		TypeExtends::from_type(*condition, types)
+	} else {
+		Err(())
+	}
 }
 
 #[must_use]
@@ -631,8 +701,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				}
 			},
 			Constructor::CanonicalRelationOperator { .. } => Some(TypeId::BOOLEAN_TYPE),
-			Constructor::TypeRelationOperator(op) => match op {
-				crate::types::TypeRelationOperator::Extends { .. } => Some(TypeId::BOOLEAN_TYPE),
+			Constructor::TypeExtends(op) => match op {
+				crate::types::TypeExtends { .. } => Some(TypeId::BOOLEAN_TYPE),
 			},
 			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
 		},
@@ -781,37 +851,6 @@ pub(crate) fn _assign_to_tuple(_ty: TypeId) -> TypeId {
 	// if let PropertyKey::Type(slice) =
 }
 
-/// For getting `length` and stuff
-fn get_simple_value(
-	ctx: &impl InformationChain,
-	on: TypeId,
-	property: &properties::PropertyKey,
-	types: &TypeStore,
-) -> Option<TypeId> {
-	fn get_logical(v: logical::Logical<properties::PropertyValue>) -> Option<TypeId> {
-		match v {
-			logical::Logical::Pure(properties::PropertyValue::Value(t)) => Some(t),
-			logical::Logical::Implies { on, antecedent: _ } => get_logical(*on),
-			_ => None,
-		}
-	}
-
-	let value = properties::get_property_unbound(
-		(on, None),
-		(properties::Publicity::Public, property, None),
-		false,
-		ctx,
-		types,
-	)
-	.ok()?;
-
-	if let logical::LogicalOrValid::Logical(value) = value {
-		get_logical(value)
-	} else {
-		None
-	}
-}
-
 fn get_array_length(
 	ctx: &impl InformationChain,
 	on: TypeId,
@@ -924,6 +963,7 @@ impl Counter {
 }
 
 /// To fill in for TSC behavior for mapped types
+#[must_use]
 pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 	match types.get_type_by_id(id) {
 		Type::AliasTo { to, .. } => references_key_of(*to, types),
@@ -959,6 +999,7 @@ pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 }
 
 #[allow(clippy::match_like_matches_macro)]
+#[must_use]
 pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
 	if ty == TypeId::ERROR_TYPE {
 		true
@@ -970,6 +1011,7 @@ pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
 }
 
 /// TODO want to skip mapped generics because that would break subtyping
+#[must_use]
 pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
 	match types.get_type_by_id(ty) {
 		Type::Constructor(crate::types::Constructor::ConditionalResult {
@@ -992,6 +1034,7 @@ pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId,
 }
 
 /// TODO wip
+#[must_use]
 pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeStore) -> bool {
 	if let TypeId::NUMBER_TYPE | TypeId::STRING_TYPE = ty {
 		true
@@ -1012,17 +1055,38 @@ pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeS
 		}
 	}
 }
-
+#[must_use]
 pub fn is_inferrable_type(ty: TypeId) -> bool {
 	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
 }
 
-// unfolds narrowing
-pub fn get_origin(ty: TypeId, types: &TypeStore) -> TypeId {
-	if let Type::Narrowed { from, .. } = types.get_type_by_id(ty) {
-		// Hopefully don't have a nested from
-		*from
-	} else {
-		ty
+pub(crate) mod helpers {
+	use super::{subtyping, InformationChain, Type, TypeId, TypeStore};
+
+	pub fn simple_subtype(
+		expr_ty: TypeId,
+		to_satisfy: TypeId,
+		information: &impl InformationChain,
+		types: &TypeStore,
+	) -> bool {
+		let mut state = subtyping::State {
+			already_checked: Default::default(),
+			mode: Default::default(),
+			contributions: Default::default(),
+			others: subtyping::SubTypingOptions { allow_errors: false },
+			object_constraints: None,
+		};
+
+		subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, information, types).is_subtype()
+	}
+
+	// unfolds narrowing
+	pub fn get_origin(ty: TypeId, types: &TypeStore) -> TypeId {
+		if let Type::Narrowed { from, .. } = types.get_type_by_id(ty) {
+			// Hopefully don't have a nested from
+			*from
+		} else {
+			ty
+		}
 	}
 }

@@ -172,6 +172,7 @@ pub trait ASTImplementation: Sized {
 
 	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool;
 
+	#[allow(clippy::fn_params_excessive_bools)]
 	fn parse_options(
 		is_js: bool,
 		extra_syntax: bool,

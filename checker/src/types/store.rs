@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
 	generics::generic_type_arguments::GenericArguments, get_constraint, properties::PropertyKey,
-	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeRelationOperator,
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeExtends,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -263,6 +263,7 @@ impl TypeStore {
 		self.register_type(ty)
 	}
 
+	#[must_use]
 	pub fn new_or_type_from_iterator(&mut self, iter: impl IntoIterator<Item = TypeId>) -> TypeId {
 		iter.into_iter().reduce(|acc, n| self.new_or_type(acc, n)).unwrap_or(TypeId::NEVER_TYPE)
 	}
@@ -338,9 +339,11 @@ impl TypeStore {
 		true_result: TypeId,
 		false_result: TypeId,
 	) -> TypeId {
-		let on = self.register_type(Type::Constructor(super::Constructor::TypeRelationOperator(
-			TypeRelationOperator::Extends { item: check_type, extends },
-		)));
+		let on =
+			self.register_type(Type::Constructor(super::Constructor::TypeExtends(TypeExtends {
+				item: check_type,
+				extends,
+			})));
 		self.new_conditional_type(on, true_result, false_result)
 	}
 
@@ -360,12 +363,18 @@ impl TypeStore {
 			otherwise_result
 		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
+		} else if let Type::Constructor(Constructor::UnaryOperator {
+			operator: crate::features::operations::PureUnary::LogicalNot,
+			operand: reversed_condition,
+		}) = self.get_type_by_id(condition)
+		{
+			self.new_conditional_type(*reversed_condition, otherwise_result, truthy_result)
 		} else {
-			// TODO on is negation then swap operands
 			let ty = Type::Constructor(super::Constructor::ConditionalResult {
 				condition,
 				truthy_result,
 				otherwise_result,
+				// TODO remove
 				result_union: self.new_or_type(truthy_result, otherwise_result),
 			});
 			self.register_type(ty)
