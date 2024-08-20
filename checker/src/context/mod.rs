@@ -1031,10 +1031,8 @@ pub(crate) fn get_value_of_variable(
 
 		// TODO in remaining info, don't loop again
 		if let Some(res) = res {
-			let narrowed_value =
-				info.get_chain_of_info().find_map(|info| info.narrowed_values.get(&res).copied());
-
-			return Some(narrowed_value.unwrap_or(res));
+			let narrowed = info.get_narrowed(res);
+			return Some(narrowed.unwrap_or(res));
 		}
 	}
 	None

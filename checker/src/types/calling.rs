@@ -493,8 +493,8 @@ fn get_logical_callable_from_type(
 			}
 			.into())
 		}
-		Type::Narrowed { narrowed_to, .. } => {
-			get_logical_callable_from_type(*narrowed_to, on, from, types)
+		Type::Narrowed { narrowed_to, from } => {
+			get_logical_callable_from_type(*narrowed_to, on, Some(*from), types)
 		}
 		Type::AliasTo { to, name: _, parameters } => {
 			if parameters.is_some() {

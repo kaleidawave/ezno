@@ -1000,12 +1000,8 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 		Logical::Or { condition, left, right } => {
 			// WIP!
 			{
-				// TODO get_chain_of_info with behavior
-				let narrowed_value = environment
-					.get_chain_of_info()
-					.find_map(|info| info.narrowed_values.get(&condition).copied());
-
-				if let Some(narrowed_value) = narrowed_value {
+				// TODO get_chain_of_info with behavior??
+				if let Some(narrowed_value) = environment.get_narrowed(condition) {
 					if let crate::Decidable::Known(condition) =
 						crate::types::is_type_truthy_falsy(narrowed_value, types)
 					{

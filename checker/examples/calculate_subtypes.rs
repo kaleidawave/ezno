@@ -53,15 +53,11 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 		environment.new_explicit_type_parameter("T", Some(TypeId::NUMBER_TYPE), None, types);
 
 	// create `{}` and add `inner: T`
-	let object = types.new_anonymous_interface_type();
-	let inner = PropertyKey::String(std::borrow::Cow::Owned("inner".to_owned()));
-	environment.info.register_property(
-		object,
+	let object = types.new_anonymous_interface_type(vec![(
 		Publicity::Public,
-		inner.clone(),
+		PropertyKey::String(std::borrow::Cow::Owned("inner".to_owned())),
 		PropertyValue::Value(generic_parameter.type_id),
-		source_map::SpanWithSource::NULL,
-	);
+	)]);
 
 	let or = types.new_or_type(generic_parameter.type_id, object);
 	let parameter = types.new_function_parameter(or);
@@ -77,7 +73,7 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 		);
 		basis.append(
 			Publicity::Public,
-			inner,
+			PropertyKey::String(std::borrow::Cow::Owned("inner".to_owned())),
 			PropertyValue::Value(five),
 			source_map::SpanWithSource::NULL,
 			&mut environment.info,

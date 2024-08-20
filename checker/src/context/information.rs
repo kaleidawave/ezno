@@ -239,6 +239,10 @@ impl LocalInformation {
 
 pub trait InformationChain {
 	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation>;
+
+	fn get_narrowed(&self, for_ty: TypeId) -> Option<TypeId> {
+		self.get_chain_of_info().find_map(|info| info.narrowed_values.get(&for_ty).copied())
+	}
 }
 
 impl InformationChain for LocalInformation {
