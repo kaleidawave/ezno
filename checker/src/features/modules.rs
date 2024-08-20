@@ -66,6 +66,7 @@ pub struct Exported {
 pub type ExportedVariable = (VariableId, VariableMutability);
 
 impl Exported {
+	#[must_use]
 	pub fn get_export(
 		&self,
 		want: &str,

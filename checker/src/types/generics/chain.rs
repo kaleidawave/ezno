@@ -40,6 +40,7 @@ pub enum SpecialGenericChainLink {
 }
 
 impl<'a> GenericChainLink<'a> {
+	#[must_use]
 	pub fn get_value(self) -> Option<&'a GenericArguments> {
 		if let Self::PartiallyAppliedGenericArgumentsLink { value, .. } = self {
 			Some(value)

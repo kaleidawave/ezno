@@ -157,6 +157,7 @@ impl DiagnosticsContainer {
 		}
 	}
 
+	#[must_use]
 	pub fn count(&self) -> usize {
 		self.diagnostics.len()
 	}
@@ -446,6 +447,7 @@ pub(crate) enum TypeCheckError<'a> {
 }
 
 #[allow(clippy::useless_format)]
+#[must_use]
 pub fn get_possibles_message(possibles: &[&str]) -> String {
 	match possibles {
 		[] => format!(""),

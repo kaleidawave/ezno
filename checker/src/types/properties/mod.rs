@@ -273,6 +273,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn inner_simple(&self) -> &Self {
 		if let PropertyValue::ConditionallyExists { truthy: on, .. }
 		| PropertyValue::Configured { on, descriptor: _ } = self
@@ -284,6 +285,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn is_optional_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition, truthy: _ } = self {
 			// crate::utilities::notify!("condition={:?}", *condition);
@@ -294,6 +296,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn is_writable_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
 			truthy.is_writable_simple()
@@ -304,6 +307,7 @@ impl PropertyValue {
 		}
 	}
 
+	#[must_use]
 	pub fn is_configuable_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
 			truthy.is_configuable_simple()
@@ -474,6 +478,7 @@ pub(crate) fn key_matches(
 	}
 }
 
+#[must_use]
 pub fn get_property_as_string(
 	property: &PropertyKey,
 	types: &TypeStore,

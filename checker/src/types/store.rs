@@ -206,6 +206,7 @@ impl Default for TypeStore {
 }
 
 impl TypeStore {
+	#[must_use]
 	pub fn count_of_types(&self) -> usize {
 		self.types.len()
 	}
