@@ -185,6 +185,8 @@ impl Default for TypeStore {
 				to: TypeId::STRING_TYPE,
 				parameters: Some(vec![TypeId::STRING_GENERIC]),
 			},
+			Type::RootPolyType(PolyNature::Open(TypeId::BOOLEAN_TYPE)),
+			Type::RootPolyType(PolyNature::Open(TypeId::NUMBER_TYPE)),
 		];
 
 		// Check that above is correct, TODO eventually a macro
