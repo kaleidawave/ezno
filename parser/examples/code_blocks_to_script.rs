@@ -23,10 +23,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		.find_map(|item| matches!(item[0].as_str(), "--out").then_some(item[1].clone()));
 
 	let repeat = args.windows(2).find_map(|item| {
-		matches!(item[0].as_str(), "--repeat").then(|| match item[1].parse::<u16>() {
-			Ok(value) => value,
-			Err(err) => panic!("--repeat cannot be {item}, {err:?}", item = item[1]),
-		})
+		if let "--repeat" = item[0].as_str() {
+			match item[1].parse::<u16>() {
+				Ok(value) => Some(value),
+				Err(err) => panic!("--repeat cannot be {item}, {err:?}", item = item[1]),
+			}
+		} else {
+			None
+		}
 	});
 
 	let content = std::fs::read_to_string(&path)?;
