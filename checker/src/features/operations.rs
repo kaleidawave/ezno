@@ -559,8 +559,6 @@ fn attempt_constant_equality(
 		{
 			// TODO does this work?
 			return attempt_constant_equality(*on_lhs, *on_rhs, types);
-		} else if lhs.is_error() || rhs.is_error() {
-			return Ok(TypeId::ERROR_TYPE);
 		} else {
 			crate::utilities::notify!("{:?} === {:?} is apparently false", lhs, rhs);
 			return Err(());
