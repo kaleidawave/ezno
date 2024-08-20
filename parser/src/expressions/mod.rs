@@ -2052,13 +2052,15 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 		buf.push_new_line();
 		options.add_indent(local.depth + 1, buf);
 	}
-	for (idx, node) in nodes.iter().enumerate() {
+	let mut added_last = false;
+	for node in nodes {
 		// Hack for arrays, this is just easier for generators and ends up in a smaller output
 		if let FunctionArgument::Spread(Expression::ArrayLiteral(items, _), _) = node {
 			if items.is_empty() {
+				added_last = false;
 				continue;
 			}
-			if idx > 0 {
+			if added_last {
 				buf.push(',');
 				if add_new_lines {
 					buf.push_new_line();
@@ -2079,8 +2081,9 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 					options.push_gap_optionally(buf);
 				}
 			}
+			added_last = true;
 		} else {
-			if idx > 0 {
+			if added_last {
 				buf.push(',');
 				if add_new_lines {
 					buf.push_new_line();
@@ -2090,6 +2093,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 				}
 			}
 			node.to_string_from_buffer(buf, options, local);
+			added_last = true;
 		}
 	}
 	if add_new_lines {
