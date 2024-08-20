@@ -280,12 +280,12 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				if on == TypeId::ERROR_TYPE {
 					(TypeId::ERROR_TYPE, None)
 				} else {
-					crate::utilities::notify!("function calling inference");
+					crate::utilities::notify!("TODO function calling inference on {:?}", on);
 					(TypeId::ERROR_TYPE, None)
 				}
 			}
 			NeedsCalculation::Proxy(..) => {
-				crate::utilities::notify!("calling proxy");
+				crate::utilities::notify!("TODO calling proxy");
 				(TypeId::ERROR_TYPE, None)
 			}
 		},
@@ -948,7 +948,7 @@ fn mark_possible_mutation(
 		| Type::Class { .. }
 		| Type::AliasTo { .. }
 		| Type::And(_, _)
-		| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+		| Type::Object(ObjectNature::AnonymousTypeAnnotation(_))
 		| Type::FunctionReference(_)
 		| Type::PartiallyAppliedGenerics(_)
 		| Type::Or(_, _) => {
@@ -2023,18 +2023,18 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 						},
 					);
 
-					{
-						let debug = true;
-						crate::utilities::notify!(
-							"Here!, expected = {}",
-							crate::types::printing::print_type(
-								expected_type,
-								&checking_data.types,
-								environment,
-								debug
-							)
-						);
-					}
+					// {
+					// 	let debug = true;
+					// 	crate::utilities::notify!(
+					// 		"Here!, expected = {}",
+					// 		crate::types::printing::print_type(
+					// 			expected_type,
+					// 			&checking_data.types,
+					// 			environment,
+					// 			debug
+					// 		)
+					// 	);
+					// }
 
 					let value = A::synthesise_expression(
 						argument.expression,

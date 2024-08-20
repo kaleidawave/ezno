@@ -2,7 +2,6 @@
 
 use ezno_checker::{check_project, synthesis, TypeCheckOptions};
 use libfuzzer_sys::{fuzz_target, Corpus};
-use std::collections::HashSet;
 use std::str;
 
 /// check_project_naive throws random strings into the ezno checker, validating that none of them make the checker panic.

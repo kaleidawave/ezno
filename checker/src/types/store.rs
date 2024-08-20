@@ -261,6 +261,21 @@ impl TypeStore {
 		if let TypeId::NEVER_TYPE = rhs {
 			return lhs;
 		}
+		// Normalise to ltr
+		if let Type::Or(lhs_lhs, lhs_rhs) = self.get_type_by_id(lhs) {
+			let new_lhs = *lhs_lhs;
+			let rhs = self.new_or_type(*lhs_rhs, rhs);
+			return self.new_or_type(new_lhs, rhs);
+		}
+
+		// TODO recursive contains
+		if let Type::Or(rhs_lhs, rhs_rhs) = self.get_type_by_id(rhs) {
+			if lhs == *rhs_lhs {
+				return self.new_or_type(lhs, *rhs_rhs);
+			} else if lhs == *rhs_rhs {
+				return self.new_or_type(lhs, *rhs_lhs);
+			}
+		}
 
 		let ty = Type::Or(lhs, rhs);
 		self.register_type(ty)
@@ -384,8 +399,11 @@ impl TypeStore {
 		}
 	}
 
-	pub fn new_anonymous_interface_type(&mut self) -> TypeId {
-		let ty = Type::Object(super::ObjectNature::AnonymousTypeAnnotation);
+	pub fn new_anonymous_interface_type(
+		&mut self,
+		properties: super::properties::Properties,
+	) -> TypeId {
+		let ty = Type::Object(super::ObjectNature::AnonymousTypeAnnotation(properties));
 		self.register_type(ty)
 	}
 

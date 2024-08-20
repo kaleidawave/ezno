@@ -14,18 +14,94 @@ use crate::{
 			BasedOnKey, Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical,
 			PropertyOn,
 		},
-		Constructor, GenericChain, GenericChainLink, PartiallyAppliedGenerics, SliceArguments,
-		SpecialObject, TypeStore,
+		Constructor, GenericChain, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
+		SliceArguments, SpecialObject, TypeStore,
 	},
 	Constant, Type, TypeId,
 };
 
 use super::{PropertyKey, PropertyKind, PropertyValue, Publicity};
 
+#[allow(clippy::similar_names)]
+fn get_property_from_list(
+	(on_properties, on_type_arguments): (&super::Properties, GenericChain),
+	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
+	info_chain: &impl InformationChain,
+	types: &TypeStore,
+) -> Option<(PropertyValue, Option<SliceArguments>, bool)> {
+	let (required_publicity, want_key, want_type_arguments) =
+		(publicity, under, under_type_arguments);
+
+	// This is fine on the same type!
+	let mut trailing_getter = None::<Callable>;
+	let mut trailing_setter = None::<Callable>;
+
+	// 'rev' is important
+	for (publicity, key, value) in on_properties.iter().rev() {
+		if *publicity != required_publicity {
+			continue;
+		}
+
+		if let PropertyValue::ConditionallyExists { .. } = value {
+			crate::utilities::notify!("TODO trailing");
+			// continue;
+		}
+
+		let (matched, key_arguments) = super::key_matches(
+			(key, on_type_arguments),
+			(want_key, want_type_arguments),
+			info_chain,
+			types,
+		);
+
+		if matched {
+			// crate::utilities::notify!("{:?} {:?}", (key, want_key), value);
+			// TODO if conditional then continue to find then logical or
+
+			// TODO should come from key_matches
+			let is_key_continous = matches!(key, PropertyKey::Type(ty) if is_pseudo_continous((*ty, on_type_arguments), types));
+
+			match value.inner_simple() {
+				PropertyValue::Getter(getter) => {
+					if let Some(setter) = trailing_setter {
+						return Some((
+							PropertyValue::GetterAndSetter { getter: *getter, setter },
+							key_arguments.into_some(),
+							is_key_continous,
+						));
+					}
+					trailing_getter = Some(*getter);
+				}
+				PropertyValue::Setter(setter) => {
+					if let Some(getter) = trailing_getter {
+						return Some((
+							PropertyValue::GetterAndSetter { getter, setter: *setter },
+							key_arguments.into_some(),
+							is_key_continous,
+						));
+					}
+					trailing_setter = Some(*setter);
+				}
+				_ => {
+					return Some((value.clone(), key_arguments.into_some(), is_key_continous));
+				}
+			}
+		}
+	}
+
+	#[allow(clippy::manual_map)]
+	if let Some(setter) = trailing_setter {
+		Some((PropertyValue::Setter(setter), None, false))
+	} else if let Some(getter) = trailing_getter {
+		Some((PropertyValue::Getter(getter), None, false))
+	} else {
+		None
+	}
+}
+
 /// Has to return `Logical` for mapped types
 ///
 /// Resolver runs information lookup on **ONE** `TypeId`
-#[allow(clippy::similar_names)]
 pub(crate) fn resolver(
 	(on, on_type_arguments): (TypeId, GenericChain),
 	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
@@ -35,72 +111,12 @@ pub(crate) fn resolver(
 	// TODO if on == constant string and property == length. Need to be able to create types here
 	info_chain.get_chain_of_info().find_map(|info: &LocalInformation| {
 		info.current_properties.get(&on).and_then(|on_properties| {
-			{
-				let (required_publicity, want_key, want_type_arguments) =
-					(publicity, under, under_type_arguments);
-
-				// crate::utilities::notify!("{:?} {:?}", on, on_properties);
-
-				// TODO trailing for conditional?
-
-				// This is fine on the same type!
-				let mut trailing_getter = None::<Callable>;
-				let mut trailing_setter = None::<Callable>;
-
-				// 'rev' is important
-				for (publicity, key, value) in on_properties.iter().rev() {
-					if *publicity != required_publicity {
-						continue;
-					}
-
-					if let PropertyValue::ConditionallyExists { .. } = value {
-						crate::utilities::notify!("TODO trailing");
-						// continue;
-					}
-
-					let (matched, key_arguments) = super::key_matches(
-						(key, on_type_arguments),
-						(want_key, want_type_arguments),
-						info_chain,
-						types,
-					);
-
-					if matched {
-						// crate::utilities::notify!("{:?} {:?}", (key, want_key), value);
-						// TODO if conditional then continue to find then logical or
-
-						// TODO should come from key_matches
-						let is_key_continous = matches!(key, PropertyKey::Type(ty) if is_pseudo_continous((*ty, on_type_arguments), types));
-
-						match value.inner_simple() {
-							PropertyValue::Getter(getter) => {
-								if let Some(setter) = trailing_setter {
-									return Some((PropertyValue::GetterAndSetter { getter: *getter, setter }, key_arguments.into_some(), is_key_continous));
-								}
-								trailing_getter = Some(*getter);
-							}
-							PropertyValue::Setter(setter) => {
-								if let Some(getter) = trailing_getter {
-									return Some((PropertyValue::GetterAndSetter { getter, setter: *setter }, key_arguments.into_some(), is_key_continous));
-								}
-								trailing_setter = Some(*setter);
-							}
-							_ => {
-								return Some((value.clone(), key_arguments.into_some(), is_key_continous));
-							}
-						}
-					}
-				}
-
-				#[allow(clippy::manual_map)]
-				if let Some(setter) = trailing_setter {
-					Some((PropertyValue::Setter(setter), None, false))
-				} else if let Some(getter) = trailing_getter {
-					Some((PropertyValue::Getter(getter), None, false))
-				} else {
-					None
-				}
-			}
+			get_property_from_list(
+				(on_properties, on_type_arguments),
+				(publicity, under, under_type_arguments),
+				info_chain,
+				types,
+			)
 		})
 	})
 }
@@ -391,7 +407,18 @@ pub(crate) fn get_property_unbound(
 					)
 				})
 			}
-			Type::Object(..) => {
+			Type::Object(ObjectNature::AnonymousTypeAnnotation(properties)) => {
+				get_property_from_list(
+					(properties, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					info_chain,
+					types,
+				)
+				.map(wrap)
+				.map(LogicalOrValid::Logical)
+				.ok_or(Invalid(on))
+			}
+			Type::Object(ObjectNature::RealDeal) => {
 				let object_constraint_structure_generics =
 					crate::types::get_structure_arguments_based_on_object_constraint(
 						on, info_chain, types,
@@ -970,7 +997,35 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				),
 			}
 		}
-		Logical::Or { left, right, condition } => {
+		Logical::Or { condition, left, right } => {
+			// WIP!
+			{
+				// TODO get_chain_of_info with behavior
+				let narrowed_value = environment
+					.get_chain_of_info()
+					.find_map(|info| info.narrowed_values.get(&condition).copied());
+
+				if let Some(narrowed_value) = narrowed_value {
+					if let crate::Decidable::Known(condition) =
+						crate::types::is_type_truthy_falsy(narrowed_value, types)
+					{
+						let to_evaluate = if condition { left } else { right };
+						return if let LogicalOrValid::Logical(to_evaluate) = *to_evaluate {
+							resolve_property_on_logical(
+								(to_evaluate, generics),
+								(on, under),
+								environment,
+								types,
+								(behavior, diagnostics),
+								mode,
+							)
+						} else {
+							todo!()
+						};
+					}
+				}
+			}
+
 			// if let (Ok(lhs), Ok(rhs)) = (*left, *right) {
 			let (_, left) = if let LogicalOrValid::Logical(left) = *left {
 				resolve_property_on_logical(

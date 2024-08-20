@@ -29,7 +29,7 @@ use crate::{
 use self::environment::{DynamicBoundaryKind, FunctionScope};
 pub use environment::Scope;
 pub(crate) use environment::Syntax;
-pub use information::{InformationChain, LocalInformation, Properties};
+pub use information::{InformationChain, LocalInformation};
 
 use std::{
 	collections::{

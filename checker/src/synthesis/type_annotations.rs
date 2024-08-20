@@ -405,20 +405,16 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		// Object literals are first turned into types as if they were interface declarations and then
 		// returns reference to object literal
 		TypeAnnotation::ObjectLiteral(members, _) => {
-			// TODO rather than onto, generate a new type...
-			let onto = checking_data
-				.types
-				.register_type(Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation));
-
-			super::interfaces::synthesise_signatures(
+			let properties = super::interfaces::synthesise_signatures(
 				None,
 				None,
 				members,
-				super::interfaces::OnToType(onto),
+				super::interfaces::PropertiesList(Vec::new()),
 				environment,
 				checking_data,
-			)
-			.0
+			);
+
+			checking_data.types.new_anonymous_interface_type(properties.0)
 		}
 		TypeAnnotation::TupleLiteral(members, position) => {
 			let mut items = Vec::<(SpanWithSource, ArrayItem)>::with_capacity(members.len());
@@ -753,7 +749,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							.variable_current_value
 							.get(&variable.get_origin_variable_id())
 					})
-					.cloned(),
+					.copied(),
 				parser::type_annotations::IsItem::This => {
 					// TODO
 					let based_on = TypeId::ERROR_TYPE;

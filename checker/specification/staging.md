@@ -157,7 +157,7 @@ function func(param: any) {
 #### Narrowing via property result
 
 ```ts
-function func(param: { tag: "a", a: string } | { tag: "b", b: number }) {
+function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: number }) {
     if (param.tag === "a") {
         param.a satisfies string;
         param satisfies null;
@@ -170,7 +170,7 @@ function func(param: { tag: "a", a: string } | { tag: "b", b: number }) {
 #### Narrowing via `in`
 
 ```ts
-function func(param: { tag: "a", a: string } | { tag: "b", b: number }) {
+function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number }) {
     if ("a" in param) {
         param.a satisfies string;
         param satisfies null;
@@ -180,21 +180,90 @@ function func(param: { tag: "a", a: string } | { tag: "b", b: number }) {
 
 - Expected null, found { tag: "a", a: string }
 
+#### Build object
+
+> TODO `.prop === 2` doesn't work because of get on `ANY_TYPE`
+
+```ts
+function buildObject(param: any) {
+    if ("a" in param) {
+        param satisfies null;
+    }
+}
+```
+
+- Expected null, found { a: any }
+
+#### Object equality
+
+```ts
+function conditional(param: boolean) {
+	const obj1 = {}, obj2 = {};
+	const sum = param ? obj1 : obj2;
+	if (sum === obj1) {
+		sum.a = 2;
+	}
+	[obj1, obj2] satisfies string;
+}
+```
+
+- Expected string, found [{ a: 2 }, {}]
+
+#### From condition equality
+
+```ts
+function conditional(param: boolean) {
+	const obj1 = { a: 1 }, obj2 = {};
+	const sum = param ? obj1 : obj2;
+	if (param) {
+		sum satisfies string;
+	}
+}
+```
+
+- Expected string, found { a: 1 }
+
+#### Across free variable
+
+```ts
+function conditional(param: boolean) {
+	let b;
+	if (param) {
+		b = () => param;
+	} else {
+		return;
+	}
+
+	b() satisfies string;
+}
+```
+
+- Expected string, found true
+
 #### Edge case
 
 > De-Morgans laws for and
 
 ```ts
-function func(param: string | number) {
+function func1(param: string | number) {
     if (typeof param === "number" && param > 0) {
         param satisfies number;
     } else {
         param satisfies null;
 	}
 }
+
+function func2(param: string | number | boolean) {
+    if (typeof param === "string" || !(typeof param === "number")) {
+        param satisfies undefined;
+    } else {
+        param satisfies number;
+    }
+}
 ```
 
 - Expected null, found string | number
+- Expected undefined, found string | boolean
 
 #### Mutation
 

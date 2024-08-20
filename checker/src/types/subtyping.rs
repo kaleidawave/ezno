@@ -493,32 +493,26 @@ pub(crate) fn type_is_subtype_with_generics(
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		}
-		Type::Object(nature) => {
-			if let ObjectNature::RealDeal = nature {
-				crate::utilities::notify!(
-					"what {:?} (subtyping where LHS = ObjectNature::RealDeal)",
-					ty
-				);
-			}
-			// assert!(matches!(nature, ObjectNature::AnonymousTypeAnnotation));
+		Type::Object(ObjectNature::AnonymousTypeAnnotation(properties)) => subtype_properties(
+			(base_type, properties.iter(), base_type_arguments),
+			(ty, ty_structure_arguments),
+			state,
+			information,
+			types,
+		),
+		Type::Object(ObjectNature::RealDeal) => {
+			crate::utilities::notify!(
+				"what {:?} (subtyping where LHS = ObjectNature::RealDeal)",
+				ty
+			);
 
-			subtype_properties(
+			subtype_floating_properties(
 				(base_type, base_type_arguments),
 				(ty, ty_structure_arguments),
 				state,
 				information,
 				types,
 			)
-
-			// let _left = print_type(base_type, types, information, true);
-
-			// crate::utilities::notify!("Left object {}", left);
-
-			// if let SubTypeResult::IsNotSubType(..) = result {
-			// 	result
-			// } else {
-			// 	SubTypeResult::IsSubType
-			// }
 		}
 		Type::And(left, right) => {
 			let right = *right;
@@ -722,8 +716,15 @@ pub(crate) fn type_is_subtype_with_generics(
 				)
 			}
 		}
-		Type::Narrowed { .. } => {
-			todo!()
+		Type::Narrowed { narrowed_to, .. } => {
+			crate::utilities::notify!("Narrowed on Left?");
+			type_is_subtype_with_generics(
+				(*narrowed_to, base_type_arguments),
+				(ty, ty_structure_arguments),
+				state,
+				information,
+				types,
+			)
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
 			match *on {
@@ -1104,7 +1105,13 @@ pub(crate) fn type_is_subtype_with_generics(
 					}
 				} else {
 					crate::utilities::notify!("RHS not string");
-					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					type_is_subtype_with_generics(
+						(TypeId::NUMBER_TYPE, base_type_arguments),
+						(ty, ty_structure_arguments),
+						state,
+						information,
+						types,
+					)
 				}
 			}
 			Constructor::BinaryOperator { .. }
@@ -1434,7 +1441,7 @@ pub(crate) fn type_is_subtype_with_generics(
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				}
-				Type::Object(..) => subtype_properties(
+				Type::Object(..) => subtype_floating_properties(
 					(base_type, base_type_arguments),
 					(ty, ty_structure_arguments),
 					state,
@@ -1532,8 +1539,6 @@ fn subtype_function(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	crate::utilities::notify!("Subtyping a function");
-
 	let right_func = if let Type::FunctionReference(right_func)
 	| Type::SpecialObject(SpecialObject::Function(right_func, _)) = right_ty
 	{
@@ -1619,34 +1624,43 @@ fn subtype_function(
 	}
 }
 
-fn subtype_properties(
+fn subtype_floating_properties(
 	(base_type, base_type_arguments): (TypeId, GenericChain),
 	(ty, right_type_arguments): (TypeId, GenericChain),
 	state: &mut State,
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	// TODO this will cause problems
-	state.mode = state.mode.one_deeper();
-
-	// TODO (#128): This is a compromise where only boolean and number types are treated as nominal
-	// match base_type {
-	// 	TypeId::BOOLEAN_TYPE | TypeId::NUMBER_TYPE if base_type != ty => {
-	// 		crate::utilities::notify!("Here");
-	// 		state.mode = state.mode.one_shallower();
-	// 		return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
-	// 	}
-	// 	_ => {}
-	// }
-
-	let mut property_errors = Vec::new();
 	let reversed_flattened_properties_on_base = information
 		.get_chain_of_info()
 		.filter_map(|info| info.current_properties.get(&base_type).map(|v| v.iter().rev()))
 		.flatten();
 
+	subtype_properties(
+		(base_type, reversed_flattened_properties_on_base, base_type_arguments),
+		(ty, right_type_arguments),
+		state,
+		information,
+		types,
+	)
+}
+
+fn subtype_properties<'a, T>(
+	(base_type, base_properties, base_type_arguments): (TypeId, T, GenericChain),
+	(ty, right_type_arguments): (TypeId, GenericChain),
+	state: &mut State,
+	information: &impl InformationChain,
+	types: &TypeStore,
+) -> SubTypeResult
+where
+	T: Iterator<Item = &'a (Publicity, PropertyKey<'static>, PropertyValue)> + 'a,
+{
+	// TODO this will cause problems if not reversed at end
+	state.mode = state.mode.one_deeper();
+	let mut property_errors = Vec::new();
+
 	// Note this won't check for conditional stuff being true etc or things being deleted
-	for (publicity, key, lhs_property) in reversed_flattened_properties_on_base {
+	for (publicity, key, lhs_property) in base_properties {
 		// crate::utilities::notify!(
 		// 	"key {:?} with base_type_arguments={:?}",
 		// 	key,

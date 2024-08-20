@@ -537,9 +537,9 @@ pub mod tsc {
 		types: &mut TypeStore,
 	) -> Result<TypeId, ()> {
 		let mut result = Vec::new();
-		super::narrowing::build_union_from_filter_slice(
+		super::narrowing::build_union_from_filter(
 			on,
-			&[TypeId::NULL_TYPE, TypeId::UNDEFINED_TYPE],
+			super::narrowing::NOT_NULL_OR_UNDEFINED,
 			&mut result,
 			environment,
 			types,

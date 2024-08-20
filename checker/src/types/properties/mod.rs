@@ -18,6 +18,8 @@ use crate::{
 };
 use std::borrow::Cow;
 
+pub type Properties = Vec<(Publicity, PropertyKey<'static>, PropertyValue)>;
+
 #[derive(PartialEq)]
 pub enum PropertyKind {
 	Direct,

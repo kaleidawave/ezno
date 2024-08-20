@@ -318,12 +318,15 @@ pub fn evaluate_equality_inequality_operation(
 				};
 				types.register_type(crate::Type::Constructor(constructor))
 			} else {
-				match attempt_less_than(lhs, rhs, types, strict_casts) {
-					Ok(result) => result,
-					Err(()) => {
-						crate::utilities::notify!("Less than unreachable {:?}", (types.get_type_by_id(lhs), types.get_type_by_id(rhs)));
-						TypeId::ERROR_TYPE
-					}
+				let less_than_result = attempt_less_than(lhs, rhs, types, strict_casts);
+				if let Ok(result) = less_than_result {
+					result
+				} else {
+					crate::utilities::notify!(
+						"Less than unreachable {:?}",
+						(types.get_type_by_id(lhs), types.get_type_by_id(rhs))
+					);
+					TypeId::ERROR_TYPE
 				}
 			}
 		}
@@ -471,16 +474,9 @@ pub fn evaluate_logical_operation_with_expression<
 				if let Some(constraint) = crate::types::get_constraint(lhs.0, &checking_data.types)
 				{
 					let mut result = Vec::new();
-					let falsy_types = &[
-						TypeId::NULL_TYPE,
-						TypeId::UNDEFINED_TYPE,
-						TypeId::FALSE,
-						TypeId::EMPTY_STRING,
-						TypeId::ZERO,
-					];
-					super::narrowing::build_union_from_filter_slice(
+					super::narrowing::build_union_from_filter(
 						constraint,
-						falsy_types,
+						super::narrowing::NOT_FASLY,
 						&mut result,
 						env,
 						&checking_data.types,
@@ -507,9 +503,9 @@ pub fn evaluate_logical_operation_with_expression<
 						crate::types::get_constraint(lhs.0, &checking_data.types)
 					{
 						let mut result = Vec::new();
-						super::narrowing::build_union_from_filter_slice(
+						super::narrowing::build_union_from_filter(
 							constraint,
-							&[TypeId::NULL_TYPE, TypeId::UNDEFINED_TYPE],
+							super::narrowing::NOT_NULL_OR_UNDEFINED,
 							&mut result,
 							env,
 							&checking_data.types,

@@ -6,13 +6,11 @@ use crate::{
 	features::functions::ClosureId,
 	types::{
 		calling::ThisValue,
-		properties::{PropertyKey, Publicity},
+		properties::{Properties, PropertyKey, Publicity},
 		TypeStore,
 	},
 	PropertyValue, Type, TypeId, VariableId,
 };
-
-pub type Properties = Vec<(Publicity, PropertyKey<'static>, PropertyValue)>;
 
 /// Things that are currently true or have happened
 #[derive(Debug, Default, binary_serialize_derive::BinarySerializable)]
@@ -23,11 +21,15 @@ pub struct LocalInformation {
 
 	/// This can be not have a value if not defined
 	pub(crate) variable_current_value: HashMap<VariableId, TypeId>,
+
+	/// For objects (inc classes) and interfaces (because of hoisting).
+	/// However properties on [`crate::types::ObjectNature::AnonomousObjectLiteral`] are held on there
 	pub(crate) current_properties: HashMap<TypeId, Properties>,
 
 	/// Can be modified (unfortunately) so here
 	pub(crate) prototypes: HashMap<TypeId, TypeId>,
 
+	/// `ContextId` is a mini context
 	pub(crate) closure_current_values: HashMap<(ClosureId, RootReference), TypeId>,
 
 	/// Not writeable, `TypeError: Cannot add property t, object is not extensible`. TODO conditional ?

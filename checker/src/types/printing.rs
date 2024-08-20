@@ -282,6 +282,23 @@ pub fn print_type_into_buf<C: InformationChain>(
 					)
 				);
 
+				// WIP!
+				{
+					let narrowed_value = info
+						.get_chain_of_info()
+						.find_map(|info| info.narrowed_values.get(condition).copied());
+
+					if let Some(narrowed_value) = narrowed_value {
+						if let crate::Decidable::Known(condition) =
+							crate::types::is_type_truthy_falsy(narrowed_value, types)
+						{
+							let value = if condition { truthy_result } else { otherwise_result };
+							print_type_into_buf(*value, buf, cycles, args, types, info, debug);
+							return;
+						}
+					}
+				}
+
 				if debug || is_standard_generic {
 					if debug {
 						write!(buf, "?#{} ", ty.0).unwrap();

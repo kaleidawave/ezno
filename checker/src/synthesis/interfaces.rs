@@ -63,6 +63,68 @@ pub(crate) enum InterfaceValue {
 
 pub(crate) struct OnToType(pub(crate) TypeId);
 
+fn register<T: crate::ReadFromFS>(
+	key: &InterfaceKey,
+	(value, always_defined, writable): (InterfaceValue, IsDefined, Writable),
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+	environment: &mut Environment,
+	_position: SpanWithSource,
+) -> (Publicity, PropertyKey<'static>, PropertyValue) {
+	let (publicity, under) = match key {
+		InterfaceKey::ClassProperty(key) => {
+			// TODO
+			let perform_side_effect_computed = true;
+			(
+				if key.is_private() { Publicity::Private } else { Publicity::Public },
+				parser_property_key_to_checker_property_key(
+					key,
+					environment,
+					checking_data,
+					perform_side_effect_computed,
+				),
+			)
+		}
+		InterfaceKey::Type(ty) => (Publicity::Public, PropertyKey::Type(*ty)),
+	};
+	let value = match value {
+		InterfaceValue::Function(function, getter_setter) => match getter_setter {
+			Some(GetterSetter::Getter) => PropertyValue::Getter(Callable::new_from_function(
+				function,
+				&mut checking_data.types,
+			)),
+			Some(GetterSetter::Setter) => PropertyValue::Setter(Callable::new_from_function(
+				function,
+				&mut checking_data.types,
+			)),
+			None => {
+				let function_id = function.id;
+				checking_data.types.functions.insert(function.id, function);
+				let ty = Type::FunctionReference(function_id);
+				PropertyValue::Value(checking_data.types.register_type(ty))
+			}
+		},
+		InterfaceValue::Value(value) => PropertyValue::Value(value),
+	};
+	let value = if let Writable(TypeId::TRUE) = writable {
+		value
+	} else {
+		let descriptor = Descriptor {
+			writable: writable.0,
+			enumerable: TypeId::TRUE,
+			configurable: TypeId::TRUE,
+		};
+		PropertyValue::Configured { on: Box::new(value), descriptor }
+	};
+	// optional properties (`?:`) is implemented here:
+	let value = if let IsDefined(TypeId::TRUE) = always_defined {
+		value
+	} else {
+		// crate::utilities::notify!("always_defined.0 {:?}", always_defined.0);
+		PropertyValue::ConditionallyExists { condition: always_defined.0, truthy: Box::new(value) }
+	};
+	(publicity, under, value)
+}
+
 impl SynthesiseInterfaceBehavior for OnToType {
 	fn register<T: crate::ReadFromFS>(
 		&mut self,
@@ -70,68 +132,36 @@ impl SynthesiseInterfaceBehavior for OnToType {
 		(value, always_defined, writable): (InterfaceValue, IsDefined, Writable),
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		environment: &mut Environment,
-		_position: SpanWithSource,
+		position: SpanWithSource,
 	) {
-		let (publicity, under) = match key {
-			InterfaceKey::ClassProperty(key) => {
-				// TODO
-				let perform_side_effect_computed = true;
-				(
-					if key.is_private() { Publicity::Private } else { Publicity::Public },
-					parser_property_key_to_checker_property_key(
-						key,
-						environment,
-						checking_data,
-						perform_side_effect_computed,
-					),
-				)
-			}
-			InterfaceKey::Type(ty) => (Publicity::Public, PropertyKey::Type(ty)),
-		};
-		let value =
-			match value {
-				InterfaceValue::Function(function, getter_setter) => match getter_setter {
-					Some(GetterSetter::Getter) => PropertyValue::Getter(
-						Callable::new_from_function(function, &mut checking_data.types),
-					),
-					Some(GetterSetter::Setter) => PropertyValue::Setter(
-						Callable::new_from_function(function, &mut checking_data.types),
-					),
-					None => {
-						let function_id = function.id;
-						checking_data.types.functions.insert(function.id, function);
-						let ty = Type::FunctionReference(function_id);
-						PropertyValue::Value(checking_data.types.register_type(ty))
-					}
-				},
-				InterfaceValue::Value(value) => PropertyValue::Value(value),
-			};
-		let value = if let Writable(TypeId::TRUE) = writable {
-			value
-		} else {
-			let descriptor = Descriptor {
-				writable: writable.0,
-				enumerable: TypeId::TRUE,
-				configurable: TypeId::TRUE,
-			};
-			PropertyValue::Configured { on: Box::new(value), descriptor }
-		};
-		// optional properties (`?:`) is implemented here:
-		let value = if let IsDefined(TypeId::TRUE) = always_defined {
-			value
-		} else {
-			// crate::utilities::notify!("always_defined.0 {:?}", always_defined.0);
-			PropertyValue::ConditionallyExists {
-				condition: always_defined.0,
-				truthy: Box::new(value),
-			}
-		};
-
+		let (publicity, under, value) =
+			register(&key, (value, always_defined, writable), checking_data, environment, position);
 		environment.info.register_property_on_type(self.0, publicity, under, value);
 	}
 
 	fn interface_type(&self) -> Option<TypeId> {
 		Some(self.0)
+	}
+}
+
+pub struct PropertiesList(pub crate::types::properties::Properties);
+
+impl SynthesiseInterfaceBehavior for PropertiesList {
+	fn register<T: crate::ReadFromFS>(
+		&mut self,
+		key: InterfaceKey,
+		(value, always_defined, writable): (InterfaceValue, IsDefined, Writable),
+		checking_data: &mut CheckingData<T, super::EznoParser>,
+		environment: &mut Environment,
+		position: SpanWithSource,
+	) {
+		let (publicity, under, value) =
+			register(&key, (value, always_defined, writable), checking_data, environment, position);
+		self.0.push((publicity, under, value));
+	}
+
+	fn interface_type(&self) -> Option<TypeId> {
+		None
 	}
 }
 

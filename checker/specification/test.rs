@@ -31,8 +31,8 @@ mod specification {
 // }
 
 // TODO under cfg
-const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
-// const SIMPLE_DTS: Option<&str> = None;
+// const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
+const SIMPLE_DTS: Option<&str> = None;
 
 const IN_CI: bool = option_env!("CI").is_some();
 

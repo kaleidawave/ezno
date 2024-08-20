@@ -32,12 +32,12 @@ declare function context_id(): void
 @Constant
 declare function context_id_chain(): void
 
+@Constant
+declare function debug_state(): void
+
 // A function, as it should be!
 @Constant
 declare function satisfies<T>(t: T): T
-
-@Constant
-declare function compile_type_to_object<T>(): any
 
 interface ImportEnv {
     [key: string]: string;

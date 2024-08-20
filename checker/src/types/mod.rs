@@ -290,12 +290,12 @@ impl PolyNature {
 }
 
 /// TODO split
-#[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum ObjectNature {
 	/// Actual allocated object
 	RealDeal,
 	/// From `x: { a: number }` etc
-	AnonymousTypeAnnotation,
+	AnonymousTypeAnnotation(Properties),
 }
 
 impl Type {
@@ -512,7 +512,7 @@ impl TypeExtends {
 				Type::Constant(Constant::String(s)),
 			) = (types.get_type_by_id(*lhs), types.get_type_by_id(*rhs))
 			{
-				if let Some(extends_ty_name) = crate::features::string_name_to_type(&s) {
+				if let Some(extends_ty_name) = crate::features::string_name_to_type(s) {
 					Ok(Self { item: *on, extends: extends_ty_name })
 				} else {
 					Err(())
@@ -701,9 +701,10 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				}
 			},
 			Constructor::CanonicalRelationOperator { .. } => Some(TypeId::BOOLEAN_TYPE),
-			Constructor::TypeExtends(op) => match op {
-				crate::types::TypeExtends { .. } => Some(TypeId::BOOLEAN_TYPE),
-			},
+			Constructor::TypeExtends(op) => {
+				let crate::types::TypeExtends { .. } = op;
+				Some(TypeId::BOOLEAN_TYPE)
+			}
 			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
 		},
 		Type::Narrowed { from: _, narrowed_to } => Some(*narrowed_to),

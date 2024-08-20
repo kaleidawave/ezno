@@ -118,7 +118,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 		crate::utilities::notify!("TODO check that the result is the same");
 	}
 
-	crate::utilities::notify!("function.effect={:?}", function.effect);
+	// crate::utilities::notify!("function.effect={:?}", function.effect);
 
 	let v = checking_data.types.new_function_type(function);
 	environment.info.variable_current_value.insert(variable_id, v);
@@ -471,21 +471,11 @@ where
 			}
 		}
 		FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
-			// crate::utilities::notify!(
-			// 	"expecting {}",
-			// 	types::printing::print_type(
-			// 		expecting,
-			// 		&checking_data.types,
-			// 		base_environment,
-			// 		false
-			// 	)
-			// );
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
 				&mut checking_data.types,
 				base_environment,
 			);
-			crate::utilities::notify!("expected {:?}", expecting);
 
 			if let Some((or, _)) =
 				expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))

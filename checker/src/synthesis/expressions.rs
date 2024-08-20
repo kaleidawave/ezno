@@ -970,8 +970,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				)
 			}
 			SpecialOperators::Is { value, type_annotation } => {
-				let item = synthesise_expression(value, environment, checking_data, TypeId::ANY_TYPE);
-				Instance::RValue(super::extensions::is_expression::new_is_type(item, type_annotation, environment, checking_data))
+				let item =
+					synthesise_expression(value, environment, checking_data, TypeId::ANY_TYPE);
+				Instance::RValue(super::extensions::is_expression::new_is_type(
+					item,
+					type_annotation,
+					environment,
+					checking_data,
+				))
 			}
 		},
 		Expression::ImportMeta(_) => {
