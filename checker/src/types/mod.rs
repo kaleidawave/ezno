@@ -149,11 +149,11 @@ impl TypeId {
 	pub const CASE_INSENSITIVE: Self = Self(47);
 
 	/// WIP
-	pub const OPEN_BOOLEAN_TYPE: Self = Self::BOOLEAN_TYPE;
-	pub const OPEN_NUMBER_TYPE: Self = Self::NUMBER_TYPE;
+	pub const OPEN_BOOLEAN_TYPE: Self = Self(48);
+	pub const OPEN_NUMBER_TYPE: Self = Self(49);
 
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 48;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 50;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -868,6 +868,7 @@ impl Counter {
 }
 
 /// To fill in for TSC behavior for mapped types
+#[must_use]
 pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 	match types.get_type_by_id(id) {
 		Type::AliasTo { to, .. } => references_key_of(*to, types),
@@ -902,6 +903,7 @@ pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
 }
 
 #[allow(clippy::match_like_matches_macro)]
+#[must_use]
 pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
 	if ty == TypeId::ERROR_TYPE {
 		true
@@ -913,6 +915,7 @@ pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
 }
 
 /// TODO want to skip mapped generics because that would break subtyping
+#[must_use]
 pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
 	match types.get_type_by_id(ty) {
 		Type::Constructor(crate::types::Constructor::ConditionalResult {
@@ -935,6 +938,7 @@ pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId,
 }
 
 /// TODO wip
+#[must_use]
 pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeStore) -> bool {
 	if let TypeId::NUMBER_TYPE | TypeId::STRING_TYPE = ty {
 		true
@@ -956,6 +960,7 @@ pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeS
 	}
 }
 
+#[must_use]
 pub fn is_inferrable_type(ty: TypeId) -> bool {
 	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
 }

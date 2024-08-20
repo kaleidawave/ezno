@@ -157,6 +157,7 @@ impl DiagnosticsContainer {
 		}
 	}
 
+	#[must_use]
 	pub fn count(&self) -> usize {
 		self.diagnostics.len()
 	}
@@ -236,9 +237,9 @@ impl TypeStringRepresentation {
 						print_type_with_type_arguments(*v, generics, types, ctx, debug_mode);
 					Self(value)
 				}
-				crate::PropertyValue::GetterAndSetter { .. } => todo!(),
-				crate::PropertyValue::Getter(_) => todo!(),
-				crate::PropertyValue::Setter(_) => todo!(),
+				crate::PropertyValue::GetterAndSetter { .. }
+				| crate::PropertyValue::Getter(_)
+				| crate::PropertyValue::Setter(_) => Self("getter/setter".to_owned()),
 				crate::PropertyValue::Deleted => Self("never".to_owned()),
 				crate::PropertyValue::ConditionallyExists { .. }
 				| crate::PropertyValue::Configured { .. } => unreachable!(),
@@ -256,12 +257,12 @@ impl TypeStringRepresentation {
 				// 	Self(left.0)
 				// } else {
 				crate::utilities::notify!("Printing {:?} base on {:?}", left_right, condition);
-				Self("TODO".to_owned())
+				Self("TODO or".to_owned())
 				// }
 			}
 			crate::types::logical::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
-					todo!("chaining")
+					crate::utilities::notify!("TODO chaining");
 				}
 				let generics = Some(GenericChainLink::PartiallyAppliedGenericArgumentsLink {
 					parent_link: None,
@@ -270,7 +271,9 @@ impl TypeStringRepresentation {
 				});
 				Self::from_property_constraint(*on, generics, ctx, types, debug_mode)
 			}
-			crate::types::logical::Logical::BasedOnKey { .. } => todo!(),
+			crate::types::logical::Logical::BasedOnKey { .. } => {
+				Self("TODO based on key?".to_owned())
+			}
 		}
 	}
 }
@@ -325,8 +328,6 @@ pub(crate) enum TypeCheckError<'a> {
 	AssignmentError(AssignmentError),
 	#[allow(dead_code)]
 	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
-	#[allow(dead_code)]
-	InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
 	#[allow(dead_code)]
 	InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
 	SetPropertyError(SetPropertyError),
@@ -454,6 +455,7 @@ pub(crate) enum TypeCheckError<'a> {
 }
 
 #[allow(clippy::useless_format)]
+#[must_use]
 pub fn get_possibles_message(possibles: &[&str]) -> String {
 	match possibles {
 		[] => format!(""),
@@ -612,9 +614,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				}
 			}
-			TypeCheckError::InvalidComparison(_, _) => todo!(),
-			TypeCheckError::InvalidAddition(_, _) => todo!(),
-			TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 			TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
 				reason: "Cannot export at not top level".to_owned(),
 				position,
@@ -682,13 +681,17 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
+			TypeCheckError::DoubleDefaultExport(position) => Diagnostic::Position {
+				reason: "Cannot have more than one default export".to_owned(),
+				position,
+				kind,
+			},
 			TypeCheckError::DuplicateImportName { import_position: position, existing_position, ..} => Diagnostic::PositionWithAdditionalLabels {
 				reason: "Cannot import using conflicting name".to_string(),
 				position,
 				kind,
 				labels: vec![("Existing import with same name".to_string(), existing_position)],
 			},
-			TypeCheckError::DoubleDefaultExport(_) => todo!(),
 			TypeCheckError::NoDefaultExport { partial_import_path, position, ..} => Diagnostic::Position {
 				reason: format!("Cannot find default export from module '{partial_import_path}'"),
 				position,
@@ -732,13 +735,25 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
+			TypeCheckError::InvalidComparison(_, _) => todo!(),
+			TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 			TypeCheckError::InvalidMathematicalOrBitwiseOperation { operator, lhs, rhs, position } => Diagnostic::Position {
 				// TODO temp
 				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
 				position,
 				kind,
 			},
-			TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
+			TypeCheckError::NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel {
+				label: _,
+				position,
+			}) => {
+				Diagnostic::Position {
+					// TODO temp
+					reason: "Cannot use `break` or `continue` here or could not find label".to_owned(),
+					position,
+					kind,
+				}
+			}
 			TypeCheckError::InvalidCast { position, from, to } => {
 				Diagnostic::Position {
 					reason: format!("Cannot cast {from} to {to}"),

@@ -1076,6 +1076,7 @@ pub fn new_name_expected_object(
 }
 
 /// Reverse of the above
+#[must_use]
 pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environment) -> TypeId {
 	if let Type::And(_, rhs) = types.get_type_by_id(expecting) {
 		if let Ok(LogicalOrValid::Logical(Logical::Pure(PropertyValue::Value(ty)))) =

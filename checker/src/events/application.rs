@@ -310,7 +310,10 @@ pub(crate) fn apply_events(
 					}
 					// TODO different
 					CallingTiming::QueueTask | CallingTiming::AtSomePointManyTimes => {
-						todo!()
+						crate::utilities::notify!(
+							"TODO CallingTiming::QueueTask | CallingTiming::AtSomePointManyTimes"
+						);
+						// todo!()
 						// TODO unsure whether need function id here
 						// if let Some(Constant::FunctionReference(function)) =
 						// 	environment.get_constant_type(on)
