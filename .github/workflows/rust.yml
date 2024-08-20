@@ -24,6 +24,8 @@ env:
     ~/.cargo/registry/cache/
     ~/.cargo/git/db/
     target/
+    checker/fuzz/target
+    parser/fuzz/target
 
 jobs:
   validity:
@@ -304,6 +306,9 @@ jobs:
             #   find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
             # fi
           fi
+
+          ls .
+          ls target
         working-directory: checker/fuzz
   
   clippy:

@@ -10,10 +10,15 @@ use super::{Type, TypeStore};
 use crate::{
 	context::InformationChain,
 	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
-	types::{calling::Callable, generics::contributions::Contributions, GenericChain, PolyNature},
+	types::{
+		calling::Callable, generics::contributions::Contributions, logical, GenericChain,
+		PolyNature,
+	},
 	Constant, Environment, TypeId,
 };
 use std::borrow::Cow;
+
+pub type Properties = Vec<(Publicity, PropertyKey<'static>, PropertyValue)>;
 
 #[derive(PartialEq)]
 pub enum PropertyKind {
@@ -170,6 +175,32 @@ impl<'a> PropertyKey<'a> {
 			}
 			under @ PropertyKey::String(_) => under.clone(),
 		}
+	}
+}
+
+/// For getting `length` and stuff
+pub(crate) fn get_simple_value(
+	ctx: &impl InformationChain,
+	on: TypeId,
+	property: &PropertyKey,
+	types: &TypeStore,
+) -> Option<TypeId> {
+	fn get_logical(v: logical::Logical<PropertyValue>) -> Option<TypeId> {
+		match v {
+			logical::Logical::Pure(PropertyValue::Value(t)) => Some(t),
+			logical::Logical::Implies { on, antecedent: _ } => get_logical(*on),
+			_ => None,
+		}
+	}
+
+	let value =
+		get_property_unbound((on, None), (Publicity::Public, property, None), false, ctx, types)
+			.ok()?;
+
+	if let logical::LogicalOrValid::Logical(value) = value {
+		get_logical(value)
+	} else {
+		None
 	}
 }
 

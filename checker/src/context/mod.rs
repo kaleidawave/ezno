@@ -29,7 +29,7 @@ use crate::{
 use self::environment::{DynamicBoundaryKind, FunctionScope};
 pub use environment::Scope;
 pub(crate) use environment::Syntax;
-pub use information::{InformationChain, LocalInformation, Properties};
+pub use information::{InformationChain, LocalInformation};
 
 use std::{
 	collections::{
@@ -390,7 +390,10 @@ impl<T: ContextType> Context<T> {
 						VariableOrImport::Variable { mutability, .. } => match mutability {
 							// TODO get value + object constraint
 							VariableMutability::Mutable { reassignment_constraint: None }
-							| VariableMutability::Constant => TypeId::ERROR_TYPE,
+							| VariableMutability::Constant => {
+								crate::utilities::notify!("TODO get value");
+								TypeId::ERROR_TYPE
+							}
 							VariableMutability::Mutable {
 								reassignment_constraint: Some(value),
 							} => *value,
@@ -408,7 +411,10 @@ impl<T: ContextType> Context<T> {
 					}
 				})
 			}
-			Reference::Property { .. } => todo!("keyof on?"),
+			Reference::Property { .. } => {
+				crate::utilities::notify!("TODO get object constraint on object");
+				Some(TypeId::ERROR_TYPE)
+			}
 		}
 	}
 
@@ -1023,11 +1029,10 @@ pub(crate) fn get_value_of_variable(
 
 		let res = res.or_else(|| fact.variable_current_value.get(&on).copied());
 
-		// TODO WIP narrowing
-
 		// TODO in remaining info, don't loop again
 		if let Some(res) = res {
-			return Some(res);
+			let narrowed = info.get_narrowed(res);
+			return Some(narrowed.unwrap_or(res));
 		}
 	}
 	None

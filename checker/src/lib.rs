@@ -172,7 +172,13 @@ pub trait ASTImplementation: Sized {
 
 	fn parameter_constrained<'a>(parameter: &'a Self::TypeParameter<'a>) -> bool;
 
-	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions;
+	#[allow(clippy::fn_params_excessive_bools)]
+	fn parse_options(
+		is_js: bool,
+		extra_syntax: bool,
+		parse_comments: bool,
+		lsp_mode: bool,
+	) -> Self::ParseOptions;
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
 
@@ -317,7 +323,6 @@ pub struct CheckingData<'a, FSResolver, ModuleAST: ASTImplementation> {
 	pub(crate) modules: ModuleData<'a, FSResolver, ModuleAST>,
 	/// Options for checking
 	pub(crate) options: TypeCheckOptions,
-	// pub(crate) parse_options: parser::ParseOptions,
 
 	// pub(crate) events: EventsStore,
 	pub types: TypeStore,
@@ -577,6 +582,7 @@ fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 	let parse_options = A::parse_options(
 		is_js,
+		checking_data.options.extra_syntax,
 		checking_data.options.parse_comments,
 		checking_data.options.lsp_mode,
 	);

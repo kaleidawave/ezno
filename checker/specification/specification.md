@@ -685,8 +685,8 @@ type MyObject = { foo: number; bar?: number };
 const b: MyObject = {
 	foo: 1,
 	...{
-	bar: 2,
-	invalid: 3,
+		bar: 2,
+		invalid: 3,
 	},
 };
 
@@ -695,8 +695,8 @@ declare let condition: boolean;
 const c: MyObject = {
 	foo: 1,
 	...(condition ? {
-	bar: 2,
-	non_existent: 3,
+		bar: 2,
+		non_existent: 3,
 	} : {}),
 };
 ```
@@ -953,7 +953,7 @@ function variadic(...r: string[]) {
 }
 ```
 
-- Expected boolean, found Array\<string\>
+- Expected boolean, found Array\<string>
 
 #### Destructuring parameter
 
@@ -1048,7 +1048,7 @@ func satisfies string;
 
 > There are some issues around printing here, when to include the generic etc
 
-- Expected string, found \<T\>(condition: T) => T ? 4 : 3
+- Expected string, found \<T>(condition: T) => T ? 4 : 3
 
 #### Early return
 
@@ -1410,7 +1410,7 @@ function createNew(cb: { f<T>(t: T): { a: T }}["f"]) {
 createNew satisfies string;
 ```
 
-- Expected string, found (cb: \<T\>(t: T) => { a: T }) => { a: 4 }
+- Expected string, found (cb: \<T>(t: T) => { a: T }) => { a: 4 }
 
 #### Builder pattern
 
@@ -1421,12 +1421,12 @@ class StringBuilder {
 	s: string = ""
 
 	append(s: string) {
-	this.s += s;
-	return this
+		this.s += s;
+		return this
 	}
 
 	finish() {
-	return this.s
+		return this.s
 	}
 }
 
@@ -1975,7 +1975,7 @@ declare let string: string;
 
 function stringIsHi(s: string) {
 	if (s === "hi") {
-	return true
+		return true
 	}
 	return false
 }
@@ -1984,6 +1984,25 @@ stringIsHi(string) satisfies number;
 ```
 
 - Expected number, found boolean
+
+#### Early return
+
+```ts
+function func(param: boolean) {
+	let a = 2;
+    if (param) {
+		a = 3;
+        return a;
+    } else {
+		a = 7;
+	}
+    a satisfies string;
+}
+```
+
+> Note not `3 | 7`
+
+- Expected string, found 7
 
 ### Iteration
 
@@ -2205,9 +2224,9 @@ console.log("Error caught!")
 ```ts
 function exceptionToResult(cb: () => number) {
 	try {
-	return cb()
+		return cb()
 	} catch (e) {
-	return e
+		return e
 	}
 }
 
@@ -2223,9 +2242,9 @@ console.log("Error caught!")
 ```ts
 function exceptionToResult(cb: () => number) {
 	try {
-	cb()
+		cb()
 	} catch (e: number) {
-	return e
+		return e
 	}
 }
 
@@ -2240,9 +2259,9 @@ console.log("Error caught!")
 ```ts
 function exceptionToResult(s: string) {
 	try {
-	return JSON.parse(s)
+		return JSON.parse(s)
 	} catch (e: number) {
-	return e
+		return e
 	}
 }
 console.log("Error caught!")
@@ -2258,9 +2277,9 @@ console.log("Error caught!")
 // no complex numbers :(
 function checkedLn(x: number) {
 	if (x > 0) {
-	return Math.log(x)
+		return Math.log(x)
 	} else {
-	throw new Error("Cannot log")
+		throw new Error("Cannot log")
 	}
 }
 
@@ -2664,8 +2683,6 @@ import.meta.env.production satisfies boolean;
 
 #### `instanceof` operator
 
-> TODO dependent version
-
 ```ts
 ([] instanceof Array) satisfies true;
 ({} instanceof Map) satisfies 4;
@@ -2674,9 +2691,21 @@ class X {}
 
 (new X instanceof X) satisfies true;
 ([] instanceof X) satisfies false;
+
+function isArray(param: any): boolean {
+	return param instanceof Array;
+}
+
+declare let myArray: Array<string>;
+
+isArray([1, 2, 3]) satisfies true;
+isArray(myArray) satisfies string;
+isArray({ }) satisfies null;
 ```
 
 - Expected 4, found false
+- Expected string, found true
+- Expected null, found false
 
 #### Tagged template literal
 
@@ -2705,7 +2734,7 @@ const resp = await (fetch("/some-endpoint") satisfies string);
 resp.ok satisfies number;
 ```
 
-- Expected string, found Promise\<Response\>
+- Expected string, found Promise\<Response>
 - Expected number, found boolean
 
 ### Classes
@@ -2732,7 +2761,7 @@ x.value satisfies string
 ```ts
 class X {
 	method() {
-	return this;
+		return this;
 	}
 }
 
@@ -2889,7 +2918,7 @@ class X {
 	static x = 2;
 
 	static {
-	const property: 4 = ++this.x;
+		const property: 4 = ++this.x;
 	}
 }
 
@@ -2947,14 +2976,14 @@ class Class extends BaseClass {
 let b: number = 0;
 class Y {
 	constructor(a) {
-	this.a = a;
-	b++;
+		this.a = a;
+		b++;
 	}
 }
 
 class X extends Y {
 	constructor(a) {
-	super(a);
+		super(a);
 	}
 }
 
@@ -3433,7 +3462,7 @@ const a: Uppercase<"something" |"hi"> = "HI";
 const b: Uppercase<string> = "hi"
 ```
 
-- Type \"hi\" is not assignable to type Uppercase\<string\>
+- Type \"hi\" is not assignable to type Uppercase\<string>
 
 #### `NoInfer`
 
@@ -3750,6 +3779,7 @@ function x(p: { readonly a: string, b: string }) {
 function func1(p: { a: string, b: string }) {
 	func2(p)
 }
+
 function func2(p: readonly { a: string }) { }
 
 const obj = Object.freeze({ a: "hi" });
@@ -3773,7 +3803,7 @@ interface MyObject {
 
 const obj: MyObject = {
 	a(b) {
-	b satisfies number;
+		b satisfies number;
 	}
 }
 ```
@@ -3802,6 +3832,303 @@ x.map(a => (a satisfies string, 2))
 ```
 
 - Expected string, found 1 | 2 | 3
+
+### Narrowing
+
+#### Equality
+
+```ts
+function eqNarrow(a: string) {
+	if (a === "hi") {
+		a satisfies "hello"
+	}
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Condition outside of `if`
+
+```ts
+function eqNarrow(a: string) {
+	const a_equals_hi = a === "hi";
+	if (a_equals_hi) {
+		a satisfies "hello"
+	}
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Condition as a function
+
+```ts
+function eqNarrow(a: string) {
+	function equalsHi(p: string): boolean { return p === "hi" }
+
+	if (equalsHi(a)) {
+		a satisfies "hello"
+	}
+}
+```
+
+- Expected "hello", found "hi"
+
+#### Reference passed around
+
+```ts
+function eqNarrow(a: string) {
+	const b = a;
+	if (b === "hi") {
+		a satisfies "hello"
+	}
+}
+```
+
+- Expected "hello", found "hi"
+
+#### `typeof` operator
+
+```ts
+function typeOfNarrow(param: any) {
+	if (typeof param === "string") {
+		param satisfies number;
+	}
+}
+```
+
+- Expected number, found string
+
+#### Boolean narrowing
+
+```ts
+function booleanNarrow(param: boolean) {
+	if (param) {
+		param satisfies string
+	}
+	if (!param) {
+		param satisfies number
+	}
+}
+```
+
+- Expected string, found true
+- Expected number, found false
+
+#### Narrowing from operators
+
+```ts
+function operatorNarrows(thing: string | null) {
+	(thing ?? "something") satisfies string;
+	(thing || "something") satisfies number;
+	
+	const result = thing === "hi" && (thing satisfies boolean);
+}
+```
+
+- Expected number, found string | "something"
+- Expected boolean, found "hi"
+
+#### Logic
+
+```ts
+function logicNarrow(thing: any, other: any) {
+	if (typeof thing === "string" && other === 4) {
+		({ thing, other }) satisfies string;
+	}
+	
+	if (typeof thing === "string" || typeof thing === "number") {
+		thing satisfies null;
+	}
+}
+```
+
+- Expected string, found { thing: string, other: 4 }
+- Expected null, found string | number
+
+#### Eating cases
+
+> TODO This tests two things. Context negation through final event and negating effect of typeof
+
+```ts
+function func(param: boolean | string | number) {
+    if (typeof param === "boolean") {
+        return 5
+    }
+    param satisfies null;
+}
+```
+
+- Expected null, found string | number
+
+#### Prototype narrowed
+
+```ts
+function func(param: Array<string> | string) {
+    if (param instanceof Array) {
+		param satisfies null;
+    }
+}
+```
+
+- Expected null, found Array\<string>
+
+#### Type generated from prototype
+
+```ts
+function func(param: any) {
+    if (param instanceof Array) {
+		param satisfies null;
+    }
+}
+```
+
+- Expected null, found Array\<any>
+
+#### Narrowing via property result
+
+```ts
+function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: number }) {
+    if (param.tag === "a") {
+        param.a satisfies string;
+        param satisfies null;
+    }
+}
+```
+
+- Expected null, found { tag: "a", a: string }
+
+#### Narrowing via `in`
+
+```ts
+function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number }) {
+    if ("a" in param) {
+        param.a satisfies string;
+        param satisfies null;
+    }
+}
+```
+
+- Expected null, found { tag: "a", a: string }
+
+#### Build object
+
+> TODO `.prop === 2` doesn't work because of get on `ANY_TYPE`
+
+```ts
+function buildObject(param: any) {
+    if ("a" in param) {
+        param satisfies null;
+    }
+}
+```
+
+- Expected null, found { a: any }
+
+#### Object equality
+
+```ts
+function conditional(param: boolean) {
+	const obj1 = {}, obj2 = {};
+	const sum = param ? obj1 : obj2;
+	if (sum === obj1) {
+		sum.a = 2;
+	}
+	[obj1, obj2] satisfies string;
+}
+```
+
+- Expected string, found [{ a: 2 }, {}]
+
+#### From condition equality
+
+```ts
+function conditional(param: boolean) {
+	const obj1 = { a: 1 }, obj2 = {};
+	const sum = param ? obj1 : obj2;
+	if (param) {
+		sum satisfies string;
+	}
+}
+```
+
+- Expected string, found { a: 1 }
+
+#### Across free variable
+
+```ts
+function conditional(param: boolean) {
+	const constant = param;
+	if (constant) {
+		const b = () => constant;
+		b satisfies string;
+	}
+}
+```
+
+- Expected string, found () => true
+
+#### Edge case
+
+> De-Morgans laws for and
+
+```ts
+function func1(param: string | number) {
+    if (typeof param === "number" && param > 0) {
+        param satisfies number;
+    } else {
+        param satisfies null;
+	}
+}
+
+function func2(param: string | number | boolean) {
+    if (typeof param === "string" || !(typeof param === "number")) {
+        param satisfies undefined;
+    } else {
+        param satisfies number;
+    }
+}
+```
+
+- Expected null, found string | number
+- Expected undefined, found string | boolean
+
+#### Mutation
+
+> TODO test more
+
+```ts
+function func(param: boolean) {
+	let a = param;
+	const inner = (value: boolean) => a = value;
+    if (a) {
+		inner(false);
+		a satisfies null;
+    }
+}
+```
+
+- Expected null, found false
+
+#### Assertions annotation
+
+```ts
+function func1(param: any): asserts param is number {
+    if (typeof param !== "string") {
+        throw "bad"
+    }
+}
+
+function func2(param: any): asserts param is boolean {
+    if (typeof param !== "boolean") {
+        throw "bad"
+    }
+}
+```
+
+> TODO `any` should be parameter name
+
+- Cannot return asserts any is string because the function is expected to return asserts any is number
 
 ### Object constraint
 
@@ -3959,13 +4286,13 @@ proxy1.a satisfies string;
 #### Proxy subtyping
 
 ```ts
-const proxy1 = new Proxy({}, { get(_target, prop, _recivier) { return prop } });
+const proxy1 = new Proxy({}, { get(_target, prop, _receiver) { return prop } });
 
 proxy1 satisfies { a: "a", b: "b" };
 proxy1 satisfies { c: "d" };
 ```
 
-- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _recivier: any) => any } ]
+- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _receiver: any) => any } ]
 
 #### Proxy across functions
 
@@ -4277,7 +4604,7 @@ const z: number = getString(2);
 - Cannot return number because the function is expected to return string
 - Type 5 is not assignable to type string
 - Could not find variable 'h' in scope
-- Type (error) string is not assignable to type number
+- Type string is not assignable to type number
 
 #### Errors carries
 
@@ -4338,7 +4665,7 @@ register("something")
 register(document.title)
 ```
 
-- Argument of type string is not assignable to parameter of type Literal\<string\>
+- Argument of type string is not assignable to parameter of type Literal\<string>
 
 #### Number intrinsics
 
@@ -4353,9 +4680,9 @@ register(document.title)
 -4 satisfies LessThan<2>;
 ```
 
-- Expected MultipleOf\<2\>, found 5
-- Expected GreaterThan\<2\>, found -4
-- Expected LessThan\<2\>, found 6
+- Expected MultipleOf\<2>, found 5
+- Expected GreaterThan\<2>, found -4
+- Expected LessThan\<2>, found 6
 
 #### `Not`
 
@@ -4375,7 +4702,7 @@ b satisfies 5;
 
 - Expected Not<4>, found 4
 - Expected Not<8>, found number
-- Expected Not\<string\>, found "hi"
+- Expected Not\<string>, found "hi"
 - Expected string, found Not<5> & number
 - Expected 5, found Not<5> & number
 
@@ -4389,7 +4716,7 @@ x satisfies Exclusive<X>;
 ({ a: 6 } satisfies Exclusive<X>);
 ```
 
-- Expected Exclusive\<X\>, found { a: 1, b: 2 }
+- Expected Exclusive\<X>, found { a: 1, b: 2 }
 
 #### `CaseInsensitive`
 

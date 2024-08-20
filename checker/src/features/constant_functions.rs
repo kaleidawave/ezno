@@ -595,6 +595,9 @@ pub(crate) fn call_constant_function(
 		// 		Ok(ConstantOutput::Diagnostic(output))
 		// 	}
 		// }
+		"debug_state" => {
+			Ok(ConstantOutput::Diagnostic(format!("State={:?}", environment.info.state)))
+		}
 		"debug_context" => Ok(ConstantOutput::Diagnostic(environment.debug())),
 		"context_id" => Ok(ConstantOutput::Diagnostic(format!("in {:?}", environment.context_id))),
 		"context_id_chain" => Ok(ConstantOutput::Diagnostic({

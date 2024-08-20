@@ -405,20 +405,16 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		// Object literals are first turned into types as if they were interface declarations and then
 		// returns reference to object literal
 		TypeAnnotation::ObjectLiteral(members, _) => {
-			// TODO rather than onto, generate a new type...
-			let onto = checking_data
-				.types
-				.register_type(Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation));
-
-			super::interfaces::synthesise_signatures(
+			let properties = super::interfaces::synthesise_signatures(
 				None,
 				None,
 				members,
-				super::interfaces::OnToType(onto),
+				super::interfaces::PropertiesList(Vec::new()),
 				environment,
 				checking_data,
-			)
-			.0
+			);
+
+			checking_data.types.new_anonymous_interface_type(properties.0)
 		}
 		TypeAnnotation::TupleLiteral(members, position) => {
 			let mut items = Vec::<(SpanWithSource, ArrayItem)>::with_capacity(members.len());
@@ -619,9 +615,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				synthesise_type_annotation(resolve_false, environment, checking_data);
 
 			// TODO WIP
-			if let Type::Constructor(Constructor::TypeRelationOperator(
-				crate::types::TypeRelationOperator::Extends { item, extends },
-			)) = checking_data.types.get_type_by_id(condition)
+			if let Type::Constructor(Constructor::TypeExtends(crate::types::TypeExtends {
+				item,
+				extends,
+			})) = checking_data.types.get_type_by_id(condition)
 			{
 				if let Type::Constant(_) = checking_data.types.get_type_by_id(*item) {
 					use crate::types::generics::substitution::{
@@ -735,28 +732,40 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::Extends { item, extends, position: _ } => {
 			let item = synthesise_type_annotation(item, environment, checking_data);
 			let extends = synthesise_type_annotation(extends, environment, checking_data);
-			let ty = Type::Constructor(Constructor::TypeRelationOperator(
-				crate::types::TypeRelationOperator::Extends { item, extends },
-			));
+			let ty = Type::Constructor(Constructor::TypeExtends(crate::types::TypeExtends {
+				item,
+				extends,
+			}));
 			checking_data.types.register_type(ty)
 		}
-		TypeAnnotation::Is { reference: _, is: _, position } => {
-			// let _item = environment.get_reference_constraint(
-			// 	crate::features::assignments::Reference::Variable(
-			// 		reference.clone(),
-			// 		position.with_source(environment.get_source()),
-			// 	),
-			// );
-			// let _is = synthesise_type_annotation(is, environment, checking_data);
-			checking_data.raise_unimplemented_error(
-				"is type annotation",
-				position.with_source(environment.get_source()),
-			);
-			TypeId::ERROR_TYPE
-			// let ty = Type::Constructor(Constructor::TypeRelationOperator(
-			// 	crate::types::TypeRelationOperator::E { ty: item, is },
-			// ));
-			// checking_data.types.register_type(ty)
+		TypeAnnotation::Is { reference, is, position: _ } => {
+			let item_type = match reference {
+				parser::type_annotations::IsItem::Reference(name) => environment
+					.variables
+					.get(name)
+					.and_then(|variable| {
+						environment
+							.info
+							.variable_current_value
+							.get(&variable.get_origin_variable_id())
+					})
+					.copied(),
+				parser::type_annotations::IsItem::This => {
+					// TODO
+					let based_on = TypeId::ERROR_TYPE;
+					let ty = Type::RootPolyType(crate::types::PolyNature::FreeVariable {
+						reference: crate::events::RootReference::This,
+						based_on,
+					});
+					Some(checking_data.types.register_type(ty))
+				}
+			};
+			if let Some(item) = item_type {
+				super::extensions::is_expression::new_is_type(item, is, environment, checking_data)
+			} else {
+				crate::utilities::notify!("Here, it is fine for hoisting?");
+				TypeId::ERROR_TYPE
+			}
 		}
 		TypeAnnotation::Symbol { name, unique: _unique, position: _ } => {
 			// TODO what does unique do?
@@ -772,13 +781,18 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				TypeId::SYMBOL_TYPE
 			}
 		}
-		TypeAnnotation::Asserts(_, position) => {
-			// TODO construct condition for never
-			checking_data.raise_unimplemented_error(
-				"asserts annotation",
-				position.with_source(environment.get_source()),
-			);
-			TypeId::ERROR_TYPE
+		TypeAnnotation::Asserts(condition, _position) => {
+			let condition = synthesise_type_annotation(condition, environment, checking_data);
+			let ty = Type::Constructor(Constructor::ConditionalResult {
+				condition,
+				truthy_result: TypeId::ANY_TYPE,
+				otherwise_result: TypeId::NEVER_TYPE,
+				// TODO not needed
+				result_union: TypeId::ERROR_TYPE,
+			});
+			checking_data.types.register_type(ty)
+			// 	crate::types::TypeExtends { item, extends },
+			// ));
 		}
 		TypeAnnotation::This(position) => {
 			checking_data.raise_unimplemented_error(

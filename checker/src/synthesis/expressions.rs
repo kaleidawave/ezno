@@ -965,16 +965,19 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			SpecialOperators::NonNullAssertion(on) => {
 				let lhs = synthesise_expression(on, environment, checking_data, expecting);
 				Instance::RValue(
-					features::tsc::non_null_assertion(lhs, &mut checking_data.types).unwrap(),
+					features::tsc::non_null_assertion(lhs, environment, &mut checking_data.types)
+						.unwrap(),
 				)
 			}
-			SpecialOperators::Is { value: _, type_annotation: _ } => {
-				// Special non-standard
-				checking_data.raise_unimplemented_error(
-					"is expression",
-					position.with_source(environment.get_source()),
-				);
-				return TypeId::ERROR_TYPE;
+			SpecialOperators::Is { value, type_annotation } => {
+				let item =
+					synthesise_expression(value, environment, checking_data, TypeId::ANY_TYPE);
+				Instance::RValue(super::extensions::is_expression::new_is_type(
+					item,
+					type_annotation,
+					environment,
+					checking_data,
+				))
 			}
 		},
 		Expression::ImportMeta(_) => {
@@ -1262,17 +1265,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							}
 						}
 					}
-					crate::Type::AliasTo { .. }
-					| crate::Type::And { .. }
-					| crate::Type::Or { .. }
-					| crate::Type::RootPolyType { .. }
-					| crate::Type::Constructor { .. }
-					| crate::Type::PartiallyAppliedGenerics { .. }
-					| crate::Type::Interface { .. }
-					| crate::Type::Class { .. }
-					| crate::Type::Constant { .. }
-					| crate::Type::FunctionReference { .. }
-					| crate::Type::SpecialObject(_) => {
+					r#type => {
+						crate::utilities::notify!("more than binary spread {:?}", r#type);
 						checking_data.raise_unimplemented_error(
 							"more than binary spread",
 							pos.with_source(environment.get_source()),

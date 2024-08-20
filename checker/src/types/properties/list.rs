@@ -1,7 +1,7 @@
-use super::{PropertyKey, PropertyValue};
+use super::{Properties, PropertyKey, PropertyValue};
 use crate::{
-	context::{InformationChain, Properties},
-	types::{GenericChain, SliceArguments},
+	context::InformationChain,
+	types::{GenericChain, ObjectNature, SliceArguments},
 	Type, TypeId, TypeStore,
 };
 use std::collections::{BTreeMap, HashMap};
@@ -21,7 +21,8 @@ pub fn get_properties_on_single_type(
 	filter_type: TypeId,
 ) -> Properties {
 	match types.get_type_by_id(base) {
-		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
+		Type::Object(ObjectNature::AnonymousTypeAnnotation(properties)) => properties.clone(),
+		Type::Interface { .. } | Type::Class { .. } | Type::Object(ObjectNature::RealDeal) => {
 			// Reversed needed for deleted
 			let flattened_properties = info
 				.get_chain_of_info()
@@ -104,7 +105,7 @@ pub fn get_properties_on_single_type(
 				numerical_properties.into_values().chain(properties).collect()
 			}
 		}
-		Type::AliasTo { to, .. } => {
+		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => {
 			get_properties_on_single_type(*to, types, info, filter_enumerable, filter_type)
 		}
 		Type::Constant(c) => get_properties_on_single_type(
@@ -146,6 +147,47 @@ pub fn get_properties_on_single_type2(
 	filter_type: TypeId,
 ) -> Vec<(PropertyKey<'static>, PropertyValue, SliceArguments)> {
 	match types.get_type_by_id(base) {
+		Type::Object(ObjectNature::AnonymousTypeAnnotation(on_properties)) => {
+			let mut existing_properties = HashMap::<PropertyKey, usize>::new();
+			let mut properties = Vec::new();
+
+			for (_publicity, key, value) in on_properties {
+				let existing = existing_properties.insert(key.clone(), properties.len());
+				if let PropertyValue::Deleted = value {
+					if let Some(existing) = existing {
+						properties.remove(existing);
+					}
+					// TODO only covers constant keys :(
+					continue;
+				}
+
+				// if !matches!(filter_type, TypeId::ANY_TYPE) {
+				let on_type_arguments = None; // TODO
+				let (key_matches, key_arguments) = super::key_matches(
+					(&PropertyKey::Type(filter_type), on_type_arguments),
+					(key, None),
+					info,
+					types,
+				);
+
+				// crate::utilities::notify!("key_arguments={:?}", key_arguments);
+
+				if !key_matches {
+					continue;
+				}
+				// }
+
+				if let Some(idx) = existing {
+					let value = (key.to_owned(), value.clone(), key_arguments);
+					properties[idx] = value;
+				} else {
+					let value = (key.to_owned(), value.clone(), key_arguments);
+					properties.push(value);
+				}
+			}
+
+			properties
+		}
 		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => {
 			// Reversed needed for deleted
 			let flattened_properties = info
@@ -235,7 +277,7 @@ pub fn get_properties_on_single_type2(
 				Default::default()
 			}
 		}
-		Type::AliasTo { to, .. } => {
+		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => {
 			get_properties_on_single_type2((*to, base_arguments), types, info, filter_type)
 		}
 		Type::Constant(c) => get_properties_on_single_type2(
