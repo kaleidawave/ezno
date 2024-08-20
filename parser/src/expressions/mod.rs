@@ -2052,11 +2052,20 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 		buf.push_new_line();
 		options.add_indent(local.depth + 1, buf);
 	}
-	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
+	for (idx, node) in nodes.iter().enumerate() {
 		// Hack for arrays, this is just easier for generators and ends up in a smaller output
 		if let FunctionArgument::Spread(Expression::ArrayLiteral(items, _), _) = node {
 			if items.is_empty() {
 				continue;
+			}
+			if idx > 0 {
+				buf.push(',');
+				if add_new_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+				} else {
+					options.push_gap_optionally(buf);
+				}
 			}
 			for (inner_at_end, item) in iterator_endiate::EndiateIteratorExt::endiate(items.iter())
 			{
@@ -2071,16 +2080,16 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 				}
 			}
 		} else {
-			node.to_string_from_buffer(buf, options, local);
-		}
-		if !at_end {
-			buf.push(',');
-			if add_new_lines {
-				buf.push_new_line();
-				options.add_indent(local.depth + 1, buf);
-			} else {
-				options.push_gap_optionally(buf);
+			if idx > 0 {
+				buf.push(',');
+				if add_new_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+				} else {
+					options.push_gap_optionally(buf);
+				}
 			}
+			node.to_string_from_buffer(buf, options, local);
 		}
 	}
 	if add_new_lines {

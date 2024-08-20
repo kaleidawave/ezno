@@ -89,7 +89,9 @@ impl<'a> PropertyKey<'a> {
 					PropertyKey::from_usize(n.into_inner() as usize)
 				}
 				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
-				Constant::Boolean(_) => todo!(),
+				Constant::Boolean(b) => {
+					PropertyKey::String(Cow::Borrowed(if b { "true" } else { "false" }))
+				}
 				Constant::Symbol { .. } => {
 					// Okay I think?
 					PropertyKey::Type(ty)

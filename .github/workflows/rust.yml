@@ -193,6 +193,7 @@ jobs:
         shell: bash
 
       - uses: actions/upload-artifact@v4
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           name: wasm-build
           path: src/js-cli-and-library/dist
