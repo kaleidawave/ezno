@@ -391,7 +391,7 @@ pub(crate) fn parse_statements_and_declarations(
 		let blank_lines_after_statement = if requires_semi_colon {
 			expect_semi_colon(reader, &state.line_starts, end, options)?
 		} else if options.retain_blank_lines {
-			let Token(kind, next) = reader.peek().unwrap();
+			let Token(kind, next) = reader.peek().ok_or_else(crate::parse_lexing_error)?;
 			let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
 			if let TSXToken::EOS = kind {
 				lines
@@ -442,9 +442,8 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			{
 				if last_was_empty {
 					continue;
-				} else {
-					last_was_empty = true;
 				}
+				last_was_empty = true;
 			} else {
 				last_was_empty = false;
 			}

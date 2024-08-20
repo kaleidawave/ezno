@@ -655,7 +655,7 @@ pub(crate) fn expect_semi_colon(
 				.saturating_sub(1))
 		} else if let TSXToken::SemiColon = kind {
 			let Token(_, semicolon_end) = reader.next().unwrap();
-			let Token(kind, next) = reader.peek().unwrap();
+			let Token(kind, next) = reader.peek().ok_or_else(parse_lexing_error)?;
 			if options.retain_blank_lines {
 				let byte_indexes_crosses_lines = line_starts
 					.byte_indexes_crosses_lines(semicolon_end.0 as usize, next.0 as usize + 1);

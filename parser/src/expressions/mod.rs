@@ -859,7 +859,7 @@ impl Expression {
 	) -> ParseResult<Self> {
 		let mut top = first_expression;
 		while top.get_precedence() != 2 {
-			let Token(peeked_token, _peeked_pos) = &reader.peek().unwrap();
+			let Token(peeked_token, _peeked_pos) = &reader.peek().ok_or_else(parse_lexing_error)?;
 
 			match peeked_token {
 				TSXToken::Comma => {

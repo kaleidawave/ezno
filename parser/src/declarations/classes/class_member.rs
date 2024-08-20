@@ -118,7 +118,7 @@ impl ASTNode for ClassMember {
 		}
 
 		// TODO not great
-		let start = reader.peek().unwrap().1;
+		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
 
 		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
 
@@ -284,7 +284,7 @@ impl FunctionBased for ClassFunctionBase {
 		options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		// TODO not great
-		let start = reader.peek().unwrap().1;
+		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
 		let header = MethodHeader::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
 		Ok((((!header.is_no_modifiers()).then_some(start), header), name))
