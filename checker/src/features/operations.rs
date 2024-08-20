@@ -152,10 +152,10 @@ pub fn evaluate_mathematical_operation(
 						MathematicalAndBitwise::Modulo => lhs % rhs,
 						MathematicalAndBitwise::Exponent => lhs.powf(rhs),
 						MathematicalAndBitwise::BitwiseShiftLeft => {
-							f64::from((lhs as i32) << (rhs as i32))
+							f64::from((lhs as i32).checked_shl(rhs as u32).unwrap_or(0))
 						}
 						MathematicalAndBitwise::BitwiseShiftRight => {
-							f64::from((lhs as i32) >> (rhs as i32))
+							f64::from((lhs as i32).checked_shr(rhs as u32).unwrap_or(0))
 						}
 						MathematicalAndBitwise::BitwiseShiftRightUnsigned => {
 							(lhs as i32).wrapping_shr(rhs as u32).into()
