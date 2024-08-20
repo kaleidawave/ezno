@@ -276,7 +276,11 @@ pub fn evaluate_equality_inequality_operation(
 						let rhs = cast_as_number(c2, strict_casts)?;
 						Ok(types.new_constant_type(Constant::Boolean(lhs < rhs)))
 					}
-					_ => Err(()),
+					(lhs, rhs) => {
+						crate::utilities::notify!("{:?}", (lhs, rhs));
+						Ok(TypeId::OPEN_BOOLEAN_TYPE)
+						// Err(())
+					}
 				}
 			}
 

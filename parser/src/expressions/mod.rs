@@ -259,8 +259,7 @@ impl Expression {
 			}
 			Token(TSXToken::NumberLiteral(value), start) => {
 				let position = start.with_length(value.len());
-				let res = value.parse::<NumberRepresentation>();
-				match res {
+				match value.parse::<NumberRepresentation>() {
 					Ok(number) => Expression::NumberLiteral(number, position),
 					Err(_) => {
 						// TODO this should never happen
