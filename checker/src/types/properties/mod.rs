@@ -90,7 +90,7 @@ impl<'a> PropertyKey<'a> {
 				}
 				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
 				Constant::Boolean(b) => {
-					PropertyKey::String(Cow::Borrowed(if b { "true" } else { "false" }))
+					PropertyKey::String(Cow::Borrowed(if *b { "true" } else { "false" }))
 				}
 				Constant::Symbol { .. } => {
 					// Okay I think?
