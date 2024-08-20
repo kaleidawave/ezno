@@ -90,6 +90,7 @@ pub(crate) fn apply_string_intrinsic(on: TypeId, s: &str) -> String {
 	}
 }
 
+#[must_use]
 pub fn tsc_string_intrinsic(id: TypeId) -> bool {
 	matches!(
 		id,
@@ -100,6 +101,7 @@ pub fn tsc_string_intrinsic(id: TypeId) -> bool {
 	)
 }
 
+#[must_use]
 pub fn is_intrinsic(id: TypeId) -> bool {
 	tsc_string_intrinsic(id)
 		|| ezno_number_intrinsic(id)
@@ -114,10 +116,12 @@ pub fn is_intrinsic(id: TypeId) -> bool {
 		)
 }
 
+#[must_use]
 pub fn ezno_number_intrinsic(id: TypeId) -> bool {
 	matches!(id, TypeId::LESS_THAN | TypeId::GREATER_THAN | TypeId::MULTIPLE_OF)
 }
 
+#[must_use]
 pub fn get_greater_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
@@ -134,6 +138,7 @@ pub fn get_greater_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	}
 }
 
+#[must_use]
 pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
@@ -150,6 +155,7 @@ pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	}
 }
 
+#[must_use]
 pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
@@ -167,6 +173,7 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 }
 
 #[allow(clippy::match_like_matches_macro)]
+#[must_use]
 pub fn can_be_not_a_number(on: TypeId, types: &TypeStore) -> bool {
 	let on = get_constraint(on, types).unwrap_or(on);
 	if on == TypeId::NOT_NOT_A_NUMBER {

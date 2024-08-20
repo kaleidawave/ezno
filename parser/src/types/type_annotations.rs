@@ -595,17 +595,33 @@ impl TypeAnnotation {
 					name,
 				}
 			}
-			Token(TSXToken::NumberLiteral(num), start) => {
-				let pos = start.with_length(num.len());
-				Self::NumberLiteral(num.parse::<NumberRepresentation>().unwrap(), pos)
+			Token(TSXToken::NumberLiteral(value), start) => {
+				let position = start.with_length(value.len());
+				match value.parse::<NumberRepresentation>() {
+					Ok(number) => Self::NumberLiteral(number, position),
+					Err(_) => {
+						// TODO this should never happen
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::InvalidNumberLiteral,
+							position,
+						));
+					}
+				}
 			}
 			Token(TSXToken::Subtract, start) => {
 				let Token(token, pos) = reader.next().ok_or_else(parse_lexing_error)?;
-				if let TSXToken::NumberLiteral(num) = token {
-					let pos = pos.union(start.with_length(num.len()));
-					let number_representation = num.parse::<NumberRepresentation>().unwrap();
-					// important negation here
-					Self::NumberLiteral(number_representation.neg(), pos)
+				if let TSXToken::NumberLiteral(value) = token {
+					let position = pos.union(start.with_length(value.len()));
+					match value.parse::<NumberRepresentation>() {
+						Ok(number) => Self::NumberLiteral(number.neg(), position),
+						Err(_) => {
+							// TODO this should never happen
+							return Err(crate::ParseError::new(
+								crate::ParseErrors::InvalidNumberLiteral,
+								position,
+							));
+						}
+					}
 				} else {
 					return Err(ParseError::new(
 						ParseErrors::ExpectedNumberLiteral,

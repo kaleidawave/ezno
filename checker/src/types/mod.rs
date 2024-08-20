@@ -151,11 +151,11 @@ impl TypeId {
 	pub const CASE_INSENSITIVE: Self = Self(47);
 
 	/// WIP
-	pub const OPEN_BOOLEAN_TYPE: Self = Self::BOOLEAN_TYPE;
-	pub const OPEN_NUMBER_TYPE: Self = Self::NUMBER_TYPE;
+	pub const OPEN_BOOLEAN_TYPE: Self = Self(48);
+	pub const OPEN_NUMBER_TYPE: Self = Self(49);
 
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 48;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 50;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -1055,6 +1055,7 @@ pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeS
 		}
 	}
 }
+
 #[must_use]
 pub fn is_inferrable_type(ty: TypeId) -> bool {
 	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)

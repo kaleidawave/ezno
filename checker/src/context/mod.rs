@@ -770,10 +770,6 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn new_infer_type(&mut self) -> TypeId {
-		todo!()
-	}
-
 	pub fn get_type_by_name_handle_errors<U, A: crate::ASTImplementation>(
 		&self,
 		name: &str,

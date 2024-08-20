@@ -139,7 +139,16 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 			}
 			Token(TSXToken::NumberLiteral(value), start) => {
 				let position = start.with_length(value.len());
-				Ok(Self::NumberLiteral(value.parse().unwrap(), position))
+				match value.parse::<NumberRepresentation>() {
+					Ok(number) => Ok(Self::NumberLiteral(number, position)),
+					Err(_) => {
+						// TODO this should never happen
+						Err(crate::ParseError::new(
+							crate::ParseErrors::InvalidNumberLiteral,
+							position,
+						))
+					}
+				}
 			}
 			Token(TSXToken::OpenBracket, start) => {
 				let expression = Expression::from_reader(reader, state, options)?;

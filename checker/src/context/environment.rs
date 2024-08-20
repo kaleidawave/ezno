@@ -571,9 +571,9 @@ impl<'a> Environment<'a> {
 		mode: AccessMode,
 	) -> TypeId {
 		match reference {
-			Reference::Variable(name, position) => {
-				self.get_variable_handle_error(&name, position, checking_data).unwrap().1
-			}
+			Reference::Variable(name, position) => self
+				.get_variable_handle_error(&name, position, checking_data)
+				.map_or(TypeId::ERROR_TYPE, |VariableWithValue(_, ty)| ty),
 			Reference::Property { on, with, publicity, position } => {
 				let get_property_handle_errors = self.get_property_handle_errors(
 					on,

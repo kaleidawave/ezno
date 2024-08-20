@@ -152,10 +152,10 @@ pub fn evaluate_mathematical_operation(
 						MathematicalAndBitwise::Modulo => lhs % rhs,
 						MathematicalAndBitwise::Exponent => lhs.powf(rhs),
 						MathematicalAndBitwise::BitwiseShiftLeft => {
-							f64::from((lhs as i32) << (rhs as i32))
+							f64::from((lhs as i32).checked_shl(rhs as u32).unwrap_or(0))
 						}
 						MathematicalAndBitwise::BitwiseShiftRight => {
-							f64::from((lhs as i32) >> (rhs as i32))
+							f64::from((lhs as i32).checked_shr(rhs as u32).unwrap_or(0))
 						}
 						MathematicalAndBitwise::BitwiseShiftRightUnsigned => {
 							(lhs as i32).wrapping_shr(rhs as u32).into()
@@ -278,7 +278,11 @@ pub fn evaluate_equality_inequality_operation(
 						let rhs = cast_as_number(c2, strict_casts)?;
 						Ok(types.new_constant_type(Constant::Boolean(lhs < rhs)))
 					}
-					_ => Err(()),
+					(lhs, rhs) => {
+						crate::utilities::notify!("{:?}", (lhs, rhs));
+						Ok(TypeId::OPEN_BOOLEAN_TYPE)
+						// Err(())
+					}
 				}
 			}
 
@@ -590,7 +594,9 @@ fn attempt_constant_equality(
 ) -> Result<TypeId, ()> {
 	let are_equal = if lhs == rhs {
 		true
-	} else if matches!(lhs, TypeId::NULL_TYPE | TypeId::UNDEFINED_TYPE) {
+	} else if matches!(lhs, TypeId::NULL_TYPE | TypeId::UNDEFINED_TYPE)
+		|| matches!(rhs, TypeId::NULL_TYPE | TypeId::UNDEFINED_TYPE)
+	{
 		// If above `==`` failed => false (as always have same `TypeId`)
 		false
 	} else {

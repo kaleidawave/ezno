@@ -104,16 +104,33 @@ pub fn get_properties_on_single_type(
 				numerical_properties.into_values().chain(properties).collect()
 			}
 		}
+		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => {
+			get_properties_on_single_type(*to, types, info, filter_enumerable, filter_type)
+		}
+		Type::Constant(c) => get_properties_on_single_type(
+			c.get_backing_type_id(),
+			types,
+			info,
+			filter_enumerable,
+			filter_type,
+		),
+		Type::SpecialObject(crate::types::SpecialObject::Function(..))
+		| Type::FunctionReference(_) => get_properties_on_single_type(
+			TypeId::FUNCTION_TYPE,
+			types,
+			info,
+			filter_enumerable,
+			filter_type,
+		),
 		t @ (Type::SpecialObject(_)
 		| Type::Constructor(_)
 		| Type::RootPolyType(_)
-		| Type::Or(..)
 		| Type::PartiallyAppliedGenerics(_)
-		| Type::Constant(_)
-		| Type::Narrowed { .. }
-		| Type::AliasTo { .. }
-		| Type::FunctionReference(_)
-		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
+		| Type::Or(..)
+		| Type::And(_, _)) => {
+			crate::utilities::notify!("Cannot get all properties on {:?}", t);
+			Default::default()
+		}
 	}
 }
 
@@ -190,7 +207,8 @@ pub fn get_properties_on_single_type2(
 			{
 				get_properties_on_single_type2((argument, base_arguments), types, info, filter_type)
 			} else {
-				todo!("Getting properties on generic")
+				let backing = crate::types::get_constraint(base, types).unwrap();
+				get_properties_on_single_type2((backing, base_arguments), types, info, filter_type)
 			}
 		}
 		Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
@@ -213,16 +231,30 @@ pub fn get_properties_on_single_type2(
 				// 	info,
 				// 	types,
 				// );
-				todo!("{:?}", (on, arguments));
+				crate::utilities::notify!("Cannot get all properties on {:?}", base);
+				Default::default()
 			}
 		}
-		t @ (Type::SpecialObject(_)
-		| Type::Or(..)
-		| Type::Constant(_)
-		| Type::Narrowed { .. }
-		| Type::AliasTo { .. }
-		| Type::FunctionReference(_)
-		| Type::And(_, _)) => panic!("Cannot get all properties on {t:?}"),
+		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => {
+			get_properties_on_single_type2((*to, base_arguments), types, info, filter_type)
+		}
+		Type::Constant(c) => get_properties_on_single_type2(
+			(c.get_backing_type_id(), base_arguments),
+			types,
+			info,
+			filter_type,
+		),
+		Type::SpecialObject(crate::types::SpecialObject::Function(..))
+		| Type::FunctionReference(_) => get_properties_on_single_type2(
+			(TypeId::FUNCTION_TYPE, base_arguments),
+			types,
+			info,
+			filter_type,
+		),
+		t @ (Type::SpecialObject(_) | Type::Or(..) | Type::And(_, _)) => {
+			crate::utilities::notify!("Cannot get all properties on {:?}", t);
+			Default::default()
+		}
 	}
 }
 

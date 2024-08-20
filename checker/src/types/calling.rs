@@ -280,11 +280,13 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				if on == TypeId::ERROR_TYPE {
 					(TypeId::ERROR_TYPE, None)
 				} else {
-					todo!("function calling inference")
+					crate::utilities::notify!("function calling inference");
+					(TypeId::ERROR_TYPE, None)
 				}
 			}
 			NeedsCalculation::Proxy(..) => {
-				todo!("calling proxy")
+				crate::utilities::notify!("calling proxy");
+				(TypeId::ERROR_TYPE, None)
 			}
 		},
 		Err(Invalid(ty)) => {

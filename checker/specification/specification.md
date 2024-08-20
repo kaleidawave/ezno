@@ -4122,15 +4122,34 @@ export const a = 2;
 #### Import where export does not exist
 
 ```ts
-import { a } from "./export";
+import b, { a } from "./export";
 
 console.log(a.prop);
 
 // in export.ts
-export const b = 2;
+export const c = 2;
 ```
 
+- Cannot find default export from module './export'
 - a not exported from ./export
+
+#### Import conflicts with existing name
+
+```ts
+import { x } from "./export1";
+import x, { z } from "./export2";
+
+// in export1.ts
+export const x = 1;
+
+// in export2.ts
+const y = 2;
+
+export default y;
+export const z = 2;
+```
+
+- Cannot import using conflicting name
 
 #### Import from invalid file
 

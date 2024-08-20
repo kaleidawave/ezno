@@ -259,8 +259,7 @@ impl Expression {
 			}
 			Token(TSXToken::NumberLiteral(value), start) => {
 				let position = start.with_length(value.len());
-				let res = value.parse::<NumberRepresentation>();
-				match res {
+				match value.parse::<NumberRepresentation>() {
 					Ok(number) => Expression::NumberLiteral(number, position),
 					Err(_) => {
 						// TODO this should never happen
@@ -859,7 +858,7 @@ impl Expression {
 	) -> ParseResult<Self> {
 		let mut top = first_expression;
 		while top.get_precedence() != 2 {
-			let Token(peeked_token, _peeked_pos) = &reader.peek().unwrap();
+			let Token(peeked_token, _peeked_pos) = &reader.peek().ok_or_else(parse_lexing_error)?;
 
 			match peeked_token {
 				TSXToken::Comma => {
@@ -1898,6 +1897,13 @@ impl MultipleExpression {
 		}
 	}
 
+	#[must_use]
+	pub fn get_rhs(&self) -> &Expression {
+		match self {
+			MultipleExpression::Multiple { rhs, .. } | MultipleExpression::Single(rhs) => rhs,
+		}
+	}
+
 	pub(crate) fn to_string_on_left<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
@@ -2046,11 +2052,22 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 		buf.push_new_line();
 		options.add_indent(local.depth + 1, buf);
 	}
-	for (at_end, node) in iterator_endiate::EndiateIteratorExt::endiate(nodes.iter()) {
+	let mut added_last = false;
+	for node in nodes {
 		// Hack for arrays, this is just easier for generators and ends up in a smaller output
 		if let FunctionArgument::Spread(Expression::ArrayLiteral(items, _), _) = node {
 			if items.is_empty() {
+				added_last = false;
 				continue;
+			}
+			if added_last {
+				buf.push(',');
+				if add_new_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+				} else {
+					options.push_gap_optionally(buf);
+				}
 			}
 			for (inner_at_end, item) in iterator_endiate::EndiateIteratorExt::endiate(items.iter())
 			{
@@ -2064,17 +2081,19 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 					options.push_gap_optionally(buf);
 				}
 			}
+			added_last = true;
 		} else {
-			node.to_string_from_buffer(buf, options, local);
-		}
-		if !at_end {
-			buf.push(',');
-			if add_new_lines {
-				buf.push_new_line();
-				options.add_indent(local.depth + 1, buf);
-			} else {
-				options.push_gap_optionally(buf);
+			if added_last {
+				buf.push(',');
+				if add_new_lines {
+					buf.push_new_line();
+					options.add_indent(local.depth + 1, buf);
+				} else {
+					options.push_gap_optionally(buf);
+				}
 			}
+			node.to_string_from_buffer(buf, options, local);
+			added_last = true;
 		}
 	}
 	if add_new_lines {

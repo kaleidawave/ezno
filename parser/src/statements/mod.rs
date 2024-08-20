@@ -205,10 +205,22 @@ impl ASTNode for Statement {
 			TSXToken::SemiColon => {
 				Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
 			}
+			TSXToken::EOS => {
+				reader.next();
+				Ok(Statement::Empty(Span { start: 0, end: 0, source: () }))
+			}
 			// Finally ...!
 			_ => {
 				let expr = MultipleExpression::from_reader(reader, state, options)?;
-				Ok(Statement::Expression(expr))
+				if let (true, Expression::Marker { .. }) = (options.partial_syntax, expr.get_rhs())
+				{
+					Err(ParseError::new(
+						ParseErrors::ExpectedIdentifier,
+						reader.next().unwrap().get_span(),
+					))
+				} else {
+					Ok(Statement::Expression(expr))
+				}
 			}
 		}
 	}
