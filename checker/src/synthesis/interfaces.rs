@@ -9,8 +9,9 @@ use crate::{
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		calling::Callable,
+		helpers::references_key_of,
 		properties::{Descriptor, PropertyKey, PropertyValue, Publicity},
-		references_key_of, FunctionType, Type,
+		FunctionType, Type,
 	},
 	CheckingData, Scope, TypeId,
 };

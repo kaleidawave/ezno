@@ -146,6 +146,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 			}
 			PolyNature::InferGeneric { name, extends } => {
+				if debug {
+					write!(buf, "[IG {}] @ ", ty.0).unwrap();
+				}
 				buf.push_str("infer ");
 				buf.push_str(name);
 				if *extends != TypeId::ANY_TYPE {

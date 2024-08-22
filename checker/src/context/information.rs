@@ -245,12 +245,6 @@ pub trait InformationChain {
 	}
 }
 
-impl InformationChain for LocalInformation {
-	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation> {
-		std::iter::once(self)
-	}
-}
-
 pub struct ModuleInformation<'a> {
 	pub top: &'a LocalInformation,
 	pub module: &'a LocalInformation,

@@ -1,8 +1,9 @@
 use crate::{
 	context::InformationChain,
 	types::{
-		self, as_logical_and, as_logical_or, get_conditional, helpers::get_origin, properties,
-		Constant, Constructor, PolyNature, TypeOperator, TypeStore,
+		self, as_logical_and, as_logical_or,
+		helpers::{get_conditional, get_origin},
+		properties, Constant, Constructor, PolyNature, TypeOperator, TypeStore,
 	},
 	Map, Type, TypeId,
 };

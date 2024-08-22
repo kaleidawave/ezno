@@ -7,8 +7,8 @@ use crate::{
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	features::conditional::new_conditional_context,
 	types::{
-		cast_as_number, cast_as_string, get_constraint, intrinsics, is_type_truthy_falsy,
-		Constructor, PartiallyAppliedGenerics, TypeStore,
+		cast_as_number, cast_as_string, get_constraint, helpers::simple_subtype, intrinsics,
+		is_type_truthy_falsy, Constructor, PartiallyAppliedGenerics, TypeStore,
 	},
 	CheckingData, Constant, Decidable, Environment, Type, TypeId,
 };
@@ -61,6 +61,7 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 				lhs,
 				operator,
 				rhs,
+				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
@@ -100,6 +101,7 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 				lhs,
 				&operator,
 				rhs,
+				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			)
@@ -107,11 +109,12 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 	}
 }
 
-/// TODO proper err
+/// TODO proper error type
 pub fn evaluate_mathematical_operation(
 	lhs: TypeId,
 	operator: MathematicalAndBitwise,
 	rhs: TypeId,
+	info: &impl crate::context::InformationChain,
 	types: &mut TypeStore,
 	strict_casts: bool,
 ) -> Result<TypeId, ()> {
@@ -180,53 +183,6 @@ pub fn evaluate_mathematical_operation(
 		}
 	}
 
-	{
-		fn simple_is_type(matching: TypeId, on: TypeId, types: &TypeStore) -> bool {
-			if on == matching {
-				true
-			} else {
-				match types.get_type_by_id(on) {
-					Type::Constant(c) => c.get_backing_type_id() == matching,
-					Type::Or(left, right) => {
-						simple_is_type(matching, *left, types)
-							&& simple_is_type(matching, *right, types)
-					}
-					Type::And(left, right) => {
-						simple_is_type(matching, *left, types)
-							|| simple_is_type(matching, *right, types)
-					}
-					ty => {
-						crate::utilities::notify!("{:?} not handled by simple is", ty);
-						false
-					}
-				}
-			}
-		}
-
-		let lhs = get_constraint(lhs, types).unwrap_or(lhs);
-		let rhs = get_constraint(rhs, types).unwrap_or(rhs);
-
-		// TODO proper type_is_subtype
-		if let MathematicalAndBitwise::Add = operator {
-			let want = if simple_is_type(TypeId::NUMBER_TYPE, lhs, types) {
-				TypeId::NUMBER_TYPE
-			} else if simple_is_type(TypeId::STRING_TYPE, lhs, types) {
-				TypeId::STRING_TYPE
-			} else {
-				return Err(());
-			};
-			if !simple_is_type(want, rhs, types) {
-				return Err(());
-			}
-		} else {
-			if !simple_is_type(TypeId::NUMBER_TYPE, lhs, types)
-				|| !simple_is_type(TypeId::NUMBER_TYPE, rhs, types)
-			{
-				return Err(());
-			}
-		}
-	}
-
 	if lhs == TypeId::ERROR_TYPE || rhs == TypeId::ERROR_TYPE {
 		return Ok(TypeId::ERROR_TYPE);
 	}
@@ -234,10 +190,36 @@ pub fn evaluate_mathematical_operation(
 	let is_dependent =
 		types.get_type_by_id(lhs).is_dependent() || types.get_type_by_id(rhs).is_dependent();
 
-	// TODO check sides
 	if is_dependent {
-		let constructor = crate::types::Constructor::BinaryOperator { lhs, operator, rhs };
-		Ok(types.register_type(crate::Type::Constructor(constructor)))
+		{
+			let lhs = get_constraint(lhs, types).unwrap_or(lhs);
+			let rhs = get_constraint(rhs, types).unwrap_or(rhs);
+
+			// TODO proper type_is_subtype
+			if let MathematicalAndBitwise::Add = operator {
+				if !simple_subtype(lhs, TypeId::STRING_OR_NUMBER, info, types)
+					|| !simple_subtype(rhs, TypeId::STRING_OR_NUMBER, info, types)
+				{
+					return Err(());
+				}
+			} else {
+				if !simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
+					|| !simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
+				{
+					return Err(());
+				}
+			}
+		}
+
+		// :)
+		if let (MathematicalAndBitwise::Exponent, TypeId::ONE, true) =
+			(operator, rhs, crate::types::intrinsics::is_not_not_a_number(lhs, types))
+		{
+			Ok(lhs)
+		} else {
+			let constructor = crate::types::Constructor::BinaryOperator { lhs, operator, rhs };
+			Ok(types.register_type(crate::Type::Constructor(constructor)))
+		}
 	} else {
 		attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
 	}
@@ -268,6 +250,7 @@ pub fn evaluate_equality_inequality_operation(
 	mut lhs: TypeId,
 	operator: &EqualityAndInequality,
 	mut rhs: TypeId,
+	info: &impl crate::context::InformationChain,
 	types: &mut TypeStore,
 	strict_casts: bool,
 ) -> TypeId {
@@ -283,8 +266,24 @@ pub fn evaluate_equality_inequality_operation(
 			let left_dependent = types.get_type_by_id(lhs).is_dependent();
 			let is_dependent = left_dependent || types.get_type_by_id(rhs).is_dependent();
 
-			// TODO check lhs and rhs type to see if they overlap
 			if is_dependent {
+				if lhs == rhs {
+					// I think this is okay
+					return TypeId::TRUE;
+				}
+
+				// Checks lhs and rhs type to see if they overlap
+				if crate::types::disjoint::types_are_disjoint(
+					lhs,
+					rhs,
+					&mut Vec::new(),
+					info,
+					types,
+				) {
+					// TODO warning with types disjoint
+					return TypeId::FALSE;
+				}
+
 				// Sort if `*constant* == ...`. Ideally want constant type on the RHS
 				let (lhs, rhs) = if left_dependent { (lhs, rhs) } else { (rhs, rhs) };
 				let constructor = crate::types::Constructor::CanonicalRelationOperator {
@@ -337,6 +336,13 @@ pub fn evaluate_equality_inequality_operation(
 				|| types.get_type_by_id(rhs).is_dependent();
 
 			if is_dependent {
+				if !simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
+					|| !simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
+				{
+					crate::utilities::notify!("TODO error here");
+					// return Err(());
+				}
+
 				// Tidies some things for counting loop iterations
 				{
 					if let Type::Constructor(Constructor::BinaryOperator {
@@ -368,7 +374,7 @@ pub fn evaluate_equality_inequality_operation(
 						types.get_type_by_id(lhs),
 						intrinsics::get_less_than(rhs, types).map(|t| types.get_type_by_id(t)),
 					) {
-						// crate::utilities::notify!("{:?} < {:?}", lhs, ceiling);
+						crate::utilities::notify!("{:?} < {:?}", lhs, ceiling);
 						// We know that the rhs is always greater than ceiling
 						if *lhs >= *ceiling {
 							return TypeId::FALSE;
@@ -382,7 +388,7 @@ pub fn evaluate_equality_inequality_operation(
 						types.get_type_by_id(lhs),
 						intrinsics::get_greater_than(rhs, types).map(|t| types.get_type_by_id(t)),
 					) {
-						// crate::utilities::notify!("{:?} {:?}", lhs, floor);
+						crate::utilities::notify!("{:?} {:?}", lhs, floor);
 						if *lhs <= *floor {
 							return TypeId::TRUE;
 						}
@@ -396,7 +402,7 @@ pub fn evaluate_equality_inequality_operation(
 						types.get_type_by_id(rhs),
 					) {
 						// We know that the lhs is always less than ceiling
-						// crate::utilities::notify!("{:?} {:?}", rhs, ceiling);
+						crate::utilities::notify!("{:?} {:?}", rhs, ceiling);
 
 						if *rhs >= *ceiling {
 							return TypeId::TRUE;
@@ -411,7 +417,7 @@ pub fn evaluate_equality_inequality_operation(
 						types.get_type_by_id(rhs),
 					) {
 						// We know that the lhs is always less than ceiling
-						// crate::utilities::notify!("{:?} {:?}", rhs, floor);
+						crate::utilities::notify!("{:?} {:?}", rhs, floor);
 
 						if *rhs <= *floor {
 							return TypeId::FALSE;
@@ -457,6 +463,7 @@ pub fn evaluate_equality_inequality_operation(
 				lhs,
 				&EqualityAndInequality::StrictEqual,
 				rhs,
+				info,
 				types,
 				strict_casts,
 			);
@@ -468,6 +475,7 @@ pub fn evaluate_equality_inequality_operation(
 					lhs,
 					&EqualityAndInequality::LessThan,
 					rhs,
+					info,
 					types,
 					strict_casts,
 				)
@@ -476,6 +484,7 @@ pub fn evaluate_equality_inequality_operation(
 					lhs,
 					&EqualityAndInequality::LessThan,
 					rhs,
+					info,
 					types,
 					strict_casts,
 				);
@@ -487,6 +496,7 @@ pub fn evaluate_equality_inequality_operation(
 				lhs,
 				&EqualityAndInequality::StrictEqual,
 				rhs,
+				info,
 				types,
 				strict_casts,
 			);
@@ -506,6 +516,7 @@ pub fn evaluate_equality_inequality_operation(
 				lhs,
 				&EqualityAndInequality::Equal,
 				rhs,
+				info,
 				types,
 				strict_casts,
 			);
@@ -521,6 +532,7 @@ pub fn evaluate_equality_inequality_operation(
 			rhs,
 			&EqualityAndInequality::LessThan,
 			lhs,
+			info,
 			types,
 			strict_casts,
 		),
@@ -529,6 +541,7 @@ pub fn evaluate_equality_inequality_operation(
 			rhs,
 			&EqualityAndInequality::LessThanOrEqual,
 			lhs,
+			info,
 			types,
 			strict_casts,
 		),
@@ -536,11 +549,16 @@ pub fn evaluate_equality_inequality_operation(
 }
 
 #[allow(clippy::let_and_return)]
-pub fn is_null_or_undefined(ty: TypeId, types: &mut TypeStore) -> TypeId {
+pub fn is_null_or_undefined(
+	ty: TypeId,
+	info: &impl crate::context::InformationChain,
+	types: &mut TypeStore,
+) -> TypeId {
 	let is_null = evaluate_equality_inequality_operation(
 		ty,
 		&EqualityAndInequality::StrictEqual,
 		TypeId::NULL_TYPE,
+		info,
 		types,
 		false,
 	);
@@ -614,7 +632,8 @@ pub fn evaluate_logical_operation_with_expression<
 			checking_data,
 		)),
 		LogicalOperator::NullCoalescing => {
-			let is_lhs_null_or_undefined = is_null_or_undefined(lhs.0, &mut checking_data.types);
+			let is_lhs_null_or_undefined =
+				is_null_or_undefined(lhs.0, environment, &mut checking_data.types);
 			// Equivalent to: `(lhs is null or undefined) ? lhs : rhs`
 			Ok(new_conditional_context(
 				environment,

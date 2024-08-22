@@ -37,7 +37,7 @@ declare function debug_state(): void
 
 // A function, as it should be!
 @Constant
-declare function satisfies<T>(t: T): T
+declare function satisfies<YE>(t: YE): YE
 
 interface ImportEnv {
     [key: string]: string;

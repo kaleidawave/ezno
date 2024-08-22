@@ -676,11 +676,33 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						},
 					))
 				};
-				let rhs = synthesise_type_annotation(
-					dynamic_part.get_inner_ref(),
-					environment,
-					checking_data,
-				);
+				// WIP fix correcting `infer T` to `infer T extends string` so that string addition works
+				let dynamic_part = dynamic_part.get_inner_ref();
+				let rhs = if let TypeAnnotation::Infer { name, extends: None, position: _ } =
+					dynamic_part
+				{
+					if let Scope::TypeAnnotationCondition { ref mut infer_parameters } =
+						environment.context_type.scope
+					{
+						let infer_type = checking_data.types.register_type(Type::RootPolyType(
+							crate::types::PolyNature::InferGeneric {
+								name: name.clone(),
+								extends: TypeId::STRING_TYPE,
+							},
+						));
+
+						let existing = infer_parameters.insert(name.clone(), infer_type);
+						if existing.is_some() {
+							crate::utilities::notify!("Raise error diagnostic");
+						}
+						infer_type
+					} else {
+						crate::utilities::notify!("Raise error diagnostic");
+						TypeId::ERROR_TYPE
+					}
+				} else {
+					synthesise_type_annotation(dynamic_part, environment, checking_data)
+				};
 				let constructor = crate::types::Constructor::BinaryOperator {
 					lhs: acc,
 					operator: crate::features::operations::MathematicalAndBitwise::Add,

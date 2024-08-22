@@ -9,7 +9,8 @@ use crate::{
 		generics::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
 		},
-		get_conditional, get_constraint, is_inferrable_type, is_pseudo_continous,
+		get_constraint,
+		helpers::{get_conditional, is_inferrable_type, is_pseudo_continous},
 		logical::{
 			BasedOnKey, Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical,
 			PropertyOn,

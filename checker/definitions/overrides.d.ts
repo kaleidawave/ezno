@@ -103,10 +103,10 @@ declare class Array<T> {
         if (length === 0) {
             return ""
         }
-        let s: string = "" + this[0];
+        let s: string = "" + (this[0] as string);
         while (i < length) {
             s += joiner;
-            s += this[i++];
+            s += this[i++] as string;
         }
         return s
     }

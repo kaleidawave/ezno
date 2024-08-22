@@ -21,13 +21,24 @@ declare let x: NotNotANumber;
 #### Less than checks
 
 ```ts
-function x(a: GreaterThan<4>) {
+function func1(a: GreaterThan<4>) {
+	(a > 3) satisfies true;
 	(a < 3) satisfies false;
 	(a < 10) satisfies string;
+}
+
+// thanks narrowing 🙏
+function func2(a: number) {
+	if (a > 2) {
+		(a > 1) satisfies true;
+		(a < 1) satisfies false;
+		(a > 6) satisfies number;
+	}
 }
 ```
 
 - Expected string, found boolean
+- Expected number, found boolean
 
 #### Bad arithmetic operator
 
@@ -42,3 +53,27 @@ console + 2
 > TODO bad diagnostic
 
 - Cannot Console Add 2
+
+#### Inequality checks
+
+```ts
+function func(a: number) {
+	a < console;
+}
+```
+
+- TODO
+
+#### Disjoint equality
+
+```ts
+function neverEqual(a: string, b: number) {
+	(a === b) satisfies false;
+}
+
+function sometime(a: string | number, b: number) {
+	(a === b) satisfies string;
+}
+```
+
+- Expected string, found boolean

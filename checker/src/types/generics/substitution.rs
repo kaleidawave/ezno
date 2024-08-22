@@ -210,11 +210,13 @@ pub(crate) fn substitute(
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) | PolyNature::Error(_) = nature {
 				id
-			} else if let PolyNature::FunctionGeneric { .. }
-			| PolyNature::StructureGeneric { .. }
-			| PolyNature::InferGeneric { .. } = nature
-			{
+			} else if let PolyNature::InferGeneric { .. } = nature {
 				// Infer generic is fine for `type Index<T> = T extends Array<infer I> ? I : never`;
+				crate::utilities::notify!("No argument for infer generic (sometimes fine)");
+				id
+			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
+				nature
+			{
 				crate::utilities::notify!(
 					"Could not find argument for explicit generic {:?} (nature={:?})",
 					id,
@@ -238,7 +240,8 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_mathematical_operation(lhs, operator, rhs, types, false) {
+				match evaluate_mathematical_operation(lhs, operator, rhs, environment, types, false)
+				{
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
@@ -475,7 +478,14 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false)
+				evaluate_equality_inequality_operation(
+					lhs,
+					&operator,
+					rhs,
+					environment,
+					types,
+					false,
+				)
 			}
 			Constructor::TypeOperator(op) => match op {
 				crate::types::TypeOperator::TypeOf(ty) => {

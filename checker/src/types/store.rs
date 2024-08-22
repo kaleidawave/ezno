@@ -65,7 +65,7 @@ impl Default for TypeStore {
 			Type::Interface { name: "object".to_owned(), parameters: None, extends: None },
 			Type::Class { name: "Function".to_owned(), type_parameters: None },
 			Type::Class { name: "RegExp".to_owned(), type_parameters: None },
-			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
+			Type::Class { name: "Symbol".to_owned(), type_parameters: None },
 			// true
 			Type::Constant(Constant::Boolean(true)),
 			// false
@@ -187,6 +187,7 @@ impl Default for TypeStore {
 			},
 			Type::RootPolyType(PolyNature::Open(TypeId::BOOLEAN_TYPE)),
 			Type::RootPolyType(PolyNature::Open(TypeId::NUMBER_TYPE)),
+			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 		];
 
 		// Check that above is correct, TODO eventually a macro

@@ -260,13 +260,27 @@ pub(crate) fn type_is_subtype_with_generics(
 	// Eager things
 	match right_ty {
 		Type::Narrowed { narrowed_to: right, .. } | Type::AliasTo { to: right, .. } => {
-			return type_is_subtype_with_generics(
+			let result = type_is_subtype_with_generics(
 				(base_type, base_type_arguments),
 				(*right, ty_structure_arguments),
 				state,
 				information,
 				types,
 			);
+			// Temp fix for narrowing constants
+			return if let (Type::Narrowed { from, .. }, SubTypeResult::IsNotSubType(_), true) =
+				(right_ty, &result, super::helpers::is_not_constant(*right, types))
+			{
+				type_is_subtype_with_generics(
+					(*from, base_type_arguments),
+					(*right, ty_structure_arguments),
+					state,
+					information,
+					types,
+				)
+			} else {
+				result
+			};
 		}
 		Type::Or(left, right) => {
 			let right = *right;
@@ -1521,7 +1535,10 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 				Type::FunctionReference(_) => todo!(),
 				Type::SpecialObject(_) => todo!(),
-				Type::Class { .. } => todo!(),
+				Type::Class { .. } => {
+					crate::utilities::notify!("lhs={:?} and rhs={:?}", left_ty, right_ty);
+					todo!()
+				}
 			}
 		}
 		Type::SpecialObject(SpecialObject::Null) => {

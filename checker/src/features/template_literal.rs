@@ -8,7 +8,7 @@ use crate::{
 			application_result_to_return_type, Callable, CallingContext, CallingInput,
 			SynthesisedArgument,
 		},
-		cast_as_string, TypeStore,
+		cast_as_string,
 	},
 	CheckingData, Constant, Environment, Type, TypeId,
 };
@@ -146,6 +146,7 @@ where
 				acc,
 				crate::features::operations::MathematicalAndBitwise::Add,
 				lhs,
+				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
@@ -165,6 +166,7 @@ where
 				acc,
 				crate::features::operations::MathematicalAndBitwise::Add,
 				rhs,
+				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
@@ -184,6 +186,7 @@ where
 				acc,
 				crate::features::operations::MathematicalAndBitwise::Add,
 				value,
+				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
@@ -194,44 +197,5 @@ where
 				TypeId::ERROR_TYPE
 			}
 		}
-	}
-}
-
-/// **Expects static part first**
-///
-/// TODO API is different to the `synthesise_template_literal_expression` above
-pub fn synthesize_template_literal_type(parts: Vec<TypeId>, types: &mut TypeStore) -> TypeId {
-	let mut parts_iter = parts.into_iter();
-	if let Some(first) = parts_iter.next() {
-		let mut acc = first;
-		for other in parts_iter {
-			// TODO unfold_alias function
-			let other = if let Type::AliasTo { to, .. } = types.get_type_by_id(other) {
-				*to
-			} else {
-				other
-			};
-			let result = super::operations::evaluate_mathematical_operation(
-				acc,
-				crate::features::operations::MathematicalAndBitwise::Add,
-				other,
-				types,
-				true,
-			);
-			match result {
-				Ok(result) => acc = result,
-				Err(()) => {
-					// crate::utilities::notify!(
-					// 	"acc is {:?}, other is {:?}",
-					// 	types.get_type_by_id(acc),
-					// 	types.get_type_by_id(other)
-					// );
-					crate::utilities::notify!("Invalid type template literal concatenation");
-				}
-			}
-		}
-		acc
-	} else {
-		types.new_constant_type(Constant::String(String::new()))
 	}
 }

@@ -595,7 +595,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			let site = position.with_source(environment.get_source());
 			if *is_optional {
-				let null_or_undefined = is_null_or_undefined(on, &mut checking_data.types);
+				let null_or_undefined =
+					is_null_or_undefined(on, environment, &mut checking_data.types);
 				Instance::RValue(new_conditional_context(
 					environment,
 					(null_or_undefined, parent.get_position()),
@@ -642,7 +643,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			if *is_optional {
 				let null_or_undefined =
-					is_null_or_undefined(being_indexed, &mut checking_data.types);
+					is_null_or_undefined(being_indexed, environment, &mut checking_data.types);
 				Instance::RValue(new_conditional_context(
 					environment,
 					(null_or_undefined, indexee.get_position()),

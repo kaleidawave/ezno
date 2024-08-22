@@ -154,8 +154,11 @@ impl TypeId {
 	pub const OPEN_BOOLEAN_TYPE: Self = Self(48);
 	pub const OPEN_NUMBER_TYPE: Self = Self(49);
 
+	/// For `+` operator
+	pub const STRING_OR_NUMBER: Self = Self(50);
+
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 50;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 51;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -963,107 +966,110 @@ impl Counter {
 	}
 }
 
-/// To fill in for TSC behavior for mapped types
-#[must_use]
-pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
-	match types.get_type_by_id(id) {
-		Type::AliasTo { to, .. } => references_key_of(*to, types),
-		Type::Or(lhs, rhs) | Type::And(lhs, rhs) => {
-			references_key_of(*lhs, types) || references_key_of(*rhs, types)
-		}
-		Type::RootPolyType(c) => references_key_of(c.get_constraint(), types),
-		Type::Constructor(c) => {
-			if let Constructor::KeyOf(..) = c {
-				true
-			} else if let Constructor::BinaryOperator { lhs, rhs, operator: _ } = c {
+pub(crate) mod helpers {
+	use super::{
+		get_constraint, subtyping, Constructor, GenericArguments, GenericChain, InformationChain,
+		PartiallyAppliedGenerics, PolyNature, Type, TypeId, TypeStore,
+	};
+
+	/// To fill in for TSC behavior for mapped types
+	#[must_use]
+	pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
+		match types.get_type_by_id(id) {
+			Type::AliasTo { to, .. } => references_key_of(*to, types),
+			Type::Or(lhs, rhs) | Type::And(lhs, rhs) => {
 				references_key_of(*lhs, types) || references_key_of(*rhs, types)
-			} else {
-				// TODO might have missed something here
-				false
 			}
-		}
-		Type::PartiallyAppliedGenerics(a) => {
-			if let GenericArguments::ExplicitRestrictions(ref e) = a.arguments {
-				e.0.iter().any(|(_, (lhs, _))| references_key_of(*lhs, types))
-			} else {
-				false
+			Type::RootPolyType(c) => references_key_of(c.get_constraint(), types),
+			Type::Constructor(c) => {
+				if let Constructor::KeyOf(..) = c {
+					true
+				} else if let Constructor::BinaryOperator { lhs, rhs, operator: _ } = c {
+					references_key_of(*lhs, types) || references_key_of(*rhs, types)
+				} else {
+					// TODO might have missed something here
+					false
+				}
 			}
-		}
-		Type::Interface { .. }
-		| Type::Class { .. }
-		| Type::Constant(_)
-		| Type::Narrowed { .. }
-		| Type::FunctionReference(_)
-		| Type::Object(_)
-		| Type::SpecialObject(_) => false,
-	}
-}
-
-#[allow(clippy::match_like_matches_macro)]
-#[must_use]
-pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
-	if ty == TypeId::ERROR_TYPE {
-		true
-	} else if let Type::RootPolyType(PolyNature::Error(_)) = types.get_type_by_id(ty) {
-		true
-	} else {
-		false
-	}
-}
-
-/// TODO want to skip mapped generics because that would break subtyping
-#[must_use]
-pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
-	match types.get_type_by_id(ty) {
-		Type::Constructor(crate::types::Constructor::ConditionalResult {
-			condition,
-			truthy_result,
-			otherwise_result,
-			result_union: _,
-		}) => Some((*condition, *truthy_result, *otherwise_result)),
-		Type::Or(left, right) => Some((TypeId::OPEN_BOOLEAN_TYPE, *left, *right)),
-		// For reasons !
-		Type::RootPolyType(PolyNature::MappedGeneric { .. }) => None,
-		_ => {
-			if let Some(constraint) = get_constraint(ty, types) {
-				get_conditional(constraint, types)
-			} else {
-				None
+			Type::PartiallyAppliedGenerics(a) => {
+				if let GenericArguments::ExplicitRestrictions(ref e) = a.arguments {
+					e.0.iter().any(|(_, (lhs, _))| references_key_of(*lhs, types))
+				} else {
+					false
+				}
 			}
+			Type::Interface { .. }
+			| Type::Class { .. }
+			| Type::Constant(_)
+			| Type::Narrowed { .. }
+			| Type::FunctionReference(_)
+			| Type::Object(_)
+			| Type::SpecialObject(_) => false,
 		}
 	}
-}
 
-/// TODO wip
-#[must_use]
-pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeStore) -> bool {
-	if let TypeId::NUMBER_TYPE | TypeId::STRING_TYPE = ty {
-		true
-	} else if let Some(arg) = generics.as_ref().and_then(|args| args.get_single_argument(ty)) {
-		is_pseudo_continous((arg, generics), types)
-	} else {
-		let ty = types.get_type_by_id(ty);
-		if let Type::Or(left, right) = ty {
-			is_pseudo_continous((*left, generics), types)
-				|| is_pseudo_continous((*right, generics), types)
-		} else if let Type::And(left, right) = ty {
-			is_pseudo_continous((*left, generics), types)
-				&& is_pseudo_continous((*right, generics), types)
-		} else if let Type::RootPolyType(PolyNature::MappedGeneric { extends, .. }) = ty {
-			is_pseudo_continous((*extends, generics), types)
+	#[allow(clippy::match_like_matches_macro)]
+	#[must_use]
+	pub fn _type_is_error(ty: TypeId, types: &TypeStore) -> bool {
+		if ty == TypeId::ERROR_TYPE {
+			true
+		} else if let Type::RootPolyType(PolyNature::Error(_)) = types.get_type_by_id(ty) {
+			true
 		} else {
 			false
 		}
 	}
-}
 
-#[must_use]
-pub fn is_inferrable_type(ty: TypeId) -> bool {
-	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
-}
+	/// TODO want to skip mapped generics because that would break subtyping
+	#[must_use]
+	pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
+		match types.get_type_by_id(ty) {
+			Type::Constructor(crate::types::Constructor::ConditionalResult {
+				condition,
+				truthy_result,
+				otherwise_result,
+				result_union: _,
+			}) => Some((*condition, *truthy_result, *otherwise_result)),
+			Type::Or(left, right) => Some((TypeId::OPEN_BOOLEAN_TYPE, *left, *right)),
+			// For reasons !
+			Type::RootPolyType(PolyNature::MappedGeneric { .. }) => None,
+			_ => {
+				if let Some(constraint) = get_constraint(ty, types) {
+					get_conditional(constraint, types)
+				} else {
+					None
+				}
+			}
+		}
+	}
 
-pub(crate) mod helpers {
-	use super::{subtyping, InformationChain, Type, TypeId, TypeStore};
+	/// TODO wip
+	#[must_use]
+	pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeStore) -> bool {
+		if let TypeId::NUMBER_TYPE | TypeId::STRING_TYPE = ty {
+			true
+		} else if let Some(arg) = generics.as_ref().and_then(|args| args.get_single_argument(ty)) {
+			is_pseudo_continous((arg, generics), types)
+		} else {
+			let ty = types.get_type_by_id(ty);
+			if let Type::Or(left, right) = ty {
+				is_pseudo_continous((*left, generics), types)
+					|| is_pseudo_continous((*right, generics), types)
+			} else if let Type::And(left, right) = ty {
+				is_pseudo_continous((*left, generics), types)
+					&& is_pseudo_continous((*right, generics), types)
+			} else if let Type::RootPolyType(PolyNature::MappedGeneric { extends, .. }) = ty {
+				is_pseudo_continous((*extends, generics), types)
+			} else {
+				false
+			}
+		}
+	}
+
+	#[must_use]
+	pub fn is_inferrable_type(ty: TypeId) -> bool {
+		matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
+	}
 
 	pub fn simple_subtype(
 		expr_ty: TypeId,
@@ -1089,6 +1095,20 @@ pub(crate) mod helpers {
 			*from
 		} else {
 			ty
+		}
+	}
+
+	/// Temp fix for equality of narrowing stuff
+	pub fn is_not_constant(ty: TypeId, types: &TypeStore) -> bool {
+		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::NOT_RESTRICTION,
+			arguments,
+		}) = types.get_type_by_id(ty)
+		{
+			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			matches!(types.get_type_by_id(inner), Type::Constant(_))
+		} else {
+			false
 		}
 	}
 }
