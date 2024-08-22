@@ -818,19 +818,6 @@ func(cb => { cb satisfies boolean }, "hi")
 
 > Was working, now broken (or removed)
 
-#### Readonly property
-
-> Should be working but parser current wraps `a` as `Readonly<string>` :(
-
-```ts
-function x(p: { readonly a: string, b: string }) {
-    p.a = "hi";
-	p.b = "hi";
-}
-```
-
-- Cannot write to property 'a'
-
 #### Destructuring using iterator
 
 ```ts
@@ -849,21 +836,6 @@ a satisfies 0; b satisfies string;
 ```
 
 - Expected string, found 1
-
-#### Tagged template literal
-
-> Waiting for parser definition updated to make this easier
-
-```ts
-function myTag(static_parts: Array<string>, other: string) {
-	return { static_parts, other }
-}
-
-const name = "Ben";
-myTag`${name}Hello ` satisfies string
-```
-
-- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
 
 ### Control flow
 

@@ -29,6 +29,9 @@ pub struct TypeCheckOptions {
 	/// For post type check optimisations and LSP. Stores both expressions and type annotations
 	pub store_type_mappings: bool,
 
+	/// ?
+	pub extra_syntax: bool,
+
 	/// TODO WIP
 	pub parse_comments: bool,
 
@@ -74,6 +77,7 @@ impl Default for TypeCheckOptions {
 			max_inline_count: 300,
 			measure_time: false,
 			debug_dts: false,
+			extra_syntax: true,
 		}
 	}
 }

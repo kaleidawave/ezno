@@ -280,11 +280,13 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				if on == TypeId::ERROR_TYPE {
 					(TypeId::ERROR_TYPE, None)
 				} else {
-					todo!("function calling inference")
+					crate::utilities::notify!("TODO function calling inference on {:?}", on);
+					(TypeId::ERROR_TYPE, None)
 				}
 			}
 			NeedsCalculation::Proxy(..) => {
-				todo!("calling proxy")
+				crate::utilities::notify!("TODO calling proxy");
+				(TypeId::ERROR_TYPE, None)
 			}
 		},
 		Err(Invalid(ty)) => {
@@ -490,6 +492,9 @@ fn get_logical_callable_from_type(
 				right: Box::new(right),
 			}
 			.into())
+		}
+		Type::Narrowed { narrowed_to, from } => {
+			get_logical_callable_from_type(*narrowed_to, on, Some(*from), types)
 		}
 		Type::AliasTo { to, name: _, parameters } => {
 			if parameters.is_some() {
@@ -943,14 +948,14 @@ fn mark_possible_mutation(
 		| Type::Class { .. }
 		| Type::AliasTo { .. }
 		| Type::And(_, _)
-		| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+		| Type::Object(ObjectNature::AnonymousTypeAnnotation(_))
 		| Type::FunctionReference(_)
 		| Type::PartiallyAppliedGenerics(_)
 		| Type::Or(_, _) => {
 			crate::utilities::notify!("Unreachable");
 		}
 		Type::Constant(_) => {}
-		Type::RootPolyType(_) | Type::Constructor(_) => {
+		Type::Narrowed { .. } | Type::RootPolyType(_) | Type::Constructor(_) => {
 			// All dependent anyway
 			crate::utilities::notify!("TODO if any properties set etc");
 		}
@@ -2018,18 +2023,18 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 						},
 					);
 
-					{
-						let debug = true;
-						crate::utilities::notify!(
-							"Here!, expected = {}",
-							crate::types::printing::print_type(
-								expected_type,
-								&checking_data.types,
-								environment,
-								debug
-							)
-						);
-					}
+					// {
+					// 	let debug = true;
+					// 	crate::utilities::notify!(
+					// 		"Here!, expected = {}",
+					// 		crate::types::printing::print_type(
+					// 			expected_type,
+					// 			&checking_data.types,
+					// 			environment,
+					// 			debug
+					// 		)
+					// 	);
+					// }
 
 					let value = A::synthesise_expression(
 						argument.expression,

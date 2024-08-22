@@ -79,9 +79,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						&mut environment.info.events,
 					);
 
+					// TODO narrowing
 					loop_body(environment, checking_data);
-
-					// crate::utilities::notify!("Loop does {:#?}", environment.info.events);
 
 					condition
 				},
@@ -748,6 +747,14 @@ impl LoopStructure {
 	}
 
 	pub fn calculate_iterations(self, types: &TypeStore) -> Result<usize, Self> {
+		self.calculate_iterations_f64(types).map(|result| result as usize)
+	}
+
+	pub fn known_to_never_exist(self, types: &TypeStore) -> bool {
+		self.calculate_iterations_f64(types).map_or(false, f64::is_infinite)
+	}
+
+	fn calculate_iterations_f64(self, types: &TypeStore) -> Result<f64, Self> {
 		let values = (
 			types.get_type_by_id(self.start),
 			types.get_type_by_id(self.increment_by),
@@ -768,7 +775,7 @@ impl LoopStructure {
 			// 	increment,
 			// 	iterations
 			// );
-			Ok(iterations.ceil() as usize)
+			Ok(iterations.ceil())
 		} else {
 			// crate::utilities::notify!("Iterations was {:?}", values);
 			Err(self)

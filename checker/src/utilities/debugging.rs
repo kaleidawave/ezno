@@ -40,6 +40,7 @@ pub(crate) fn unpause_debug_mode() {
 }
 
 /// For `notify!` macro below
+#[must_use]
 pub fn shorten(s: &str) -> &str {
 	&s[s.find("src").expect("file not under 'src' folder")..]
 }

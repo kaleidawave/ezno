@@ -1,11 +1,12 @@
 use source_map::SpanWithSource;
 
-use super::{CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference};
+use super::{
+	ApplicationResult, CallingTiming, Event, FinalEvent, PrototypeArgument, RootReference,
+};
 
 use crate::{
 	context::{get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior},
 	diagnostics::{TypeStringRepresentation, TDZ},
-	events::ApplicationResult,
 	features::{
 		iteration::{self, IterationKind},
 		objects::SpecialObject,
@@ -310,7 +311,10 @@ pub(crate) fn apply_events(
 					}
 					// TODO different
 					CallingTiming::QueueTask | CallingTiming::AtSomePointManyTimes => {
-						todo!()
+						crate::utilities::notify!(
+							"TODO CallingTiming::QueueTask | CallingTiming::AtSomePointManyTimes"
+						);
+						// todo!()
 						// TODO unsure whether need function id here
 						// if let Some(Constant::FunctionReference(function)) =
 						// 	environment.get_constant_type(on)

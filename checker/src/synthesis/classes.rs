@@ -579,7 +579,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					if let Some(ClassMember::Method(_, method)) = upcoming {
 						let actual = synthesise_shape(method, environment, checking_data);
 						(overloads, actual)
-					} else if class.name.declare {
+					} else if class.name.is_declare {
 						let actual = overloads.pop().unwrap();
 						(overloads, actual)
 					} else {

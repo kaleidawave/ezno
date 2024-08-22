@@ -99,8 +99,7 @@ impl ASTNode for Statement {
 					reader,
 					&state.line_starts,
 					statement.get_position().start,
-					// TODO
-					false,
+					options,
 				)?;
 			}
 			// TODO statement.can_be_labelled()
@@ -206,10 +205,22 @@ impl ASTNode for Statement {
 			TSXToken::SemiColon => {
 				Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
 			}
+			TSXToken::EOS => {
+				reader.next();
+				Ok(Statement::Empty(Span { start: 0, end: 0, source: () }))
+			}
 			// Finally ...!
 			_ => {
 				let expr = MultipleExpression::from_reader(reader, state, options)?;
-				Ok(Statement::Expression(expr))
+				if let (true, Expression::Marker { .. }) = (options.partial_syntax, expr.get_rhs())
+				{
+					Err(ParseError::new(
+						ParseErrors::ExpectedIdentifier,
+						reader.next().unwrap().get_span(),
+					))
+				} else {
+					Ok(Statement::Expression(expr))
+				}
 			}
 		}
 	}
@@ -237,13 +248,13 @@ impl ASTNode for Statement {
 			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, local),
 			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, local),
 			Statement::Comment(comment, _) => {
-				if options.should_add_comment(false) {
+				if options.should_add_comment(comment.as_str()) {
 					buf.push_str("//");
 					buf.push_str_contains_new_line(comment.as_str().trim_end());
 				}
 			}
 			Statement::MultiLineComment(comment, _) => {
-				if options.should_add_comment(comment.starts_with('*')) {
+				if options.should_add_comment(comment) {
 					buf.push_str("/*");
 					if options.pretty {
 						// Perform indent correction

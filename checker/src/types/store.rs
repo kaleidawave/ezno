@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
 	generics::generic_type_arguments::GenericArguments, get_constraint, properties::PropertyKey,
-	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeRelationOperator,
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeExtends,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -185,6 +185,8 @@ impl Default for TypeStore {
 				to: TypeId::STRING_TYPE,
 				parameters: Some(vec![TypeId::STRING_GENERIC]),
 			},
+			Type::RootPolyType(PolyNature::Open(TypeId::BOOLEAN_TYPE)),
+			Type::RootPolyType(PolyNature::Open(TypeId::NUMBER_TYPE)),
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -206,6 +208,7 @@ impl Default for TypeStore {
 }
 
 impl TypeStore {
+	#[must_use]
 	pub fn count_of_types(&self) -> usize {
 		self.types.len()
 	}
@@ -258,9 +261,29 @@ impl TypeStore {
 		if let TypeId::NEVER_TYPE = rhs {
 			return lhs;
 		}
+		// Normalise to ltr
+		if let Type::Or(lhs_lhs, lhs_rhs) = self.get_type_by_id(lhs) {
+			let new_lhs = *lhs_lhs;
+			let rhs = self.new_or_type(*lhs_rhs, rhs);
+			return self.new_or_type(new_lhs, rhs);
+		}
+
+		// TODO recursive contains
+		if let Type::Or(rhs_lhs, rhs_rhs) = self.get_type_by_id(rhs) {
+			if lhs == *rhs_lhs {
+				return self.new_or_type(lhs, *rhs_rhs);
+			} else if lhs == *rhs_rhs {
+				return self.new_or_type(lhs, *rhs_lhs);
+			}
+		}
 
 		let ty = Type::Or(lhs, rhs);
 		self.register_type(ty)
+	}
+
+	#[must_use]
+	pub fn new_or_type_from_iterator(&mut self, iter: impl IntoIterator<Item = TypeId>) -> TypeId {
+		iter.into_iter().reduce(|acc, n| self.new_or_type(acc, n)).unwrap_or(TypeId::NEVER_TYPE)
 	}
 
 	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> Result<TypeId, ()> {
@@ -334,9 +357,11 @@ impl TypeStore {
 		true_result: TypeId,
 		false_result: TypeId,
 	) -> TypeId {
-		let on = self.register_type(Type::Constructor(super::Constructor::TypeRelationOperator(
-			TypeRelationOperator::Extends { item: check_type, extends },
-		)));
+		let on =
+			self.register_type(Type::Constructor(super::Constructor::TypeExtends(TypeExtends {
+				item: check_type,
+				extends,
+			})));
 		self.new_conditional_type(on, true_result, false_result)
 	}
 
@@ -356,20 +381,29 @@ impl TypeStore {
 			otherwise_result
 		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
+		} else if let Type::Constructor(Constructor::UnaryOperator {
+			operator: crate::features::operations::PureUnary::LogicalNot,
+			operand: reversed_condition,
+		}) = self.get_type_by_id(condition)
+		{
+			self.new_conditional_type(*reversed_condition, otherwise_result, truthy_result)
 		} else {
-			// TODO on is negation then swap operands
 			let ty = Type::Constructor(super::Constructor::ConditionalResult {
 				condition,
 				truthy_result,
 				otherwise_result,
+				// TODO remove
 				result_union: self.new_or_type(truthy_result, otherwise_result),
 			});
 			self.register_type(ty)
 		}
 	}
 
-	pub fn new_anonymous_interface_type(&mut self) -> TypeId {
-		let ty = Type::Object(super::ObjectNature::AnonymousTypeAnnotation);
+	pub fn new_anonymous_interface_type(
+		&mut self,
+		properties: super::properties::Properties,
+	) -> TypeId {
+		let ty = Type::Object(super::ObjectNature::AnonymousTypeAnnotation(properties));
 		self.register_type(ty)
 	}
 
@@ -487,6 +521,10 @@ impl TypeStore {
 		self.register_type(Type::RootPolyType(PolyNature::Open(base)))
 	}
 
+	pub fn new_narrowed(&mut self, from: TypeId, narrowed_to: TypeId) -> TypeId {
+		self.register_type(Type::Narrowed { from, narrowed_to })
+	}
+
 	/// For any synthesis errors to keep the program going a type is needed.
 	/// Most of the time use [`TypeId:ERROR_TYPE`] which is generic any like type.
 	/// However sometimes we can use some type annotation instead to still leave some information.
@@ -575,7 +613,18 @@ impl TypeStore {
 			Intrinsic::GreaterThan => (TypeId::GREATER_THAN, TypeId::NUMBER_GENERIC),
 			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
 			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::Not => (TypeId::NOT_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::Not => {
+				// Double negation
+				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+					on: TypeId::NOT_RESTRICTION,
+					arguments: GenericArguments::ExplicitRestrictions(args),
+				}) = self.get_type_by_id(argument)
+				{
+					return args.get(&TypeId::T_TYPE).unwrap().0;
+				}
+
+				(TypeId::NOT_RESTRICTION, TypeId::T_TYPE)
+			}
 			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
 		};
 		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(

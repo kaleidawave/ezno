@@ -102,7 +102,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		// TODO not great
-		let start = reader.peek().unwrap().1;
+		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
 		Ok((
 			(Some(start), MethodHeader::from_reader(reader)),
 			WithComment::from_reader(reader, state, options)?,
@@ -224,7 +224,7 @@ impl ASTNode for ObjectLiteralMember {
 		};
 
 		// TODO not great
-		let start = reader.peek().unwrap().1;
+		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
 
 		// Catch for named get or set :(
 		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
@@ -293,15 +293,15 @@ impl ASTNode for ObjectLiteralMember {
 				buf.push_str("...");
 				spread_expr.to_string_from_buffer(buf, options, local);
 			}
-			Self::Comment(c, is_multiline, _) => {
-				if options.should_add_comment(c.starts_with('.')) {
+			Self::Comment(content, is_multiline, _) => {
+				if options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
-						buf.push_str(c);
+						buf.push_str(content);
 						buf.push_str("*/");
 					} else {
 						buf.push_str("//");
-						buf.push_str(c);
+						buf.push_str(content);
 						buf.push_new_line();
 					}
 				}

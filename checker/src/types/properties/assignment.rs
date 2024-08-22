@@ -9,9 +9,8 @@ use crate::{
 	types::{
 		calling::{CallingDiagnostics, CallingOutput, SynthesisedArgument},
 		get_constraint,
-		logical::{BasedOnKey, Logical, LogicalOrValid},
-		tuple_like, Constructor, GenericChain, NeedsCalculation, PartiallyAppliedGenerics,
-		TypeStore,
+		logical::{BasedOnKey, Logical, LogicalOrValid, NeedsCalculation},
+		tuple_like, Constructor, GenericChain, PartiallyAppliedGenerics, TypeStore,
 	},
 	Environment, Type, TypeId,
 };

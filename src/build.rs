@@ -89,8 +89,11 @@ pub fn build<T: crate::ReadFromFS>(
 		// TODO For all modules
 		let keys = data.modules.keys().cloned().collect::<Vec<_>>();
 
-		let null_module =
-			parser::Module { items: Default::default(), span: parser::source_map::Nullable::NULL };
+		let null_module = parser::Module {
+			hashbang_comment: None,
+			items: Default::default(),
+			span: parser::source_map::Nullable::NULL,
+		};
 
 		let mut outputs = Vec::new();
 
