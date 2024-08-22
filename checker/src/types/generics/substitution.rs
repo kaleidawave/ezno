@@ -255,10 +255,14 @@ pub(crate) fn substitute(
 			Constructor::UnaryOperator { operand, operator, .. } => {
 				let operand = substitute(operand, arguments, environment, types);
 				evaluate_pure_unary_operator(
-					operator, operand, types,
+					operator,
+					operand,
+					environment,
+					types,
 					// Restrictions should have been made ahead of time
 					false,
 				)
+				.unwrap_or(TypeId::ERROR_TYPE)
 			}
 			Constructor::ConditionalResult {
 				condition,
@@ -478,14 +482,22 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(
+				let result = evaluate_equality_inequality_operation(
 					lhs,
 					&operator,
 					rhs,
 					environment,
 					types,
 					false,
-				)
+				);
+
+				match result {
+					Ok((left, _warning)) => left,
+					Err(()) => {
+						crate::utilities::notify!("Error here");
+						TypeId::OPEN_BOOLEAN_TYPE
+					}
+				}
 			}
 			Constructor::TypeOperator(op) => match op {
 				crate::types::TypeOperator::TypeOf(ty) => {
@@ -497,6 +509,7 @@ pub(crate) fn substitute(
 				}
 				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
 					let lhs = substitute(lhs, arguments, environment, types);
+					let rhs_prototype = substitute(rhs_prototype, arguments, environment, types);
 					crate::features::instance_of_operator_rhs_prototype(
 						lhs,
 						rhs_prototype,

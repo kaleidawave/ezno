@@ -555,12 +555,24 @@ pub mod tsc {
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
 	) {
-		if !crate::types::helpers::simple_subtype(
-			expr_ty,
+		use crate::types::subtyping;
+
+		let mut state = subtyping::State {
+			already_checked: Default::default(),
+			mode: Default::default(),
+			contributions: Default::default(),
+			others: subtyping::SubTypingOptions { allow_errors: false },
+			object_constraints: None,
+		};
+
+		let result = subtyping::type_is_subtype(
 			to_satisfy,
+			expr_ty,
+			&mut state,
 			environment,
-			&checking_data.types,
-		) {
+			&mut checking_data.types,
+		);
+		if result.is_mismatch() {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
 				environment,

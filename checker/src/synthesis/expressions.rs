@@ -328,7 +328,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					};
 				}
 				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
-					let operand_type = synthesise_expression(
+					let operand = synthesise_expression(
 						operand,
 						environment,
 						checking_data,
@@ -340,12 +340,31 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						UnaryOperator::LogicalNot => PureUnary::LogicalNot,
 						_ => unreachable!(),
 					};
-					Instance::RValue(evaluate_pure_unary_operator(
+					// TODO abstract handling?
+					let result = evaluate_pure_unary_operator(
 						operator,
-						operand_type,
+						operand,
+						environment,
 						&mut checking_data.types,
 						checking_data.options.strict_casts,
-					))
+					);
+					if let Ok(result) = result {
+						Instance::RValue(result)
+					} else {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::InvalidUnaryOperation {
+								operator,
+								operand: TypeStringRepresentation::from_type_id(
+									operand,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								position: position.with_source(environment.get_source()),
+							},
+						);
+						Instance::RValue(TypeId::ERROR_TYPE)
+					}
 				}
 				UnaryOperator::Await => {
 					// TODO get promise T

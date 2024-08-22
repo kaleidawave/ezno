@@ -176,6 +176,11 @@ declare class Array<T> {
     //         return this[index]
     //     }
     // }
+
+    /// TODO incorrect definition, doesn't account for realms
+    static isArray(item: any) {
+        return item instanceof Array;
+    }
 }
 
 declare class Map<K, V> {
@@ -259,6 +264,20 @@ declare class String {
 
     // TODO
     split(splitter: string): Array<string>;
+}
+
+@Primitive("number")
+declare class Number {
+    static NEGATIVE_INFINITY: NegativeInfinity;
+    static POSITIVE_INFINITY: Infinity;
+
+    // static isFinite(item: any) {
+    //     return !(item === Number.NEGATIVE_INFINITY || item === Number.POSITIVE_INFINITY || Number.isNaN(item))
+    // }
+
+    static isNaN(item: any) {
+        return item !== item;
+    }
 }
 
 declare class Promise<T> { }

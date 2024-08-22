@@ -7,12 +7,12 @@ Currently implementing:
 #### Always known math
 
 ```ts
+// True regardless of 
 function func(a: number) { return a ** 0 }
 
 func satisfies string;
 
 declare let x: NotNotANumber;
-
 (x ** 1 === x) satisfies true;
 ```
 
@@ -40,7 +40,7 @@ function func2(a: number) {
 - Expected string, found boolean
 - Expected number, found boolean
 
-#### Bad arithmetic operator
+#### Arithmetic operand check
 
 > This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
 
@@ -50,11 +50,11 @@ function func2(a: number) {
 console + 2
 ```
 
-> TODO bad diagnostic
+> TODO temp diagnostic
 
 - Cannot Console Add 2
 
-#### Inequality checks
+#### Inequality operand check
 
 ```ts
 function func(a: number) {
@@ -62,7 +62,24 @@ function func(a: number) {
 }
 ```
 
-- TODO
+> TODO temp diagnostic
+
+- Cannot number LessThan Console
+
+#### Unary operand check
+
+```ts
+function func(a: number, b: boolean) {
+	const x = !a;
+	const y = ~b;
+	(!b), (~a);
+}
+```
+
+> TODO temp diagnostic
+
+- Cannot LogicalNot number
+- Cannot BitwiseNot boolean
 
 #### Disjoint equality
 
@@ -71,9 +88,51 @@ function neverEqual(a: string, b: number) {
 	(a === b) satisfies false;
 }
 
-function sometime(a: string | number, b: number) {
+function sometimes(a: string | number, b: number) {
 	(a === b) satisfies string;
 }
 ```
 
+- This equality is always false as string and number have no overlap
 - Expected string, found boolean
+
+#### Identity equality
+
+```ts
+function func(a: string, b: number) {
+	(a === a) satisfies string;
+    (b === b) satisfies null;
+}
+```
+
+- Expected string, found true
+- Expected null, found boolean
+
+### Statements
+
+#### Interface and generic constraint checking
+
+```ts
+interface BoxString<T extends string> {
+	inner: T
+}
+
+type BoxedFour = BoxString<"4">;
+type BoxedFive = BoxString<5>;
+```
+
+- Generic argument 5 does not match string
+
+### Narrowing
+
+#### External predicate
+
+```ts
+function func(param: number | Array<string>) {
+	if (Array.isArray(param)) {
+		param satisfies null;
+	}
+}
+```
+
+- Expected number, found Array\<string>

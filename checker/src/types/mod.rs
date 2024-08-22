@@ -90,75 +90,81 @@ impl TypeId {
 	/// This points to the ???
 	pub const SYMBOL_TYPE: Self = Self(15);
 
-	/// For more direct stuff and the rules
+	/// For direct constant and the rules
 	pub const TRUE: Self = Self(16);
 	pub const FALSE: Self = Self(17);
 	pub const ZERO: Self = Self(18);
 	pub const ONE: Self = Self(19);
 	pub const NAN: Self = Self(20);
-	pub const EMPTY_STRING: Self = Self(21);
+	pub const NEG_INFINITY: Self = Self(21);
+	pub const INFINITY: Self = Self(22);
+	pub const FLOAT_MIN: Self = Self(23);
+	pub const FLOAT_MAX: Self = Self(24);
+	pub const FLOAT_EPSILON: Self = Self(25);
+	/// ""
+	pub const EMPTY_STRING: Self = Self(26);
 
 	/// Shortcut for inferred this
 	/// TODO remove
-	pub const ANY_INFERRED_FREE_THIS: Self = Self(22);
+	pub const ANY_INFERRED_FREE_THIS: Self = Self(27);
 
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
-	pub const NEW_TARGET_ARG: Self = Self(23);
+	pub const NEW_TARGET_ARG: Self = Self(28);
 
-	pub const IMPORT_META: Self = Self(24);
+	pub const IMPORT_META: Self = Self(29);
 
 	// known symbols
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator>
-	pub const SYMBOL_ITERATOR: Self = Self(25);
+	pub const SYMBOL_ITERATOR: Self = Self(30);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator>
-	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(26);
+	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(31);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance>
-	pub const SYMBOL_HAS_INSTANCE: Self = Self(27);
+	pub const SYMBOL_HAS_INSTANCE: Self = Self(32);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive>
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(28);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(33);
 
 	// TSC intrinsics
-	pub const STRING_GENERIC: Self = Self(29);
-	pub const STRING_UPPERCASE: Self = Self(30);
-	pub const STRING_LOWERCASE: Self = Self(31);
-	pub const STRING_CAPITALIZE: Self = Self(32);
-	pub const STRING_UNCAPITALIZE: Self = Self(33);
-	pub const NO_INFER: Self = Self(34);
+	pub const STRING_GENERIC: Self = Self(34);
+	pub const STRING_UPPERCASE: Self = Self(35);
+	pub const STRING_LOWERCASE: Self = Self(36);
+	pub const STRING_CAPITALIZE: Self = Self(37);
+	pub const STRING_UNCAPITALIZE: Self = Self(38);
+	pub const NO_INFER: Self = Self(39);
 
 	/// Might be a special type in TSC
-	pub const READONLY_RESTRICTION: Self = Self(35);
+	pub const READONLY_RESTRICTION: Self = Self(40);
 
 	/// For mapped types
-	pub const NON_OPTIONAL_KEY_ARGUMENT: Self = Self(36);
+	pub const NON_OPTIONAL_KEY_ARGUMENT: Self = Self(41);
 	/// For mapped types
-	pub const WRITABLE_KEY_ARGUMENT: Self = Self(37);
+	pub const WRITABLE_KEY_ARGUMENT: Self = Self(42);
 
 	// Ezno intrinsics
 
 	/// Used in [`Self::LESS_THAN`], [`Self::LESS_THAN`] and [`Self::MULTIPLE_OF`]
-	pub const NUMBER_GENERIC: Self = Self(38);
-	pub const LESS_THAN: Self = Self(39);
-	pub const GREATER_THAN: Self = Self(40);
-	pub const MULTIPLE_OF: Self = Self(41);
-	pub const NOT_NOT_A_NUMBER: Self = Self(42);
-	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(43);
+	pub const NUMBER_GENERIC: Self = Self(43);
+	pub const LESS_THAN: Self = Self(44);
+	pub const GREATER_THAN: Self = Self(45);
+	pub const MULTIPLE_OF: Self = Self(46);
+	pub const NOT_NOT_A_NUMBER: Self = Self(47);
+	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(48);
 
-	pub const LITERAL_RESTRICTION: Self = Self(44);
-	pub const EXCLUSIVE_RESTRICTION: Self = Self(45);
-	pub const NOT_RESTRICTION: Self = Self(46);
+	pub const LITERAL_RESTRICTION: Self = Self(49);
+	pub const EXCLUSIVE_RESTRICTION: Self = Self(50);
+	pub const NOT_RESTRICTION: Self = Self(51);
 
 	/// This is needed for the TSC string intrinsics
-	pub const CASE_INSENSITIVE: Self = Self(47);
+	pub const CASE_INSENSITIVE: Self = Self(52);
 
 	/// WIP
-	pub const OPEN_BOOLEAN_TYPE: Self = Self(48);
-	pub const OPEN_NUMBER_TYPE: Self = Self(49);
+	pub const OPEN_BOOLEAN_TYPE: Self = Self(53);
+	pub const OPEN_NUMBER_TYPE: Self = Self(54);
 
 	/// For `+` operator
-	pub const STRING_OR_NUMBER: Self = Self(50);
+	pub const STRING_OR_NUMBER: Self = Self(55);
 
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 51;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 56;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -1071,6 +1077,8 @@ pub(crate) mod helpers {
 		matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
 	}
 
+	/// For quick checking
+	#[must_use]
 	pub fn simple_subtype(
 		expr_ty: TypeId,
 		to_satisfy: TypeId,
@@ -1081,7 +1089,7 @@ pub(crate) mod helpers {
 			already_checked: Default::default(),
 			mode: Default::default(),
 			contributions: Default::default(),
-			others: subtyping::SubTypingOptions { allow_errors: false },
+			others: subtyping::SubTypingOptions { allow_errors: true },
 			object_constraints: None,
 		};
 

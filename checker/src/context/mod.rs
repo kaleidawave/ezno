@@ -14,7 +14,9 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::environment::ExpectedReturnType,
-	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, TDZ},
+	diagnostics::{
+		CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, VariableUsedInTDZ,
+	},
 	events::RootReference,
 	features::{
 		assignments::Reference,
@@ -1008,7 +1010,7 @@ pub enum AssignmentError {
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
 	},
-	TDZ(TDZ),
+	VariableUsedInTDZ(VariableUsedInTDZ),
 }
 
 /// TODO mutable let imports

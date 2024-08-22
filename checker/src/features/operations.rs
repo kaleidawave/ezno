@@ -65,6 +65,7 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
 			);
+
 			match result {
 				Ok(result) => result,
 				Err(_err) => {
@@ -97,14 +98,70 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 		}
 		PureBinaryOperation::EqualityAndInequality(operator) => {
 			// Cannot error, but can be always true or false
-			evaluate_equality_inequality_operation(
+			let result = evaluate_equality_inequality_operation(
 				lhs,
 				&operator,
 				rhs,
 				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
-			)
+			);
+
+			match result {
+				Ok((result, warning)) => {
+					if let EqualityAndInequalityResultKind::Disjoint = warning {
+						let position = lhs_pos
+							.without_source()
+							.union(rhs_pos.without_source())
+							.with_source(environment.get_source());
+
+						checking_data.diagnostics_container.add_warning(
+							crate::TypeCheckWarning::DisjointEquality {
+								lhs: TypeStringRepresentation::from_type_id(
+									lhs,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								rhs: TypeStringRepresentation::from_type_id(
+									rhs,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								position,
+							},
+						);
+					}
+					result
+				}
+				Err(()) => {
+					let position = lhs_pos
+						.without_source()
+						.union(rhs_pos.without_source())
+						.with_source(environment.get_source());
+
+					checking_data.diagnostics_container.add_error(
+						crate::TypeCheckError::InvalidEqualityOperation {
+							operator,
+							lhs: TypeStringRepresentation::from_type_id(
+								lhs,
+								environment,
+								&checking_data.types,
+								false,
+							),
+							rhs: TypeStringRepresentation::from_type_id(
+								rhs,
+								environment,
+								&checking_data.types,
+								false,
+							),
+							position,
+						},
+					);
+					TypeId::ERROR_TYPE
+				}
+			}
 		}
 	}
 }
@@ -246,6 +303,12 @@ pub enum CanonicalEqualityAndInequality {
 	LessThan,
 }
 
+pub enum EqualityAndInequalityResultKind {
+	Constant,
+	Disjoint,
+	Condition,
+}
+
 pub fn evaluate_equality_inequality_operation(
 	mut lhs: TypeId,
 	operator: &EqualityAndInequality,
@@ -253,10 +316,10 @@ pub fn evaluate_equality_inequality_operation(
 	info: &impl crate::context::InformationChain,
 	types: &mut TypeStore,
 	strict_casts: bool,
-) -> TypeId {
+) -> Result<(TypeId, EqualityAndInequalityResultKind), ()> {
 	// `NaN == t` is always true
 	if lhs == TypeId::NAN || rhs == TypeId::NAN {
-		return TypeId::FALSE;
+		return Ok((TypeId::FALSE, EqualityAndInequalityResultKind::Constant));
 	}
 
 	match operator {
@@ -267,9 +330,12 @@ pub fn evaluate_equality_inequality_operation(
 			let is_dependent = left_dependent || types.get_type_by_id(rhs).is_dependent();
 
 			if is_dependent {
-				if lhs == rhs {
+				if lhs == rhs
+					&& crate::types::intrinsics::is_not_not_a_number(lhs, types)
+					&& crate::types::intrinsics::is_not_not_a_number(rhs, types)
+				{
 					// I think this is okay
-					return TypeId::TRUE;
+					return Ok((TypeId::TRUE, EqualityAndInequalityResultKind::Constant));
 				}
 
 				// Checks lhs and rhs type to see if they overlap
@@ -280,8 +346,7 @@ pub fn evaluate_equality_inequality_operation(
 					info,
 					types,
 				) {
-					// TODO warning with types disjoint
-					return TypeId::FALSE;
+					return Ok((TypeId::FALSE, EqualityAndInequalityResultKind::Disjoint));
 				}
 
 				// Sort if `*constant* == ...`. Ideally want constant type on the RHS
@@ -292,10 +357,16 @@ pub fn evaluate_equality_inequality_operation(
 					rhs,
 				};
 
-				types.register_type(crate::Type::Constructor(constructor))
+				Ok((
+					types.register_type(crate::Type::Constructor(constructor)),
+					EqualityAndInequalityResultKind::Condition,
+				))
 			} else {
 				match attempt_constant_equality(lhs, rhs, types) {
-					Ok(ty) => ty,
+					Ok(ty) => Ok((
+						if ty { TypeId::TRUE } else { TypeId::FALSE },
+						EqualityAndInequalityResultKind::Constant,
+					)),
 					Err(()) => {
 						unreachable!(
 							"should have been caught `is_dependent` above, {:?} === {:?}",
@@ -312,22 +383,25 @@ pub fn evaluate_equality_inequality_operation(
 				rhs: TypeId,
 				types: &mut TypeStore,
 				strict_casts: bool,
-			) -> Result<TypeId, ()> {
+			) -> Result<bool, ()> {
 				// Similar but reversed semantics to add
 				match (types.get_type_by_id(lhs), types.get_type_by_id(rhs)) {
-					(Type::Constant(Constant::String(a)), Type::Constant(Constant::String(b))) => {
+					(
+						Type::Constant(Constant::String(string1)),
+						Type::Constant(Constant::String(string2)),
+					) => {
 						// Yah rust includes string alphanumerical equivalence of strings
-						Ok(types.new_constant_type(Constant::Boolean(a < b)))
+						Ok(string1 < string2)
 					}
 					(Type::Constant(c1), Type::Constant(c2)) => {
 						let lhs = cast_as_number(c1, strict_casts)?;
 						let rhs = cast_as_number(c2, strict_casts)?;
-						Ok(types.new_constant_type(Constant::Boolean(lhs < rhs)))
+						Ok(lhs < rhs)
 					}
 					(lhs, rhs) => {
 						crate::utilities::notify!("{:?}", (lhs, rhs));
-						Ok(TypeId::OPEN_BOOLEAN_TYPE)
-						// Err(())
+						// Ok(TypeId::OPEN_BOOLEAN_TYPE)
+						Err(())
 					}
 				}
 			}
@@ -340,7 +414,7 @@ pub fn evaluate_equality_inequality_operation(
 					|| !simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
 				{
 					crate::utilities::notify!("TODO error here");
-					// return Err(());
+					return Err(());
 				}
 
 				// Tidies some things for counting loop iterations
@@ -377,7 +451,7 @@ pub fn evaluate_equality_inequality_operation(
 						crate::utilities::notify!("{:?} < {:?}", lhs, ceiling);
 						// We know that the rhs is always greater than ceiling
 						if *lhs >= *ceiling {
-							return TypeId::FALSE;
+							return Ok((TypeId::FALSE, EqualityAndInequalityResultKind::Constant));
 						}
 					}
 
@@ -390,7 +464,7 @@ pub fn evaluate_equality_inequality_operation(
 					) {
 						crate::utilities::notify!("{:?} {:?}", lhs, floor);
 						if *lhs <= *floor {
-							return TypeId::TRUE;
+							return Ok((TypeId::TRUE, EqualityAndInequalityResultKind::Constant));
 						}
 					}
 
@@ -405,7 +479,7 @@ pub fn evaluate_equality_inequality_operation(
 						crate::utilities::notify!("{:?} {:?}", rhs, ceiling);
 
 						if *rhs >= *ceiling {
-							return TypeId::TRUE;
+							return Ok((TypeId::TRUE, EqualityAndInequalityResultKind::Constant));
 						}
 					}
 
@@ -420,7 +494,7 @@ pub fn evaluate_equality_inequality_operation(
 						crate::utilities::notify!("{:?} {:?}", rhs, floor);
 
 						if *rhs <= *floor {
-							return TypeId::FALSE;
+							return Ok((TypeId::FALSE, EqualityAndInequalityResultKind::Constant));
 						}
 					}
 
@@ -443,33 +517,32 @@ pub fn evaluate_equality_inequality_operation(
 					operator: CanonicalEqualityAndInequality::LessThan,
 					rhs,
 				};
-				types.register_type(crate::Type::Constructor(constructor))
+				Ok((
+					types.register_type(crate::Type::Constructor(constructor)),
+					EqualityAndInequalityResultKind::Condition,
+				))
 			} else {
-				let less_than_result = attempt_less_than(lhs, rhs, types, strict_casts);
-				if let Ok(result) = less_than_result {
-					result
-				} else {
-					crate::utilities::notify!(
-						"Less than unreachable {:?}",
-						(types.get_type_by_id(lhs), types.get_type_by_id(rhs))
-					);
-					TypeId::ERROR_TYPE
-				}
+				attempt_less_than(lhs, rhs, types, strict_casts).map(|value| {
+					(
+						if value { TypeId::TRUE } else { TypeId::FALSE },
+						EqualityAndInequalityResultKind::Constant,
+					)
+				})
 			}
 		}
 		// equal OR less than
 		EqualityAndInequality::LessThanOrEqual => {
-			let equality_result = evaluate_equality_inequality_operation(
+			let (equality_result, warning) = evaluate_equality_inequality_operation(
 				lhs,
 				&EqualityAndInequality::StrictEqual,
 				rhs,
 				info,
 				types,
 				strict_casts,
-			);
+			)?;
 
 			if equality_result == TypeId::TRUE {
-				equality_result
+				Ok((equality_result, warning))
 			} else if equality_result == TypeId::FALSE {
 				evaluate_equality_inequality_operation(
 					lhs,
@@ -480,52 +553,64 @@ pub fn evaluate_equality_inequality_operation(
 					strict_casts,
 				)
 			} else {
-				let less_than_result = evaluate_equality_inequality_operation(
+				let (less_than_result, warning) = evaluate_equality_inequality_operation(
 					lhs,
 					&EqualityAndInequality::LessThan,
 					rhs,
 					info,
 					types,
 					strict_casts,
-				);
-				types.new_logical_or_type(equality_result, less_than_result)
+				)?;
+				Ok((types.new_logical_or_type(equality_result, less_than_result), warning))
 			}
 		}
 		EqualityAndInequality::StrictNotEqual => {
-			let equality_result = evaluate_equality_inequality_operation(
+			let (equality_result, kind) = evaluate_equality_inequality_operation(
 				lhs,
 				&EqualityAndInequality::StrictEqual,
 				rhs,
 				info,
 				types,
 				strict_casts,
-			);
-			evaluate_pure_unary_operator(
-				PureUnary::LogicalNot,
-				equality_result,
-				types,
-				strict_casts,
-			)
+			)?;
+			if let EqualityAndInequalityResultKind::Condition = kind {
+				Ok((types.new_logical_negation_type(equality_result), kind))
+			} else {
+				let negated = if let TypeId::TRUE = equality_result {
+					TypeId::FALSE
+				} else if let TypeId::FALSE = equality_result {
+					TypeId::TRUE
+				} else {
+					todo!()
+				};
+				Ok((negated, kind))
+			}
 		}
 		EqualityAndInequality::Equal => {
 			crate::utilities::notify!("TODO equal operator");
-			TypeId::OPEN_BOOLEAN_TYPE
+			Ok((TypeId::OPEN_BOOLEAN_TYPE, EqualityAndInequalityResultKind::Condition))
 		}
 		EqualityAndInequality::NotEqual => {
-			let equality_result = evaluate_equality_inequality_operation(
+			let (equality_result, kind) = evaluate_equality_inequality_operation(
 				lhs,
 				&EqualityAndInequality::Equal,
 				rhs,
 				info,
 				types,
 				strict_casts,
-			);
-			evaluate_pure_unary_operator(
-				PureUnary::LogicalNot,
-				equality_result,
-				types,
-				strict_casts,
-			)
+			)?;
+			if let EqualityAndInequalityResultKind::Condition = kind {
+				Ok((types.new_logical_negation_type(equality_result), kind))
+			} else {
+				let negated = if let TypeId::TRUE = equality_result {
+					TypeId::FALSE
+				} else if let TypeId::FALSE = equality_result {
+					TypeId::TRUE
+				} else {
+					todo!()
+				};
+				Ok((negated, kind))
+			}
 		}
 		// Swapping operands!
 		EqualityAndInequality::GreaterThan => evaluate_equality_inequality_operation(
@@ -572,7 +657,7 @@ pub fn is_null_or_undefined(
 	// );
 
 	// types.new_logical_or_type(is_null, is_undefined)
-	is_null
+	is_null.unwrap().0
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -678,23 +763,29 @@ pub enum PureUnary {
 pub fn evaluate_pure_unary_operator(
 	operator: PureUnary,
 	operand: TypeId,
+	info: &impl crate::context::InformationChain,
 	types: &mut TypeStore,
 	strict_casts: bool,
-) -> TypeId {
+) -> Result<TypeId, ()> {
 	if operand == TypeId::ERROR_TYPE {
-		return operand;
+		return Ok(operand);
 	}
 
 	match operator {
 		PureUnary::LogicalNot => {
 			if let Decidable::Known(value) = is_type_truthy_falsy(operand, types) {
 				if value {
-					TypeId::FALSE
+					Ok(TypeId::FALSE)
 				} else {
-					TypeId::TRUE
+					Ok(TypeId::TRUE)
 				}
 			} else {
-				types.new_logical_negation_type(operand)
+				let is_boolean = simple_subtype(operand, TypeId::BOOLEAN_TYPE, info, types);
+				if is_boolean {
+					Ok(types.new_logical_negation_type(operand))
+				} else {
+					Err(())
+				}
 			}
 		}
 		PureUnary::Negation | PureUnary::BitwiseNot => {
@@ -706,15 +797,19 @@ pub fn evaluate_pure_unary_operator(
 					PureUnary::BitwiseNot => f64::from(!(value as i32)),
 				};
 				let value = ordered_float::NotNan::try_from(value);
-				match value {
+				Ok(match value {
 					Ok(value) => types.new_constant_type(Constant::Number(value)),
 					Err(_) => TypeId::NAN,
-				}
+				})
 			} else {
-				types.register_type(Type::Constructor(crate::types::Constructor::UnaryOperator {
-					operator,
-					operand,
-				}))
+				let is_number = simple_subtype(operand, TypeId::NUMBER_TYPE, info, types);
+				if is_number {
+					Ok(types.register_type(Type::Constructor(
+						crate::types::Constructor::UnaryOperator { operator, operand },
+					)))
+				} else {
+					Err(())
+				}
 			}
 		}
 	}
@@ -723,28 +818,24 @@ pub fn evaluate_pure_unary_operator(
 /// Returns whether lhs and rhs are always equal or never equal. TODO more
 ///
 /// TODO return decidable.
-fn attempt_constant_equality(
-	lhs: TypeId,
-	rhs: TypeId,
-	types: &mut TypeStore,
-) -> Result<TypeId, ()> {
-	let are_equal = if lhs == rhs {
-		true
+fn attempt_constant_equality(lhs: TypeId, rhs: TypeId, types: &mut TypeStore) -> Result<bool, ()> {
+	if lhs == rhs {
+		Ok(true)
 	} else if matches!(lhs, TypeId::NULL_TYPE | TypeId::UNDEFINED_TYPE)
 		|| matches!(rhs, TypeId::NULL_TYPE | TypeId::UNDEFINED_TYPE)
 	{
 		// If above `==`` failed => false (as always have same `TypeId`)
-		false
+		Ok(false)
 	} else {
 		let lhs = types.get_type_by_id(lhs);
 		let rhs = types.get_type_by_id(rhs);
 		if let (Type::Constant(cst1), Type::Constant(cst2)) = (lhs, rhs) {
-			cst1 == cst2
+			Ok(cst1 == cst2)
 		} else if let (Type::Object(..) | Type::SpecialObject(SpecialObject::Function(..)), _)
 		| (_, Type::Object(..) | Type::SpecialObject(SpecialObject::Function(..))) = (lhs, rhs)
 		{
 			// Same objects and functions always have same type id. Poly case doesn't occur here
-			false
+			Ok(false)
 		}
 		// Temp fix for closures
 		else if let (
@@ -753,12 +844,10 @@ fn attempt_constant_equality(
 		) = (lhs, rhs)
 		{
 			// TODO does this work?
-			return attempt_constant_equality(*on_lhs, *on_rhs, types);
+			attempt_constant_equality(*on_lhs, *on_rhs, types)
 		} else {
 			crate::utilities::notify!("{:?} === {:?} is apparently false", lhs, rhs);
-			return Err(());
+			Err(())
 		}
-	};
-
-	Ok(types.new_constant_type(Constant::Boolean(are_equal)))
+	}
 }

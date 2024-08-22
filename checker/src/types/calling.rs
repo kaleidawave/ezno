@@ -3,7 +3,8 @@ use source_map::{BaseSpan, Nullable, SpanWithSource};
 use crate::{
 	context::{invocation::CheckThings, CallCheckingBehavior, Environment, InformationChain},
 	diagnostics::{
-		InfoDiagnostic, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ,
+		InfoDiagnostic, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
+		VariableUsedInTDZ,
 	},
 	events::{
 		application::ApplicationInput, apply_events, ApplicationResult, Event, RootReference,
@@ -1007,8 +1008,8 @@ pub enum FunctionCallingError {
 	CyclicRecursion(FunctionId, SpanWithSource),
 	NoLogicForIdentifier(String, SpanWithSource),
 	NeedsToBeCalledWithNewKeyword(SpanWithSource),
-	TDZ {
-		error: TDZ,
+	VariableUsedInTDZ {
+		error: VariableUsedInTDZ,
 		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
@@ -1191,7 +1192,10 @@ impl FunctionType {
 
 					// Adjust call sites. (because they aren't currently passed down)
 					for d in &mut diagnostics.errors[current_errors..] {
-						if let FunctionCallingError::TDZ { call_site: ref mut c, .. }
+						if let FunctionCallingError::VariableUsedInTDZ {
+							call_site: ref mut c,
+							..
+						}
 						| FunctionCallingError::SetPropertyConstraint {
 							call_site: ref mut c,
 							..

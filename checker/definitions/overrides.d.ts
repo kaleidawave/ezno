@@ -77,7 +77,8 @@ declare class Array<T> {
         let i: number = 0;
         while (i < length) {
             const value = this[i];
-            if (!cb(value, i++)) {
+            const result = cb(value, i++) as boolean;
+            if (!result) {
                 return false
             }
         }
@@ -117,6 +118,10 @@ declare class Array<T> {
         } else {
             return this[index]
         }
+    }
+
+    static isArray(item: any) {
+        return item instanceof Array;
     }
 }
 
@@ -346,7 +351,7 @@ declare class Object {
         return entries
     }
 
-    // TODO multiple arguments
+    // TODO spread source
     static assign(target: object, source: object): object {
         for (const key in source) {
             target[key] = source[key]

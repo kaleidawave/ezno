@@ -175,21 +175,26 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 #[allow(clippy::match_like_matches_macro)]
 #[must_use]
 pub fn is_not_not_a_number(on: TypeId, types: &TypeStore) -> bool {
-	let on = get_constraint(on, types).unwrap_or(on);
 	if on == TypeId::NOT_NOT_A_NUMBER {
 		true
+	} else if on == TypeId::NUMBER_TYPE {
+		false
 	} else {
 		let ty = types.get_type_by_id(on);
 		if let Type::And(lhs, rhs) = ty {
 			is_not_not_a_number(*lhs, types) || is_not_not_a_number(*rhs, types)
+		} else if let Type::Or(lhs, rhs) = ty {
+			is_not_not_a_number(*lhs, types) && is_not_not_a_number(*rhs, types)
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::MULTIPLE_OF | TypeId::LESS_THAN | TypeId::GREATER_THAN,
 			arguments: _,
 		}) = ty
 		{
 			true
+		} else if let Some(constraint) = get_constraint(on, types) {
+			is_not_not_a_number(constraint, types)
 		} else {
-			false
+			true
 		}
 	}
 }

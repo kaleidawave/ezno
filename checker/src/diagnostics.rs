@@ -2,9 +2,7 @@
 use crate::{
 	context::{environment::Label, AssignmentError, InformationChain},
 	diagnostics,
-	features::{
-		modules::CouldNotOpenFile, operations::MathematicalAndBitwise, CannotDeleteFromError,
-	},
+	features::{modules::CouldNotOpenFile, CannotDeleteFromError},
 	types::{
 		calling::FunctionCallingError,
 		printing::print_type_with_type_arguments,
@@ -53,7 +51,7 @@ pub enum Diagnostic {
 
 /// Temporary dead zone. Between the variable identifier being hoisted and the value being assigned
 #[allow(clippy::upper_case_acronyms)]
-pub struct TDZ {
+pub struct VariableUsedInTDZ {
 	pub variable_name: String,
 	pub position: SpanWithSource,
 }
@@ -326,10 +324,6 @@ pub(crate) enum TypeCheckError<'a> {
 	TypeHasNoGenericParameters(String, SpanWithSource),
 	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
-	#[allow(dead_code)]
-	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
-	#[allow(dead_code)]
-	InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
 	SetPropertyError(SetPropertyError),
 	ReturnedTypeDoesNotMatch {
 		expected_return_type: TypeStringRepresentation,
@@ -418,12 +412,23 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	#[allow(clippy::upper_case_acronyms)]
-	TDZ(TDZ),
-	#[allow(dead_code)]
+	VariableUsedInTDZ(VariableUsedInTDZ),
 	InvalidMathematicalOrBitwiseOperation {
-		operator: MathematicalAndBitwise,
+		operator: crate::features::operations::MathematicalAndBitwise,
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	// Only for `<` `>` etc
+	InvalidEqualityOperation {
+		operator: crate::features::operations::EqualityAndInequality,
+		lhs: TypeStringRepresentation,
+		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	InvalidUnaryOperation {
+		operator: crate::features::operations::PureUnary,
+		operand: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
 	#[allow(dead_code)]
@@ -565,7 +570,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						kind,
 					}
 				}
-				AssignmentError::TDZ(TDZ { variable_name, position }) => {
+				AssignmentError::VariableUsedInTDZ(VariableUsedInTDZ { variable_name, position }) => {
 					Diagnostic::Position {
 						reason: format!("Cannot assign to '{variable_name}' before declaration"),
 						position,
@@ -730,14 +735,30 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
-			TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
+			TypeCheckError::VariableUsedInTDZ(VariableUsedInTDZ { position, variable_name }) => Diagnostic::Position {
 				reason: format!("Variable '{variable_name}' used before declaration"),
 				position,
 				kind,
 			},
-			TypeCheckError::InvalidComparison(_, _) => todo!(),
-			TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 			TypeCheckError::InvalidMathematicalOrBitwiseOperation { operator, lhs, rhs, position } => Diagnostic::Position {
+				// TODO temp
+				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
+				position,
+				kind,
+			},
+			TypeCheckError::InvalidUnaryOperation {
+				operator,
+				operand,
+				position,
+			} => {
+				Diagnostic::Position {
+					// TODO temp
+					reason: format!("Cannot {operator:?} {operand}"),
+					position,
+					kind,
+				}
+			},
+			TypeCheckError::InvalidEqualityOperation { operator, lhs, rhs, position } => Diagnostic::Position {
 				// TODO temp
 				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
 				position,
@@ -908,6 +929,11 @@ pub enum TypeCheckWarning {
 		call_site: SpanWithSource,
 	},
 	Unreachable(SpanWithSource),
+	DisjointEquality {
+		lhs: TypeStringRepresentation,
+		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
 }
 
 impl From<TypeCheckWarning> for Diagnostic {
@@ -978,6 +1004,11 @@ impl From<TypeCheckWarning> for Diagnostic {
 					kind,
 				}
 			}
+			TypeCheckWarning::DisjointEquality { lhs, rhs, position } => Diagnostic::Position {
+				reason: format!("This equality is always false as {lhs} and {rhs} have no overlap"),
+				position,
+				kind,
+			},
 		}
 	}
 }
@@ -1120,7 +1151,7 @@ fn function_calling_error_diagnostic(
 			kind,
 			position,
 		},
-		FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => {
+		FunctionCallingError::VariableUsedInTDZ { error: VariableUsedInTDZ { position, variable_name }, call_site } => {
 			Diagnostic::PositionWithAdditionalLabels {
 				reason: format!("Variable '{variable_name}' used before declaration{context}"),
 				position: call_site,

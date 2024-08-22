@@ -76,6 +76,11 @@ impl Default for TypeStore {
 			Type::Constant(Constant::Number(1.into())),
 			// NaN
 			Type::Constant(Constant::NaN),
+			Type::Constant(Constant::Number(f64::NEG_INFINITY.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::INFINITY.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::MIN.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::MAX.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::EPSILON.try_into().unwrap())),
 			// ""
 			Type::Constant(Constant::String(String::new())),
 			// inferred this free variable shortcut
