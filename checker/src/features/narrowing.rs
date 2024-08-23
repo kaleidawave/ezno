@@ -99,6 +99,11 @@ pub fn narrow_based_on_expression(
 						);
 					}
 
+					if negate && lhs == rhs {
+						into.insert(*lhs, types.new_narrowed(*lhs, TypeId::NOT_NOT_A_NUMBER));
+						return;
+					}
+
 					let lhs = get_origin(*lhs, types);
 
 					let result = if negate {

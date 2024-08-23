@@ -543,12 +543,14 @@ pub(crate) fn get_property_unbound(
 				}
 			}
 			Type::Constant(Constant::String(s)) if under.is_equal_to("length") => {
-				// TODO temp TypeId::NUMBER_GENERIC for slice member
+				// TODO temp TypeId::NUMBER_BOTTOM_GENERIC for slice member
 				let count = s.chars().count();
 				Ok(Logical::BasedOnKey(BasedOnKey::Left {
-					value: Box::new(Logical::Pure(PropertyValue::Value(TypeId::NUMBER_GENERIC))),
+					value: Box::new(Logical::Pure(PropertyValue::Value(
+						TypeId::NUMBER_BOTTOM_GENERIC,
+					))),
 					key_arguments: crate::Map::from_iter([(
-						TypeId::NUMBER_GENERIC,
+						TypeId::NUMBER_BOTTOM_GENERIC,
 						(CovariantContribution::Number(count as f64), 0),
 					)]),
 				})

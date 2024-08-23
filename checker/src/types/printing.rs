@@ -87,9 +87,11 @@ pub fn print_type_into_buf<C: InformationChain>(
 			buf.push_str(" | ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
-		Type::Narrowed { narrowed_to, .. } => {
+		Type::Narrowed { narrowed_to, from } => {
 			if debug {
-				buf.push_str("(narrowed) ");
+				buf.push_str("(narrowed from ");
+				print_type_into_buf(*from, buf, cycles, args, types, info, debug);
+				buf.push_str(") ");
 			}
 			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
 		}
@@ -265,7 +267,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				result_union: _,
 			} => {
 				if let (TypeId::NEVER_TYPE, Ok(crate::types::TypeExtends { item, extends })) =
-					(TypeId::NEVER_TYPE, crate::types::TypeExtends::from_type(*condition, types))
+					(*otherwise_result, crate::types::TypeExtends::from_type(*condition, types))
 				{
 					buf.push_str("asserts ");
 					print_type_into_buf(item, buf, cycles, args, types, info, debug);

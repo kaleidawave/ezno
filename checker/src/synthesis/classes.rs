@@ -360,6 +360,10 @@ fn synthesise_class_declaration_extends_and_members<
 	// Adds event
 	environment.register_constructable_function(class_variable_type, function_id);
 
+	if let Some(variable) = class.name.get_variable_id(environment.get_source()) {
+		environment.info.variable_current_value.insert(variable, class_variable_type);
+	}
+
 	crate::utilities::notify!("At end {:?}", environment.context_type.free_variables);
 
 	{
@@ -478,10 +482,6 @@ fn synthesise_class_declaration_extends_and_members<
 				_ => {}
 			}
 		}
-	}
-
-	if let Some(variable) = class.name.get_variable_id(environment.get_source()) {
-		environment.info.variable_current_value.insert(variable, class_variable_type);
 	}
 
 	class_variable_type

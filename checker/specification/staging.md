@@ -37,7 +37,9 @@ function func2(a: number) {
 }
 ```
 
+- This equality is always false as ExclusiveRange<4, inf> and 3 have no overlap
 - Expected string, found boolean
+- This equality is always false as ExclusiveRange<2, inf> and 1 have no overlap
 - Expected number, found boolean
 
 #### Arithmetic operand check
@@ -57,7 +59,7 @@ console + 2
 #### Inequality operand check
 
 ```ts
-function func(a: number) {
+function isLessThan(a: number) {
 	a < console;
 }
 ```
@@ -98,6 +100,8 @@ function sometimes(a: string | number, b: number) {
 
 #### Identity equality
 
+> Can only do it not NaN
+
 ```ts
 function func(a: string, b: number) {
 	(a === a) satisfies string;
@@ -108,9 +112,19 @@ function func(a: string, b: number) {
 - Expected string, found true
 - Expected null, found boolean
 
+#### Ranges for interal types
+
+```ts
+function func(a: number) {
+	return Math.sin(a) > -1
+}
+```
+
+- TODO
+
 ### Statements
 
-#### Interface and generic constraint checking
+#### Interface generic constraint checking
 
 ```ts
 interface BoxString<T extends string> {
@@ -135,4 +149,34 @@ function func(param: number | Array<string>) {
 }
 ```
 
-- Expected number, found Array\<string>
+- Expected null, found Array\<string>
+
+#### Number `isNan`
+
+```ts
+function func(param: number) {
+	if (param !== param) {
+		param satisfies string;
+	}
+
+	// Derives from `!==`
+	if (Number.isNaN(param)) {
+		param satisfies null;
+	}
+}
+```
+
+- Expected string, found Not\<NaN>
+- Expected null, found Not\<NaN>
+
+#### Not disjoint
+
+```ts
+function func(param: number) {
+	if (param !== 2) {
+		return param === 2
+	}
+}
+```
+
+- This equality is always false as Not<2> and 2 have no overlap

@@ -1061,7 +1061,7 @@ function func(value: number) {
 	return "another"
 }
 
-loop satisfies (a: number) => "is three" | "another";
+func satisfies (a: number) => "is three" | "another";
 
 function loop(value: number) {
 	for (let i = 0; i < 10; i++) {

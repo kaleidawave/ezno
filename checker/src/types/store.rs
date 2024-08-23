@@ -41,9 +41,9 @@ pub struct TypeStore {
 
 impl Default for TypeStore {
 	fn default() -> Self {
-		// These have to be in the order of TypeId
+		// These have to be in the order of the `impl TypeId`
 		let types = vec![
-			// TODO will `TypeId::ANY_TYPE` cause any problems
+			// TODO will `TypeId::ANY_TYPE` cause any problems?
 			Type::RootPolyType(PolyNature::Error(TypeId::ANY_TYPE)),
 			Type::Interface { name: "never".to_owned(), parameters: None, extends: None },
 			Type::Interface { name: "any".to_owned(), parameters: None, extends: None },
@@ -145,20 +145,24 @@ impl Default for TypeStore {
 				name: "T".into(),
 				extends: TypeId::NUMBER_TYPE,
 			}),
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "U".into(),
+				extends: TypeId::NUMBER_TYPE,
+			}),
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "LessThan".into(),
-				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				name: "InclusiveRange".into(),
+				parameters: Some(vec![TypeId::NUMBER_BOTTOM_GENERIC, TypeId::NUMBER_TOP_GENERIC]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "GreaterThan".into(),
-				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				name: "ExclusiveRange".into(),
+				parameters: Some(vec![TypeId::NUMBER_BOTTOM_GENERIC, TypeId::NUMBER_TOP_GENERIC]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
-				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				parameters: Some(vec![TypeId::NUMBER_BOTTOM_GENERIC]),
 			},
 			// Intermediate for the below
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -608,6 +612,7 @@ impl TypeStore {
 	}
 
 	pub(crate) fn new_intrinsic(&mut self, intrinsic: &Intrinsic, argument: TypeId) -> TypeId {
+		use source_map::Nullable;
 		let (on, to_pair) = match intrinsic {
 			Intrinsic::Uppercase => (TypeId::STRING_UPPERCASE, TypeId::STRING_GENERIC),
 			Intrinsic::Lowercase => (TypeId::STRING_LOWERCASE, TypeId::STRING_GENERIC),
@@ -615,9 +620,27 @@ impl TypeStore {
 			Intrinsic::Uncapitalize => (TypeId::STRING_UNCAPITALIZE, TypeId::STRING_GENERIC),
 			Intrinsic::NoInfer => (TypeId::NO_INFER, TypeId::T_TYPE),
 			Intrinsic::Literal => (TypeId::LITERAL_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::LessThan => (TypeId::LESS_THAN, TypeId::NUMBER_GENERIC),
-			Intrinsic::GreaterThan => (TypeId::GREATER_THAN, TypeId::NUMBER_GENERIC),
-			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
+			Intrinsic::LessThan => {
+				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+					(TypeId::NUMBER_BOTTOM_GENERIC, (TypeId::NEG_INFINITY, SpanWithSource::NULL)),
+					(TypeId::NUMBER_TOP_GENERIC, (argument, SpanWithSource::NULL)),
+				]));
+
+				return self.register_type(Type::PartiallyAppliedGenerics(
+					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
+				));
+			}
+			Intrinsic::GreaterThan => {
+				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+					(TypeId::NUMBER_BOTTOM_GENERIC, (argument, SpanWithSource::NULL)),
+					(TypeId::NUMBER_TOP_GENERIC, (TypeId::INFINITY, SpanWithSource::NULL)),
+				]));
+
+				return self.register_type(Type::PartiallyAppliedGenerics(
+					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
+				));
+			}
+			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_BOTTOM_GENERIC),
 			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
 			Intrinsic::Not => {
 				// Double negation
@@ -635,7 +658,7 @@ impl TypeStore {
 		};
 		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
 			to_pair,
-			(argument, <SpanWithSource as source_map::Nullable>::NULL),
+			(argument, SpanWithSource::NULL),
 		)]));
 
 		self.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {

@@ -118,38 +118,153 @@ pub fn is_intrinsic(id: TypeId) -> bool {
 
 #[must_use]
 pub fn ezno_number_intrinsic(id: TypeId) -> bool {
-	matches!(id, TypeId::LESS_THAN | TypeId::GREATER_THAN | TypeId::MULTIPLE_OF)
+	matches!(id, TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE | TypeId::MULTIPLE_OF)
 }
 
 #[must_use]
-pub fn get_greater_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
+pub fn get_greater_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: TypeId::GREATER_THAN,
+		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
 		arguments,
 	}) = ty
 	{
-		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC)
+		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+		Some((
+			inclusive,
+			arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap(),
+		))
 	} else if let Type::And(lhs, rhs) = ty {
 		get_greater_than(*lhs, types).or_else(|| get_greater_than(*rhs, types))
+	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
+		Some((true, on))
 	} else {
 		None
 	}
 }
 
 #[must_use]
-pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
+pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: TypeId::LESS_THAN,
+		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
 		arguments,
 	}) = ty
 	{
-		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC)
+		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+		Some((inclusive, arguments.get_structure_restriction(TypeId::NUMBER_TOP_GENERIC).unwrap()))
 	} else if let Type::And(lhs, rhs) = ty {
 		get_less_than(*lhs, types).or_else(|| get_less_than(*rhs, types))
+	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
+		Some((true, on))
+	} else {
+		None
+	}
+}
+
+// TODO
+#[derive(Debug, Clone, Copy)]
+pub enum Range {
+	/// yes or `===`
+	Inclusive { floor: ordered_float::NotNan<f64>, ceiling: ordered_float::NotNan<f64> },
+	/// but not necessarily `===`
+	Exclusive { floor: ordered_float::NotNan<f64>, ceiling: ordered_float::NotNan<f64> },
+}
+
+impl Range {
+	pub fn single(on: ordered_float::NotNan<f64>) -> Self {
+		Self::Exclusive { floor: on, ceiling: on }
+	}
+
+	/// For disjointness. TODO Think this is correct
+	pub fn overlaps(self, other: Self) -> bool {
+		if let (
+			Self::Exclusive { floor: l_floor, ceiling: l_ceiling },
+			Self::Exclusive { floor: r_floor, ceiling: r_ceiling },
+		) = (self, other)
+		{
+			r_floor <= l_ceiling || r_ceiling >= l_floor
+		} else {
+			let (Self::Inclusive { floor: l_floor, ceiling: l_ceiling }
+			| Self::Exclusive { floor: l_floor, ceiling: l_ceiling }) = self;
+			let (Self::Inclusive { floor: r_floor, ceiling: r_ceiling }
+			| Self::Exclusive { floor: r_floor, ceiling: r_ceiling }) = other;
+			r_floor < l_ceiling || r_ceiling > l_floor
+		}
+	}
+
+	/// The ⊆ relation (non-strict). For subtyping. TODO Think this is correct
+	pub fn contained_in(self, other: Self) -> bool {
+		// Edge case
+		if let (
+			Self::Exclusive { floor: l_floor, ceiling: l_ceiling },
+			Self::Inclusive { floor: r_floor, ceiling: r_ceiling },
+		) = (self, other)
+		{
+			r_floor > l_floor && l_ceiling < r_ceiling
+		} else {
+			let (Self::Inclusive { floor: l_floor, ceiling: l_ceiling }
+			| Self::Exclusive { floor: l_floor, ceiling: l_ceiling }) = self;
+			let (Self::Inclusive { floor: r_floor, ceiling: r_ceiling }
+			| Self::Exclusive { floor: r_floor, ceiling: r_ceiling }) = other;
+			r_floor >= l_floor && l_ceiling <= r_ceiling
+		}
+	}
+
+	/// ∀ a in self >
+	pub fn above(self, other: Self) -> bool {
+		if let (
+			Self::Exclusive { floor: _, ceiling: l_ceiling },
+			Self::Exclusive { floor: r_floor, ceiling: _ },
+		) = (self, other)
+		{
+			r_floor < l_ceiling
+		} else {
+			let (Self::Inclusive { floor: _, ceiling: l_ceiling }
+			| Self::Exclusive { floor: _, ceiling: l_ceiling }) = self;
+			let (Self::Inclusive { floor: r_floor, ceiling: _ }
+			| Self::Exclusive { floor: r_floor, ceiling: _ }) = other;
+			r_floor <= l_ceiling
+		}
+	}
+
+	pub fn below(self, other: Self) -> bool {
+		other.above(self)
+	}
+}
+
+#[must_use]
+pub fn get_range(on: TypeId, types: &TypeStore) -> Option<Range> {
+	let on = get_constraint(on, types).unwrap_or(on);
+	let ty = types.get_type_by_id(on);
+	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
+		arguments,
+	}) = ty
+	{
+		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+		crate::utilities::notify!("{:?}", arguments);
+		let floor = arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap();
+		let ceiling = arguments.get_structure_restriction(TypeId::NUMBER_TOP_GENERIC).unwrap();
+		if let (
+			Type::Constant(crate::Constant::Number(floor)),
+			Type::Constant(crate::Constant::Number(ceiling)),
+		) = (types.get_type_by_id(floor), types.get_type_by_id(ceiling))
+		{
+			let (floor, ceiling) = (*floor, *ceiling);
+			Some(if inclusive {
+				Range::Inclusive { floor, ceiling }
+			} else {
+				Range::Exclusive { floor, ceiling }
+			})
+		} else {
+			crate::utilities::notify!("Not bottom top number");
+			None
+		}
+	} else if let Type::Constant(crate::Constant::Number(number)) = ty {
+		Some(Range::single(*number))
 	} else {
 		None
 	}
@@ -164,9 +279,11 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 		arguments,
 	}) = ty
 	{
-		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC)
+		arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC)
 	} else if let Type::And(lhs, rhs) = ty {
 		get_multiple(*lhs, types).or_else(|| get_multiple(*rhs, types))
+	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
+		Some(on)
 	} else {
 		None
 	}
@@ -177,7 +294,7 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 pub fn is_not_not_a_number(on: TypeId, types: &TypeStore) -> bool {
 	if on == TypeId::NOT_NOT_A_NUMBER {
 		true
-	} else if on == TypeId::NUMBER_TYPE {
+	} else if on == TypeId::NUMBER_TYPE || on == TypeId::ANY_TYPE {
 		false
 	} else {
 		let ty = types.get_type_by_id(on);
@@ -186,11 +303,13 @@ pub fn is_not_not_a_number(on: TypeId, types: &TypeStore) -> bool {
 		} else if let Type::Or(lhs, rhs) = ty {
 			is_not_not_a_number(*lhs, types) && is_not_not_a_number(*rhs, types)
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF | TypeId::LESS_THAN | TypeId::GREATER_THAN,
+			on: TypeId::MULTIPLE_OF | TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
 			arguments: _,
 		}) = ty
 		{
 			true
+		} else if let Type::AliasTo { to, .. } = ty {
+			is_not_not_a_number(*to, types)
 		} else if let Some(constraint) = get_constraint(on, types) {
 			is_not_not_a_number(constraint, types)
 		} else {

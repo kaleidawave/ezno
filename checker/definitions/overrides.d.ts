@@ -127,6 +127,9 @@ declare class Array<T> {
 
 type Record<K extends string, T> = { [P in K]: T }
 
+type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
+type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+
 declare class Map<T, U> {
     #keys: Array<T> = [];
     #value: Array<T> = [];
@@ -175,6 +178,20 @@ declare class String {
 
     // TODO
     split(splitter: string): Array<string>;
+}
+
+@Primitive("number")
+declare class Number {
+    static NEGATIVE_INFINITY: NegativeInfinity;
+    static POSITIVE_INFINITY: Infinity;
+
+    // static isFinite(item: any) {
+    //     return !(item === Number.NEGATIVE_INFINITY || item === Number.POSITIVE_INFINITY || Number.isNaN(item))
+    // }
+
+    static isNaN(item: any) {
+        return item !== item;
+    }
 }
 
 declare class Promise<T> { }

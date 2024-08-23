@@ -75,7 +75,7 @@ declare class Array<T> {
     map<U>(cb: (t: T, i?: number) => U): Array<U> {
         const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
-        while (i < length) {
+        while (i < (length as number)) {
             const value = this[i];
             const newValue = cb(value, i++);
             mapped.push(newValue)
@@ -211,6 +211,9 @@ declare class Map<K, V> {
 
 type Record<K extends string, T> = { [P in K]: T }
 
+type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
+type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+
 /**
  * Exclude from T those types that are assignable to U
  */
@@ -223,9 +226,9 @@ type Extract<T, U> = T extends U ? T : never;
 
 declare class Math {
     @Constant
-    static sin(x: number): number;
+    static sin(x: number): InclusiveRange<-1, 1>;
     @Constant
-    static cos(x: number): number;
+    static cos(x: number): InclusiveRange<-1, 1>;
     @Constant
     static tan(x: number): number;
     @Constant
@@ -245,7 +248,7 @@ declare class Math {
     static E: 2.718281828459045
 
     @InputOutput
-    static random(): number;
+    static random(): InclusiveRange<0, 1>;
 }
 
 @Primitive("string")

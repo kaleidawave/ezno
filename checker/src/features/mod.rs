@@ -570,7 +570,7 @@ pub mod tsc {
 			expr_ty,
 			&mut state,
 			environment,
-			&mut checking_data.types,
+			&checking_data.types,
 		);
 		if result.is_mismatch() {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(

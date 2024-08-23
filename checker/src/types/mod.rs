@@ -141,30 +141,31 @@ impl TypeId {
 
 	// Ezno intrinsics
 
-	/// Used in [`Self::LESS_THAN`], [`Self::LESS_THAN`] and [`Self::MULTIPLE_OF`]
-	pub const NUMBER_GENERIC: Self = Self(43);
-	pub const LESS_THAN: Self = Self(44);
-	pub const GREATER_THAN: Self = Self(45);
-	pub const MULTIPLE_OF: Self = Self(46);
-	pub const NOT_NOT_A_NUMBER: Self = Self(47);
-	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(48);
+	/// Used in [`Self::INCLUSIVE_RANGE`], [`Self::EXCLUSIVE_RANGE`] and [`Self::MULTIPLE_OF`]
+	pub const NUMBER_BOTTOM_GENERIC: Self = Self(43);
+	pub const NUMBER_TOP_GENERIC: Self = Self(44);
+	pub const INCLUSIVE_RANGE: Self = Self(45);
+	pub const EXCLUSIVE_RANGE: Self = Self(46);
+	pub const MULTIPLE_OF: Self = Self(47);
+	pub const NOT_NOT_A_NUMBER: Self = Self(48);
+	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(49);
 
-	pub const LITERAL_RESTRICTION: Self = Self(49);
-	pub const EXCLUSIVE_RESTRICTION: Self = Self(50);
-	pub const NOT_RESTRICTION: Self = Self(51);
+	pub const LITERAL_RESTRICTION: Self = Self(50);
+	pub const EXCLUSIVE_RESTRICTION: Self = Self(51);
+	pub const NOT_RESTRICTION: Self = Self(52);
 
 	/// This is needed for the TSC string intrinsics
-	pub const CASE_INSENSITIVE: Self = Self(52);
+	pub const CASE_INSENSITIVE: Self = Self(53);
 
 	/// WIP
-	pub const OPEN_BOOLEAN_TYPE: Self = Self(53);
-	pub const OPEN_NUMBER_TYPE: Self = Self(54);
+	pub const OPEN_BOOLEAN_TYPE: Self = Self(54);
+	pub const OPEN_NUMBER_TYPE: Self = Self(55);
 
 	/// For `+` operator
-	pub const STRING_OR_NUMBER: Self = Self(55);
+	pub const STRING_OR_NUMBER: Self = Self(56);
 
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 56;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 57;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -1107,7 +1108,7 @@ pub(crate) mod helpers {
 	}
 
 	/// Temp fix for equality of narrowing stuff
-	pub fn is_not_constant(ty: TypeId, types: &TypeStore) -> bool {
+	pub fn is_not_of_constant(ty: TypeId, types: &TypeStore) -> bool {
 		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,
 			arguments,

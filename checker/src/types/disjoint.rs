@@ -24,30 +24,8 @@ pub fn types_are_disjoint(
 		let left_ty = types.get_type_by_id(left);
 		let right_ty = types.get_type_by_id(right);
 
-		// if let Type::Constructor(Constructor::KeyOf(_)) = left_ty {
-		// 	todo!("get property != ")
-		// } else
-		if let Type::Constant(left_cst) = left_ty {
-			if let Type::Constant(right_cst) = right_ty {
-				left_cst != right_cst
-			} else {
-				types_are_disjoint(
-					left_cst.get_backing_type_id(),
-					right,
-					already_checked,
-					information,
-					types,
-				)
-			}
-		} else if let Type::Constant(right_cst) = right_ty {
-			types_are_disjoint(
-				right_cst.get_backing_type_id(),
-				left,
-				already_checked,
-				information,
-				types,
-			)
-		} else if let Type::Or(left_left, left_right) = left_ty {
+		// Order of these branches matter
+		if let Type::Or(left_left, left_right) = left_ty {
 			types_are_disjoint(*left_left, right, already_checked, information, types)
 				&& types_are_disjoint(*left_right, right, already_checked, information, types)
 		} else if let Type::And(left_left, left_right) = left_ty {
@@ -91,18 +69,80 @@ pub fn types_are_disjoint(
 			rhs_prototype != Some(TypeId::ARRAY_TYPE)
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,
-			arguments: _arguments,
+			arguments,
 		}) = left_ty
 		{
-			crate::utilities::notify!("TODO not restriction requires subtyping, skipping for now");
-			false
+			use super::subtyping;
+			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let mut state = subtyping::State {
+				// TODO
+				already_checked: already_checked.clone(),
+				mode: Default::default(),
+				contributions: None,
+				others: subtyping::SubTypingOptions { allow_errors: false },
+				object_constraints: None,
+			};
+
+			subtyping::type_is_subtype(right, inner, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,
-			arguments: _arguments,
+			arguments,
 		}) = right_ty
 		{
-			crate::utilities::notify!("TODO not restriction requires subtyping, skipping for now");
-			false
+			use super::subtyping;
+			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let mut state = subtyping::State {
+				// TODO
+				already_checked: already_checked.clone(),
+				mode: Default::default(),
+				contributions: None,
+				others: subtyping::SubTypingOptions { allow_errors: false },
+				object_constraints: None,
+			};
+
+			subtyping::type_is_subtype(left, inner, &mut state, information, types).is_subtype()
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+			arguments: _,
+		}) = left_ty
+		{
+			let range = super::intrinsics::get_range(left, types).unwrap();
+			if let Some(right_range) = super::intrinsics::get_range(right, types) {
+				!range.overlaps(right_range)
+			} else {
+				true
+			}
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+			arguments: _,
+		}) = right_ty
+		{
+			let range = super::intrinsics::get_range(right, types).unwrap();
+			if let Some(left_range) = super::intrinsics::get_range(left, types) {
+				!range.overlaps(left_range)
+			} else {
+				true
+			}
+		} else if let Type::Constant(left_cst) = left_ty {
+			if let Type::Constant(right_cst) = right_ty {
+				left_cst != right_cst
+			} else {
+				types_are_disjoint(
+					left_cst.get_backing_type_id(),
+					right,
+					already_checked,
+					information,
+					types,
+				)
+			}
+		} else if let Type::Constant(right_cst) = right_ty {
+			types_are_disjoint(
+				right_cst.get_backing_type_id(),
+				left,
+				already_checked,
+				information,
+				types,
+			)
 		} else if let Some(left) = super::get_constraint(left, types) {
 			// TODO not sure whether these should be here?
 			types_are_disjoint(left, right, already_checked, information, types)
