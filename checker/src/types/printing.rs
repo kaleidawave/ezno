@@ -200,6 +200,26 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 		},
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
+			// TypeId::INCLUSIVE_RANGE |
+			if let TypeId::EXCLUSIVE_RANGE = *on {
+				// let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+				let floor =
+					arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap();
+				let ceiling =
+					arguments.get_structure_restriction(TypeId::NUMBER_TOP_GENERIC).unwrap();
+				if let TypeId::NEG_INFINITY = floor {
+					buf.push_str("LessThan<");
+					print_type_into_buf(ceiling, buf, cycles, args, types, info, debug);
+					buf.push('>');
+					return;
+				} else if let TypeId::INFINITY = ceiling {
+					buf.push_str("GreaterThan<");
+					print_type_into_buf(floor, buf, cycles, args, types, info, debug);
+					buf.push('>');
+					return;
+				}
+			}
+
 			if debug {
 				write!(buf, "SG({:?})(", ty.0).unwrap();
 				print_type_into_buf(*on, buf, cycles, args, types, info, debug);

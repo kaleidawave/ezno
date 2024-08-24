@@ -18,7 +18,7 @@ declare let x: NotNotANumber;
 
 - Expected string, found (a: number) => 1
 
-#### Less than checks
+#### Inequality checks
 
 ```ts
 function func1(a: GreaterThan<4>) {
@@ -29,18 +29,18 @@ function func1(a: GreaterThan<4>) {
 
 // thanks narrowing 🙏
 function func2(a: number) {
-	if (a > 2) {
-		(a > 1) satisfies true;
-		(a < 1) satisfies false;
-		(a > 6) satisfies number;
+	if (a < 2) {
+		(a > 6) satisfies false;
+		(a < 7) satisfies true;
+		(a > 0) satisfies null;
 	}
 }
 ```
 
-- This equality is always false as ExclusiveRange<4, inf> and 3 have no overlap
+- This equality is always false as GreaterThan<4> and 3 have no overlap
 - Expected string, found boolean
-- This equality is always false as ExclusiveRange<2, inf> and 1 have no overlap
-- Expected number, found boolean
+- This equality is always false as LessThan<2> and 6 have no overlap
+- Expected null, found boolean
 
 #### Arithmetic operand check
 
@@ -116,11 +116,12 @@ function func(a: string, b: number) {
 
 ```ts
 function func(a: number) {
-	return Math.sin(a) > -1
+	(Math.sin(a) > -2) satisfies true;
+	(Math.sin(a) > -1) satisfies string;
 }
 ```
 
-- TODO
+- Expected string, found boolean
 
 ### Statements
 

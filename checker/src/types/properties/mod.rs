@@ -101,7 +101,8 @@ impl<'a> PropertyKey<'a> {
 					// Okay I think?
 					PropertyKey::Type(ty)
 				}
-				Constant::NaN => todo!(),
+				Constant::NaN => PropertyKey::String(Cow::Borrowed("NaN")),
+				Constant::Undefined => PropertyKey::String(Cow::Borrowed("undefined")),
 			}
 		} else {
 			PropertyKey::Type(ty)

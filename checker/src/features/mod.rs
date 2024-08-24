@@ -72,10 +72,6 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 				crate::types::TypeOperator::TypeOf(on),
 			)))
 		}
-	} else if on == TypeId::UNDEFINED_TYPE {
-		return types.new_constant_type(crate::Constant::String("undefined".to_owned()));
-	} else if on == TypeId::NULL_TYPE {
-		return types.new_constant_type(crate::Constant::String("object".to_owned()));
 	} else {
 		let ty = types.get_type_by_id(on);
 		if let crate::Type::Constant(cst) = ty {
@@ -85,12 +81,14 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 				crate::Constant::String(_) => "string",
 				crate::Constant::Boolean(_) => "boolean",
 				crate::Constant::Symbol { key: _ } => "symbol",
+				crate::Constant::Undefined => "undefined",
 			};
 			// TODO could Cow or something to not allocate?
 			types.new_constant_type(crate::Constant::String(name.to_owned()))
 		} else if let crate::Type::SpecialObject(SpecialObject::Function(..)) = ty {
 			types.new_constant_type(crate::Constant::String("function".to_owned()))
 		} else if let crate::Type::Object(..) | crate::Type::SpecialObject(..) = ty {
+			// includes TypeId::NULL_TYPE
 			types.new_constant_type(crate::Constant::String("object".to_owned()))
 		} else {
 			crate::utilities::notify!("Cannot `typeof {:?}`", on);

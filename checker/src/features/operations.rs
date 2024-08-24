@@ -107,43 +107,14 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 				checking_data.options.strict_casts,
 			);
 
-			match result {
-				Ok((result, warning)) => {
-					if let EqualityAndInequalityResultKind::Disjoint = warning {
-						let position = lhs_pos
-							.without_source()
-							.union(rhs_pos.without_source())
-							.with_source(environment.get_source());
-
-						checking_data.diagnostics_container.add_warning(
-							crate::TypeCheckWarning::DisjointEquality {
-								lhs: TypeStringRepresentation::from_type_id(
-									lhs,
-									environment,
-									&checking_data.types,
-									false,
-								),
-								rhs: TypeStringRepresentation::from_type_id(
-									rhs,
-									environment,
-									&checking_data.types,
-									false,
-								),
-								position,
-							},
-						);
-					}
-					result
-				}
-				Err(()) => {
+			if let Ok((result, warning)) = result {
+				if let EqualityAndInequalityResultKind::Disjoint = warning {
 					let position = lhs_pos
 						.without_source()
 						.union(rhs_pos.without_source())
 						.with_source(environment.get_source());
-
-					checking_data.diagnostics_container.add_error(
-						crate::TypeCheckError::InvalidEqualityOperation {
-							operator,
+					checking_data.diagnostics_container.add_warning(
+						crate::TypeCheckWarning::DisjointEquality {
 							lhs: TypeStringRepresentation::from_type_id(
 								lhs,
 								environment,
@@ -159,8 +130,32 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 							position,
 						},
 					);
-					TypeId::ERROR_TYPE
 				}
+				result
+			} else {
+				let position = lhs_pos
+					.without_source()
+					.union(rhs_pos.without_source())
+					.with_source(environment.get_source());
+				checking_data.diagnostics_container.add_error(
+					crate::TypeCheckError::InvalidEqualityOperation {
+						operator,
+						lhs: TypeStringRepresentation::from_type_id(
+							lhs,
+							environment,
+							&checking_data.types,
+							false,
+						),
+						rhs: TypeStringRepresentation::from_type_id(
+							rhs,
+							environment,
+							&checking_data.types,
+							false,
+						),
+						position,
+					},
+				);
+				TypeId::ERROR_TYPE
 			}
 		}
 	}
@@ -256,9 +251,8 @@ pub fn evaluate_mathematical_operation(
 					return Err(());
 				}
 			} else {
-				if !simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
-					|| !simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
-				{
+				let left_is_number = simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types);
+				if !left_is_number || !simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types) {
 					return Err(());
 				}
 			}
@@ -694,8 +688,11 @@ pub fn evaluate_logical_operation_with_expression<
 /// `typeof` and some others done elsewhere
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum PureUnary {
+	/// TODO replace with `(value ? false : true)`
 	LogicalNot,
+	/// TODO replace with `0 - value`
 	Negation,
+	/// TODO replace with `-(value + 1)` (only true for integers)
 	BitwiseNot,
 }
 

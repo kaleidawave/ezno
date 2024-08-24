@@ -137,9 +137,9 @@ declare class Map<T, U> {
 
 declare class Math {
     @Constant
-    static sin(x: number): number;
+    static sin(x: number): InclusiveRange<-1, 1>;
     @Constant
-    static cos(x: number): number;
+    static cos(x: number): InclusiveRange<-1, 1>;
     @Constant
     static tan(x: number): number;
     @Constant
@@ -159,7 +159,7 @@ declare class Math {
     static E: 2.718281828459045
 
     @InputOutput
-    static random(): number;
+    static random(): InclusiveRange<0, 1>;
 }
 
 @Primitive("string")

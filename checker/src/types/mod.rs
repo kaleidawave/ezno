@@ -545,6 +545,7 @@ impl TypeExtends {
 		}
 	}
 
+	#[must_use]
 	pub fn equal_to_rhs(&self, rhs: TypeId, types: &TypeStore) -> bool {
 		if let Ok(TypeExtends { item, extends }) = Self::from_type(rhs, types) {
 			// TODO get origin on item
@@ -1115,7 +1116,7 @@ pub(crate) mod helpers {
 		}) = types.get_type_by_id(ty)
 		{
 			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
-			matches!(types.get_type_by_id(inner), Type::Constant(_))
+			types.get_type_by_id(inner).is_constant()
 		} else {
 			false
 		}

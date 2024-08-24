@@ -184,7 +184,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 										argument,
 										&mut state,
 										environment,
-										&mut checking_data.types,
+										&checking_data.types,
 									);
 
 									if let subtyping::SubTypeResult::IsNotSubType(_matches) = result

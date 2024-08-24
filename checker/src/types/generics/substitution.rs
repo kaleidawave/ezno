@@ -491,12 +491,11 @@ pub(crate) fn substitute(
 					false,
 				);
 
-				match result {
-					Ok((left, _warning)) => left,
-					Err(()) => {
-						crate::utilities::notify!("Error here");
-						TypeId::OPEN_BOOLEAN_TYPE
-					}
+				if let Ok((left, _warning)) = result {
+					left
+				} else {
+					crate::utilities::notify!("Error here");
+					TypeId::OPEN_BOOLEAN_TYPE
 				}
 			}
 			Constructor::TypeOperator(op) => match op {

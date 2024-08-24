@@ -268,7 +268,8 @@ pub(crate) fn type_is_subtype_with_generics(
 			);
 			// Temp fix for narrowing constants
 			crate::utilities::notify!("{:?}", super::helpers::is_not_of_constant(*right, types));
-			return if let (Type::Narrowed { from, .. }, SubTypeResult::IsNotSubType(_), true) =
+			// SubTypeResult::IsNotSubType(_)
+			return if let (Type::Narrowed { from, .. }, _, true) =
 				(subtype, &result, super::helpers::is_not_of_constant(*right, types))
 			{
 				crate::utilities::notify!("Here");
@@ -898,11 +899,11 @@ pub(crate) fn type_is_subtype_with_generics(
 					};
 				}
 				TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE => {
-					return if let (left_range, Some(right_range)) = (
+					return if let (super_range, Some(sub_range)) = (
 						intrinsics::get_range(base_type, types).unwrap(),
 						intrinsics::get_range(ty, types),
 					) {
-						if right_range.contained_in(left_range) {
+						if sub_range.contained_in(super_range) {
 							SubTypeResult::IsSubType
 						} else {
 							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)

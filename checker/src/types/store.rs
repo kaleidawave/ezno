@@ -51,7 +51,7 @@ impl Default for TypeStore {
 			Type::Class { name: "number".to_owned(), type_parameters: None },
 			Type::Class { name: "string".to_owned(), type_parameters: None },
 			// sure?
-			Type::Interface { name: "undefined".to_owned(), parameters: None, extends: None },
+			Type::Constant(Constant::Undefined),
 			Type::SpecialObject(SpecialObject::Null),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
@@ -229,13 +229,10 @@ impl TypeStore {
 			Constant::String(s) if s.is_empty() => TypeId::EMPTY_STRING,
 			Constant::Number(number) if number == 0f64 => TypeId::ZERO,
 			Constant::Number(number) if number == 1f64 => TypeId::ONE,
-			Constant::Boolean(value) => {
-				if value {
-					TypeId::TRUE
-				} else {
-					TypeId::FALSE
-				}
-			}
+			Constant::Number(number) if number == f64::NEG_INFINITY => TypeId::NEG_INFINITY,
+			Constant::Number(number) if number == f64::INFINITY => TypeId::INFINITY,
+			Constant::Boolean(true) => TypeId::TRUE,
+			Constant::Boolean(false) => TypeId::FALSE,
 			Constant::NaN => TypeId::NAN,
 			_ => {
 				let ty = Type::Constant(constant);

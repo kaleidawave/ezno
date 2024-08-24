@@ -15,6 +15,8 @@ pub fn types_are_disjoint(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> bool {
+	crate::utilities::notify!("are disjoint? {:?}", (lhs, rhs));
+
 	if lhs == rhs || lhs == TypeId::ANY_TYPE || rhs == TypeId::ANY_TYPE {
 		false
 	} else if already_checked.iter().any(|pair| *pair == (lhs, rhs)) {
@@ -82,6 +84,8 @@ pub fn types_are_disjoint(
 				object_constraints: None,
 			};
 
+			crate::utilities::notify!("{:?}", (lhs, inner));
+
 			subtyping::type_is_subtype(rhs, inner, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,
@@ -98,6 +102,8 @@ pub fn types_are_disjoint(
 				others: subtyping::SubTypingOptions { allow_errors: false },
 				object_constraints: None,
 			};
+
+			crate::utilities::notify!("{:?}", (lhs, inner));
 
 			subtyping::type_is_subtype(lhs, inner, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -122,6 +128,12 @@ pub fn types_are_disjoint(
 			} else {
 				true
 			}
+		} else if let Some(lhs) = super::get_constraint(lhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
+		} else if let Some(rhs) = super::get_constraint(rhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
 		} else if let Type::Constant(lhs_cst) = lhs_ty {
 			if let Type::Constant(rhs_cst) = rhs_ty {
 				lhs_cst != rhs_cst
@@ -142,12 +154,6 @@ pub fn types_are_disjoint(
 				information,
 				types,
 			)
-		} else if let Some(lhs) = super::get_constraint(lhs, types) {
-			// TODO not sure whether these should be here?
-			types_are_disjoint(lhs, rhs, already_checked, information, types)
-		} else if let Some(rhs) = super::get_constraint(rhs, types) {
-			// TODO not sure whether these should be here?
-			types_are_disjoint(lhs, rhs, already_checked, information, types)
 		} else {
 			crate::utilities::notify!(
 				"{:?} cap {:?} == empty ? cases. Might be missing, calling disjoint",

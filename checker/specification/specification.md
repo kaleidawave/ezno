@@ -366,8 +366,10 @@ object[key] satisfies boolean;
 > TODO this creates a fat or type
 
 ```ts
-const array = [1, 2, 3];
-array[Math.random()] satisfies string;
+function func(idx: number) {
+	const array = [1, 2, 3];
+	array[idx] satisfies string;
+}
 ```
 
 - Expected string, found 1 | 2 | 3 | undefined
@@ -4676,13 +4678,13 @@ register(document.title)
 6 satisfies GreaterThan<2>;
 -4 satisfies GreaterThan<2>;
 
-6 satisfies LessThan<2>;
--4 satisfies LessThan<2>;
+2 satisfies LessThan<2>;
+-3 satisfies LessThan<2>;
 ```
 
 - Expected MultipleOf\<2>, found 5
 - Expected GreaterThan\<2>, found -4
-- Expected LessThan\<2>, found 6
+- Expected LessThan\<2>, found 2
 
 #### `Not`
 
