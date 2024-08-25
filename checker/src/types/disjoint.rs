@@ -1,5 +1,5 @@
-use super::PartiallyAppliedGenerics;
-use crate::{context::InformationChain, types::TypeStore, Type, TypeId};
+use super::{Constant, PartiallyAppliedGenerics, Type, TypeId, TypeStore};
+use crate::context::InformationChain;
 
 /// For equality + [`crate::intrinsics::Intrinsics::Not`]
 ///
@@ -113,8 +113,11 @@ pub fn types_are_disjoint(
 		{
 			let range = super::intrinsics::get_range(lhs, types).unwrap();
 			if let Some(rhs_range) = super::intrinsics::get_range(rhs, types) {
-				!range.overlaps(rhs_range)
+				let overlap = range.overlaps(rhs_range);
+				crate::utilities::notify!("{:?}", overlap);
+				!overlap
 			} else {
+				crate::utilities::notify!("Here");
 				true
 			}
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -124,9 +127,50 @@ pub fn types_are_disjoint(
 		{
 			let range = super::intrinsics::get_range(rhs, types).unwrap();
 			if let Some(lhs_range) = super::intrinsics::get_range(lhs, types) {
-				!range.overlaps(lhs_range)
+				let overlap = range.overlaps(lhs_range);
+				crate::utilities::notify!("{:?}", overlap);
+				!overlap
 			} else {
+				crate::utilities::notify!("Here");
 				true
+			}
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::MULTIPLE_OF,
+			arguments,
+		}) = lhs_ty
+		{
+			// Little bit complex here because dealing with decimal types, not integers
+			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
+				types.get_type_by_id(
+					arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap(),
+				),
+				types.get_type_by_id(rhs),
+			) {
+				let result = rhs % lhs != 0.;
+				crate::utilities::notify!("{:?} {:?}", rhs, lhs);
+				result
+			} else {
+				crate::utilities::notify!("Here");
+				false
+			}
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::MULTIPLE_OF,
+			arguments,
+		}) = rhs_ty
+		{
+			// Little bit complex here because dealing with decimal types, not integers
+			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
+				types.get_type_by_id(lhs),
+				types.get_type_by_id(
+					arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap(),
+				),
+			) {
+				let result = lhs % rhs != 0.;
+				crate::utilities::notify!("{:?} {:?}", lhs, rhs);
+				result
+			} else {
+				crate::utilities::notify!("Here");
+				false
 			}
 		} else if let Some(lhs) = super::get_constraint(lhs, types) {
 			// TODO not sure whether these should be here?

@@ -98,6 +98,19 @@ function sometimes(a: string | number, b: number) {
 - This equality is always false as string and number have no overlap
 - Expected string, found boolean
 
+#### Disjoint equality for number intrinsics
+
+```ts
+declare function getNumberBetweenFive(): InclusiveRange<0, 5> & Integer;
+
+getNumberBetweenFive() === 2;
+getNumberBetweenFive() === 2.2;
+getNumberBetweenFive() === 7;
+```
+
+- This equality is always false as InclusiveRange<0, 5> & Integer and 2.2 have no overlap
+- This equality is always false as InclusiveRange<0, 5> & Integer and 7 have no overlap
+
 #### Identity equality
 
 > Can only do it not NaN
@@ -123,6 +136,18 @@ function func(a: number) {
 
 - Expected string, found boolean
 
+#### Not disjoint
+
+```ts
+function func(param: number) {
+	if (param !== 2) {
+		return param === 2
+	}
+}
+```
+
+- This equality is always false as Not<2> and 2 have no overlap
+
 ### Statements
 
 #### Interface generic constraint checking
@@ -137,6 +162,18 @@ type BoxedFive = BoxString<5>;
 ```
 
 - Generic argument 5 does not match string
+
+#### Mismatch in generic argument count
+
+```ts
+interface BoxString<T extends string> {
+	inner: T
+}
+
+let x: BoxString<string, number>;
+```
+
+- Expected 1 type argument, but got 2
 
 ### Narrowing
 
@@ -169,15 +206,3 @@ function func(param: number) {
 
 - Expected string, found Not\<NaN>
 - Expected null, found Not\<NaN>
-
-#### Not disjoint
-
-```ts
-function func(param: number) {
-	if (param !== 2) {
-		return param === 2
-	}
-}
-```
-
-- This equality is always false as Not<2> and 2 have no overlap

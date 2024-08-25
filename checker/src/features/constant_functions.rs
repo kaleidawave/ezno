@@ -58,10 +58,14 @@ pub(crate) fn call_constant_function(
 		"sin" | "cos" | "tan" | "atan" | "acos" | "asin" | "sinh" | "cosh" | "tanh" | "asinh"
 		| "acosh" | "atanh" | "exp" | "expm1" | "log" | "log10" | "log2" | "log1p" | "round"
 		| "floor" | "ceil" | "trunc" | "sqrt" | "cbrt" | "abs" => {
-			let second_argument_type =
+			if arguments.len() > 1 {
+				return Err(ConstantFunctionError::BadCall);
+			}
+
+			let first_argument =
 				types.get_type_by_id(arguments.last().ok_or(ConstantFunctionError::BadCall)?.value);
 
-			let Type::Constant(Constant::Number(num)) = second_argument_type else {
+			let Type::Constant(Constant::Number(num)) = first_argument else {
 				return Err(ConstantFunctionError::BadCall);
 			};
 
@@ -94,13 +98,25 @@ pub(crate) fn call_constant_function(
 				_ => unreachable!(),
 			};
 
-			let try_into = result.try_into();
-			match try_into {
-				Ok(try_into) => {
-					let ty = types.new_constant_type(Constant::Number(try_into));
-					Ok(ConstantOutput::Value(ty))
+			let Ok(num) = result.try_into() else { return Ok(ConstantOutput::Value(TypeId::NAN)) };
+			Ok(ConstantOutput::Value(types.new_constant_type(Constant::Number(num))))
+		}
+		"imul" => {
+			if let [x, y] = arguments {
+				if let (Type::Constant(Constant::Number(x)), Type::Constant(Constant::Number(y))) =
+					(types.get_type_by_id(x.value), types.get_type_by_id(y.value))
+				{
+					// TODO is this correct, what about overflow?
+					let result = (x.into_inner() as i32) * (y.into_inner() as i32);
+					let Ok(num) = result.try_into() else {
+						return Ok(ConstantOutput::Value(TypeId::NAN));
+					};
+					Ok(ConstantOutput::Value(types.new_constant_type(Constant::Number(num))))
+				} else {
+					Err(ConstantFunctionError::BadCall)
 				}
-				Err(_) => Ok(ConstantOutput::Value(TypeId::NAN)),
+			} else {
+				Err(ConstantFunctionError::BadCall)
 			}
 		}
 		// String stuff. TODO could this be replaced by intrinsics

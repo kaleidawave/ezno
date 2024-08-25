@@ -81,6 +81,7 @@ impl Default for TypeStore {
 			Type::Constant(Constant::Number(f64::MIN.try_into().unwrap())),
 			Type::Constant(Constant::Number(f64::MAX.try_into().unwrap())),
 			Type::Constant(Constant::Number(f64::EPSILON.try_into().unwrap())),
+			Type::Constant(Constant::Number((0xFFFF_FFFFu32 as i32).try_into().unwrap())),
 			// ""
 			Type::Constant(Constant::String(String::new())),
 			// inferred this free variable shortcut
@@ -388,12 +389,16 @@ impl TypeStore {
 			otherwise_result
 		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
-		} else if let Type::Constructor(Constructor::UnaryOperator {
-			operator: crate::features::operations::PureUnary::LogicalNot,
-			operand: reversed_condition,
+		} else if let Type::Constructor(Constructor::ConditionalResult {
+			condition,
+			// TODO technically any falsy, truthy reverse pair is okay
+			truthy_result: TypeId::FALSE,
+			otherwise_result: TypeId::TRUE,
+			result_union: _,
 		}) = self.get_type_by_id(condition)
 		{
-			self.new_conditional_type(*reversed_condition, otherwise_result, truthy_result)
+			// Revese the condition
+			self.new_conditional_type(*condition, otherwise_result, truthy_result)
 		} else {
 			let ty = Type::Constructor(super::Constructor::ConditionalResult {
 				condition,
@@ -415,12 +420,13 @@ impl TypeStore {
 	}
 
 	/// Doesn't do constant compilation
-	pub(crate) fn new_logical_negation_type(&mut self, operand: TypeId) -> TypeId {
-		let ty = Type::Constructor(Constructor::UnaryOperator {
-			operator: crate::features::operations::PureUnary::LogicalNot,
-			operand,
-		});
-		self.register_type(ty)
+	pub(crate) fn new_logical_negation_type(&mut self, condition: TypeId) -> TypeId {
+		self.register_type(Type::Constructor(super::Constructor::ConditionalResult {
+			condition,
+			truthy_result: TypeId::FALSE,
+			otherwise_result: TypeId::TRUE,
+			result_union: TypeId::BOOLEAN_TYPE,
+		}))
 	}
 
 	/// Doesn't evaluate events

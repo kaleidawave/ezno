@@ -33,7 +33,7 @@ pub use crate::features::objects::SpecialObject;
 use crate::{
 	context::InformationChain,
 	events::RootReference,
-	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
+	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise},
 	subtyping::SliceArguments,
 	Decidable, FunctionId,
 };
@@ -101,71 +101,73 @@ impl TypeId {
 	pub const FLOAT_MIN: Self = Self(23);
 	pub const FLOAT_MAX: Self = Self(24);
 	pub const FLOAT_EPSILON: Self = Self(25);
+	/// For bitwise negation
+	pub const MAX_U32: Self = Self(26);
 	/// ""
-	pub const EMPTY_STRING: Self = Self(26);
+	pub const EMPTY_STRING: Self = Self(27);
 
 	/// Shortcut for inferred this
 	/// TODO remove
-	pub const ANY_INFERRED_FREE_THIS: Self = Self(27);
+	pub const ANY_INFERRED_FREE_THIS: Self = Self(28);
 
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
-	pub const NEW_TARGET_ARG: Self = Self(28);
+	pub const NEW_TARGET_ARG: Self = Self(29);
 
-	pub const IMPORT_META: Self = Self(29);
+	pub const IMPORT_META: Self = Self(30);
 
 	// known symbols
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator>
-	pub const SYMBOL_ITERATOR: Self = Self(30);
+	pub const SYMBOL_ITERATOR: Self = Self(31);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator>
-	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(31);
+	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(32);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance>
-	pub const SYMBOL_HAS_INSTANCE: Self = Self(32);
+	pub const SYMBOL_HAS_INSTANCE: Self = Self(33);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive>
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(33);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(34);
 
 	// TSC intrinsics
-	pub const STRING_GENERIC: Self = Self(34);
-	pub const STRING_UPPERCASE: Self = Self(35);
-	pub const STRING_LOWERCASE: Self = Self(36);
-	pub const STRING_CAPITALIZE: Self = Self(37);
-	pub const STRING_UNCAPITALIZE: Self = Self(38);
-	pub const NO_INFER: Self = Self(39);
+	pub const STRING_GENERIC: Self = Self(35);
+	pub const STRING_UPPERCASE: Self = Self(36);
+	pub const STRING_LOWERCASE: Self = Self(37);
+	pub const STRING_CAPITALIZE: Self = Self(38);
+	pub const STRING_UNCAPITALIZE: Self = Self(39);
+	pub const NO_INFER: Self = Self(40);
 
 	/// Might be a special type in TSC
-	pub const READONLY_RESTRICTION: Self = Self(40);
+	pub const READONLY_RESTRICTION: Self = Self(41);
 
 	/// For mapped types
-	pub const NON_OPTIONAL_KEY_ARGUMENT: Self = Self(41);
+	pub const NON_OPTIONAL_KEY_ARGUMENT: Self = Self(42);
 	/// For mapped types
-	pub const WRITABLE_KEY_ARGUMENT: Self = Self(42);
+	pub const WRITABLE_KEY_ARGUMENT: Self = Self(43);
 
 	// Ezno intrinsics
 
 	/// Used in [`Self::INCLUSIVE_RANGE`], [`Self::EXCLUSIVE_RANGE`] and [`Self::MULTIPLE_OF`]
-	pub const NUMBER_BOTTOM_GENERIC: Self = Self(43);
-	pub const NUMBER_TOP_GENERIC: Self = Self(44);
-	pub const INCLUSIVE_RANGE: Self = Self(45);
-	pub const EXCLUSIVE_RANGE: Self = Self(46);
-	pub const MULTIPLE_OF: Self = Self(47);
-	pub const NOT_NOT_A_NUMBER: Self = Self(48);
-	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(49);
+	pub const NUMBER_BOTTOM_GENERIC: Self = Self(44);
+	pub const NUMBER_TOP_GENERIC: Self = Self(45);
+	pub const INCLUSIVE_RANGE: Self = Self(46);
+	pub const EXCLUSIVE_RANGE: Self = Self(47);
+	pub const MULTIPLE_OF: Self = Self(48);
+	pub const NOT_NOT_A_NUMBER: Self = Self(49);
+	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(50);
 
-	pub const LITERAL_RESTRICTION: Self = Self(50);
-	pub const EXCLUSIVE_RESTRICTION: Self = Self(51);
-	pub const NOT_RESTRICTION: Self = Self(52);
+	pub const LITERAL_RESTRICTION: Self = Self(51);
+	pub const EXCLUSIVE_RESTRICTION: Self = Self(52);
+	pub const NOT_RESTRICTION: Self = Self(53);
 
 	/// This is needed for the TSC string intrinsics
-	pub const CASE_INSENSITIVE: Self = Self(53);
+	pub const CASE_INSENSITIVE: Self = Self(54);
 
 	/// WIP
-	pub const OPEN_BOOLEAN_TYPE: Self = Self(54);
-	pub const OPEN_NUMBER_TYPE: Self = Self(55);
+	pub const OPEN_BOOLEAN_TYPE: Self = Self(55);
+	pub const OPEN_NUMBER_TYPE: Self = Self(56);
 
 	/// For `+` operator
-	pub const STRING_OR_NUMBER: Self = Self(56);
+	pub const STRING_OR_NUMBER: Self = Self(57);
 
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 57;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 58;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
@@ -366,6 +368,7 @@ impl Type {
 
 /// - Some of these can be specialised, others are only created via event specialisation
 /// - Note that no || and && etc. This is handled using [`Constructor::ConditionalResult`]
+/// - Unary operations are encoded as BinaryOperations
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Constructor {
 	// TODO separate add?
@@ -378,10 +381,6 @@ pub enum Constructor {
 		lhs: TypeId,
 		operator: CanonicalEqualityAndInequality,
 		rhs: TypeId,
-	},
-	UnaryOperator {
-		operator: PureUnary,
-		operand: TypeId,
 	},
 	/// JS type based operations
 	TypeOperator(TypeOperator),
@@ -427,12 +426,27 @@ impl Constructor {
 			| Constructor::Image { result, .. } => Some(*result),
 			Constructor::BinaryOperator { .. }
 			| Constructor::CanonicalRelationOperator { .. }
-			| Constructor::UnaryOperator { .. }
 			| Constructor::TypeExtends(_)
 			| Constructor::TypeOperator(_) => None,
 			// TODO or symbol
 			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
 		}
+	}
+}
+
+#[must_use]
+pub fn as_logical_not(constructor: &Constructor, types: &TypeStore) -> Option<TypeId> {
+	// TODO technically any falsy, truthy reverse pair is okay
+	if let Constructor::ConditionalResult {
+		condition,
+		truthy_result: TypeId::FALSE,
+		otherwise_result: TypeId::TRUE,
+		result_union: _,
+	} = constructor
+	{
+		Some(helpers::get_origin(*condition, types))
+	} else {
+		None
 	}
 }
 
@@ -673,26 +687,6 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				} else {
 					Some(TypeId::NUMBER_TYPE)
 				}
-			}
-			Constructor::UnaryOperator { operand: _, operator } => {
-				Some(match operator {
-					PureUnary::LogicalNot => TypeId::BOOLEAN_TYPE,
-					PureUnary::Negation | PureUnary::BitwiseNot => TypeId::NUMBER_TYPE,
-				})
-				// if *constraint == TypeId::ANY_TYPE && mutable_context {
-				// 	let (operand, operator) = (operand.clone(), operator.clone());
-				// 	let constraint = to(self, data);
-				// 	self.modify_type(
-				// 		on,
-				// 		Some(Type::Constructor(Constructor::UnaryOperator {
-				// 			operator,
-				// 			operand,
-				// 								// 		})),
-				// 	);
-				// 	Some(constraint)
-				// } else {
-				// 	Some(*constraint)
-				// }
 			}
 			Constructor::Awaited { on: _, result }
 			| Constructor::Image { on: _, with: _, result } => Some(result),

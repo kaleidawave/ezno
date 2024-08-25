@@ -78,7 +78,7 @@ fn main() {
 		let end = now.elapsed();
 		let count = result.diagnostics.into_iter().len();
 		eprintln!("Found {count} diagnostics in {end:?}");
-	} else if args.iter().any(|arg| arg == "--debug-diagnostics") {
+	} else if args.iter().any(|arg| arg == "--verbose-diagnostics") {
 		eprintln!("Diagnostics:");
 		for diagnostic in result.diagnostics {
 			eprintln!("{diagnostic:?}");

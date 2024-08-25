@@ -428,10 +428,6 @@ pub fn print_type_into_buf<C: InformationChain>(
 						}
 					print_type_into_buf(*rhs, buf, cycles, args, types, info, debug);
 				}
-				Constructor::UnaryOperator { operator, operand } => {
-					write!(buf, "{operator:?} ").unwrap();
-					print_type_into_buf(*operand, buf, cycles, args, types, info, debug);
-				}
 				Constructor::TypeOperator(to) => {
 					write!(buf, "TypeOperator.{to:?}").unwrap();
 				}

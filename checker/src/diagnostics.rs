@@ -321,7 +321,6 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CouldNotFindType(&'a str, Vec<&'a str>, SpanWithSource),
-	TypeHasNoGenericParameters(String, SpanWithSource),
 	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
 	SetPropertyError(SetPropertyError),
@@ -373,11 +372,16 @@ pub(crate) enum TypeCheckError<'a> {
 		name: String,
 		position: SpanWithSource,
 	},
-	/// This is for structure generics
-	#[allow(dead_code)]
+	/// This is for structure generics (type annotations)
 	GenericArgumentDoesNotMeetRestriction {
 		parameter_restriction: TypeStringRepresentation,
 		argument: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	/// This is for structure generics (type annotations)
+	GenericArgumentCountMismatch {
+		expected_count: usize,
+		count: usize,
 		position: SpanWithSource,
 	},
 	#[allow(dead_code)]
@@ -427,7 +431,7 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	InvalidUnaryOperation {
-		operator: crate::features::operations::PureUnary,
+		operator: crate::features::operations::UnaryOperation,
 		operand: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
@@ -612,13 +616,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position: at,
 				kind,
 			},
-			TypeCheckError::TypeHasNoGenericParameters(name, position) => {
-				Diagnostic::Position {
-					reason: format!("Type '{name}' has no generic parameters"),
-					position,
-					kind,
-				}
-			}
 			TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
 				reason: "Cannot export at not top level".to_owned(),
 				position,
@@ -680,6 +677,24 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				),
 				position,
 				kind,
+			},
+			TypeCheckError::GenericArgumentCountMismatch {
+				count,
+				expected_count,
+				position,
+			} => {
+				let reason = if expected_count == 0 {
+					format!("Cannot pass a type argument to a non-generic type")
+				} else if expected_count == 1 {
+					format!("Expected 1 type argument, but got {count}")
+				} else {
+					format!("Expected {expected_count} type arguments, but got {count}")
+				};
+				Diagnostic::Position {
+					position,
+					kind,
+					reason
+				}
 			},
 			TypeCheckError::NotTopLevelImport(position) => Diagnostic::Position {
 				reason: "Import must be in the top of the scope".to_owned(),

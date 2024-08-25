@@ -3042,7 +3042,7 @@ type X = number;
 const a: X<number> = 2;
 ```
 
-- Type 'X' has no generic parameters
+- Cannot pass a type argument to a non-generic type
 
 #### Type alias with type parameters
 

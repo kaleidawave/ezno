@@ -1,14 +1,14 @@
 use crate::{
 	context::InformationChain,
 	types::{
-		self, as_logical_and, as_logical_or,
+		self, as_logical_and, as_logical_not, as_logical_or,
 		helpers::{get_conditional, get_origin},
 		properties, Constant, Constructor, PolyNature, TypeOperator, TypeStore,
 	},
 	Map, Type, TypeId,
 };
 
-use super::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary};
+use super::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise};
 
 pub fn narrow_based_on_expression_into_vec(
 	condition: TypeId,
@@ -189,9 +189,6 @@ pub fn narrow_based_on_expression(
 					into.insert(rhs, narrowed);
 				}
 			}
-			Constructor::UnaryOperator { operator: PureUnary::LogicalNot, operand } => {
-				narrow_based_on_expression(*operand, !negate, into, information, types);
-			}
 			Constructor::TypeOperator(TypeOperator::IsPrototype { lhs, rhs_prototype }) => {
 				let (lhs, rhs_prototype) = (*lhs, *rhs_prototype);
 				let constraint = crate::types::get_constraint(lhs, types).unwrap_or(lhs);
@@ -247,7 +244,10 @@ pub fn narrow_based_on_expression(
 				into.insert(on, types.new_narrowed(on, narrowed_to));
 			}
 			constructor => {
-				if let Some((lhs, rhs)) = as_logical_and(constructor, types) {
+				if let Some(condition) = as_logical_not(constructor, types) {
+					crate::utilities::notify!("Here");
+					narrow_based_on_expression(condition, !negate, into, information, types);
+				} else if let Some((lhs, rhs)) = as_logical_and(constructor, types) {
 					// De Morgan's laws
 					if negate {
 						// OR: Pull assertions from left and right, merge if both branches assert something

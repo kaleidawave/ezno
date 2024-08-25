@@ -503,7 +503,6 @@ pub mod tsc {
 				Type::RootPolyType(_rpt) => true,
 				Type::Constructor(constr) => match constr {
 					Constructor::CanonicalRelationOperator { .. }
-					| Constructor::UnaryOperator { .. }
 					| Constructor::BinaryOperator { .. } => false,
 					Constructor::TypeOperator(_) => todo!(),
 					Constructor::TypeExtends(_) => todo!(),

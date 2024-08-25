@@ -10,6 +10,8 @@ use crate::{
 
 use super::Type;
 
+pub use crate::utilities::float_range::FloatRange;
+
 /// These are special marker types (using [`Type::Alias`])
 ///
 /// Some are from TSC, others are added by me!
@@ -164,100 +166,8 @@ pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	}
 }
 
-// TODO
-#[derive(Debug, Clone, Copy)]
-pub enum Range {
-	/// yes or `===`
-	Inclusive { floor: ordered_float::NotNan<f64>, ceiling: ordered_float::NotNan<f64> },
-	/// but not necessarily `===`
-	Exclusive { floor: ordered_float::NotNan<f64>, ceiling: ordered_float::NotNan<f64> },
-}
-
-impl Range {
-	#[must_use]
-	pub fn single(on: ordered_float::NotNan<f64>) -> Self {
-		Self::Inclusive { floor: on, ceiling: on }
-	}
-
-	/// For disjointness. TODO Think this is correct
-	#[must_use]
-	pub fn overlaps(self, other: Self) -> bool {
-		if let (
-			Self::Inclusive { floor: l_floor, ceiling: l_ceiling },
-			Self::Inclusive { floor: r_floor, ceiling: r_ceiling },
-		) = (self, other)
-		{
-			r_floor <= l_ceiling || r_ceiling >= l_floor
-		} else {
-			let (Self::Inclusive { floor: l_floor, ceiling: l_ceiling }
-			| Self::Exclusive { floor: l_floor, ceiling: l_ceiling }) = self;
-			let (Self::Inclusive { floor: r_floor, ceiling: r_ceiling }
-			| Self::Exclusive { floor: r_floor, ceiling: r_ceiling }) = other;
-			r_floor < l_ceiling || r_ceiling > l_floor
-		}
-	}
-
-	/// The ⊆ relation (non-strict). For subtyping. TODO Think this is correct
-	#[must_use]
-	pub fn contained_in(self, other: Self) -> bool {
-		crate::utilities::notify!("{:?} ⊆ {:?}", self, other);
-		// Edge case
-		if let (
-			Self::Inclusive { floor: l_floor, ceiling: l_ceiling },
-			Self::Exclusive { floor: r_floor, ceiling: r_ceiling },
-		) = (self, other)
-		{
-			l_floor > r_floor && l_ceiling < r_ceiling
-		} else {
-			let (Self::Inclusive { floor: l_floor, ceiling: l_ceiling }
-			| Self::Exclusive { floor: l_floor, ceiling: l_ceiling }) = self;
-			let (Self::Inclusive { floor: r_floor, ceiling: r_ceiling }
-			| Self::Exclusive { floor: r_floor, ceiling: r_ceiling }) = other;
-			l_floor >= r_floor && l_ceiling <= r_ceiling
-		}
-	}
-
-	/// ∀ a in self, ∀ b in other: a > b
-	#[must_use]
-	pub fn above(self, other: Self) -> bool {
-		crate::utilities::notify!("{:?} > {:?}", self, other);
-		if let (
-			Self::Inclusive { floor: l_floor, ceiling: _ },
-			Self::Inclusive { floor: _, ceiling: r_ceiling },
-		) = (self, other)
-		{
-			l_floor > r_ceiling
-		} else {
-			let (Self::Inclusive { floor: l_floor, ceiling: _ }
-			| Self::Exclusive { floor: l_floor, ceiling: _ }) = self;
-			let (Self::Inclusive { floor: _, ceiling: r_ceiling }
-			| Self::Exclusive { floor: _, ceiling: r_ceiling }) = other;
-			l_floor >= r_ceiling
-		}
-	}
-
-	/// ∀ a in self, ∀ b in other: a < b
-	#[must_use]
-	pub fn below(self, other: Self) -> bool {
-		crate::utilities::notify!("{:?} < {:?}", self, other);
-		if let (
-			Self::Inclusive { floor: _, ceiling: l_ceiling },
-			Self::Inclusive { floor: r_floor, ceiling: _ },
-		) = (self, other)
-		{
-			l_ceiling < r_floor
-		} else {
-			let (Self::Inclusive { floor: _, ceiling: l_ceiling }
-			| Self::Exclusive { floor: _, ceiling: l_ceiling }) = self;
-			let (Self::Inclusive { floor: r_floor, ceiling: _ }
-			| Self::Exclusive { floor: r_floor, ceiling: _ }) = other;
-			l_ceiling <= r_floor
-		}
-	}
-}
-
 #[must_use]
-pub fn get_range(on: TypeId, types: &TypeStore) -> Option<Range> {
+pub fn get_range(on: TypeId, types: &TypeStore) -> Option<FloatRange> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -266,7 +176,7 @@ pub fn get_range(on: TypeId, types: &TypeStore) -> Option<Range> {
 	}) = ty
 	{
 		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
-		crate::utilities::notify!("{:?}", arguments);
+		crate::utilities::notify!("{:?} {:?}", on, arguments);
 		let floor = arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap();
 		let ceiling = arguments.get_structure_restriction(TypeId::NUMBER_TOP_GENERIC).unwrap();
 		if let (
@@ -276,16 +186,16 @@ pub fn get_range(on: TypeId, types: &TypeStore) -> Option<Range> {
 		{
 			let (floor, ceiling) = (*floor, *ceiling);
 			Some(if inclusive {
-				Range::Inclusive { floor, ceiling }
+				FloatRange::Inclusive { floor, ceiling }
 			} else {
-				Range::Exclusive { floor, ceiling }
+				FloatRange::Exclusive { floor, ceiling }
 			})
 		} else {
 			crate::utilities::notify!("Not bottom top number");
 			None
 		}
 	} else if let Type::Constant(crate::Constant::Number(number)) = ty {
-		Some(Range::single(*number))
+		Some(FloatRange::single(*number))
 	} else {
 		None
 	}

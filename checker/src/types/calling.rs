@@ -866,11 +866,13 @@ fn call_logical<B: CallCheckingBehavior>(
 
 				Ok(result)
 			} else {
-				panic!()
+				panic!("no function")
 			}
 		}
-		Logical::Or { condition, left, right } => {
-			todo!("{:?}", (condition, left, right));
+		Logical::Or { .. } => {
+			crate::utilities::notify!("Calling OR");
+			return Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE });
+			// todo!("{:?}", (condition, left, right));
 			// if let (Ok(_left), Ok(_right)) = (*left, *right) {
 			// let (truthy_result, otherwise_result) = behavior.evaluate_conditionally(
 			// 	top_environment,
@@ -934,7 +936,10 @@ fn call_logical<B: CallCheckingBehavior>(
 				(behavior, diagnostics),
 			)
 		}
-		Logical::BasedOnKey { .. } => todo!(),
+		Logical::BasedOnKey { .. } => {
+			crate::utilities::notify!("Calling based on key?");
+			return Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE });
+		}
 	}
 }
 
@@ -990,7 +995,6 @@ pub enum FunctionCallingError {
 		count: usize,
 		position: SpanWithSource,
 	},
-
 	ExcessTypeArguments {
 		expected_count: usize,
 		count: usize,

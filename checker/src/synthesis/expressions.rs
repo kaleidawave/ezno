@@ -33,8 +33,8 @@ use crate::{
 		operations::is_null_or_undefined,
 		operations::{
 			evaluate_logical_operation_with_expression,
-			evaluate_pure_binary_operation_handle_errors, evaluate_pure_unary_operator,
-			EqualityAndInequality, MathematicalAndBitwise, PureUnary,
+			evaluate_pure_binary_operation_handle_errors, evaluate_unary_operator,
+			EqualityAndInequality, MathematicalAndBitwise, UnaryOperation,
 		},
 		template_literal::synthesise_template_literal_expression,
 		variables::VariableWithValue,
@@ -335,13 +335,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						TypeId::ANY_TYPE,
 					);
 					let operator = match operator {
-						UnaryOperator::Negation => PureUnary::Negation,
-						UnaryOperator::BitwiseNot => PureUnary::BitwiseNot,
-						UnaryOperator::LogicalNot => PureUnary::LogicalNot,
+						UnaryOperator::Negation => UnaryOperation::Negation,
+						UnaryOperator::BitwiseNot => UnaryOperation::BitwiseNot,
+						UnaryOperator::LogicalNot => UnaryOperation::LogicalNot,
 						_ => unreachable!(),
 					};
 					// TODO abstract handling?
-					let result = evaluate_pure_unary_operator(
+					let result = evaluate_unary_operator(
 						operator,
 						operand,
 						environment,

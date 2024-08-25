@@ -579,18 +579,28 @@ pub fn is_null_or_undefined(
 		info,
 		types,
 		false,
-	);
-	// TODO temp to fix narrowing
-	// let is_undefined = evaluate_equality_inequality_operation(
-	// 	ty,
-	// 	&EqualityAndInequality::StrictEqual,
-	// 	TypeId::UNDEFINED_TYPE,
-	// 	types,
-	// 	false,
-	// );
+	)
+	.map_or(TypeId::ERROR_TYPE, |(left, _)| left);
 
-	// types.new_logical_or_type(is_null, is_undefined)
-	is_null.unwrap().0
+	if let TypeId::TRUE = is_null {
+		is_null
+	} else {
+		let is_undefined = evaluate_equality_inequality_operation(
+			ty,
+			&EqualityAndInequality::StrictEqual,
+			TypeId::UNDEFINED_TYPE,
+			info,
+			types,
+			false,
+		)
+		.map_or(TypeId::ERROR_TYPE, |(left, _)| left);
+
+		if let TypeId::FALSE = is_null {
+			is_undefined
+		} else {
+			types.new_logical_or_type(is_null, is_undefined)
+		}
+	}
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -687,17 +697,18 @@ pub fn evaluate_logical_operation_with_expression<
 
 /// `typeof` and some others done elsewhere
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum PureUnary {
-	/// TODO replace with `(value ? false : true)`
+pub enum UnaryOperation {
+	/// Treated as `(value ? false : true)`
 	LogicalNot,
-	/// TODO replace with `0 - value`
+	/// Treated as `0 - value` (could also do -1 * value?)
 	Negation,
-	/// TODO replace with `-(value + 1)` (only true for integers)
+	/// Treated as `value ^ 0xFFFF_FFFF`
 	BitwiseNot,
 }
 
-pub fn evaluate_pure_unary_operator(
-	operator: PureUnary,
+/// Tries to evaluate unary operation for constant terms. Else delegates to binary operations that handle equivalent thing
+pub fn evaluate_unary_operator(
+	operator: UnaryOperation,
 	operand: TypeId,
 	info: &impl crate::context::InformationChain,
 	types: &mut TypeStore,
@@ -708,7 +719,7 @@ pub fn evaluate_pure_unary_operator(
 	}
 
 	match operator {
-		PureUnary::LogicalNot => {
+		UnaryOperation::LogicalNot => {
 			if let Decidable::Known(value) = is_type_truthy_falsy(operand, types) {
 				if value {
 					Ok(TypeId::FALSE)
@@ -724,13 +735,13 @@ pub fn evaluate_pure_unary_operator(
 				}
 			}
 		}
-		PureUnary::Negation | PureUnary::BitwiseNot => {
+		UnaryOperation::Negation | UnaryOperation::BitwiseNot => {
 			if let Type::Constant(cst) = types.get_type_by_id(operand) {
 				let value = cast_as_number(cst, strict_casts).expect("hmm");
 				let value = match operator {
-					PureUnary::LogicalNot => unreachable!(),
-					PureUnary::Negation => -value,
-					PureUnary::BitwiseNot => f64::from(!(value as i32)),
+					UnaryOperation::BitwiseNot => f64::from(!(value as i32)),
+					UnaryOperation::Negation => -value,
+					UnaryOperation::LogicalNot => unreachable!(),
 				};
 				let value = ordered_float::NotNan::try_from(value);
 				Ok(match value {
@@ -738,13 +749,24 @@ pub fn evaluate_pure_unary_operator(
 					Err(_) => TypeId::NAN,
 				})
 			} else {
-				let is_number = simple_subtype(operand, TypeId::NUMBER_TYPE, info, types);
-				if is_number {
-					Ok(types.register_type(Type::Constructor(
-						crate::types::Constructor::UnaryOperator { operator, operand },
-					)))
-				} else {
-					Err(())
+				match operator {
+					UnaryOperation::BitwiseNot => evaluate_mathematical_operation(
+						TypeId::MAX_U32,
+						MathematicalAndBitwise::BitwiseXOr,
+						operand,
+						info,
+						types,
+						strict_casts,
+					),
+					UnaryOperation::Negation => evaluate_mathematical_operation(
+						TypeId::ZERO,
+						MathematicalAndBitwise::Subtract,
+						operand,
+						info,
+						types,
+						strict_casts,
+					),
+					UnaryOperation::LogicalNot => unreachable!("handled above"),
 				}
 			}
 		}

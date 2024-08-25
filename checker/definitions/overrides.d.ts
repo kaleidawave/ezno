@@ -129,6 +129,7 @@ type Record<K extends string, T> = { [P in K]: T }
 
 type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
 type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+type Integer = MultipleOf<1>;
 
 declare class Map<T, U> {
     #keys: Array<T> = [];
@@ -154,6 +155,9 @@ declare class Math {
     // TODO newer method
     @Constant
     static trunc(x: number): number;
+
+    @Constant
+    static imul(x: number, y: number): number;
 
     static PI: 3.141592653589793
     static E: 2.718281828459045

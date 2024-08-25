@@ -1139,9 +1139,9 @@ pub(crate) fn type_is_subtype_with_generics(
 					)
 				}
 			}
-			Constructor::BinaryOperator { .. }
-			| Constructor::CanonicalRelationOperator { .. }
-			| Constructor::UnaryOperator { .. } => unreachable!("invalid constructor on LHS"),
+			Constructor::BinaryOperator { .. } | Constructor::CanonicalRelationOperator { .. } => {
+				unreachable!("invalid constructor on LHS")
+			}
 			Constructor::TypeOperator(_) => todo!(),
 			Constructor::TypeExtends(_) => todo!(),
 			Constructor::Image { on: _, with: _, result } => {
@@ -2935,7 +2935,7 @@ pub(crate) fn number_matches_type(
 			arguments: _,
 		}) => {
 			let lhs_range = intrinsics::get_range(base, types).unwrap();
-			intrinsics::Range::single(number.try_into().unwrap()).contained_in(lhs_range)
+			intrinsics::FloatRange::single(number.try_into().unwrap()).contained_in(lhs_range)
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,

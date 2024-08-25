@@ -7,10 +7,7 @@ use crate::{
 	features::{
 		functions::{ClosureChain, ClosureId},
 		objects::{Proxy, SpecialObject},
-		operations::{
-			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
-			evaluate_pure_unary_operator,
-		},
+		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
 	},
 	subtyping::{State, SubTypingOptions},
 	types::{
@@ -251,18 +248,6 @@ pub(crate) fn substitute(
 						);
 					}
 				}
-			}
-			Constructor::UnaryOperator { operand, operator, .. } => {
-				let operand = substitute(operand, arguments, environment, types);
-				evaluate_pure_unary_operator(
-					operator,
-					operand,
-					environment,
-					types,
-					// Restrictions should have been made ahead of time
-					false,
-				)
-				.unwrap_or(TypeId::ERROR_TYPE)
 			}
 			Constructor::ConditionalResult {
 				condition,

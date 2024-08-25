@@ -72,6 +72,17 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						checking_data,
 					);
 
+					let values = super::narrowing::narrow_based_on_expression_into_vec(
+						condition,
+						false,
+						environment,
+						&mut checking_data.types,
+					);
+
+					crate::utilities::notify!("{:?}", values);
+
+					environment.info.narrowed_values = values;
+
 					// TODO not always needed
 					add_loop_described_break_event(
 						condition,
@@ -278,6 +289,15 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 							);
 
 						// TODO copy value of variables between things, or however it works
+
+						let values = super::narrowing::narrow_based_on_expression_into_vec(
+							condition,
+							false,
+							environment,
+							&mut checking_data.types,
+						);
+
+						environment.info.narrowed_values = values;
 
 						(condition, events, dependent_variables)
 					},

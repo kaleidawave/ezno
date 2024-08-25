@@ -1,0 +1,55 @@
+name: Examples
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  run-examples:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build Ezno
+        run: cargo build --release
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: true
+
+      - name: Run checker on example files
+        shell: bash
+        run: |
+          files=(
+              "https://jsr.io/@yossydev/hello-world/1.0.0/index.ts"
+              "https://jsr.io/@bengineering/shuffle-binary/0.0.1/index.ts"
+              "https://jsr.io/@bengineering/mulberry32/0.0.1/mod.ts"
+              "https://jsr.io/@luca/cases/1.0.0/mod.ts"
+              "https://jsr.io/@std/assert/1.0.2/assertion_error.ts"
+              "https://jsr.io/@std/text/1.0.3/levenshtein_distance.ts"
+              "https://jsr.io/@gnome/monads/0.0.0/src/option.ts"
+              "https://raw.githubusercontent.com/getify/deePool/master/src/deePool.js"
+              "https://raw.githubusercontent.com/silen-z/fiveway/main/packages/fiveway/src/id.ts"
+          )
+
+          for url in "${files[@]}"; do
+              header="--- $url ---"
+              echo $header
+              curl -s $url > temp.ts
+              ./target/release/ezno check temp.ts --timings
+              echo "${header//?/-}"
+              echo ""
+          done

@@ -134,9 +134,20 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							let mut type_arguments: crate::Map<TypeId, (TypeId, SpanWithSource)> =
 								crate::Map::default();
 
-							for (parameter, argument_type_annotation) in
-								parameters.clone().into_iter().zip(arguments.iter())
-							{
+							// TODO better diagnostic
+							if parameters.len() != arguments.len() {
+								checking_data.diagnostics_container.add_error(
+									TypeCheckError::GenericArgumentCountMismatch {
+										expected_count: parameters.len(),
+										count: arguments.len(),
+										position: position.with_source(environment.get_source()),
+									},
+								);
+								// Continue is fine
+							}
+
+							let mut argument_type_annotations = arguments.iter();
+							for parameter in parameters.iter().copied() {
 								let parameter_restriction =
 									if let Type::RootPolyType(PolyNature::StructureGeneric {
 										extends,
@@ -149,75 +160,88 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 										parameter
 									};
 
-								let argument = if let TypeAnnotation::Infer {
-									name,
-									extends: None,
-									position: _,
-								} = argument_type_annotation
+								let (argument, position) = if let Some(argument_type_annotation) =
+									argument_type_annotations.next()
 								{
-									environment.new_infer_type(
-										parameter_restriction,
+									let argument = if let TypeAnnotation::Infer {
 										name,
-										&mut checking_data.types,
-									)
-								} else {
-									synthesise_type_annotation(
-										argument_type_annotation,
-										environment,
-										checking_data,
-									)
-								};
-
-								{
-									use crate::types::subtyping;
-
-									let mut state = subtyping::State {
-										already_checked: Default::default(),
-										mode: Default::default(),
-										contributions: Default::default(),
-										others: subtyping::SubTypingOptions { allow_errors: true },
-										object_constraints: None,
+										extends: None,
+										position: _,
+									} = argument_type_annotation
+									{
+										environment.new_infer_type(
+											parameter_restriction,
+											name,
+											&mut checking_data.types,
+										)
+									} else {
+										synthesise_type_annotation(
+											argument_type_annotation,
+											environment,
+											checking_data,
+										)
 									};
 
-									let result = subtyping::type_is_subtype(
-										parameter_restriction,
-										argument,
-										&mut state,
-										environment,
-										&checking_data.types,
-									);
-
-									if let subtyping::SubTypeResult::IsNotSubType(_matches) = result
 									{
-										let error =
-											TypeCheckError::GenericArgumentDoesNotMeetRestriction {
-												parameter_restriction:
-													TypeStringRepresentation::from_type_id(
-														parameter_restriction,
+										use crate::types::subtyping;
+
+										let mut state = subtyping::State {
+											already_checked: Default::default(),
+											mode: Default::default(),
+											contributions: Default::default(),
+											others: subtyping::SubTypingOptions {
+												allow_errors: true,
+											},
+											object_constraints: None,
+										};
+
+										let result = subtyping::type_is_subtype(
+											parameter_restriction,
+											argument,
+											&mut state,
+											environment,
+											&checking_data.types,
+										);
+
+										if let subtyping::SubTypeResult::IsNotSubType(_matches) =
+											result
+										{
+											let error =
+												TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+													parameter_restriction:
+														TypeStringRepresentation::from_type_id(
+															parameter_restriction,
+															environment,
+															&checking_data.types,
+															checking_data.options.debug_types,
+														),
+													argument: TypeStringRepresentation::from_type_id(
+														argument,
 														environment,
 														&checking_data.types,
 														checking_data.options.debug_types,
 													),
-												argument: TypeStringRepresentation::from_type_id(
-													argument,
-													environment,
-													&checking_data.types,
-													checking_data.options.debug_types,
-												),
-												position: argument_type_annotation
-													.get_position()
-													.with_source(environment.get_source()),
-											};
+													position: argument_type_annotation
+														.get_position()
+														.with_source(environment.get_source()),
+												};
 
-										checking_data.diagnostics_container.add_error(error);
+											checking_data.diagnostics_container.add_error(error);
+										}
 									}
-								}
+									let position = argument_type_annotation
+										.get_position()
+										.with_source(environment.get_source());
 
-								let with_source = argument_type_annotation
-									.get_position()
-									.with_source(environment.get_source());
+									(argument, position)
+								} else {
+									(
+										TypeId::ERROR_TYPE,
+										<SpanWithSource as source_map::Nullable>::NULL,
+									)
+								};
 
-								type_arguments.insert(parameter, (argument, with_source));
+								type_arguments.insert(parameter, (argument, position));
 							}
 
 							// Inline alias with arguments unless intrinsic
@@ -271,10 +295,11 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							}
 						} else {
 							checking_data.diagnostics_container.add_error(
-								TypeCheckError::TypeHasNoGenericParameters(
-									name.clone(),
-									position.with_source(environment.get_source()),
-								),
+								TypeCheckError::GenericArgumentCountMismatch {
+									expected_count: 0,
+									count: arguments.len(),
+									position: position.with_source(environment.get_source()),
+								},
 							);
 							TypeId::ERROR_TYPE
 						}

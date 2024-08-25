@@ -213,6 +213,7 @@ type Record<K extends string, T> = { [P in K]: T }
 
 type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
 type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+type Integer = MultipleOf<1>;
 
 /**
  * Exclude from T those types that are assignable to U
@@ -240,9 +241,12 @@ declare class Math {
     @Constant
     static log(x: number): number;
 
-    // TODO newer method
+    // TODO newer methods
     @Constant
     static trunc(x: number): number;
+
+    @Constant
+    static imul(x: number, y: number): number;
 
     static PI: 3.141592653589793
     static E: 2.718281828459045
