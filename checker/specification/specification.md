@@ -344,8 +344,8 @@ declare type U = { a: 2 } & { b: 3 }
 declare let x: U;
 x.b satisfies 3;
 
-({ a: 2, b: 3 } satisfies U); 
-({ b: 3 } satisfies U); 
+({ a: 2, b: 3 } satisfies U);
+({ b: 3 } satisfies U);
 ```
 
 - Expected U, found { b: 3 }
@@ -2433,7 +2433,7 @@ interface X {
 - Expected 4, found 5
 - Type { a: 3 } is not assignable to type X
 
-#### RegExp
+#### `RegExp` constructor
 
 > RegExp = Regular expression
 > In the future, their definition could be considered and evaluated at runtime
@@ -2443,6 +2443,46 @@ const regexp = /hi/ satisfies string;
 ```
 
 - Expected string, found /hi/
+
+#### Constant `RegExp.exec`
+
+```ts
+const regexp = /hi/;
+const match = regexp.exec("hi");
+match satisfies number;
+match.index satisfies string;
+match.input satisfies boolean;
+match.groups satisfies boolean;
+```
+
+- Expected number, found ["hi"]
+- Expected string, found 0
+- Expected boolean, found "hi"
+- Expected boolean, found [null] {}
+
+#### Constant `RegExp.exec` groups
+
+```ts
+const regexp = /Hi (?<name>.*)/;
+const match = regexp.exec("Hi Ben");
+match.groups satisfies string;
+```
+
+- Expected string, found [null] { name: "Ben" }
+
+#### Constant `RegExp.exec` greedy
+
+```ts
+const regexp = /.*(?<x>[a-z]+)(?<y>[0-9]+)/;
+const match = regexp.exec("ez as abc123");
+match.index satisfies string;
+match.input satisfies number;
+match.groups satisfies boolean;
+```
+
+- Expected string, found 0
+- Expected number, found "ez as abc123"
+- Expected boolean, found [null] { x: "c", y: "123" }
 
 #### Null and undefined
 
@@ -3921,7 +3961,7 @@ function booleanNarrow(param: boolean) {
 function operatorNarrows(thing: string | null) {
 	(thing ?? "something") satisfies string;
 	(thing || "something") satisfies number;
-	
+
 	const result = thing === "hi" && (thing satisfies boolean);
 }
 ```
@@ -3936,7 +3976,7 @@ function logicNarrow(thing: any, other: any) {
 	if (typeof thing === "string" && other === 4) {
 		({ thing, other }) satisfies string;
 	}
-	
+
 	if (typeof thing === "string" || typeof thing === "number") {
 		thing satisfies null;
 	}
@@ -4258,10 +4298,10 @@ proxy1.a satisfies string;
 
 ```ts
 let lastSet: string = "";
-const proxy1 = new Proxy({ a: 2 }, { 
+const proxy1 = new Proxy({ a: 2 }, {
 	set(target: { a: number }, prop: string, value: number, receiver) {
 		lastSet = prop;
-	} 
+	}
 });
 
 proxy1.a = 6;
