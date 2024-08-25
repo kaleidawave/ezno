@@ -2452,35 +2452,33 @@ const match = regexp.exec("hi");
 match satisfies number;
 match.index satisfies string;
 match.input satisfies boolean;
-match.groups satisfies boolean;
 ```
 
 - Expected number, found ["hi"]
 - Expected string, found 0
 - Expected boolean, found "hi"
-- Expected boolean, found [null] {}
 
 #### Constant `RegExp.exec` groups
 
 ```ts
 const regexp = /Hi (?<name>.*)/;
 const match = regexp.exec("Hi Ben");
+match.input satisfies number;
 match.groups satisfies string;
 ```
 
+- Expected number, found "Hi Ben"
 - Expected string, found [null] { name: "Ben" }
 
-#### Constant `RegExp.exec` greedy
+#### Constant `RegExp.exec` groups greedy
 
 ```ts
 const regexp = /.*(?<x>[a-z]+)(?<y>[0-9]+)/;
 const match = regexp.exec("ez as abc123");
-match.index satisfies string;
 match.input satisfies number;
 match.groups satisfies boolean;
 ```
 
-- Expected string, found 0
 - Expected number, found "ez as abc123"
 - Expected boolean, found [null] { x: "c", y: "123" }
 
