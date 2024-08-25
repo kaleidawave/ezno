@@ -40,6 +40,15 @@ where
 		let mut truthy_environment = environment
 			.new_lexical_environment(Scope::Conditional { antecedent: condition, is_switch: None });
 
+		let values = super::narrowing::narrow_based_on_expression_into_vec(
+			condition,
+			false,
+			environment,
+			&mut checking_data.types,
+		);
+
+		truthy_environment.info.narrowed_values = values;
+
 		let result = then_evaluate(&mut truthy_environment, checking_data);
 
 		let Context {
@@ -64,6 +73,15 @@ where
 			antecedent: checking_data.types.new_logical_negation_type(condition),
 			is_switch: None,
 		});
+
+		let values = super::narrowing::narrow_based_on_expression_into_vec(
+			condition,
+			true,
+			environment,
+			&mut checking_data.types,
+		);
+
+		falsy_environment.info.narrowed_values = values;
 
 		let result = else_evaluate(&mut falsy_environment, checking_data);
 

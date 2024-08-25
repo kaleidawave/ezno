@@ -223,22 +223,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			object_literal.position.with_source(environment.get_source()),
 			expecting,
 		)),
-		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
-			let parts_iter = parts.iter().map(|part| match part {
-				parser::expressions::TemplateLiteralPart::Static(value) => {
-					crate::features::template_literal::TemplateLiteralPart::Static(value.as_str())
-				}
-				parser::expressions::TemplateLiteralPart::Dynamic(expr) => {
-					crate::features::template_literal::TemplateLiteralPart::Dynamic(&**expr)
-				}
-			});
+		Expression::TemplateLiteral(TemplateLiteral { tag, parts, last, position }) => {
 			let tag = tag.as_ref().map(|expr| {
 				synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE)
 			});
 
-			Instance::RValue(synthesise_template_literal_expression(
+			Instance::RValue(synthesise_template_literal_expression::<_, EznoParser>(
 				tag,
-				parts_iter,
+				parts.iter().map(|(l, r)| (l.as_str(), r)),
+				last.as_str(),
 				position.with_source(environment.get_source()),
 				environment,
 				checking_data,
@@ -311,7 +304,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				| BinaryOperator::NullCoalescing => {
 					unreachable!()
 				}
-				BinaryOperator::Divides | BinaryOperator::Pipe | BinaryOperator::Compose => {
+				BinaryOperator::Pipe | BinaryOperator::Compose => {
 					checking_data.raise_unimplemented_error(
 						"special operations",
 						position.with_source(environment.get_source()),
@@ -981,16 +974,19 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			SpecialOperators::NonNullAssertion(on) => {
 				let lhs = synthesise_expression(on, environment, checking_data, expecting);
 				Instance::RValue(
-					features::tsc::non_null_assertion(lhs, &mut checking_data.types).unwrap(),
+					features::tsc::non_null_assertion(lhs, environment, &mut checking_data.types)
+						.unwrap(),
 				)
 			}
-			SpecialOperators::Is { value: _, type_annotation: _ } => {
-				// Special non-standard
-				checking_data.raise_unimplemented_error(
-					"is expression",
-					position.with_source(environment.get_source()),
-				);
-				return TypeId::ERROR_TYPE;
+			SpecialOperators::Is { value, type_annotation } => {
+				let item =
+					synthesise_expression(value, environment, checking_data, TypeId::ANY_TYPE);
+				Instance::RValue(super::extensions::is_expression::new_is_type(
+					item,
+					type_annotation,
+					environment,
+					checking_data,
+				))
 			}
 		},
 		Expression::ImportMeta(_) => {
@@ -1278,17 +1274,8 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							}
 						}
 					}
-					crate::Type::AliasTo { .. }
-					| crate::Type::And { .. }
-					| crate::Type::Or { .. }
-					| crate::Type::RootPolyType { .. }
-					| crate::Type::Constructor { .. }
-					| crate::Type::PartiallyAppliedGenerics { .. }
-					| crate::Type::Interface { .. }
-					| crate::Type::Class { .. }
-					| crate::Type::Constant { .. }
-					| crate::Type::FunctionReference { .. }
-					| crate::Type::SpecialObject(_) => {
+					r#type => {
+						crate::utilities::notify!("more than binary spread {:?}", r#type);
 						checking_data.raise_unimplemented_error(
 							"more than binary spread",
 							pos.with_source(environment.get_source()),

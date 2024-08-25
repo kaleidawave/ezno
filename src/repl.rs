@@ -84,6 +84,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let result = if input.trim_start().starts_with('{') {
 			Expression::from_string_with_options(input, options, offset).map(|(expression, _)| {
 				Module {
+					hashbang_comment: None,
 					span: expression.get_position(),
 					items: vec![Statement::Expression(expression.into()).into()],
 				}

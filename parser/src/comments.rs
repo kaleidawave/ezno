@@ -137,13 +137,13 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 	) {
 		match self {
 			Self::None(ast) => ast.to_string_from_buffer(buf, options, local),
-			Self::PrefixComment(comment, ast, _) => {
-				if options.should_add_comment(comment.starts_with('*')) {
+			Self::PrefixComment(content, ast, _) => {
+				if options.should_add_comment(content) {
 					buf.push_str("/*");
 					if options.pretty {
 						// Perform indent correction
 						// Have to use '\n' as `.lines` with it's handling of '\r'
-						for (idx, line) in comment.split('\n').enumerate() {
+						for (idx, line) in content.split('\n').enumerate() {
 							if idx > 0 {
 								buf.push_new_line();
 							}
@@ -152,7 +152,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 						}
 					// buf.push_new_line();
 					} else {
-						buf.push_str_contains_new_line(comment.as_str());
+						buf.push_str_contains_new_line(content.as_str());
 					}
 					buf.push_str("*/");
 				}
@@ -160,7 +160,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 			}
 			Self::PostfixComment(ast, comment, _) => {
 				ast.to_string_from_buffer(buf, options, local);
-				if options.should_add_comment(comment.starts_with('*')) {
+				if options.should_add_comment(comment) {
 					buf.push_str("/*");
 					if options.pretty {
 						// Perform indent correction

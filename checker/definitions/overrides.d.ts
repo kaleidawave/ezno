@@ -324,8 +324,8 @@ declare class Proxy {
 // TODO string keys temp because parser broke
 interface PropertyDescriptor {
     value?: any;
-    ["get" ? (): any;
-    ["set" ? (v: any): void;
+    get?(): any;
+    set?(v: any): void;
 
     writable?: boolean;
     configurable?: boolean;

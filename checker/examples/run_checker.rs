@@ -19,6 +19,7 @@ fn main() {
 	let debug_types = args.iter().any(|item| item == "--debug-types");
 	let no_lib = args.iter().any(|item| item == "--no-lib");
 	let debug_dts = args.iter().any(|item| item == "--debug-dts");
+	let extras = args.iter().any(|item| item == "--extras");
 
 	let now = Instant::now();
 
@@ -44,6 +45,7 @@ fn main() {
 		record_all_assignments_and_reads: true,
 		max_inline_count: 600,
 		debug_dts,
+		extra_syntax: extras,
 		..Default::default()
 	};
 

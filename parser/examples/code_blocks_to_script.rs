@@ -17,9 +17,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
 		matches!(item[0].as_str(), "--into-files").then_some((item[1].clone(), item[2].clone()))
 	});
+
 	let out_file = args
 		.windows(2)
 		.find_map(|item| matches!(item[0].as_str(), "--out").then_some(item[1].clone()));
+
+	let repeat = args.windows(2).find_map(|item| {
+		if let "--repeat" = item[0].as_str() {
+			match item[1].parse::<u16>() {
+				Ok(value) => Some(value),
+				Err(err) => panic!("--repeat cannot be {item}, {err:?}", item = item[1]),
+			}
+		} else {
+			None
+		}
+	});
 
 	let content = std::fs::read_to_string(&path)?;
 
@@ -29,6 +41,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let mut blocks = Vec::new();
 		let mut lines = content.lines();
 		let mut current = String::default();
+
+		let mut reading_list = false;
+		let mut list_count = 0;
 
 		while let Some(line) = lines.next() {
 			if line.starts_with("```ts") {
@@ -43,11 +58,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 				if !filters.iter().any(|filter| code.contains(filter)) {
 					blocks.push((std::mem::take(&mut current), code));
+					reading_list = true;
+				} else {
+					reading_list = false;
 				}
 			} else if let Some(header) = line.strip_prefix("#### ") {
 				current = header.to_owned();
+				reading_list = false;
+			} else if reading_list && line.trim_start().starts_with("- ") {
+				list_count += 1;
 			}
 		}
+
+		eprintln!("Found {} blocks, with {} diagnostics", blocks.len(), list_count);
+
 		blocks
 	} else {
 		todo!("parse module, split by statement braced")
@@ -63,8 +87,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			// Fix for FLow
 			let code =
 				if replace_satisfies_with_as { code.replace(" satisfies ", " as ") } else { code };
-			for line in code.lines() {
-				writeln!(file, "{}", line.strip_prefix('\t').unwrap_or(line))?;
+
+			if let Some(repeat) = repeat {
+				for _ in 0..repeat {
+					writeln!(file, "() => {{\n{code}\n}};")?;
+				}
+			} else {
+				for line in code.lines() {
+					writeln!(file, "{}", line.strip_prefix('\t').unwrap_or(line))?;
+				}
 			}
 		}
 		return Ok(());

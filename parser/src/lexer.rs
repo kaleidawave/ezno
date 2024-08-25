@@ -15,6 +15,9 @@ use derive_finite_automaton::{
 	FiniteAutomata, FiniteAutomataConstructor, GetAutomataStateForValue, GetNextResult,
 };
 
+mod html {}
+
+#[allow(clippy::struct_excessive_bools)]
 pub struct LexerOptions {
 	/// Whether to append tokens when lexing. If false will just ignore
 	pub comments: Comments,
@@ -23,6 +26,8 @@ pub struct LexerOptions {
 	pub lex_jsx: bool,
 	/// TODO temp
 	pub allow_unsupported_characters_in_jsx_attribute_keys: bool,
+	pub allow_expressions_in_jsx: bool,
+	pub top_level_html: bool,
 }
 
 impl Default for LexerOptions {
@@ -31,6 +36,8 @@ impl Default for LexerOptions {
 			comments: Comments::All,
 			lex_jsx: true,
 			allow_unsupported_characters_in_jsx_attribute_keys: true,
+			allow_expressions_in_jsx: true,
+			top_level_html: false,
 		}
 	}
 }
@@ -80,6 +87,8 @@ pub fn lex_script(
 
 	#[derive(PartialEq, Debug)]
 	enum JSXLexingState {
+		/// Only for top level html
+		ExpectingOpenChevron,
 		TagName {
 			direction: JSXTagNameDirection,
 			lexed_start: bool,
@@ -144,7 +153,7 @@ pub fn lex_script(
 			no_inner_tags_or_expressions: bool,
 			is_self_closing_tag: bool,
 		},
-		Comment,
+		SingleLineComment,
 		MultiLineComment {
 			last_char_was_star: bool,
 		},
@@ -157,11 +166,31 @@ pub fn lex_script(
 		},
 	}
 
+	// TODO WIP
+	const DEFAULT_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
+		interpolation_depth: 0,
+		tag_depth: 0,
+		state: JSXLexingState::ExpectingOpenChevron,
+		no_inner_tags_or_expressions: false,
+		is_self_closing_tag: false,
+	};
+	const FIRST_CHEVRON_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
+		interpolation_depth: 0,
+		tag_depth: 0,
+		state: JSXLexingState::TagName {
+			direction: JSXTagNameDirection::Opening,
+			lexed_start: false,
+		},
+		no_inner_tags_or_expressions: false,
+		is_self_closing_tag: false,
+	};
+
 	if script.len() > u32::MAX as usize {
 		return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
 	}
 
-	let mut state: LexingState = LexingState::None;
+	let mut state: LexingState =
+		if options.top_level_html { DEFAULT_JSX_LEXING_STATE } else { LexingState::None };
 
 	// Used to go back to previous state if was in template literal or JSX literal
 	let mut state_stack: Vec<LexingState> = Vec::new();
@@ -175,6 +204,7 @@ pub fn lex_script(
 	// to discern whether it is regex or division at this point as regex literal needs to be parsed as a literal rather
 	// than a sequence of tokens. Similarly for JSX is a < a less than comparison or the start of a tag. This variable
 	// should be set to true if the last pushed token was `=`, `return` etc and set to else set to false.
+	// TODO this doesn't work see #165
 	let mut expect_expression = true;
 
 	macro_rules! return_err {
@@ -192,7 +222,29 @@ pub fn lex_script(
 		}};
 	}
 
-	for (idx, chr) in script.char_indices() {
+	let mut characters = script.char_indices();
+	if script.starts_with("#!") {
+		for (idx, c) in characters.by_ref() {
+			if c == '\n' {
+				sender.push(Token(
+					TSXToken::HashBangComment(script[2..idx].to_owned()),
+					TokenStart::new(0),
+				));
+				break;
+			}
+		}
+	}
+
+	if options.top_level_html && script.starts_with("<!DOCTYPE html>") {
+		for (_idx, c) in characters.by_ref() {
+			if c == '>' {
+				sender.push(Token(TSXToken::DocTypeHTML, TokenStart::new(0)));
+				break;
+			}
+		}
+	}
+
+	for (idx, chr) in characters {
 		// dbg!(chr, &state);
 
 		// Sets current parser state and updates start track
@@ -365,7 +417,7 @@ pub fn lex_script(
 						// Handle comments
 						match result {
 							TSXToken::Comment(_) => {
-								state = LexingState::Comment;
+								state = LexingState::SingleLineComment;
 								continue;
 							}
 							TSXToken::MultiLineComment(_) => {
@@ -433,12 +485,11 @@ pub fn lex_script(
 					*escaped = false;
 				}
 			},
-			LexingState::Comment => {
+			LexingState::SingleLineComment => {
 				if let '\n' = chr {
-					if matches!(options.comments, Comments::All) {
-						push_token!(TSXToken::Comment(
-							script[(start + 2)..idx].trim_end().to_owned()
-						),);
+					let content = &script[(start + 2)..idx];
+					if options.comments.should_add_comment(content) {
+						push_token!(TSXToken::Comment(content.trim_end().to_owned()));
 					}
 					set_state!(LexingState::None);
 					continue;
@@ -446,12 +497,9 @@ pub fn lex_script(
 			}
 			LexingState::MultiLineComment { ref mut last_char_was_star } => match chr {
 				'/' if *last_char_was_star => {
-					let comment = &script[(start + 2)..(idx - 1)];
-					let include = matches!(options.comments, Comments::All)
-						|| (matches!(options.comments, Comments::JustDocumentation)
-							&& comment.starts_with('*'));
-					if include {
-						push_token!(TSXToken::MultiLineComment(comment.to_owned()));
+					let content = &script[(start + 2)..(idx - 1)];
+					if options.comments.should_add_comment(content) {
+						push_token!(TSXToken::MultiLineComment(content.to_owned()));
 					}
 					set_state!(LexingState::None);
 					continue;
@@ -475,7 +523,7 @@ pub fn lex_script(
 				} else {
 					match chr {
 						'/' if start + 1 == idx => {
-							state = LexingState::Comment;
+							state = LexingState::SingleLineComment;
 							continue;
 						}
 						'*' if start + 1 == idx => {
@@ -558,6 +606,14 @@ pub fn lex_script(
 				state: ref mut jsx_state,
 			} => {
 				match jsx_state {
+					JSXLexingState::ExpectingOpenChevron => {
+						if chr == '<' {
+							set_state!(FIRST_CHEVRON_JSX_LEXING_STATE);
+						} else if !chr.is_whitespace() {
+							dbg!(chr);
+							return_err!(LexingErrors::ExpectedOpenChevron);
+						}
+					}
 					JSXLexingState::TagName { ref mut direction, ref mut lexed_start } => match chr
 					{
 						// Closing tag
@@ -630,6 +686,8 @@ pub fn lex_script(
 							}
 							let tag_name = script[start..idx].trim();
 							*is_self_closing_tag = html_tag_is_self_closing(tag_name);
+							*no_inner_tags_or_expressions =
+								html_tag_contains_literal_content(tag_name);
 							push_token!(TSXToken::JSXTagName(tag_name.to_owned()));
 							start = idx;
 							*tag_depth += 1;
@@ -638,8 +696,6 @@ pub fn lex_script(
 									*jsx_state = JSXLexingState::SelfClosingTagClose;
 								}
 								'>' => {
-									*no_inner_tags_or_expressions =
-										html_tag_contains_literal_content(&script[start..idx]);
 									push_token!(TSXToken::JSXOpeningTagEnd);
 									start = idx + 1;
 									*jsx_state = if *no_inner_tags_or_expressions {
@@ -679,7 +735,7 @@ pub fn lex_script(
 							}
 							continue;
 						}
-						return_err!(LexingErrors::ExpectedClosingAngleAtEndOfSelfClosingTag);
+						return_err!(LexingErrors::ExpectedClosingChevronAtEndOfSelfClosingTag);
 					}
 					JSXLexingState::AttributeKey => match chr {
 						'=' => {
@@ -690,6 +746,7 @@ pub fn lex_script(
 							if !key_slice.is_empty() {
 								push_token!(TSXToken::JSXAttributeKey(key_slice.to_owned()));
 							}
+							start = idx;
 							push_token!(TSXToken::JSXAttributeAssign);
 							*jsx_state = JSXLexingState::AttributeEqual;
 							start = idx + 1;
@@ -763,7 +820,7 @@ pub fn lex_script(
 					},
 					JSXLexingState::AttributeEqual => {
 						let delimiter = match chr {
-							'{' => {
+							'{' if options.allow_expressions_in_jsx => {
 								push_token!(TSXToken::JSXExpressionStart);
 								*interpolation_depth += 1;
 								*jsx_state = JSXLexingState::AttributeKey;
@@ -841,7 +898,7 @@ pub fn lex_script(
 								};
 								start = idx;
 							}
-							'{' => {
+							'{' if options.allow_expressions_in_jsx => {
 								let content_slice = &script[start..idx];
 								if !content_slice.trim().is_empty() {
 									push_token!(TSXToken::JSXContent(content_slice.to_owned()));
@@ -902,7 +959,11 @@ pub fn lex_script(
 							));
 							start = idx + 1;
 							if *tag_depth == 0 {
-								set_state!(LexingState::None);
+								set_state!(if options.top_level_html {
+									DEFAULT_JSX_LEXING_STATE
+								} else {
+									LexingState::None
+								});
 							} else {
 								*jsx_state = JSXLexingState::Content;
 							}
@@ -991,16 +1052,7 @@ pub fn lex_script(
 							};
 						}
 						(true, '<') if options.lex_jsx => {
-							set_state!(LexingState::JSXLiteral {
-								interpolation_depth: 0,
-								tag_depth: 0,
-								state: JSXLexingState::TagName {
-									direction: JSXTagNameDirection::Opening,
-									lexed_start: false,
-								},
-								no_inner_tags_or_expressions: false,
-								is_self_closing_tag: false,
-							});
+							set_state!(FIRST_CHEVRON_JSX_LEXING_STATE);
 						}
 						(true, '/') => {
 							state = LexingState::RegexLiteral {
@@ -1073,24 +1125,24 @@ pub fn lex_script(
 				}
 				GetNextResult::NewState(_new_state) => unreachable!(),
 				GetNextResult::InvalidCharacter(err) => {
-					sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 					return_err!(LexingErrors::UnexpectedCharacter(err));
 				}
 			}
 		}
-		LexingState::Comment => {
-			sender.push(Token(
-				TSXToken::Comment(script[(start + 2)..].trim_end().to_owned()),
-				TokenStart::new(start as u32 + offset),
-			));
-		}
-		LexingState::String { .. } => {
-			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
-			return_err!(LexingErrors::ExpectedEndToStringLiteral);
+		LexingState::SingleLineComment => {
+			let content = &script[(start + 2)..];
+			if options.comments.should_add_comment(content) {
+				sender.push(Token(
+					TSXToken::Comment(content.trim_end().to_owned()),
+					TokenStart::new(start as u32 + offset),
+				));
+			}
 		}
 		LexingState::MultiLineComment { .. } => {
-			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToMultilineComment);
+		}
+		LexingState::String { .. } => {
+			return_err!(LexingErrors::ExpectedEndToStringLiteral);
 		}
 		// This is okay as the state is not cleared until it finds flags.
 		LexingState::RegexLiteral { after_last_slash, .. } => {
@@ -1105,12 +1157,12 @@ pub fn lex_script(
 				return_err!(LexingErrors::ExpectedEndToRegexLiteral);
 			}
 		}
-		LexingState::JSXLiteral { .. } => {
-			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
-			return_err!(LexingErrors::ExpectedEndToJSXLiteral);
+		LexingState::JSXLiteral { state, .. } => {
+			if !matches!(state, JSXLexingState::ExpectingOpenChevron) {
+				return_err!(LexingErrors::ExpectedEndToJSXLiteral);
+			}
 		}
 		LexingState::TemplateLiteral { .. } => {
-			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
 			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
 		}
 		LexingState::None => {}

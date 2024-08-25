@@ -152,3 +152,35 @@ function Component(item) {
 
 	assert_eq!(output, input);
 }
+
+#[test]
+fn regex_and_leading_decimal() {
+	let input = r#"
+for (const x in 0.4) {}
+for await (const [a] of 0.2) {}
+for (const result of /thing/) {}
+"#
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}
+
+#[test]
+fn class_and_object_divides() {
+	let input = r#"
+const b = class Number {} / 2
+"#
+	.trim();
+
+	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+
+	eprintln!("Module: {module:#?}");
+
+	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
+	assert_eq!(output, input);
+}

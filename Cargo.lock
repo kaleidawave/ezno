@@ -293,6 +293,7 @@ dependencies = [
  "multiline-term-input",
  "native-tls",
  "notify",
+ "pretty_assertions",
  "self-replace",
  "serde",
  "serde-wasm-bindgen",

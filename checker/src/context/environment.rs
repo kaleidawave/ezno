@@ -571,9 +571,9 @@ impl<'a> Environment<'a> {
 		mode: AccessMode,
 	) -> TypeId {
 		match reference {
-			Reference::Variable(name, position) => {
-				self.get_variable_handle_error(&name, position, checking_data).unwrap().1
-			}
+			Reference::Variable(name, position) => self
+				.get_variable_handle_error(&name, position, checking_data)
+				.map_or(TypeId::ERROR_TYPE, |VariableWithValue(_, ty)| ty),
 			Reference::Property { on, with, publicity, position } => {
 				let get_property_handle_errors = self.get_property_handle_errors(
 					on,
@@ -884,52 +884,51 @@ impl<'a> Environment<'a> {
 		if let (Some(_boundary), false) = (crossed_boundary, in_root) {
 			let based_on = match og_var.get_mutability() {
 				VariableMutability::Constant => {
-					let constraint = checking_data
-						.local_type_mappings
-						.variables_to_constraints
-						.0
-						.get(&og_var.get_origin_variable_id());
+					let current_value = self
+						.get_chain_of_info()
+						.find_map(|info| {
+							info.variable_current_value.get(&og_var.get_origin_variable_id())
+						})
+						.copied();
+					let narrowed = current_value.and_then(|cv| self.get_narrowed(cv));
 
-					// TODO temp
-					{
-						let current_value = get_value_of_variable(
-							self,
-							og_var.get_id(),
-							None::<
-								&crate::types::generics::substitution::SubstitutionArguments<
-									'static,
-								>,
-							>,
-						);
+					if let Some(precise) = narrowed.or(current_value) {
+						let ty = checking_data.types.get_type_by_id(precise);
 
-						if let Some(current_value) = current_value {
-							let ty = checking_data.types.get_type_by_id(current_value);
-
-							// TODO temp
-							if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
-								return Ok(VariableWithValue(og_var.clone(), current_value));
-							} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
-								crate::utilities::notify!(
-									"Open poly type '{}' treated as immutable free variable",
-									name
-								);
-								return Ok(VariableWithValue(og_var.clone(), current_value));
-							} else if let Type::Constant(_) = ty {
-								return Ok(VariableWithValue(og_var.clone(), current_value));
-							}
-
-							crate::utilities::notify!("Free variable with value!");
-						} else {
-							crate::utilities::notify!("Free variable with no current value");
+						// TODO temp for function
+						if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
+							return Ok(VariableWithValue(og_var.clone(), precise));
+						} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
+							crate::utilities::notify!(
+								"Open poly type '{}' treated as immutable free variable",
+								name
+							);
+							return Ok(VariableWithValue(og_var.clone(), precise));
+						} else if let Type::Constant(_) = ty {
+							return Ok(VariableWithValue(og_var.clone(), precise));
 						}
+
+						crate::utilities::notify!("Free variable with value!");
+					} else {
+						crate::utilities::notify!("Free variable with no current value");
 					}
 
-					// TODO is primitive, then can just use type
-					if let Some(constraint) = constraint {
-						*constraint
+					if let Some(narrowed) = narrowed {
+						narrowed
 					} else {
-						crate::utilities::notify!("TODO record that parent variable is `any` here");
-						TypeId::ANY_TYPE
+						let constraint = checking_data
+							.local_type_mappings
+							.variables_to_constraints
+							.0
+							.get(&og_var.get_origin_variable_id());
+						if let Some(constraint) = constraint {
+							*constraint
+						} else {
+							crate::utilities::notify!(
+								"TODO record that free variable is `any` here"
+							);
+							TypeId::ANY_TYPE
+						}
 					}
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
@@ -1124,13 +1123,15 @@ impl<'a> Environment<'a> {
 
 					// Add the expected return type instead here
 					// if it fell through to another then it could be bad
-					let expected_return = checking_data.types.new_error_type(expected);
-					let final_event = FinalEvent::Return {
-						returned: expected_return,
-						position: returned_position,
-					};
-					self.info.events.push(final_event.into());
-					return;
+					{
+						let expected_return = checking_data.types.new_error_type(expected);
+						let final_event = FinalEvent::Return {
+							returned: expected_return,
+							position: returned_position,
+						};
+						self.info.events.push(final_event.into());
+						return;
+					}
 				}
 			}
 		}
