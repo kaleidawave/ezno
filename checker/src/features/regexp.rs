@@ -1,23 +1,16 @@
-use source_map::SpanWithSource;
+use std::{collections::HashMap, fmt};
 
+use regress::{backends, Flags, Regex};
+use source_map::{SourceId, SpanWithSource};
+
+use super::objects::ObjectBuilder;
 use crate::{
 	types::{
 		properties::{PropertyKey, PropertyValue, Publicity},
 		TypeStore,
 	},
-	Constant, Environment, Type, TypeId,
+	BinarySerializable, Constant, Environment, Type, TypeId,
 };
-
-use super::{
-	constant_functions::{ConstantFunctionError, ConstantOutput},
-	objects::ObjectBuilder,
-};
-
-use std::{collections::HashMap, fmt};
-
-use regress::{backends, Flags, Regex};
-
-use crate::BinarySerializable;
 
 #[derive(Debug, Clone)]
 pub struct RegExp {
@@ -318,7 +311,7 @@ impl BinarySerializable for RegExp {
 		self.source.serialize(buf);
 	}
 
-	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source_id: source_map::SourceId) -> Self {
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source_id: SourceId) -> Self {
 		let source = String::deserialize(iter, source_id);
 
 		let (pattern, flags) = source[1..].rsplit_once('/').unwrap();
