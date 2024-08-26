@@ -66,7 +66,7 @@ impl TypeId {
 	pub const NEVER_TYPE: Self = Self(1);
 
 	pub const ANY_TYPE: Self = Self(2);
-	// TODO
+	// TODO should this be different above?
 	pub const ANY_TO_INFER_TYPE: Self = Self::ANY_TYPE;
 
 	pub const BOOLEAN_TYPE: Self = Self(3);
@@ -279,8 +279,7 @@ impl PolyNature {
 		matches!(
 			self,
 			Self::Parameter { fixed_to: to } | Self::FreeVariable { based_on: to, .. } | Self::CatchVariable(to)
-			// TODO matches TypeId::unknown
-			if matches!(*to, TypeId::ANY_TYPE)
+			if helpers::is_inferrable_type(*to)
 		)
 	}
 
@@ -420,18 +419,21 @@ pub enum Constructor {
 }
 
 impl Constructor {
-	fn get_base(&self) -> Option<TypeId> {
+	pub fn get_constraint(&self) -> TypeId {
 		match self {
-			Constructor::ConditionalResult { result_union: result, .. }
+			Constructor::BinaryOperator { result, .. }
+			| Constructor::ConditionalResult { result_union: result, .. }
 			| Constructor::Awaited { result, .. }
 			| Constructor::Property { result, .. }
-			| Constructor::Image { result, .. } => Some(*result),
-			Constructor::BinaryOperator { .. }
+			| Constructor::Image { result, .. } => *result,
+			Constructor::TypeOperator(TypeOperator::TypeOf(_)) => TypeId::STRING_TYPE,
+			Constructor::TypeOperator(
+				TypeOperator::IsPrototype { .. } | TypeOperator::HasProperty(..),
+			)
 			| Constructor::CanonicalRelationOperator { .. }
-			| Constructor::TypeExtends(_)
-			| Constructor::TypeOperator(_) => None,
+			| Constructor::TypeExtends(_) => TypeId::BOOLEAN_TYPE,
 			// TODO or symbol
-			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
+			Constructor::KeyOf(_) => TypeId::STRING_TYPE,
 		}
 	}
 }
@@ -671,32 +673,7 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
 		Type::RootPolyType(nature) => Some(nature.get_constraint()),
-		Type::Constructor(constructor) => match constructor.clone() {
-			Constructor::BinaryOperator { result, .. }
-			| Constructor::Awaited { on: _, result }
-			| Constructor::Image { on: _, with: _, result } => Some(result),
-			Constructor::Property { on: _, under: _, result, mode: _ } => {
-				// crate::utilities::notify!("Here, result of a property get");
-				Some(result)
-			}
-			Constructor::ConditionalResult { result_union, .. } => {
-				// TODO dynamic and open poly
-				Some(result_union)
-			}
-			Constructor::TypeOperator(op) => match op {
-				// TODO union of names
-				TypeOperator::TypeOf(_) => Some(TypeId::STRING_TYPE),
-				TypeOperator::IsPrototype { .. } | TypeOperator::HasProperty(..) => {
-					Some(TypeId::BOOLEAN_TYPE)
-				}
-			},
-			Constructor::CanonicalRelationOperator { .. } => Some(TypeId::BOOLEAN_TYPE),
-			Constructor::TypeExtends(op) => {
-				let crate::types::TypeExtends { .. } = op;
-				Some(TypeId::BOOLEAN_TYPE)
-			}
-			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
-		},
+		Type::Constructor(constructor) => Some(constructor.get_constraint()),
 		Type::Narrowed { from: _, narrowed_to } => Some(*narrowed_to),
 		Type::Object(ObjectNature::RealDeal) => {
 			// crate::utilities::notify!("Might be missing some mutations that are possible here");
@@ -1059,7 +1036,7 @@ pub(crate) mod helpers {
 
 	#[must_use]
 	pub fn is_inferrable_type(ty: TypeId) -> bool {
-		matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
+		matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE | TypeId::FUNCTION_TYPE)
 	}
 
 	/// For quick checking
@@ -1076,6 +1053,8 @@ pub(crate) mod helpers {
 			contributions: Default::default(),
 			others: subtyping::SubTypingOptions { allow_errors: true },
 			object_constraints: None,
+			// TODO
+			constraint_inference_requests: None,
 		};
 
 		subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, information, types).is_subtype()

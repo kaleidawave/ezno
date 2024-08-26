@@ -4599,10 +4599,10 @@ proxy1 satisfies { c: "d" };
 ```ts
 function makeObservable(obj, cb: (kind: string, prop: string, value: any) => void) {
 	return new Proxy(obj, {
-		get(on, prop: string, _rec) {
+		get(on: { [a: string]: any }, prop: string, _rec) {
 			cb("get", prop, on[prop])
 		},
-		set(on, prop: string, _value, _rec) {
+		set(on: { [a: string]: any }, prop: string, _value, _rec) {
 			cb("set", prop, on[prop])
 		},
 	})

@@ -494,8 +494,10 @@ pub(crate) fn key_matches(
 				already_checked: Default::default(),
 				mode: Default::default(),
 				contributions: Some(Contributions::default()),
-				object_constraints: Default::default(),
 				others: SubTypingOptions::default(),
+				object_constraints: Default::default(),
+				// TODO
+				constraint_inference_requests: Some(Default::default()),
 			};
 			let result = crate::types::subtyping::type_is_subtype(
 				*left, *right, &mut state, info_chain, types,

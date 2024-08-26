@@ -561,6 +561,7 @@ pub mod tsc {
 			contributions: Default::default(),
 			others: subtyping::SubTypingOptions { allow_errors: false },
 			object_constraints: None,
+			constraint_inference_requests: None,
 		};
 
 		let result = subtyping::type_is_subtype(

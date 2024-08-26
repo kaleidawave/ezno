@@ -1098,6 +1098,7 @@ impl<'a> Environment<'a> {
 					others: SubTypingOptions::default(),
 					// TODO don't think there is much case in constraining it here
 					object_constraints: None,
+					constraint_inference_requests: Some(Vec::new()),
 				};
 
 				let result =

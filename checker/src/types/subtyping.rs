@@ -137,13 +137,19 @@ pub fn type_is_subtype_object(
 		mode: SubTypingMode::default(),
 		contributions: None,
 		others: SubTypingOptions { allow_errors: true },
-		object_constraints: Some(Vec::new()),
+		object_constraints: Some(Default::default()),
+		// TODO
+		constraint_inference_requests: Some(Default::default()),
 	};
 
 	let result = type_is_subtype(base_type, ty, &mut state, environment, types);
 
 	environment.add_object_constraints(state.object_constraints.unwrap().into_iter(), types);
-	// TODO information.add_inferred_constraints(x, types);
+
+	// TODO WIP abstract. Also need to merge somethings
+	for (key, value) in state.constraint_inference_requests.unwrap() {
+		environment.constraint_inference_requests.insert(key, value);
+	}
 
 	result
 }
@@ -168,11 +174,12 @@ pub fn type_is_subtype(
 	)
 }
 
-/// Using `Vec` as it needs to do a sequential removal
+/// Using `Vec` as it needs to do a sequential removal. Aka can't use `HashSet<(TypeId, TypeId)>`
 pub type AlreadyChecked = Vec<(TypeId, TypeId)>;
 
 /// Additional information during subtype checking
-// TODO pub constraint_inference_requests: Vec<TypeId, TypeId>
+///
+/// TODO use map in some of these
 pub struct State<'a> {
 	/// Prevents cycles
 	pub already_checked: AlreadyChecked,
@@ -181,6 +188,8 @@ pub struct State<'a> {
 	pub contributions: Option<Contributions<'a>>,
 	/// `None` if satisfies or parameters
 	pub object_constraints: Option<Vec<(TypeId, TypeId)>>,
+	/// For #constraint inference
+	pub constraint_inference_requests: Option<Vec<(TypeId, TypeId)>>,
 	pub others: SubTypingOptions,
 }
 
@@ -266,9 +275,10 @@ pub(crate) fn type_is_subtype_with_generics(
 				information,
 				types,
 			);
-			// Temp fix for narrowing constants
-			crate::utilities::notify!("{:?}", super::helpers::is_not_of_constant(*right, types));
-			// SubTypeResult::IsNotSubType(_)
+
+			// Temp fix to treate narrowed constants as `base & narrowed`
+			// crate::utilities::notify!("{:?}", super::helpers::is_not_of_constant(*right, types));
+
 			return if let (Type::Narrowed { from, .. }, _, true) =
 				(subtype, &result, super::helpers::is_not_of_constant(*right, types))
 			{
@@ -475,8 +485,13 @@ pub(crate) fn type_is_subtype_with_generics(
 				return if result.is_mismatch()
 					&& matches!(subtype, Type::RootPolyType(root) if root.is_inferrable())
 				{
-					crate::utilities::notify!("Setting inferred request");
-					// state.add_request(ty, base_type);
+					if let Some(ref mut constraint_inference_requests) =
+						state.constraint_inference_requests
+					{
+						crate::utilities::notify!("Setting inferred request");
+						constraint_inference_requests.push((ty, base_type));
+					}
+
 					SubTypeResult::IsSubType
 				} else {
 					result
@@ -692,10 +707,8 @@ pub(crate) fn type_is_subtype_with_generics(
 				// TODO temp fix
 				if let Type::Constructor(c) = subtype {
 					crate::utilities::notify!("TODO right hand side maybe okay");
-					if let Some(to) = c.get_base() {
-						if to == base_type {
-							return SubTypeResult::IsSubType;
-						}
+					if c.get_constraint() == base_type {
+						return SubTypeResult::IsSubType;
 					}
 				}
 				if let PolyNature::FunctionGeneric { .. } = nature {
@@ -1561,7 +1574,7 @@ pub(crate) fn type_is_subtype_with_generics(
 
 fn subtype_function(
 	(left_func, base_type_arguments): (crate::FunctionId, GenericChain),
-	(subtype, ty, subtypepe_arguments): (&Type, TypeId, GenericChain),
+	(subtype, ty, subtype_arguments): (&Type, TypeId, GenericChain),
 	state: &mut State,
 	information: &impl InformationChain,
 	types: &TypeStore,
@@ -1598,7 +1611,7 @@ fn subtype_function(
 
 			// Reverse is important
 			let result = type_is_subtype_with_generics(
-				(right_param_ty, subtypepe_arguments),
+				(right_param_ty, subtype_arguments),
 				(lhs_param.ty, base_type_arguments),
 				state,
 				information,
@@ -1611,7 +1624,7 @@ fn subtype_function(
 				crate::utilities::notify!(
 					"Parameter invalid rhs ({:?} {:?}) <- lhs ({:?} {:?})",
 					rhs,
-					subtypepe_arguments,
+					subtype_arguments,
 					lhs,
 					base_type_arguments
 				);
@@ -1637,7 +1650,7 @@ fn subtype_function(
 	} else {
 		let type_is_subtype_with_generics = type_is_subtype_with_generics(
 			(left_func.return_type, base_type_arguments),
-			(right_func.return_type, subtypepe_arguments),
+			(right_func.return_type, subtype_arguments),
 			state,
 			information,
 			types,
@@ -1653,7 +1666,7 @@ fn subtype_function(
 
 fn subtype_floating_properties(
 	(base_type, base_type_arguments): (TypeId, GenericChain),
-	(ty, subtypepe_arguments): (TypeId, GenericChain),
+	(ty, subtype_arguments): (TypeId, GenericChain),
 	state: &mut State,
 	information: &impl InformationChain,
 	types: &TypeStore,
@@ -1665,7 +1678,7 @@ fn subtype_floating_properties(
 
 	subtype_properties(
 		(base_type, reversed_flattened_properties_on_base, base_type_arguments),
-		(ty, subtypepe_arguments),
+		(ty, subtype_arguments),
 		state,
 		information,
 		types,
@@ -1674,7 +1687,7 @@ fn subtype_floating_properties(
 
 fn subtype_properties<'a, T>(
 	(base_type, base_properties, base_type_arguments): (TypeId, T, GenericChain),
-	(ty, subtypepe_arguments): (TypeId, GenericChain),
+	(ty, subtype_arguments): (TypeId, GenericChain),
 	state: &mut State,
 	information: &impl InformationChain,
 	types: &TypeStore,
@@ -1711,7 +1724,7 @@ where
 		let result = check_lhs_property_is_super_type_of_rhs(
 			(*publicity, key),
 			(lhs_property, base_type_arguments, false),
-			(ty, subtypepe_arguments),
+			(ty, subtype_arguments),
 			state,
 			information,
 			types,
@@ -1728,7 +1741,7 @@ where
 		if let Type::Interface { extends: Some(extends), .. } = types.get_type_by_id(base_type) {
 			let extends_result = type_is_subtype_with_generics(
 				(*extends, base_type_arguments),
-				(ty, subtypepe_arguments),
+				(ty, subtype_arguments),
 				state,
 				information,
 				types,
@@ -1797,7 +1810,7 @@ where
 fn check_lhs_property_is_super_type_of_rhs(
 	(publicity, key): (Publicity, &PropertyKey<'_>),
 	(lhs_property, base_type_arguments, optional): (&PropertyValue, GenericChain, bool),
-	(ty, subtypepe_arguments): (TypeId, GenericChain),
+	(ty, subtype_arguments): (TypeId, GenericChain),
 	state: &mut State,
 	information: &impl InformationChain,
 	types: &TypeStore,
@@ -1805,7 +1818,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 	match lhs_property {
 		PropertyValue::Value(lhs_value) => {
 			let right_result = get_property_unbound(
-				(ty, subtypepe_arguments),
+				(ty, subtype_arguments),
 				(publicity, key, base_type_arguments),
 				false,
 				information,
@@ -1825,7 +1838,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 				Ok(LogicalOrValid::Logical(res)) => {
 					let res = check_logical_property(
 						(*lhs_value, base_type_arguments, optional),
-						(res, subtypepe_arguments),
+						(res, subtype_arguments),
 						state,
 						information,
 						types,
@@ -1847,7 +1860,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 				))) => {
 					crate::utilities::notify!("TODO set as well?");
 					let get_handler = get_property_unbound(
-						(handler, subtypepe_arguments),
+						(handler, subtype_arguments),
 						(
 							Publicity::Public,
 							&PropertyKey::String(std::borrow::Cow::Borrowed("get")),
@@ -1885,14 +1898,14 @@ fn check_lhs_property_is_super_type_of_rhs(
 								map.insert(third, (CovariantContribution::TypeId(handler), 0));
 							}
 
-							let subtypepe_arguments = Some(GenericChainLink::MappedPropertyLink {
-								parent_link: subtypepe_arguments.as_ref(),
+							let subtype_arguments = Some(GenericChainLink::MappedPropertyLink {
+								parent_link: subtype_arguments.as_ref(),
 								value: &map,
 							});
 
 							let result = type_is_subtype_with_generics(
 								(*lhs_value, base_type_arguments),
-								(function.return_type, subtypepe_arguments),
+								(function.return_type, subtype_arguments),
 								state,
 								information,
 								types,
@@ -1900,7 +1913,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 							if let SubTypeResult::IsSubType = result {
 								Ok(())
 							} else {
-								// crate::utilities::notify!("One missing");
+								crate::utilities::notify!("One missing");
 								Err(PropertyError::Missing)
 							}
 						} else {
@@ -1909,7 +1922,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 							check_lhs_property_is_super_type_of_rhs(
 								(publicity, key),
 								(lhs_property, base_type_arguments, optional),
-								(handler, subtypepe_arguments),
+								(handler, subtype_arguments),
 								state,
 								information,
 								types,
@@ -1919,7 +1932,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 						check_lhs_property_is_super_type_of_rhs(
 							(publicity, key),
 							(lhs_property, base_type_arguments, optional),
-							(handler, subtypepe_arguments),
+							(handler, subtype_arguments),
 							state,
 							information,
 							types,
@@ -1934,7 +1947,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 					if optional {
 						Ok(())
 					} else {
-						// crate::utilities::notify!("One missing");
+						crate::utilities::notify!("One missing");
 						Err(PropertyError::Missing)
 					}
 				}
@@ -1993,14 +2006,14 @@ fn check_lhs_property_is_super_type_of_rhs(
 			check_lhs_property_is_super_type_of_rhs(
 				(publicity, key),
 				(truthy, base_type_arguments, is_optional),
-				(ty, subtypepe_arguments),
+				(ty, subtype_arguments),
 				state,
 				information,
 				types,
 			)
 			// if let PropertyValue::Value(lhs_value) = &**truthy {
 			// let property = get_property_unbound(
-			// 	(ty, subtypepe_arguments),
+			// 	(ty, subtype_arguments),
 			// 	(publicity, key, base_type_arguments),
 			// 	information,
 			// 	types,
@@ -2019,7 +2032,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 
 			// 	let res = check_logical_property(
 			// 		(*lhs_value, base_type_arguments),
-			// 		(property, subtypepe_arguments),
+			// 		(property, subtype_arguments),
 			// 		state,
 			// 		information,
 			// 		types,
@@ -2050,7 +2063,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 			check_lhs_property_is_super_type_of_rhs(
 				(publicity, key),
 				(on, base_type_arguments, optional),
-				(ty, subtypepe_arguments),
+				(ty, subtype_arguments),
 				state,
 				information,
 				types,
@@ -2061,7 +2074,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 
 fn check_logical_property(
 	(lhs_property_value, lhs_property_value_type_arguments, optional): (TypeId, GenericChain, bool),
-	(rhs_property, subtypepe_arguments): (Logical<PropertyValue>, GenericChain),
+	(rhs_property, subtype_arguments): (Logical<PropertyValue>, GenericChain),
 	state: &mut State,
 	information: &impl InformationChain,
 	types: &TypeStore,
@@ -2079,7 +2092,7 @@ fn check_logical_property(
 
 			type_is_subtype_with_generics(
 				(lhs_property_value, lhs_property_value_type_arguments),
-				(rhs_type, subtypepe_arguments),
+				(rhs_type, subtype_arguments),
 				state,
 				information,
 				types,
@@ -2092,7 +2105,7 @@ fn check_logical_property(
 			{
 				let left_result = check_logical_property(
 					(lhs_property_value, lhs_property_value_type_arguments, optional),
-					(left, subtypepe_arguments),
+					(left, subtype_arguments),
 					state,
 					information,
 					types,
@@ -2101,7 +2114,7 @@ fn check_logical_property(
 				if let SubTypeResult::IsSubType = left_result {
 					check_logical_property(
 						(lhs_property_value, lhs_property_value_type_arguments, optional),
-						(right, subtypepe_arguments),
+						(right, subtype_arguments),
 						state,
 						information,
 						types,
@@ -2125,7 +2138,7 @@ fn check_logical_property(
 					*on,
 					GenericChainLink::append(
 						TypeId::UNIMPLEMENTED_ERROR_TYPE,
-						subtypepe_arguments.as_ref(),
+						subtype_arguments.as_ref(),
 						&antecedent,
 					),
 				),
@@ -2137,7 +2150,7 @@ fn check_logical_property(
 		Logical::BasedOnKey(kind) => match kind {
 			BasedOnKey::Left { value, key_arguments } => {
 				let property_generics = Some(GenericChainLink::MappedPropertyLink {
-					parent_link: subtypepe_arguments.as_ref(),
+					parent_link: subtype_arguments.as_ref(),
 					value: &key_arguments,
 				});
 				check_logical_property(
@@ -2155,7 +2168,7 @@ fn check_logical_property(
 					type_is_subtype_of_property_mapped_key(
 						MappedKey { value: (*extends).into(), key },
 						(lhs_property_value, lhs_property_value_type_arguments, optional),
-						(on, subtypepe_arguments),
+						(on, subtype_arguments),
 						state,
 						information,
 						types,
@@ -2164,7 +2177,7 @@ fn check_logical_property(
 					let filter = get_constraint(key, types).unwrap_or(key);
 
 					let properties = get_properties_on_single_type2(
-						(on, subtypepe_arguments),
+						(on, subtype_arguments),
 						types,
 						information,
 						filter,
@@ -2172,7 +2185,7 @@ fn check_logical_property(
 					for (_key, rhs_property, _args) in properties {
 						let result = check_logical_property(
 							(lhs_property_value, lhs_property_value_type_arguments, optional),
-							(Logical::Pure(rhs_property), subtypepe_arguments),
+							(Logical::Pure(rhs_property), subtype_arguments),
 							state,
 							information,
 							types,
@@ -2198,7 +2211,7 @@ pub struct MappedKey {
 pub fn type_is_subtype_of_property_mapped_key(
 	mapped_key: MappedKey,
 	(base, property_generics, optional): (TypeId, GenericChain, bool),
-	(ty, subtypepe_arguments): (TypeId, GenericChain),
+	(ty, subtype_arguments): (TypeId, GenericChain),
 	state: &mut State,
 	information: &impl InformationChain,
 	types: &TypeStore,
@@ -2211,11 +2224,11 @@ pub fn type_is_subtype_of_property_mapped_key(
 					"Reading {:?}, with {:?} {:?}",
 					types.get_type_by_id(ty),
 					s,
-					(property_generics.as_ref(), subtypepe_arguments.as_ref())
+					(property_generics.as_ref(), subtype_arguments.as_ref())
 				);
 			}
 			let right_property = get_property_unbound(
-				(ty, subtypepe_arguments),
+				(ty, subtype_arguments),
 				(
 					Publicity::Public,
 					&PropertyKey::String(std::borrow::Cow::Owned(s.to_owned())),
@@ -2235,7 +2248,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 					});
 					let result = check_logical_property(
 						(base, property_generics, optional),
-						(right_property, subtypepe_arguments),
+						(right_property, subtype_arguments),
 						state,
 						information,
 						types,
@@ -2262,7 +2275,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 				| Type::AliasTo { to, name: _, parameters: _ } => type_is_subtype_of_property_mapped_key(
 					MappedKey { value: (*to).into(), key: mapped_key.key },
 					(base, property_generics, optional),
-					(ty, subtypepe_arguments),
+					(ty, subtype_arguments),
 					state,
 					information,
 					types,
@@ -2271,7 +2284,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 					let left = type_is_subtype_of_property_mapped_key(
 						MappedKey { value: (*left).into(), key: mapped_key.key },
 						(base, property_generics, optional),
-						(ty, subtypepe_arguments),
+						(ty, subtype_arguments),
 						state,
 						information,
 						types,
@@ -2280,7 +2293,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 						type_is_subtype_of_property_mapped_key(
 							MappedKey { value: (*right).into(), key: mapped_key.key },
 							(base, property_generics, optional),
-							(ty, subtypepe_arguments),
+							(ty, subtype_arguments),
 							state,
 							information,
 							types,
@@ -2293,7 +2306,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 					let left = type_is_subtype_of_property_mapped_key(
 						MappedKey { value: (*left).into(), key: mapped_key.key },
 						(base, property_generics, optional),
-						(ty, subtypepe_arguments),
+						(ty, subtype_arguments),
 						state,
 						information,
 						types,
@@ -2304,7 +2317,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 						type_is_subtype_of_property_mapped_key(
 							MappedKey { value: (*right).into(), key: mapped_key.key },
 							(base, property_generics, optional),
-							(ty, subtypepe_arguments),
+							(ty, subtype_arguments),
 							state,
 							information,
 							types,
@@ -2319,7 +2332,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 						type_is_subtype_of_property_mapped_key(
 							MappedKey { value: value.into(), key: mapped_key.key },
 							(base, property_generics, optional),
-							(ty, subtypepe_arguments),
+							(ty, subtype_arguments),
 							state,
 							information,
 							types,
@@ -2349,7 +2362,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 						let result = type_is_subtype_of_property_mapped_key(
 							MappedKey { value, key: mapped_key.key },
 							(base, property_generics, optional),
-							(ty, subtypepe_arguments),
+							(ty, subtype_arguments),
 							state,
 							information,
 							types,
@@ -2367,8 +2380,8 @@ pub fn type_is_subtype_of_property_mapped_key(
 				Type::Class { .. } => todo!(),
 				Type::Constant(_) => {
 					let right_property = get_property_unbound(
-						(ty, subtypepe_arguments),
-						(Publicity::Public, &PropertyKey::Type(key_ty), subtypepe_arguments),
+						(ty, subtype_arguments),
+						(Publicity::Public, &PropertyKey::Type(key_ty), subtype_arguments),
 						true,
 						information,
 						types,
@@ -2384,7 +2397,7 @@ pub fn type_is_subtype_of_property_mapped_key(
 							});
 							check_logical_property(
 								(base, property_generics, optional),
-								(right_property, subtypepe_arguments),
+								(right_property, subtype_arguments),
 								state,
 								information,
 								types,

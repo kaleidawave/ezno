@@ -175,60 +175,67 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 											&mut checking_data.types,
 										)
 									} else {
-										synthesise_type_annotation(
+										let argument = synthesise_type_annotation(
 											argument_type_annotation,
 											environment,
 											checking_data,
-										)
-									};
-
-									{
-										use crate::types::subtyping;
-
-										let mut state = subtyping::State {
-											already_checked: Default::default(),
-											mode: Default::default(),
-											contributions: Default::default(),
-											others: subtyping::SubTypingOptions {
-												allow_errors: true,
-											},
-											object_constraints: None,
-										};
-
-										let result = subtyping::type_is_subtype(
-											parameter_restriction,
-											argument,
-											&mut state,
-											environment,
-											&checking_data.types,
 										);
 
-										if let subtyping::SubTypeResult::IsNotSubType(_matches) =
-											result
 										{
-											let error =
-												TypeCheckError::GenericArgumentDoesNotMeetRestriction {
-													parameter_restriction:
-														TypeStringRepresentation::from_type_id(
-															parameter_restriction,
+											use crate::types::subtyping;
+
+											let mut state = subtyping::State {
+												already_checked: Default::default(),
+												mode: Default::default(),
+												contributions: Default::default(),
+												others: subtyping::SubTypingOptions {
+													allow_errors: true,
+												},
+												object_constraints: None,
+												constraint_inference_requests: None,
+											};
+
+											let result = subtyping::type_is_subtype(
+												parameter_restriction,
+												argument,
+												&mut state,
+												environment,
+												&checking_data.types,
+											);
+
+											if let subtyping::SubTypeResult::IsNotSubType(
+												_matches,
+											) = result
+											{
+												let error =
+													TypeCheckError::GenericArgumentDoesNotMeetRestriction {
+														parameter_restriction:
+															TypeStringRepresentation::from_type_id(
+																parameter_restriction,
+																environment,
+																&checking_data.types,
+																checking_data.options.debug_types,
+															),
+														argument: TypeStringRepresentation::from_type_id(
+															argument,
 															environment,
 															&checking_data.types,
 															checking_data.options.debug_types,
 														),
-													argument: TypeStringRepresentation::from_type_id(
-														argument,
-														environment,
-														&checking_data.types,
-														checking_data.options.debug_types,
-													),
-													position: argument_type_annotation
-														.get_position()
-														.with_source(environment.get_source()),
-												};
+														position: argument_type_annotation
+															.get_position()
+															.with_source(environment.get_source()),
+													};
 
-											checking_data.diagnostics_container.add_error(error);
+												checking_data
+													.diagnostics_container
+													.add_error(error);
+											}
 										}
-									}
+
+										argument
+									};
+
 									let position = argument_type_annotation
 										.get_position()
 										.with_source(environment.get_source());
