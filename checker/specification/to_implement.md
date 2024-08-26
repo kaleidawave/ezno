@@ -735,23 +735,6 @@ while (i++ < 5) {
 
 - Expected null, found LessThan<6>
 
-#### Optional property access
-
-```ts
-interface X {
-    a: string
-    b: string
-}
-
-declare let x: X | null;
-
-x.a;
-x?.b satisfies number;
-```
-
-- Cannot get 'a' on null
-- Expected number, found string
-
 ### Generics
 
 #### Out of order generics

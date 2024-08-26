@@ -154,7 +154,7 @@ where
 				acc = result;
 			} else {
 				crate::utilities::notify!("Invalid template literal concatenation");
-				return TypeId::ERROR_TYPE;
+				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 			}
 			let rhs = A::synthesise_multiple_expression(
 				dynamic_part,
@@ -174,7 +174,7 @@ where
 				acc = result;
 			} else {
 				crate::utilities::notify!("Invalid template literal concatenation");
-				return TypeId::ERROR_TYPE;
+				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 			}
 		}
 		if final_part.is_empty() {
@@ -194,7 +194,7 @@ where
 				result
 			} else {
 				crate::utilities::notify!("Invalid template literal concatenation");
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			}
 		}
 	}

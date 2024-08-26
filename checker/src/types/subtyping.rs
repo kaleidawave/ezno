@@ -370,8 +370,8 @@ pub(crate) fn type_is_subtype_with_generics(
 		t @ (Type::RootPolyType(..) | Type::Constructor(..)) => {
 			if let Type::RootPolyType(PolyNature::Error(to)) = t {
 				// (unless specified) treat as subtype as error would have already been thrown
+				crate::utilities::notify!("Here {:?}", state.others.allow_errors);
 				return if state.others.allow_errors && *to == TypeId::ANY_TYPE {
-					crate::utilities::notify!("Here");
 					SubTypeResult::IsSubType
 				} else {
 					type_is_subtype(base_type, *to, state, information, types)
@@ -2012,7 +2012,7 @@ fn check_lhs_property_is_super_type_of_rhs(
 			// 	let found = if let Logical::Pure(PropertyValue::Value(ref found)) = property {
 			// 		*found
 			// 	} else {
-			// 		TypeId::ERROR_TYPE
+			// 		TypeId::UNIMPLEMENTED_ERROR_TYPE
 			// 	};
 
 			// 	crate::utilities::notify!("{:?}", property);
@@ -2124,7 +2124,7 @@ fn check_logical_property(
 				(
 					*on,
 					GenericChainLink::append(
-						TypeId::ERROR_TYPE,
+						TypeId::UNIMPLEMENTED_ERROR_TYPE,
 						subtypepe_arguments.as_ref(),
 						&antecedent,
 					),

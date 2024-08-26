@@ -51,7 +51,7 @@ impl<T> From<NeedsCalculation> for LogicalOrValid<T> {
 // pub enum MissingOrToCalculate {
 // 	/// Doesn't contain request
 // 	Missing,
-// 	/// From [`TypeId::ERROR_TYPE`]
+// 	/// From [`TypeId::UNIMPLEMENTED_ERROR_TYPE`]
 // 	Error,
 // 	/// From [`TypeId::ANY_TYPE`]
 // 	Infer { on: TypeId },

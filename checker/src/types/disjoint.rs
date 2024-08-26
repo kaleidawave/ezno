@@ -15,7 +15,7 @@ pub fn types_are_disjoint(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> bool {
-	crate::utilities::notify!("are disjoint? {:?}", (lhs, rhs));
+	// crate::utilities::notify!("are disjoint? {:?}", (lhs, rhs));
 
 	if lhs == rhs || lhs == TypeId::ANY_TYPE || rhs == TypeId::ANY_TYPE {
 		false
@@ -80,7 +80,7 @@ pub fn types_are_disjoint(
 				already_checked: already_checked.clone(),
 				mode: Default::default(),
 				contributions: None,
-				others: subtyping::SubTypingOptions { allow_errors: false },
+				others: subtyping::SubTypingOptions { allow_errors: true },
 				object_constraints: None,
 			};
 
@@ -99,7 +99,7 @@ pub fn types_are_disjoint(
 				already_checked: already_checked.clone(),
 				mode: Default::default(),
 				contributions: None,
-				others: subtyping::SubTypingOptions { allow_errors: false },
+				others: subtyping::SubTypingOptions { allow_errors: true },
 				object_constraints: None,
 			};
 

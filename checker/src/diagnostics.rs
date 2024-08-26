@@ -56,7 +56,7 @@ pub struct VariableUsedInTDZ {
 	pub position: SpanWithSource,
 }
 
-pub struct InvalidRegexp {
+pub struct InvalidRegExp {
 	pub error: String,
 	pub position: SpanWithSource,
 }
@@ -466,7 +466,7 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CannotDeleteProperty(CannotDeleteFromError),
-	InvalidRegexp(InvalidRegexp),
+	InvalidRegExp(InvalidRegExp),
 }
 
 #[allow(clippy::useless_format)]
@@ -690,7 +690,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 			} => {
 				let reason = if expected_count == 0 {
-					format!("Cannot pass a type argument to a non-generic type")
+					"Cannot pass a type argument to a non-generic type".to_owned()
 				} else if expected_count == 1 {
 					format!("Expected 1 type argument, but got {count}")
 				} else {
@@ -909,7 +909,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				}
 			},
-			TypeCheckError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
+			TypeCheckError::InvalidRegExp(InvalidRegExp { error, position }) => Diagnostic::Position {
 				reason: format!("Invalid regular expression: {error}"),
 				position,
 				kind,
@@ -1220,7 +1220,7 @@ fn function_calling_error_diagnostic(
 				kind,
 			}
 		}
-		FunctionCallingError::NotConfiguarable {
+		FunctionCallingError::NotConfigurable {
 			property,
 			call_site,
 		} => {
@@ -1233,7 +1233,7 @@ fn function_calling_error_diagnostic(
 				kind,
 			}
 		}
-		FunctionCallingError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
+		FunctionCallingError::InvalidRegExp(InvalidRegExp { error, position }) => Diagnostic::Position {
 			reason: format!("Invalid regular expression: {error}"),
 			position,
 			kind,

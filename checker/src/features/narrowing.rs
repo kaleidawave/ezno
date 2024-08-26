@@ -328,8 +328,20 @@ pub fn narrow_based_on_expression(
 		if rpt.get_constraint() == TypeId::BOOLEAN_TYPE {
 			let result = if negate { TypeId::FALSE } else { TypeId::TRUE };
 			into.insert(condition, result);
-		} else {
-			crate::utilities::notify!("Set, {:?} as truthy", r#type);
+		} else if !negate {
+			let mut result = Vec::new();
+			super::narrowing::build_union_from_filter(
+				condition,
+				super::narrowing::NOT_FASLY,
+				&mut result,
+				information,
+				types,
+			);
+			let narrowed_to = types.new_or_type_from_iterator(result);
+			into.insert(
+				condition,
+				types.register_type(Type::Narrowed { from: condition, narrowed_to }),
+			);
 		}
 	}
 }

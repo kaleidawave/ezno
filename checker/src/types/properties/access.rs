@@ -736,9 +736,9 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		types,
 	);
 
-	// {
-	// 	crate::utilities::notify!("Access result {:?}", result);
-	// }
+	{
+		crate::utilities::notify!("Access {:?} result {:?}", under, result);
+	}
 
 	match result {
 		Ok(LogicalOrValid::Logical(logical)) => {
@@ -941,13 +941,18 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					};
 					let result =
 						getter.call(Vec::new(), input, environment, (behavior, diagnostics), types);
+
 					if let Ok(res) = result {
+						crate::utilities::notify!("{:?}", res.result);
+
 						let application_result =
 							application_result_to_return_type(res.result, environment, types);
+
+						crate::utilities::notify!("{:?}", application_result);
 						Some((PropertyKind::Getter, application_result))
 					} else {
-						crate::utilities::notify!("TODO merge calling");
-						Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
+						crate::utilities::notify!("Here");
+						Some((PropertyKind::Getter, TypeId::UNIMPLEMENTED_ERROR_TYPE))
 					}
 				}
 				PropertyValue::Setter(_) => {
@@ -1175,7 +1180,7 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 			Some((PropertyKind::Getter, application_result))
 		} else {
 			crate::utilities::notify!("TODO merge calling");
-			Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
+			Some((PropertyKind::Getter, TypeId::UNIMPLEMENTED_ERROR_TYPE))
 		}
 	} else {
 		get_property(

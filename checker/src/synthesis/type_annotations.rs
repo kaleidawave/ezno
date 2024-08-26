@@ -326,7 +326,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						"namespace item",
 						position.with_source(environment.get_source()),
 					);
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
 		}
@@ -410,7 +410,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				"abstact type annotation",
 				position.with_source(environment.get_source()),
 			);
-			TypeId::ERROR_TYPE
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
 		TypeAnnotation::Readonly(type_annotation, position) => {
 			let underlying_type =
@@ -444,7 +444,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				"constructor literal",
 				position.with_source(environment.get_source()),
 			);
-			TypeId::ERROR_TYPE
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
 		// Object literals are first turned into types as if they were interface declarations and then
 		// returns reference to object literal
@@ -602,7 +602,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					"throw error for annotation",
 					position.with_source(environment.get_source()),
 				);
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			}
 		}
 		TypeAnnotation::Conditional { condition, resolve_true, resolve_false, position: _ } => {
@@ -778,7 +778,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				infer_type
 			} else {
 				crate::utilities::notify!("Raise error diagnostic");
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			}
 		}
 		TypeAnnotation::Extends { item, extends, position: _ } => {
@@ -804,7 +804,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					.copied(),
 				parser::type_annotations::IsItem::This => {
 					// TODO
-					let based_on = TypeId::ERROR_TYPE;
+					let based_on = TypeId::UNIMPLEMENTED_ERROR_TYPE;
 					let ty = Type::RootPolyType(PolyNature::FreeVariable {
 						reference: crate::events::RootReference::This,
 						based_on,
@@ -851,7 +851,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				"`this` annotation",
 				position.with_source(environment.get_source()),
 			);
-			TypeId::ERROR_TYPE
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
 	};
 

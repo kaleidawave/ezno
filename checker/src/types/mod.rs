@@ -61,6 +61,7 @@ impl TypeId {
 	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
 	pub const UNIMPLEMENTED_ERROR_TYPE: Self = Self::ERROR_TYPE;
+	pub const IS_ASSIGNED_VALUE_LATER: Self = Self::ERROR_TYPE;
 
 	pub const NEVER_TYPE: Self = Self(1);
 
@@ -368,7 +369,7 @@ impl Type {
 
 /// - Some of these can be specialised, others are only created via event specialisation
 /// - Note that no || and && etc. This is handled using [`Constructor::ConditionalResult`]
-/// - Unary operations are encoded as BinaryOperations
+/// - Unary operations are encoded via [`Constructor::BinaryOperator`] equivalents
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Constructor {
 	BinaryOperator {
@@ -1001,7 +1002,7 @@ pub(crate) mod helpers {
 	#[allow(clippy::match_like_matches_macro)]
 	#[must_use]
 	pub fn _type_is_error(ty: TypeId, types: &TypeStore) -> bool {
-		if ty == TypeId::ERROR_TYPE {
+		if ty == TypeId::UNIMPLEMENTED_ERROR_TYPE {
 			true
 		} else if let Type::RootPolyType(PolyNature::Error(_)) = types.get_type_by_id(ty) {
 			true

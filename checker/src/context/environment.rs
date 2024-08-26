@@ -1095,7 +1095,7 @@ impl<'a> Environment<'a> {
 					already_checked: Default::default(),
 					mode: Default::default(),
 					contributions: Default::default(),
-					others: SubTypingOptions::satisfies(),
+					others: SubTypingOptions::default(),
 					// TODO don't think there is much case in constraining it here
 					object_constraints: None,
 				};
@@ -1542,7 +1542,7 @@ impl<'a> Environment<'a> {
 			infer_type
 		} else {
 			crate::utilities::notify!("Raise error diagnostic");
-			TypeId::ERROR_TYPE
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
 	}
 }

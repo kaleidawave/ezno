@@ -191,6 +191,8 @@ fn synthesise_class_declaration_extends_and_members<
 					}
 				};
 
+				crate::utilities::notify!("{:?}", (getter_setter, is_async, is_generator));
+
 				let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
 					(is_declare, method.name.get_ast_ref())
 				{
@@ -455,7 +457,7 @@ fn synthesise_class_declaration_extends_and_members<
 							synthesise_type_annotation(type_annotation, environment, checking_data)
 						} else {
 							crate::utilities::notify!("Declare without type annotation");
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 					} else {
 						TypeId::UNDEFINED_TYPE
@@ -609,12 +611,20 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					environment,
 				);
 
+				let (getter_setter, is_async, is_generator) = match &method.header {
+					MethodHeader::Get => (Some(GetterSetter::Getter), false, false),
+					MethodHeader::Set => (Some(GetterSetter::Setter), false, false),
+					MethodHeader::Regular { is_async, generator } => {
+						(None, *is_async, generator.is_some())
+					}
+				};
+
 				let value = build_overloaded_function(
 					FunctionId(environment.get_source(), method.position.start),
 					crate::types::functions::FunctionBehavior::Method {
 						free_this_id: TypeId::ANY_TYPE,
-						is_async: method.header.is_async(),
-						is_generator: method.header.is_generator(),
+						is_async,
+						is_generator,
 						// TODO
 						name: TypeId::ANY_TYPE,
 					},
@@ -640,12 +650,17 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				if *initial_is_static {
 					crate::utilities::notify!("TODO static item?");
 				} else {
-					environment.info.register_property_on_type(
-						class_type,
-						publicity,
-						under,
-						PropertyValue::Value(value),
-					);
+					use crate::types::calling::Callable;
+					let value = match getter_setter {
+						Some(GetterSetter::Getter) => {
+							PropertyValue::Getter(Callable::from_type(value, &checking_data.types))
+						}
+						Some(GetterSetter::Setter) => {
+							PropertyValue::Setter(Callable::from_type(value, &checking_data.types))
+						}
+						None => PropertyValue::Value(value),
+					};
+					environment.info.register_property_on_type(class_type, publicity, under, value);
 				}
 			}
 			ClassMember::Property(is_static, property) => {

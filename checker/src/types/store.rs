@@ -80,7 +80,10 @@ impl Default for TypeStore {
 			Type::Constant(Constant::Number(f64::MIN.try_into().unwrap())),
 			Type::Constant(Constant::Number(f64::MAX.try_into().unwrap())),
 			Type::Constant(Constant::Number(f64::EPSILON.try_into().unwrap())),
-			Type::Constant(Constant::Number((0xFFFF_FFFFu32 as i32).try_into().unwrap())),
+			Type::Constant(Constant::Number({
+				const THIRTY_TWO_ONE_BITS: i32 = -1i32;
+				THIRTY_TWO_ONE_BITS.into()
+			})),
 			// ""
 			Type::Constant(Constant::String(String::new())),
 			// inferred this free variable shortcut
@@ -497,14 +500,14 @@ impl TypeStore {
 					LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(self),
 					value => {
 						crate::utilities::notify!("value={:?}", value);
-						TypeId::ERROR_TYPE
+						TypeId::UNIMPLEMENTED_ERROR_TYPE
 					} // Logical::Or { .. } => todo!(),
 					  // Logical::Implies { .. } => todo!(),
 					  // Logical::BasedOnKey { .. } => todo!(),
 				}
 			} else {
 				crate::utilities::notify!("Error: no index on type annotation");
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			}
 		}
 	}

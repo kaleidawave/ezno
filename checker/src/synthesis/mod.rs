@@ -266,7 +266,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 					"big int as property key",
 					pos.with_source(environment.get_source()),
 				);
-				PropertyKey::Type(TypeId::ERROR_TYPE)
+				PropertyKey::Type(TypeId::UNIMPLEMENTED_ERROR_TYPE)
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {

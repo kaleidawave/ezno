@@ -407,11 +407,11 @@ pub(crate) fn substitute(
 						}
 						Ok(value) => {
 							crate::utilities::notify!("TODO {:?}", value);
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 						Err(err) => {
 							crate::utilities::notify!("{:?}", err);
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 					}
 				} else {
@@ -420,7 +420,7 @@ pub(crate) fn substitute(
 						on_type,
 						under
 					);
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
 			Constructor::Image { .. } => {

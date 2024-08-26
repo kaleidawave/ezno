@@ -279,15 +279,15 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 		Ok(LogicalOrValid::NeedsCalculation(l)) => match l {
 			NeedsCalculation::Infer { on } => {
 				if on == TypeId::ERROR_TYPE {
-					(TypeId::ERROR_TYPE, None)
+					(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
 				} else {
 					crate::utilities::notify!("TODO function calling inference on {:?}", on);
-					(TypeId::ERROR_TYPE, None)
+					(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
 				}
 			}
 			NeedsCalculation::Proxy(..) => {
 				crate::utilities::notify!("TODO calling proxy");
-				(TypeId::ERROR_TYPE, None)
+				(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
 			}
 		},
 		Err(Invalid(ty)) => {
@@ -380,7 +380,7 @@ impl Callable {
 					types.get_function_from_id(*id).return_type
 				} else {
 					crate::utilities::notify!("Cannot get return type");
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
 		}
@@ -711,7 +711,7 @@ fn call_logical<B: CallCheckingBehavior>(
 									returned_type: types.new_error_type(function_type.return_type),
 								});
 							}
-							Err(ConstantFunctionError::BadCall) => {
+							Err(ConstantFunctionError::CannotComputeConstant) => {
 								crate::utilities::notify!(
 									"Constant function calling failed, non constant params"
 								);
@@ -871,7 +871,7 @@ fn call_logical<B: CallCheckingBehavior>(
 		}
 		Logical::Or { .. } => {
 			crate::utilities::notify!("Calling OR");
-			return Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE });
+			Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE })
 			// todo!("{:?}", (condition, left, right));
 			// if let (Ok(_left), Ok(_right)) = (*left, *right) {
 			// let (truthy_result, otherwise_result) = behavior.evaluate_conditionally(
@@ -938,7 +938,7 @@ fn call_logical<B: CallCheckingBehavior>(
 		}
 		Logical::BasedOnKey { .. } => {
 			crate::utilities::notify!("Calling based on key?");
-			return Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE });
+			Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE })
 		}
 	}
 }
@@ -1017,7 +1017,7 @@ pub enum FunctionCallingError {
 		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
-	InvalidRegexp(crate::diagnostics::InvalidRegexp),
+	InvalidRegExp(crate::diagnostics::InvalidRegExp),
 	/// For #18
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,
@@ -1033,7 +1033,7 @@ pub enum FunctionCallingError {
 		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
-	NotConfiguarable {
+	NotConfigurable {
 		property: crate::diagnostics::PropertyKeyRepresentation,
 		/// Should be set by parent
 		call_site: SpanWithSource,
@@ -1517,7 +1517,7 @@ impl FunctionType {
 				CalledWithNew::New { on } => on,
 				CalledWithNew::Super { .. } => {
 					crate::utilities::notify!("Get this type for super new.target");
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 					// let ty = this_value.0;
 					// let on = crate::types::printing::print_type(
 					// 	ty,

@@ -207,7 +207,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 							is_async: header.is_async(),
 							is_generator: header.is_generator(),
 							// TODO ...
-							free_this_id: TypeId::ERROR_TYPE,
+							free_this_id: TypeId::UNIMPLEMENTED_ERROR_TYPE,
 							name: TypeId::EMPTY_STRING,
 						}
 					};
@@ -411,7 +411,9 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 		let interface_type = behavior.interface_type().unwrap();
 
 		environment.new_lexical_environment_fold_into_parent(
-			crate::Scope::InterfaceEnvironment { this_constraint: TypeId::ERROR_TYPE },
+			crate::Scope::InterfaceEnvironment {
+				this_constraint: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+			},
 			checking_data,
 			|environment, checking_data| {
 				let parameter_types =

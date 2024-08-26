@@ -301,6 +301,7 @@ pub fn get_properties_on_single_type2(
 }
 
 /// Just for diagnostic printing
+#[must_use]
 pub fn get_property_key_names_on_a_single_type(
 	base: TypeId,
 	types: &TypeStore,
