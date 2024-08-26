@@ -519,18 +519,6 @@ y satisfies string;
 
 ### Expressions
 
-#### Bad arithmetic operator
-
-> This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
-
-> This would need to support [Symbol.toPrimitive] + a bunch of error handling
-
-```ts
-console + 2
-```
-
-- Expected number, found Console
-
 #### Array spread
 
 ```ts
@@ -733,86 +721,19 @@ f(false)
 
 ### Narrowing
 
-#### Has property
+#### In `while` loop
 
-> TODO maybe need to constrain side effects here
+> This is fine because of registering of assignments
+> This does not work because i = fv + 1
 
 ```ts
-function func(parameter: { property: string }) {
-    if (parameter.property === "hello") {
-        parameter.property satisfies 4;
-    }
+let i: number = 0;
+while (i++ < 5) {
+	i satisfies null;
 }
 ```
 
-- Expected 4, found "hello"
-
-> TODO `typeof`, `instanceof`, conditional, across a function
-
-#### Conditional operator
-
-```ts
-function optionalNumber(n: number | undefined): string {
-    return n ?? 2
-}
-```
-
-- Cannot return string, found number | 2
-
-#### Equality
-
-```ts
-declare let a: string;
-if (a === "hi") {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-#### Condition as a function
-
-```ts
-declare let a: string;
-
-const equalsHi = (p: string) => p === "hi";
-
-if (equalsHi(a)) {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-#### Passed around
-
-```ts
-declare let a: string;
-
-const b = a;
-if (b === "hi") {
-	a satisfies "hello"
-}
-```
-
-- Expected "hello", found "hi"
-
-#### Optional property access
-
-```ts
-interface X {
-    a: string
-    b: string
-}
-
-declare let x: X | null;
-
-x.a;
-x?.b satisfies number;
-```
-
-- Cannot get 'a' on null
-- Expected number, found string
+- Expected null, found LessThan<6>
 
 ### Generics
 
@@ -848,32 +769,6 @@ a satisfies 0; b satisfies string;
 ```
 
 - Expected string, found 1
-
-#### Always known math
-
-```ts
-function func(a: number) { return a ** 0 }
-
-print_type(func)
-
-declare let x: NotNotANumber;
-
-print_type(x ** 1 === x)
-```
-
-- Expected string, found 1
-- True
-
-#### Less than checks
-
-```ts
-function x(a: GreaterThan<4>) {
-	(a < 3) satisfies false;
-	(a < 10) satisfies string;
-}
-```
-
-- Expected string, found boolean
 
 ### Control flow
 

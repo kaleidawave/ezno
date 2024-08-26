@@ -14,7 +14,9 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::environment::ExpectedReturnType,
-	diagnostics::{CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, TDZ},
+	diagnostics::{
+		CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, VariableUsedInTDZ,
+	},
 	events::RootReference,
 	features::{
 		assignments::Reference,
@@ -392,7 +394,7 @@ impl<T: ContextType> Context<T> {
 							VariableMutability::Mutable { reassignment_constraint: None }
 							| VariableMutability::Constant => {
 								crate::utilities::notify!("TODO get value");
-								TypeId::ERROR_TYPE
+								TypeId::UNIMPLEMENTED_ERROR_TYPE
 							}
 							VariableMutability::Mutable {
 								reassignment_constraint: Some(value),
@@ -401,19 +403,19 @@ impl<T: ContextType> Context<T> {
 						// TODO
 						VariableOrImport::MutableImport { .. } => {
 							crate::utilities::notify!("TODO MutableImport");
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 						// TODO
 						VariableOrImport::ConstantImport { .. } => {
 							crate::utilities::notify!("TODO ConstantImport");
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 					}
 				})
 			}
 			Reference::Property { .. } => {
 				crate::utilities::notify!("TODO get object constraint on object");
-				Some(TypeId::ERROR_TYPE)
+				Some(TypeId::UNIMPLEMENTED_ERROR_TYPE)
 			}
 		}
 	}
@@ -864,10 +866,8 @@ impl<T: ContextType> Context<T> {
 						_ => None,
 					}
 				} else {
-					crate::utilities::notify!(
-						"TODO get root this type, returning ERROR_TYPE for now"
-					);
-					Some(TypeId::ERROR_TYPE)
+					crate::utilities::notify!("TODO get root this type");
+					Some(TypeId::UNIMPLEMENTED_ERROR_TYPE)
 				}
 			})
 			.unwrap()
@@ -1008,7 +1008,7 @@ pub enum AssignmentError {
 		value_type: TypeStringRepresentation,
 		assignment_position: SpanWithSource,
 	},
-	TDZ(TDZ),
+	VariableUsedInTDZ(VariableUsedInTDZ),
 }
 
 /// TODO mutable let imports

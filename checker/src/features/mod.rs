@@ -73,10 +73,6 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 				crate::types::TypeOperator::TypeOf(on),
 			)))
 		}
-	} else if on == TypeId::UNDEFINED_TYPE {
-		return types.new_constant_type(crate::Constant::String("undefined".to_owned()));
-	} else if on == TypeId::NULL_TYPE {
-		return types.new_constant_type(crate::Constant::String("object".to_owned()));
 	} else {
 		let ty = types.get_type_by_id(on);
 		if let crate::Type::Constant(cst) = ty {
@@ -86,16 +82,18 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 				crate::Constant::String(_) => "string",
 				crate::Constant::Boolean(_) => "boolean",
 				crate::Constant::Symbol { key: _ } => "symbol",
+				crate::Constant::Undefined => "undefined",
 			};
 			// TODO could Cow or something to not allocate?
 			types.new_constant_type(crate::Constant::String(name.to_owned()))
 		} else if let crate::Type::SpecialObject(SpecialObject::Function(..)) = ty {
 			types.new_constant_type(crate::Constant::String("function".to_owned()))
 		} else if let crate::Type::Object(..) | crate::Type::SpecialObject(..) = ty {
+			// includes TypeId::NULL_TYPE
 			types.new_constant_type(crate::Constant::String("object".to_owned()))
 		} else {
 			crate::utilities::notify!("Cannot `typeof {:?}`", on);
-			TypeId::ERROR_TYPE
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
 	}
 }
@@ -200,7 +198,7 @@ pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		}
 	} else {
 		checking_data.raise_unimplemented_error("await on object", position);
-		TypeId::ERROR_TYPE
+		TypeId::UNIMPLEMENTED_ERROR_TYPE
 	}
 }
 
@@ -455,20 +453,20 @@ pub(crate) fn has_property(
 					Logical::Pure(_) => TypeId::TRUE,
 					Logical::Or { .. } => {
 						crate::utilities::notify!("or or implies `in`");
-						TypeId::ERROR_TYPE
+						TypeId::UNIMPLEMENTED_ERROR_TYPE
 					}
 					Logical::Implies { .. } => {
 						crate::utilities::notify!("or or implies `in`");
-						TypeId::ERROR_TYPE
+						TypeId::UNIMPLEMENTED_ERROR_TYPE
 					}
 					Logical::BasedOnKey { .. } => {
 						crate::utilities::notify!("mapped in");
-						TypeId::ERROR_TYPE
+						TypeId::UNIMPLEMENTED_ERROR_TYPE
 					}
 				},
 				Ok(LogicalOrValid::NeedsCalculation(result)) => {
 					crate::utilities::notify!("TODO {:?}", result);
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 				Err(err) => {
 					crate::utilities::notify!("TODO {:?}", err);
@@ -478,7 +476,7 @@ pub(crate) fn has_property(
 		}
 		Type::Or(_, _) => {
 			crate::utilities::notify!("Condtionally");
-			TypeId::ERROR_TYPE
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
 		Type::RootPolyType(_) | Type::Constructor(_) => {
 			crate::utilities::notify!("Queue event / create dependent");
@@ -506,7 +504,6 @@ pub mod tsc {
 				Type::RootPolyType(_rpt) => true,
 				Type::Constructor(constr) => match constr {
 					Constructor::CanonicalRelationOperator { .. }
-					| Constructor::UnaryOperator { .. }
 					| Constructor::BinaryOperator { .. } => false,
 					Constructor::TypeOperator(_) => todo!(),
 					Constructor::TypeExtends(_) => todo!(),
@@ -556,12 +553,24 @@ pub mod tsc {
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
 	) {
-		if !crate::types::helpers::simple_subtype(
-			expr_ty,
+		use crate::types::subtyping;
+
+		let mut state = subtyping::State {
+			already_checked: Default::default(),
+			mode: Default::default(),
+			contributions: Default::default(),
+			others: subtyping::SubTypingOptions { allow_errors: false },
+			object_constraints: None,
+		};
+
+		let result = subtyping::type_is_subtype(
 			to_satisfy,
+			expr_ty,
+			&mut state,
 			environment,
 			&checking_data.types,
-		) {
+		);
+		if result.is_mismatch() {
 			let expected = diagnostics::TypeStringRepresentation::from_type_id(
 				to_satisfy,
 				environment,

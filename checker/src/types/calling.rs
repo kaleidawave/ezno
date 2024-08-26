@@ -3,7 +3,8 @@ use source_map::{BaseSpan, Nullable, SpanWithSource};
 use crate::{
 	context::{invocation::CheckThings, CallCheckingBehavior, Environment, InformationChain},
 	diagnostics::{
-		InfoDiagnostic, TypeCheckError, TypeCheckWarning, TypeStringRepresentation, TDZ,
+		InfoDiagnostic, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
+		VariableUsedInTDZ,
 	},
 	events::{
 		application::ApplicationInput, apply_events, ApplicationResult, Event, RootReference,
@@ -278,15 +279,15 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 		Ok(LogicalOrValid::NeedsCalculation(l)) => match l {
 			NeedsCalculation::Infer { on } => {
 				if on == TypeId::ERROR_TYPE {
-					(TypeId::ERROR_TYPE, None)
+					(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
 				} else {
 					crate::utilities::notify!("TODO function calling inference on {:?}", on);
-					(TypeId::ERROR_TYPE, None)
+					(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
 				}
 			}
 			NeedsCalculation::Proxy(..) => {
 				crate::utilities::notify!("TODO calling proxy");
-				(TypeId::ERROR_TYPE, None)
+				(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
 			}
 		},
 		Err(Invalid(ty)) => {
@@ -379,7 +380,7 @@ impl Callable {
 					types.get_function_from_id(*id).return_type
 				} else {
 					crate::utilities::notify!("Cannot get return type");
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
 		}
@@ -710,7 +711,7 @@ fn call_logical<B: CallCheckingBehavior>(
 									returned_type: types.new_error_type(function_type.return_type),
 								});
 							}
-							Err(ConstantFunctionError::BadCall) => {
+							Err(ConstantFunctionError::CannotComputeConstant) => {
 								crate::utilities::notify!(
 									"Constant function calling failed, non constant params"
 								);
@@ -865,11 +866,13 @@ fn call_logical<B: CallCheckingBehavior>(
 
 				Ok(result)
 			} else {
-				panic!()
+				panic!("no function")
 			}
 		}
-		Logical::Or { condition, left, right } => {
-			todo!("{:?}", (condition, left, right));
+		Logical::Or { .. } => {
+			crate::utilities::notify!("Calling OR");
+			Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE })
+			// todo!("{:?}", (condition, left, right));
 			// if let (Ok(_left), Ok(_right)) = (*left, *right) {
 			// let (truthy_result, otherwise_result) = behavior.evaluate_conditionally(
 			// 	top_environment,
@@ -933,7 +936,10 @@ fn call_logical<B: CallCheckingBehavior>(
 				(behavior, diagnostics),
 			)
 		}
-		Logical::BasedOnKey { .. } => todo!(),
+		Logical::BasedOnKey { .. } => {
+			crate::utilities::notify!("Calling based on key?");
+			Err(BadCallOutput { returned_type: TypeId::UNIMPLEMENTED_ERROR_TYPE })
+		}
 	}
 }
 
@@ -989,7 +995,6 @@ pub enum FunctionCallingError {
 		count: usize,
 		position: SpanWithSource,
 	},
-
 	ExcessTypeArguments {
 		expected_count: usize,
 		count: usize,
@@ -1007,12 +1012,12 @@ pub enum FunctionCallingError {
 	CyclicRecursion(FunctionId, SpanWithSource),
 	NoLogicForIdentifier(String, SpanWithSource),
 	NeedsToBeCalledWithNewKeyword(SpanWithSource),
-	TDZ {
-		error: TDZ,
+	VariableUsedInTDZ {
+		error: VariableUsedInTDZ,
 		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
-	InvalidRegexp(crate::diagnostics::InvalidRegexp),
+	InvalidRegExp(crate::diagnostics::InvalidRegExp),
 	/// For #18
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,
@@ -1028,7 +1033,7 @@ pub enum FunctionCallingError {
 		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
-	NotConfiguarable {
+	NotConfigurable {
 		property: crate::diagnostics::PropertyKeyRepresentation,
 		/// Should be set by parent
 		call_site: SpanWithSource,
@@ -1192,7 +1197,10 @@ impl FunctionType {
 
 					// Adjust call sites. (because they aren't currently passed down)
 					for d in &mut diagnostics.errors[current_errors..] {
-						if let FunctionCallingError::TDZ { call_site: ref mut c, .. }
+						if let FunctionCallingError::VariableUsedInTDZ {
+							call_site: ref mut c,
+							..
+						}
 						| FunctionCallingError::SetPropertyConstraint {
 							call_site: ref mut c,
 							..
@@ -1509,7 +1517,7 @@ impl FunctionType {
 				CalledWithNew::New { on } => on,
 				CalledWithNew::Super { .. } => {
 					crate::utilities::notify!("Get this type for super new.target");
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 					// let ty = this_value.0;
 					// let on = crate::types::printing::print_type(
 					// 	ty,

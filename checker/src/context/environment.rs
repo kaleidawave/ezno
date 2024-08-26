@@ -5,7 +5,7 @@ use crate::{
 	context::{get_on_ctx, information::ReturnState},
 	diagnostics::{
 		NotInLoopOrCouldNotFindLabel, PropertyKeyRepresentation, TypeCheckError,
-		TypeStringRepresentation, TDZ,
+		TypeStringRepresentation, VariableUsedInTDZ,
 	},
 	events::{Event, FinalEvent, RootReference},
 	features::{
@@ -661,7 +661,7 @@ impl<'a> Environment<'a> {
 								.get_chain_of_info()
 								.any(|info| info.variable_current_value.contains_key(&variable_id))
 						{
-							return Err(AssignmentError::TDZ(TDZ {
+							return Err(AssignmentError::VariableUsedInTDZ(VariableUsedInTDZ {
 								position: assignment_position,
 								variable_name: variable_name.to_owned(),
 							}));
@@ -1035,10 +1035,12 @@ impl<'a> Environment<'a> {
 			if let Some(current_value) = current_value {
 				Ok(VariableWithValue(og_var.clone(), current_value))
 			} else {
-				checking_data.diagnostics_container.add_error(TypeCheckError::TDZ(TDZ {
-					variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
-					position,
-				}));
+				checking_data.diagnostics_container.add_error(TypeCheckError::VariableUsedInTDZ(
+					VariableUsedInTDZ {
+						variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
+						position,
+					},
+				));
 				Ok(VariableWithValue(og_var.clone(), TypeId::ERROR_TYPE))
 			}
 		}
@@ -1093,7 +1095,7 @@ impl<'a> Environment<'a> {
 					already_checked: Default::default(),
 					mode: Default::default(),
 					contributions: Default::default(),
-					others: SubTypingOptions::satisfies(),
+					others: SubTypingOptions::default(),
 					// TODO don't think there is much case in constraining it here
 					object_constraints: None,
 				};
@@ -1518,5 +1520,29 @@ impl<'a> Environment<'a> {
 				function,
 			},
 		));
+	}
+
+	pub fn new_infer_type(
+		&mut self,
+		expected: TypeId,
+		infer_name: &str,
+		types: &mut TypeStore,
+	) -> TypeId {
+		if let Scope::TypeAnnotationCondition { ref mut infer_parameters } = self.context_type.scope
+		{
+			let infer_type = types.register_type(Type::RootPolyType(PolyNature::InferGeneric {
+				name: infer_name.to_owned(),
+				extends: expected,
+			}));
+
+			let existing = infer_parameters.insert(infer_name.to_owned(), infer_type);
+			if existing.is_some() {
+				crate::utilities::notify!("Raise error diagnostic");
+			}
+			infer_type
+		} else {
+			crate::utilities::notify!("Raise error diagnostic");
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
+		}
 	}
 }

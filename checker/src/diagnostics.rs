@@ -2,9 +2,7 @@
 use crate::{
 	context::{environment::Label, AssignmentError, InformationChain},
 	diagnostics,
-	features::{
-		modules::CouldNotOpenFile, operations::MathematicalAndBitwise, CannotDeleteFromError,
-	},
+	features::{modules::CouldNotOpenFile, CannotDeleteFromError},
 	types::{
 		calling::FunctionCallingError,
 		printing::print_type_with_type_arguments,
@@ -53,12 +51,12 @@ pub enum Diagnostic {
 
 /// Temporary dead zone. Between the variable identifier being hoisted and the value being assigned
 #[allow(clippy::upper_case_acronyms)]
-pub struct TDZ {
+pub struct VariableUsedInTDZ {
 	pub variable_name: String,
 	pub position: SpanWithSource,
 }
 
-pub struct InvalidRegexp {
+pub struct InvalidRegExp {
 	pub error: String,
 	pub position: SpanWithSource,
 }
@@ -328,13 +326,8 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CouldNotFindType(&'a str, Vec<&'a str>, SpanWithSource),
-	TypeHasNoGenericParameters(String, SpanWithSource),
 	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
-	#[allow(dead_code)]
-	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
-	#[allow(dead_code)]
-	InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
 	SetPropertyError(SetPropertyError),
 	ReturnedTypeDoesNotMatch {
 		expected_return_type: TypeStringRepresentation,
@@ -384,11 +377,16 @@ pub(crate) enum TypeCheckError<'a> {
 		name: String,
 		position: SpanWithSource,
 	},
-	/// This is for structure generics
-	#[allow(dead_code)]
+	/// This is for structure generics (type annotations)
 	GenericArgumentDoesNotMeetRestriction {
 		parameter_restriction: TypeStringRepresentation,
 		argument: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	/// This is for structure generics (type annotations)
+	GenericArgumentCountMismatch {
+		expected_count: usize,
+		count: usize,
 		position: SpanWithSource,
 	},
 	#[allow(dead_code)]
@@ -423,12 +421,23 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	#[allow(clippy::upper_case_acronyms)]
-	TDZ(TDZ),
-	#[allow(dead_code)]
+	VariableUsedInTDZ(VariableUsedInTDZ),
 	InvalidMathematicalOrBitwiseOperation {
-		operator: MathematicalAndBitwise,
+		operator: crate::features::operations::MathematicalAndBitwise,
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	// Only for `<` `>` etc
+	InvalidEqualityOperation {
+		operator: crate::features::operations::EqualityAndInequality,
+		lhs: TypeStringRepresentation,
+		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	InvalidUnaryOperation {
+		operator: crate::features::operations::UnaryOperation,
+		operand: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
 	#[allow(dead_code)]
@@ -457,7 +466,7 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CannotDeleteProperty(CannotDeleteFromError),
-	InvalidRegexp(InvalidRegexp),
+	InvalidRegExp(InvalidRegExp),
 }
 
 #[allow(clippy::useless_format)]
@@ -571,7 +580,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						kind,
 					}
 				}
-				AssignmentError::TDZ(TDZ { variable_name, position }) => {
+				AssignmentError::VariableUsedInTDZ(VariableUsedInTDZ { variable_name, position }) => {
 					Diagnostic::Position {
 						reason: format!("Cannot assign to '{variable_name}' before declaration"),
 						position,
@@ -613,13 +622,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position: at,
 				kind,
 			},
-			TypeCheckError::TypeHasNoGenericParameters(name, position) => {
-				Diagnostic::Position {
-					reason: format!("Type '{name}' has no generic parameters"),
-					position,
-					kind,
-				}
-			}
 			TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
 				reason: "Cannot export at not top level".to_owned(),
 				position,
@@ -682,6 +684,24 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
+			TypeCheckError::GenericArgumentCountMismatch {
+				count,
+				expected_count,
+				position,
+			} => {
+				let reason = if expected_count == 0 {
+					"Cannot pass a type argument to a non-generic type".to_owned()
+				} else if expected_count == 1 {
+					format!("Expected 1 type argument, but got {count}")
+				} else {
+					format!("Expected {expected_count} type arguments, but got {count}")
+				};
+				Diagnostic::Position {
+					position,
+					kind,
+					reason
+				}
+			},
 			TypeCheckError::NotTopLevelImport(position) => Diagnostic::Position {
 				reason: "Import must be in the top of the scope".to_owned(),
 				position,
@@ -736,14 +756,30 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
-			TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
+			TypeCheckError::VariableUsedInTDZ(VariableUsedInTDZ { position, variable_name }) => Diagnostic::Position {
 				reason: format!("Variable '{variable_name}' used before declaration"),
 				position,
 				kind,
 			},
-			TypeCheckError::InvalidComparison(_, _) => todo!(),
-			TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 			TypeCheckError::InvalidMathematicalOrBitwiseOperation { operator, lhs, rhs, position } => Diagnostic::Position {
+				// TODO temp
+				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
+				position,
+				kind,
+			},
+			TypeCheckError::InvalidUnaryOperation {
+				operator,
+				operand,
+				position,
+			} => {
+				Diagnostic::Position {
+					// TODO temp
+					reason: format!("Cannot {operator:?} {operand}"),
+					position,
+					kind,
+				}
+			},
+			TypeCheckError::InvalidEqualityOperation { operator, lhs, rhs, position } => Diagnostic::Position {
 				// TODO temp
 				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
 				position,
@@ -873,7 +909,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				}
 			},
-			TypeCheckError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
+			TypeCheckError::InvalidRegExp(InvalidRegExp { error, position }) => Diagnostic::Position {
 				reason: format!("Invalid regular expression: {error}"),
 				position,
 				kind,
@@ -919,6 +955,11 @@ pub enum TypeCheckWarning {
 		call_site: SpanWithSource,
 	},
 	Unreachable(SpanWithSource),
+	DisjointEquality {
+		lhs: TypeStringRepresentation,
+		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
 }
 
 impl From<TypeCheckWarning> for Diagnostic {
@@ -989,6 +1030,11 @@ impl From<TypeCheckWarning> for Diagnostic {
 					kind,
 				}
 			}
+			TypeCheckWarning::DisjointEquality { lhs, rhs, position } => Diagnostic::Position {
+				reason: format!("This equality is always false as {lhs} and {rhs} have no overlap"),
+				position,
+				kind,
+			},
 		}
 	}
 }
@@ -1131,7 +1177,7 @@ fn function_calling_error_diagnostic(
 			kind,
 			position,
 		},
-		FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => {
+		FunctionCallingError::VariableUsedInTDZ { error: VariableUsedInTDZ { position, variable_name }, call_site } => {
 			Diagnostic::PositionWithAdditionalLabels {
 				reason: format!("Variable '{variable_name}' used before declaration{context}"),
 				position: call_site,
@@ -1174,7 +1220,7 @@ fn function_calling_error_diagnostic(
 				kind,
 			}
 		}
-		FunctionCallingError::NotConfiguarable {
+		FunctionCallingError::NotConfigurable {
 			property,
 			call_site,
 		} => {
@@ -1187,7 +1233,7 @@ fn function_calling_error_diagnostic(
 				kind,
 			}
 		}
-		FunctionCallingError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
+		FunctionCallingError::InvalidRegExp(InvalidRegExp { error, position }) => Diagnostic::Position {
 			reason: format!("Invalid regular expression: {error}"),
 			position,
 			kind,

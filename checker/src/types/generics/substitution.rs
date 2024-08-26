@@ -7,10 +7,7 @@ use crate::{
 	features::{
 		functions::{ClosureChain, ClosureId},
 		objects::{Proxy, SpecialObject},
-		operations::{
-			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
-			evaluate_pure_unary_operator,
-		},
+		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
 	},
 	subtyping::{State, SubTypingOptions},
 	types::{
@@ -210,11 +207,13 @@ pub(crate) fn substitute(
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) | PolyNature::Error(_) = nature {
 				id
-			} else if let PolyNature::FunctionGeneric { .. }
-			| PolyNature::StructureGeneric { .. }
-			| PolyNature::InferGeneric { .. } = nature
-			{
+			} else if let PolyNature::InferGeneric { .. } = nature {
 				// Infer generic is fine for `type Index<T> = T extends Array<infer I> ? I : never`;
+				crate::utilities::notify!("No argument for infer generic (sometimes fine)");
+				id
+			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
+				nature
+			{
 				crate::utilities::notify!(
 					"Could not find argument for explicit generic {:?} (nature={:?})",
 					id,
@@ -238,7 +237,8 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_mathematical_operation(lhs, operator, rhs, types, false) {
+				match evaluate_mathematical_operation(lhs, operator, rhs, environment, types, false)
+				{
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
@@ -248,14 +248,6 @@ pub(crate) fn substitute(
 						);
 					}
 				}
-			}
-			Constructor::UnaryOperator { operand, operator, .. } => {
-				let operand = substitute(operand, arguments, environment, types);
-				evaluate_pure_unary_operator(
-					operator, operand, types,
-					// Restrictions should have been made ahead of time
-					false,
-				)
 			}
 			Constructor::ConditionalResult {
 				condition,
@@ -415,11 +407,11 @@ pub(crate) fn substitute(
 						}
 						Ok(value) => {
 							crate::utilities::notify!("TODO {:?}", value);
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 						Err(err) => {
 							crate::utilities::notify!("{:?}", err);
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 					}
 				} else {
@@ -428,7 +420,7 @@ pub(crate) fn substitute(
 						on_type,
 						under
 					);
-					TypeId::ERROR_TYPE
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
 			Constructor::Image { .. } => {
@@ -475,7 +467,21 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false)
+				let result = evaluate_equality_inequality_operation(
+					lhs,
+					&operator,
+					rhs,
+					environment,
+					types,
+					false,
+				);
+
+				if let Ok((left, _warning)) = result {
+					left
+				} else {
+					crate::utilities::notify!("Error here");
+					TypeId::OPEN_BOOLEAN_TYPE
+				}
 			}
 			Constructor::TypeOperator(op) => match op {
 				crate::types::TypeOperator::TypeOf(ty) => {
@@ -487,6 +493,7 @@ pub(crate) fn substitute(
 				}
 				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
 					let lhs = substitute(lhs, arguments, environment, types);
+					let rhs_prototype = substitute(rhs_prototype, arguments, environment, types);
 					crate::features::instance_of_operator_rhs_prototype(
 						lhs,
 						rhs_prototype,

@@ -82,8 +82,10 @@ impl ReturnState {
 		match self {
 			ReturnState::Continued => *self = new,
 			ReturnState::Rolling { .. } => match new {
-				ReturnState::Continued => todo!(),
-				ReturnState::Rolling { .. } => todo!(),
+				ReturnState::Continued => {}
+				ReturnState::Rolling { .. } => {
+					crate::utilities::notify!("Warning not accepting second rolling");
+				}
 				new @ ReturnState::Finished(_) => {
 					crate::utilities::notify!("Warning overwriting conditional");
 					*self = new;
@@ -242,12 +244,6 @@ pub trait InformationChain {
 
 	fn get_narrowed(&self, for_ty: TypeId) -> Option<TypeId> {
 		self.get_chain_of_info().find_map(|info| info.narrowed_values.get(&for_ty).copied())
-	}
-}
-
-impl InformationChain for LocalInformation {
-	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation> {
-		std::iter::once(self)
 	}
 }
 

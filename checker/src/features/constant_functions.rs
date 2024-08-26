@@ -29,7 +29,7 @@ pub enum ConstantFunctionError {
 	FunctionCallingError(FunctionCallingError),
 	NoLogicForIdentifier(String),
 	/// This will get picked up by the main calling logic
-	BadCall,
+	CannotComputeConstant,
 }
 
 /// From when
@@ -60,11 +60,16 @@ pub(crate) fn call_constant_function(
 		"sin" | "cos" | "tan" | "atan" | "acos" | "asin" | "sinh" | "cosh" | "tanh" | "asinh"
 		| "acosh" | "atanh" | "exp" | "expm1" | "log" | "log10" | "log2" | "log1p" | "round"
 		| "floor" | "ceil" | "trunc" | "sqrt" | "cbrt" | "abs" => {
-			let second_argument_type =
-				types.get_type_by_id(arguments.last().ok_or(ConstantFunctionError::BadCall)?.value);
+			if arguments.len() > 1 {
+				return Err(ConstantFunctionError::CannotComputeConstant);
+			}
 
-			let Type::Constant(Constant::Number(num)) = second_argument_type else {
-				return Err(ConstantFunctionError::BadCall);
+			let first_argument = types.get_type_by_id(
+				arguments.last().ok_or(ConstantFunctionError::CannotComputeConstant)?.value,
+			);
+
+			let Type::Constant(Constant::Number(num)) = first_argument else {
+				return Err(ConstantFunctionError::CannotComputeConstant);
 			};
 
 			let result = match id {
@@ -96,13 +101,24 @@ pub(crate) fn call_constant_function(
 				_ => unreachable!(),
 			};
 
-			let try_into = result.try_into();
-			match try_into {
-				Ok(try_into) => {
-					let ty = types.new_constant_type(Constant::Number(try_into));
-					Ok(ConstantOutput::Value(ty))
+			let Ok(num) = result.try_into() else { return Ok(ConstantOutput::Value(TypeId::NAN)) };
+			Ok(ConstantOutput::Value(types.new_constant_type(Constant::Number(num))))
+		}
+		"imul" => {
+			if let [x, y] = arguments {
+				if let (Type::Constant(Constant::Number(x)), Type::Constant(Constant::Number(y))) =
+					(types.get_type_by_id(x.value), types.get_type_by_id(y.value))
+				{
+					// TODO is this correct, what about overflow?
+					let result = (x.into_inner() as i32) * (y.into_inner() as i32);
+					Ok(ConstantOutput::Value(
+						types.new_constant_type(Constant::Number(result.into())),
+					))
+				} else {
+					Err(ConstantFunctionError::CannotComputeConstant)
 				}
-				Err(_) => Ok(ConstantOutput::Value(TypeId::NAN)),
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		// String stuff. TODO could this be replaced by intrinsics
@@ -116,14 +132,14 @@ pub(crate) fn call_constant_function(
 					"string_length" => Constant::Number(
 						(s.encode_utf16().count() as f64)
 							.try_into()
-							.map_err(|_| ConstantFunctionError::BadCall)?,
+							.map_err(|_| ConstantFunctionError::CannotComputeConstant)?,
 					),
 					_ => unreachable!(),
 				});
 				Ok(ConstantOutput::Value(result))
 			} else {
 				// This can occur!!
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"print_type" | "debug_type" | "print_and_debug_type" | "debug_type_independent" => {
@@ -156,7 +172,9 @@ pub(crate) fn call_constant_function(
 				let mut buf = String::from("Types: ");
 				for (not_at_end, arg) in arguments.iter().nendiate() {
 					// crate::utilities::notify!("at end {:?} {:?}", not_at_end, arg);
-					let arg = arg.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
+					let arg = arg
+						.non_spread_type()
+						.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 					buf.push_str(&to_string(print, debug, arg, types, environment));
 					if not_at_end {
 						buf.push_str(", ");
@@ -168,9 +186,9 @@ pub(crate) fn call_constant_function(
 		"print_constraint" => {
 			let ty = arguments
 				.first()
-				.ok_or(ConstantFunctionError::BadCall)?
+				.ok_or(ConstantFunctionError::CannotComputeConstant)?
 				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::BadCall)?;
+				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 
 			let constraint = environment
 				.get_chain_of_info()
@@ -186,9 +204,9 @@ pub(crate) fn call_constant_function(
 		"debug_type_rust" | "debug_type_rust_independent" => {
 			let id = arguments
 				.first()
-				.ok_or(ConstantFunctionError::BadCall)?
+				.ok_or(ConstantFunctionError::CannotComputeConstant)?
 				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::BadCall)?;
+				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 
 			let ty = types.get_type_by_id(id);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {id:?} = {ty:?}")))
@@ -196,9 +214,9 @@ pub(crate) fn call_constant_function(
 		"debug_effects" | "debug_effects_rust" => {
 			let ty = arguments
 				.first()
-				.ok_or(ConstantFunctionError::BadCall)?
+				.ok_or(ConstantFunctionError::CannotComputeConstant)?
 				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::BadCall)?;
+				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 
 			// Unwrap structure generics
 			let ty =
@@ -214,8 +232,10 @@ pub(crate) fn call_constant_function(
 			let message = if let Type::SpecialObject(SpecialObject::Function(func, _))
 			| Type::FunctionReference(func) = get_type_by_id
 			{
-				let function_type =
-					types.functions.get(func).ok_or(ConstantFunctionError::BadCall)?;
+				let function_type = types
+					.functions
+					.get(func)
+					.ok_or(ConstantFunctionError::CannotComputeConstant)?;
 
 				let effects = &function_type.effect;
 				if id.ends_with("rust") {
@@ -253,15 +273,16 @@ pub(crate) fn call_constant_function(
 				Some(this_ty),
 			) = (on, first_argument)
 			{
-				let type_id =
-					this_ty.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
+				let type_id = this_ty
+					.non_spread_type()
+					.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 				let value = types.register_type(Type::SpecialObject(SpecialObject::Function(
 					*func,
 					ThisValue::Passed(type_id),
 				)));
 				Ok(ConstantOutput::Value(value))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"setPrototypeOf" => {
@@ -273,7 +294,7 @@ pub(crate) fn call_constant_function(
 				// TODO
 				Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"getPrototypeOf" => {
@@ -282,7 +303,7 @@ pub(crate) fn call_constant_function(
 				let prototype = environment.get_prototype(on);
 				Ok(ConstantOutput::Value(prototype))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"freeze" => {
@@ -292,7 +313,7 @@ pub(crate) fn call_constant_function(
 				environment.info.frozen.insert(on);
 				Ok(ConstantOutput::Value(on))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"isFrozen" => {
@@ -303,17 +324,21 @@ pub(crate) fn call_constant_function(
 					environment.get_chain_of_info().any(|info| info.frozen.contains(&on));
 				Ok(ConstantOutput::Value(if is_frozen { TypeId::TRUE } else { TypeId::FALSE }))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"defineProperty" => {
 			// TODO check configurable
 			if let [on, property, descriptor] = arguments {
-				let on = on.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
-				let property =
-					property.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
-				let descriptor =
-					descriptor.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
+				let on = on
+					.non_spread_type()
+					.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
+				let property = property
+					.non_spread_type()
+					.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
+				let descriptor = descriptor
+					.non_spread_type()
+					.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 
 				let under = PropertyKey::from_type(property, types);
 				// TODO
@@ -357,7 +382,7 @@ pub(crate) fn call_constant_function(
 					} else if let Some(setter) = setter {
 						PropertyValue::Setter(Callable::from_type(setter, types))
 					} else {
-						return Err(ConstantFunctionError::BadCall);
+						return Err(ConstantFunctionError::CannotComputeConstant);
 					}
 				};
 
@@ -388,7 +413,7 @@ pub(crate) fn call_constant_function(
 							};
 						if !valid {
 							return Err(ConstantFunctionError::FunctionCallingError(
-								FunctionCallingError::NotConfiguarable {
+								FunctionCallingError::NotConfigurable {
 									property: crate::diagnostics::PropertyKeyRepresentation::new(
 										&under,
 										environment,
@@ -428,14 +453,17 @@ pub(crate) fn call_constant_function(
 
 				Ok(ConstantOutput::Value(on))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"getOwnPropertyDescriptor" => {
 			if let [on, property] = arguments {
-				let on = on.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
-				let property =
-					property.non_spread_type().map_err(|()| ConstantFunctionError::BadCall)?;
+				let on = on
+					.non_spread_type()
+					.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
+				let property = property
+					.non_spread_type()
+					.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 
 				let value = crate::types::properties::resolver(
 					(on, None),
@@ -504,7 +532,7 @@ pub(crate) fn call_constant_function(
 						match value {
 							PropertyValue::ConditionallyExists { .. } => {
 								crate::utilities::notify!("TODO conditional. Union with undefined");
-								return Err(ConstantFunctionError::BadCall);
+								return Err(ConstantFunctionError::CannotComputeConstant);
 							}
 							PropertyValue::Configured { on: _, descriptor: d } => {
 								descriptor = d;
@@ -540,7 +568,7 @@ pub(crate) fn call_constant_function(
 					None => Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE)),
 				}
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		"proxy:constructor" => {
@@ -555,7 +583,7 @@ pub(crate) fn call_constant_function(
 				));
 				Ok(ConstantOutput::Value(value))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		// "RegExp:constructor" => {
@@ -563,17 +591,17 @@ pub(crate) fn call_constant_function(
 		// 	if let Some(arg) = arguments.first() {
 		// 		Ok(ConstantOutput::Value(features::regular_expressions::new_regexp(features::regular_expressions::TypeIdOrString::TypeId(arg), types, environment)))
 		// 	} else {
-		// 		Err(ConstantFunctionError::BadCall)
+		// 		Err(ConstantFunctionError::CannotComputeConstant)
 		// 	}
 		// }
 		// TODO
 		"JSON:parse" => {
 			crate::utilities::notify!("TODO JSON:parse");
-			Err(ConstantFunctionError::BadCall)
+			Err(ConstantFunctionError::CannotComputeConstant)
 		}
 		"JSON:stringify" => {
 			crate::utilities::notify!("TODO JSON:stringify");
-			Err(ConstantFunctionError::BadCall)
+			Err(ConstantFunctionError::CannotComputeConstant)
 		}
 		"regexp:constructor" => {
 			let pattern = types
@@ -582,12 +610,12 @@ pub(crate) fn call_constant_function(
 				arguments.get(1).map(|a| types.get_type_by_id(a.non_spread_type().expect("flags")));
 
 			let Type::Constant(Constant::String(pattern)) = pattern else {
-				return Err(ConstantFunctionError::BadCall);
+				return Err(ConstantFunctionError::CannotComputeConstant);
 			};
 			let flags = match flags {
 				Some(flags) => {
 					let Type::Constant(Constant::String(flags)) = flags else {
-						return Err(ConstantFunctionError::BadCall);
+						return Err(ConstantFunctionError::CannotComputeConstant);
 					};
 
 					Some(flags.clone())
@@ -600,7 +628,7 @@ pub(crate) fn call_constant_function(
 			match regexp {
 				Ok(regex) => Ok(ConstantOutput::Value(regex)),
 				Err(error) => Err(ConstantFunctionError::FunctionCallingError(
-					FunctionCallingError::InvalidRegexp(crate::diagnostics::InvalidRegexp {
+					FunctionCallingError::InvalidRegExp(crate::diagnostics::InvalidRegExp {
 						error,
 						position: call_site,
 					}),
@@ -621,21 +649,21 @@ pub(crate) fn call_constant_function(
 					call_site,
 				)))
 			} else {
-				Err(ConstantFunctionError::BadCall)
+				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
 		// "satisfies" => {
 		// 	let ty = arguments
 		// 		.first()
-		// 		.ok_or(ConstantFunctionError::BadCall)?
+		// 		.ok_or(ConstantFunctionError::CannotComputeConstant)?
 		// 		.non_spread_type()
-		// 		.map_err(|()| ConstantFunctionError::BadCall)?;
+		// 		.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
 		// 	// TODO temp!!!
 		// 	let arg = call_site_type_args
 		// 		.iter()
 		// 		.flatten()
 		// 		.next()
-		// 		.ok_or(ConstantFunctionError::BadCall)?
+		// 		.ok_or(ConstantFunctionError::CannotComputeConstant)?
 		// 		.0;
 		// 	if check_satisfies(arg, ty, types, environment) {
 		// 		Ok(ConstantOutput::Value(ty))
@@ -658,7 +686,7 @@ pub(crate) fn call_constant_function(
 			let mut buf = format!("{:?}", environment.context_id);
 			for ctx in environment.parents_iter().skip(1) {
 				write!(&mut buf, " <- {:?}", get_on_ctx!(ctx.context_id))
-					.map_err(|_| ConstantFunctionError::BadCall)?;
+					.map_err(|_| ConstantFunctionError::CannotComputeConstant)?;
 			}
 			buf
 		})),
@@ -668,23 +696,23 @@ pub(crate) fn call_constant_function(
 				.get_type_by_id(
 					arguments
 						.first()
-						.ok_or(ConstantFunctionError::BadCall)?
+						.ok_or(ConstantFunctionError::CannotComputeConstant)?
 						.non_spread_type()
-						.map_err(|()| ConstantFunctionError::BadCall)?
+						.map_err(|()| ConstantFunctionError::CannotComputeConstant)?
 				)
 				.is_dependent()
 		))),
 		// "compile_type_to_object" => {
 		// 	if let Some(value) = call_site_type_args {
 		// 		let value = crate::types::others::create_object_for_type(
-		// 			value.first().ok_or(ConstantFunctionError::BadCall)?.0,
+		// 			value.first().ok_or(ConstantFunctionError::CannotComputeConstant)?.0,
 		// 			environment,
 		// 			types,
 		// 			call_site,
 		// 		);
 		// 		Ok(ConstantOutput::Value(value))
 		// 	} else {
-		// 		Err(ConstantFunctionError::BadCall)
+		// 		Err(ConstantFunctionError::CannotComputeConstant)
 		// 	}
 		// }
 		func => {

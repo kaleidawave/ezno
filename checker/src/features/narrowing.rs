@@ -1,13 +1,14 @@
 use crate::{
 	context::InformationChain,
 	types::{
-		self, as_logical_and, as_logical_or, get_conditional, helpers::get_origin, properties,
-		Constant, Constructor, PolyNature, TypeOperator, TypeStore,
+		self, as_logical_and, as_logical_not, as_logical_or,
+		helpers::{get_conditional, get_origin},
+		properties, Constant, Constructor, PolyNature, TypeOperator, TypeStore,
 	},
 	Map, Type, TypeId,
 };
 
-use super::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary};
+use super::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise};
 
 pub fn narrow_based_on_expression_into_vec(
 	condition: TypeId,
@@ -68,6 +69,7 @@ pub fn narrow_based_on_expression(
 					lhs: operand,
 					operator: MathematicalAndBitwise::Modulo,
 					rhs: modulo,
+					result: _,
 				}) = types.get_type_by_id(*lhs)
 				{
 					if *rhs == TypeId::ZERO {
@@ -77,9 +79,10 @@ pub fn narrow_based_on_expression(
 						if negate {
 							crate::utilities::notify!("TODO do we not divisable by?");
 						} else {
-							let narrowed_to = types.new_intrinsic(
+							let narrowed_to = crate::types::intrinsics::new_intrinsic(
 								&crate::types::intrinsics::Intrinsic::MultipleOf,
 								modulo,
+								types,
 							);
 							let narrowed = types.new_narrowed(from, narrowed_to);
 							into.insert(from, narrowed);
@@ -96,6 +99,11 @@ pub fn narrow_based_on_expression(
 							lhs,
 							types.get_type_by_id(*rhs)
 						);
+					}
+
+					if negate && lhs == rhs {
+						into.insert(*lhs, types.new_narrowed(*lhs, TypeId::NOT_NOT_A_NUMBER));
+						return;
 					}
 
 					let lhs = get_origin(*lhs, types);
@@ -116,7 +124,11 @@ pub fn narrow_based_on_expression(
 							let narrowed_to = types.new_or_type_from_iterator(result);
 							types.new_narrowed(lhs, narrowed_to)
 						} else {
-							types.new_intrinsic(&crate::types::intrinsics::Intrinsic::Not, *rhs)
+							crate::types::intrinsics::new_intrinsic(
+								&crate::types::intrinsics::Intrinsic::Not,
+								*rhs,
+								types,
+							)
 						};
 						types.new_narrowed(lhs, narrowed_to)
 					} else {
@@ -172,19 +184,22 @@ pub fn narrow_based_on_expression(
 					return;
 				}
 				if types.get_type_by_id(lhs).is_dependent() {
-					let narrowed_to =
-						types.new_intrinsic(&crate::types::intrinsics::Intrinsic::LessThan, rhs);
+					let narrowed_to = crate::types::intrinsics::new_intrinsic(
+						&crate::types::intrinsics::Intrinsic::LessThan,
+						rhs,
+						types,
+					);
 					let narrowed = types.new_narrowed(lhs, narrowed_to);
 					into.insert(lhs, narrowed);
 				} else if types.get_type_by_id(rhs).is_dependent() {
-					let narrowed_to =
-						types.new_intrinsic(&crate::types::intrinsics::Intrinsic::GreaterThan, lhs);
+					let narrowed_to = crate::types::intrinsics::new_intrinsic(
+						&crate::types::intrinsics::Intrinsic::GreaterThan,
+						lhs,
+						types,
+					);
 					let narrowed = types.new_narrowed(rhs, narrowed_to);
 					into.insert(rhs, narrowed);
 				}
-			}
-			Constructor::UnaryOperator { operator: PureUnary::LogicalNot, operand } => {
-				narrow_based_on_expression(*operand, !negate, into, information, types);
 			}
 			Constructor::TypeOperator(TypeOperator::IsPrototype { lhs, rhs_prototype }) => {
 				let (lhs, rhs_prototype) = (*lhs, *rhs_prototype);
@@ -241,7 +256,10 @@ pub fn narrow_based_on_expression(
 				into.insert(on, types.new_narrowed(on, narrowed_to));
 			}
 			constructor => {
-				if let Some((lhs, rhs)) = as_logical_and(constructor, types) {
+				if let Some(condition) = as_logical_not(constructor, types) {
+					crate::utilities::notify!("Here");
+					narrow_based_on_expression(condition, !negate, into, information, types);
+				} else if let Some((lhs, rhs)) = as_logical_and(constructor, types) {
 					// De Morgan's laws
 					if negate {
 						// OR: Pull assertions from left and right, merge if both branches assert something
@@ -310,8 +328,20 @@ pub fn narrow_based_on_expression(
 		if rpt.get_constraint() == TypeId::BOOLEAN_TYPE {
 			let result = if negate { TypeId::FALSE } else { TypeId::TRUE };
 			into.insert(condition, result);
-		} else {
-			crate::utilities::notify!("Set, {:?} as truthy", r#type);
+		} else if !negate {
+			let mut result = Vec::new();
+			super::narrowing::build_union_from_filter(
+				condition,
+				super::narrowing::NOT_FASLY,
+				&mut result,
+				information,
+				types,
+			);
+			let narrowed_to = types.new_or_type_from_iterator(result);
+			into.insert(
+				condition,
+				types.register_type(Type::Narrowed { from: condition, narrowed_to }),
+			);
 		}
 	}
 }

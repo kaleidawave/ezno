@@ -324,7 +324,7 @@ pub fn import_items<
 				checking_data.types.register_type(import_object)
 			} else {
 				crate::utilities::notify!("TODO :?");
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			};
 			environment.register_variable_handle_error(
 				under,

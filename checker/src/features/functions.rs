@@ -455,13 +455,13 @@ where
 			FunctionKind {
 				behavior: FunctionBehavior::Constructor {
 					prototype,
-					this_object_type: TypeId::ERROR_TYPE,
+					this_object_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					name,
 				},
 				scope: FunctionScope::Constructor {
 					extends: super_type.is_some(),
 					type_of_super: super_type,
-					this_object_type: TypeId::ERROR_TYPE,
+					this_object_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 				},
 				internal: internal_marker,
 				constructor: Some((prototype, properties)),
@@ -489,7 +489,7 @@ where
 			FunctionKind {
 				behavior: FunctionBehavior::ArrowFunction { is_async },
 				scope: FunctionScope::ArrowFunction {
-					free_this_type: TypeId::ERROR_TYPE,
+					free_this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					is_async,
 					expected_return: expected_return.map(ExpectedReturnType::Inferred),
 				},
@@ -520,7 +520,7 @@ where
 				behavior: FunctionBehavior::Function {
 					is_async,
 					is_generator,
-					this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
 					prototype,
 					name,
 				},
@@ -528,7 +528,7 @@ where
 					is_generator,
 					is_async,
 					// to set
-					this_type: TypeId::ERROR_TYPE,
+					this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					type_of_super: TypeId::ANY_TYPE,
 					expected_return: expected_return.map(ExpectedReturnType::Inferred),
 					location,
@@ -556,14 +556,14 @@ where
 					is_async,
 					is_generator,
 					prototype,
-					this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
 					name,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
 					is_async,
-					this_type: TypeId::ERROR_TYPE,
-					type_of_super: TypeId::ERROR_TYPE,
+					this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
+					type_of_super: TypeId::IS_ASSIGNED_VALUE_LATER,
 					expected_return: None,
 					location,
 				},
@@ -618,11 +618,11 @@ where
 				behavior: FunctionBehavior::Method {
 					is_async,
 					is_generator,
-					free_this_id: TypeId::ERROR_TYPE,
+					free_this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
 					name,
 				},
 				scope: FunctionScope::MethodFunction {
-					free_this_type: TypeId::ERROR_TYPE,
+					free_this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					is_async,
 					is_generator,
 					expected_return: expected_return.map(ExpectedReturnType::Inferred),
@@ -846,7 +846,7 @@ where
 						already_checked: Default::default(),
 						mode: Default::default(),
 						contributions: Default::default(),
-						others: crate::subtyping::SubTypingOptions::satisfies(),
+						others: crate::subtyping::SubTypingOptions::default(),
 						// TODO don't think there is much case in constraining it here
 						object_constraints: None,
 					};

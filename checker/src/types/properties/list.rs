@@ -109,7 +109,7 @@ pub fn get_properties_on_single_type(
 			get_properties_on_single_type(*to, types, info, filter_enumerable, filter_type)
 		}
 		Type::Constant(c) => get_properties_on_single_type(
-			c.get_backing_type_id(),
+			c.get_backing_type(),
 			types,
 			info,
 			filter_enumerable,
@@ -273,15 +273,15 @@ pub fn get_properties_on_single_type2(
 				// 	info,
 				// 	types,
 				// );
-				crate::utilities::notify!("Cannot get all properties on {:?}", base);
-				Default::default()
+				crate::utilities::notify!("Getting on generic, losing generic {:?}", base);
+				get_properties_on_single_type2((*on, base_arguments), types, info, filter_type)
 			}
 		}
 		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => {
 			get_properties_on_single_type2((*to, base_arguments), types, info, filter_type)
 		}
 		Type::Constant(c) => get_properties_on_single_type2(
-			(c.get_backing_type_id(), base_arguments),
+			(c.get_backing_type(), base_arguments),
 			types,
 			info,
 			filter_type,
@@ -300,29 +300,48 @@ pub fn get_properties_on_single_type2(
 	}
 }
 
+/// Just for diagnostic printing
+#[must_use]
 pub fn get_property_key_names_on_a_single_type(
 	base: TypeId,
 	types: &TypeStore,
-	environment: &mut crate::Environment,
+	environment: &crate::Environment,
 ) -> Vec<String> {
-	let is_special = matches!(
-		types.get_type_by_id(base),
-		Type::SpecialObject(_)
-			| Type::Constructor(_)
-			| Type::RootPolyType(_)
-			| Type::Or(..)
-			| Type::PartiallyAppliedGenerics(_)
-			| Type::Constant(_)
-			| Type::AliasTo { .. }
-			| Type::FunctionReference(_)
-			| Type::And(_, _)
-	);
-	if is_special {
-		return vec![];
+	match types.get_type_by_id(base) {
+		Type::Object(ObjectNature::AnonymousTypeAnnotation(properties)) => properties
+			.iter()
+			.map(|(_, property, _)| super::get_property_as_string(property, types, environment))
+			.collect(),
+		Type::Interface { .. } | Type::Class { .. } | Type::Object(_) => environment
+			.get_chain_of_info()
+			.filter_map(|info| info.current_properties.get(&base).map(|v| v.iter()))
+			.flatten()
+			.map(|(_, property, _)| super::get_property_as_string(property, types, environment))
+			.collect(),
+		Type::Constant(r) => {
+			get_property_key_names_on_a_single_type(r.get_backing_type(), types, environment)
+		}
+		Type::SpecialObject(crate::types::SpecialObject::Function(..))
+		| Type::FunctionReference(_) => {
+			get_property_key_names_on_a_single_type(TypeId::FUNCTION_TYPE, types, environment)
+		}
+		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => {
+			get_property_key_names_on_a_single_type(*to, types, environment)
+		}
+		Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
+			on,
+			arguments: _,
+		}) => {
+			// TODO mapped types
+			get_property_key_names_on_a_single_type(*on, types, environment)
+		}
+		Type::Constructor(_) | Type::RootPolyType(_) => {
+			let backing = crate::types::get_constraint(base, types).unwrap();
+			get_property_key_names_on_a_single_type(backing, types, environment)
+		}
+		t @ (Type::SpecialObject(_) | Type::Or(..) | Type::And(_, _)) => {
+			crate::utilities::notify!("Cannot get all propertie keys on {:?}", t);
+			Default::default()
+		}
 	}
-
-	get_properties_on_single_type(base, types, environment, false, TypeId::ANY_TYPE)
-		.into_iter()
-		.map(|property| super::get_property_as_string(&property.1, types, environment))
-		.collect()
 }

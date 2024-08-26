@@ -76,12 +76,16 @@ impl RootContext {
 			("Capitalize".to_owned(), TypeId::STRING_CAPITALIZE),
 			("Uncapitalize".to_owned(), TypeId::STRING_UNCAPITALIZE),
 			("NoInfer".to_owned(), TypeId::NO_INFER),
-			("LessThan".to_owned(), TypeId::LESS_THAN),
-			("GreaterThan".to_owned(), TypeId::GREATER_THAN),
+			("InclusiveRange".to_owned(), TypeId::INCLUSIVE_RANGE),
+			("ExclusiveRange".to_owned(), TypeId::EXCLUSIVE_RANGE),
 			("MultipleOf".to_owned(), TypeId::MULTIPLE_OF),
-			("NotNotANumber".to_owned(), TypeId::NOT_NOT_A_NUMBER),
+			("NotNotANumber".to_owned(), TypeId::NUMBER_BUT_NOT_NOT_A_NUMBER),
 			("Not".to_owned(), TypeId::NOT_RESTRICTION),
 			("CaseInsensitive".to_owned(), TypeId::CASE_INSENSITIVE),
+			("Infinity".to_owned(), TypeId::INFINITY),
+			("NegativeInfinity".to_owned(), TypeId::NEG_INFINITY),
+			("MinFloat".to_owned(), TypeId::FLOAT_MIN),
+			("MaxFloat".to_owned(), TypeId::FLOAT_MAX),
 		]);
 
 		let mut info = LocalInformation::default();

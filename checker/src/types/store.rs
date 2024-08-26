@@ -1,21 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{features::regexp::RegExp, types::intrinsics::Intrinsic, Constant, Map as SmallMap};
 use source_map::{Nullable, Span, SpanWithSource};
 
 use crate::{
-	features::{functions::ClosureId, objects::SpecialObject},
-	types::{
-		functions::{FunctionBehavior, FunctionType},
-		logical::{Logical, LogicalOrValid},
-		PolyNature, Type,
-	},
-	Environment, FunctionId, TypeId,
+	features::{functions::ClosureId, objects::SpecialObject, regexp::RegExp},
+	Constant, Environment, FunctionId, Map as SmallMap, TypeId,
 };
 
 use super::{
-	generics::generic_type_arguments::GenericArguments, get_constraint, properties::PropertyKey,
-	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeExtends,
+	functions::{FunctionBehavior, FunctionType},
+	generics::generic_type_arguments::GenericArguments,
+	get_constraint,
+	logical::{Logical, LogicalOrValid},
+	properties::PropertyKey,
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, PolyNature, Type,
+	TypeExtends,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -41,9 +40,9 @@ pub struct TypeStore {
 
 impl Default for TypeStore {
 	fn default() -> Self {
-		// These have to be in the order of TypeId
+		// These have to be in the order of the `impl TypeId`
 		let types = vec![
-			// TODO will `TypeId::ANY_TYPE` cause any problems
+			// TODO will `TypeId::ANY_TYPE` cause any problems?
 			Type::RootPolyType(PolyNature::Error(TypeId::ANY_TYPE)),
 			Type::Interface { name: "never".to_owned(), parameters: None, extends: None },
 			Type::Interface { name: "any".to_owned(), parameters: None, extends: None },
@@ -51,7 +50,7 @@ impl Default for TypeStore {
 			Type::Class { name: "number".to_owned(), type_parameters: None },
 			Type::Class { name: "string".to_owned(), type_parameters: None },
 			// sure?
-			Type::Interface { name: "undefined".to_owned(), parameters: None, extends: None },
+			Type::Constant(Constant::Undefined),
 			Type::SpecialObject(SpecialObject::Null),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
@@ -65,7 +64,7 @@ impl Default for TypeStore {
 			Type::Interface { name: "object".to_owned(), parameters: None, extends: None },
 			Type::Class { name: "Function".to_owned(), type_parameters: None },
 			Type::Class { name: "RegExp".to_owned(), type_parameters: None },
-			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
+			Type::Class { name: "Symbol".to_owned(), type_parameters: None },
 			// true
 			Type::Constant(Constant::Boolean(true)),
 			// false
@@ -76,6 +75,15 @@ impl Default for TypeStore {
 			Type::Constant(Constant::Number(1.into())),
 			// NaN
 			Type::Constant(Constant::NaN),
+			Type::Constant(Constant::Number(f64::NEG_INFINITY.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::INFINITY.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::MIN.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::MAX.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::EPSILON.try_into().unwrap())),
+			Type::Constant(Constant::Number({
+				const THIRTY_TWO_ONE_BITS: i32 = -1i32;
+				THIRTY_TWO_ONE_BITS.into()
+			})),
 			// ""
 			Type::Constant(Constant::String(String::new())),
 			// inferred this free variable shortcut
@@ -140,20 +148,30 @@ impl Default for TypeStore {
 				name: "T".into(),
 				extends: TypeId::NUMBER_TYPE,
 			}),
+			Type::RootPolyType(PolyNature::StructureGeneric {
+				name: "U".into(),
+				extends: TypeId::NUMBER_TYPE,
+			}),
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "LessThan".into(),
-				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				name: "InclusiveRange".into(),
+				parameters: Some(vec![
+					TypeId::NUMBER_FLOOR_GENERIC,
+					TypeId::NUMBER_CEILING_GENERIC,
+				]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "GreaterThan".into(),
-				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				name: "ExclusiveRange".into(),
+				parameters: Some(vec![
+					TypeId::NUMBER_FLOOR_GENERIC,
+					TypeId::NUMBER_CEILING_GENERIC,
+				]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
-				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				parameters: Some(vec![TypeId::NUMBER_FLOOR_GENERIC]),
 			},
 			// Intermediate for the below
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -187,6 +205,7 @@ impl Default for TypeStore {
 			},
 			Type::RootPolyType(PolyNature::Open(TypeId::BOOLEAN_TYPE)),
 			Type::RootPolyType(PolyNature::Open(TypeId::NUMBER_TYPE)),
+			Type::Or(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE),
 		];
 
 		// Check that above is correct, TODO eventually a macro
@@ -219,13 +238,10 @@ impl TypeStore {
 			Constant::String(s) if s.is_empty() => TypeId::EMPTY_STRING,
 			Constant::Number(number) if number == 0f64 => TypeId::ZERO,
 			Constant::Number(number) if number == 1f64 => TypeId::ONE,
-			Constant::Boolean(value) => {
-				if value {
-					TypeId::TRUE
-				} else {
-					TypeId::FALSE
-				}
-			}
+			Constant::Number(number) if number == f64::NEG_INFINITY => TypeId::NEG_INFINITY,
+			Constant::Number(number) if number == f64::INFINITY => TypeId::INFINITY,
+			Constant::Boolean(true) => TypeId::TRUE,
+			Constant::Boolean(false) => TypeId::FALSE,
 			Constant::NaN => TypeId::NAN,
 			_ => {
 				let ty = Type::Constant(constant);
@@ -381,12 +397,16 @@ impl TypeStore {
 			otherwise_result
 		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
-		} else if let Type::Constructor(Constructor::UnaryOperator {
-			operator: crate::features::operations::PureUnary::LogicalNot,
-			operand: reversed_condition,
+		} else if let Type::Constructor(Constructor::ConditionalResult {
+			condition,
+			// TODO technically any falsy, truthy reverse pair is okay
+			truthy_result: TypeId::FALSE,
+			otherwise_result: TypeId::TRUE,
+			result_union: _,
 		}) = self.get_type_by_id(condition)
 		{
-			self.new_conditional_type(*reversed_condition, otherwise_result, truthy_result)
+			// Revese the condition
+			self.new_conditional_type(*condition, otherwise_result, truthy_result)
 		} else {
 			let ty = Type::Constructor(super::Constructor::ConditionalResult {
 				condition,
@@ -408,12 +428,13 @@ impl TypeStore {
 	}
 
 	/// Doesn't do constant compilation
-	pub(crate) fn new_logical_negation_type(&mut self, operand: TypeId) -> TypeId {
-		let ty = Type::Constructor(Constructor::UnaryOperator {
-			operator: crate::features::operations::PureUnary::LogicalNot,
-			operand,
-		});
-		self.register_type(ty)
+	pub(crate) fn new_logical_negation_type(&mut self, condition: TypeId) -> TypeId {
+		self.register_type(Type::Constructor(super::Constructor::ConditionalResult {
+			condition,
+			truthy_result: TypeId::FALSE,
+			otherwise_result: TypeId::TRUE,
+			result_union: TypeId::BOOLEAN_TYPE,
+		}))
 	}
 
 	/// Doesn't evaluate events
@@ -479,14 +500,14 @@ impl TypeStore {
 					LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(self),
 					value => {
 						crate::utilities::notify!("value={:?}", value);
-						TypeId::ERROR_TYPE
+						TypeId::UNIMPLEMENTED_ERROR_TYPE
 					} // Logical::Or { .. } => todo!(),
 					  // Logical::Implies { .. } => todo!(),
 					  // Logical::BasedOnKey { .. } => todo!(),
 				}
 			} else {
 				crate::utilities::notify!("Error: no index on type annotation");
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			}
 		}
 	}
@@ -611,42 +632,5 @@ impl TypeStore {
 
 	pub(crate) fn new_key_of(&mut self, of: TypeId) -> TypeId {
 		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
-	}
-
-	pub(crate) fn new_intrinsic(&mut self, intrinsic: &Intrinsic, argument: TypeId) -> TypeId {
-		let (on, to_pair) = match intrinsic {
-			Intrinsic::Uppercase => (TypeId::STRING_UPPERCASE, TypeId::STRING_GENERIC),
-			Intrinsic::Lowercase => (TypeId::STRING_LOWERCASE, TypeId::STRING_GENERIC),
-			Intrinsic::Capitalize => (TypeId::STRING_CAPITALIZE, TypeId::STRING_GENERIC),
-			Intrinsic::Uncapitalize => (TypeId::STRING_UNCAPITALIZE, TypeId::STRING_GENERIC),
-			Intrinsic::NoInfer => (TypeId::NO_INFER, TypeId::T_TYPE),
-			Intrinsic::Literal => (TypeId::LITERAL_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::LessThan => (TypeId::LESS_THAN, TypeId::NUMBER_GENERIC),
-			Intrinsic::GreaterThan => (TypeId::GREATER_THAN, TypeId::NUMBER_GENERIC),
-			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
-			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::Not => {
-				// Double negation
-				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-					on: TypeId::NOT_RESTRICTION,
-					arguments: GenericArguments::ExplicitRestrictions(args),
-				}) = self.get_type_by_id(argument)
-				{
-					return args.get(&TypeId::T_TYPE).unwrap().0;
-				}
-
-				(TypeId::NOT_RESTRICTION, TypeId::T_TYPE)
-			}
-			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
-		};
-		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
-			to_pair,
-			(argument, <SpanWithSource as source_map::Nullable>::NULL),
-		)]));
-
-		self.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on,
-			arguments,
-		}))
 	}
 }

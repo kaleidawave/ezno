@@ -9,7 +9,8 @@ use crate::{
 		generics::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
 		},
-		get_conditional, get_constraint, is_inferrable_type, is_pseudo_continous,
+		get_constraint,
+		helpers::{get_conditional, is_inferrable_type, is_pseudo_continous},
 		logical::{
 			BasedOnKey, Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical,
 			PropertyOn,
@@ -542,12 +543,14 @@ pub(crate) fn get_property_unbound(
 				}
 			}
 			Type::Constant(Constant::String(s)) if under.is_equal_to("length") => {
-				// TODO temp TypeId::NUMBER_GENERIC for slice member
+				// TODO temp TypeId::NUMBER_FLOOR_GENERIC for slice member
 				let count = s.chars().count();
 				Ok(Logical::BasedOnKey(BasedOnKey::Left {
-					value: Box::new(Logical::Pure(PropertyValue::Value(TypeId::NUMBER_GENERIC))),
+					value: Box::new(Logical::Pure(PropertyValue::Value(
+						TypeId::NUMBER_FLOOR_GENERIC,
+					))),
 					key_arguments: crate::Map::from_iter([(
-						TypeId::NUMBER_GENERIC,
+						TypeId::NUMBER_FLOOR_GENERIC,
 						(CovariantContribution::Number(count as f64), 0),
 					)]),
 				})
@@ -563,7 +566,7 @@ pub(crate) fn get_property_unbound(
 			.map(LogicalOrValid::Logical)
 			.ok_or(Invalid(on))
 			.or_else(|_| {
-				let backing_type = cst.get_backing_type_id();
+				let backing_type = cst.get_backing_type();
 				get_property_on_type_unbound(
 					(backing_type, on_type_arguments),
 					(publicity, under, under_type_arguments),
@@ -734,7 +737,7 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 	);
 
 	{
-		crate::utilities::notify!("Access result {:?}", result);
+		crate::utilities::notify!("Access {:?} result {:?}", under, result);
 	}
 
 	match result {
@@ -938,13 +941,18 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					};
 					let result =
 						getter.call(Vec::new(), input, environment, (behavior, diagnostics), types);
+
 					if let Ok(res) = result {
+						crate::utilities::notify!("{:?}", res.result);
+
 						let application_result =
 							application_result_to_return_type(res.result, environment, types);
+
+						crate::utilities::notify!("{:?}", application_result);
 						Some((PropertyKind::Getter, application_result))
 					} else {
-						crate::utilities::notify!("TODO merge calling");
-						Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
+						crate::utilities::notify!("Here");
+						Some((PropertyKind::Getter, TypeId::UNIMPLEMENTED_ERROR_TYPE))
 					}
 				}
 				PropertyValue::Setter(_) => {
@@ -1172,7 +1180,7 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 			Some((PropertyKind::Getter, application_result))
 		} else {
 			crate::utilities::notify!("TODO merge calling");
-			Some((PropertyKind::Getter, TypeId::ERROR_TYPE))
+			Some((PropertyKind::Getter, TypeId::UNIMPLEMENTED_ERROR_TYPE))
 		}
 	} else {
 		get_property(

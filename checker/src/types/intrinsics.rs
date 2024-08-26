@@ -10,6 +10,8 @@ use crate::{
 
 use super::Type;
 
+pub use crate::utilities::float_range::FloatRange;
+
 /// These are special marker types (using [`Type::Alias`])
 ///
 /// Some are from TSC, others are added by me!
@@ -118,41 +120,106 @@ pub fn is_intrinsic(id: TypeId) -> bool {
 
 #[must_use]
 pub fn ezno_number_intrinsic(id: TypeId) -> bool {
-	matches!(id, TypeId::LESS_THAN | TypeId::GREATER_THAN | TypeId::MULTIPLE_OF)
+	matches!(id, TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE | TypeId::MULTIPLE_OF)
 }
 
 #[must_use]
-pub fn get_greater_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
+pub fn get_greater_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: TypeId::GREATER_THAN,
+		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
 		arguments,
 	}) = ty
 	{
-		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC)
+		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+		let floor = arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
+		Some((inclusive, floor))
 	} else if let Type::And(lhs, rhs) = ty {
 		get_greater_than(*lhs, types).or_else(|| get_greater_than(*rhs, types))
+	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
+		Some((true, on))
 	} else {
 		None
 	}
 }
 
 #[must_use]
-pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<TypeId> {
+pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: TypeId::LESS_THAN,
+		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
 		arguments,
 	}) = ty
 	{
-		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC)
+		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+		Some((
+			inclusive,
+			arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap(),
+		))
 	} else if let Type::And(lhs, rhs) = ty {
 		get_less_than(*lhs, types).or_else(|| get_less_than(*rhs, types))
+	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
+		Some((true, on))
 	} else {
 		None
 	}
+}
+
+#[must_use]
+pub fn get_range(on: TypeId, types: &TypeStore) -> Option<FloatRange> {
+	let on = get_constraint(on, types).unwrap_or(on);
+	let ty = types.get_type_by_id(on);
+	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
+		arguments,
+	}) = ty
+	{
+		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+		crate::utilities::notify!("{:?} {:?}", on, arguments);
+		let floor = arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
+		let ceiling = arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap();
+		if let (
+			Type::Constant(crate::Constant::Number(floor)),
+			Type::Constant(crate::Constant::Number(ceiling)),
+		) = (types.get_type_by_id(floor), types.get_type_by_id(ceiling))
+		{
+			let (floor, ceiling) = (*floor, *ceiling);
+			Some(if inclusive {
+				FloatRange::Inclusive { floor, ceiling }
+			} else {
+				FloatRange::Exclusive { floor, ceiling }
+			})
+		} else {
+			crate::utilities::notify!("Not bottom top number");
+			None
+		}
+	} else if let Type::Constant(crate::Constant::Number(number)) = ty {
+		Some(FloatRange::single(*number))
+	} else {
+		None
+	}
+}
+
+#[must_use]
+pub fn range_to_type(range: FloatRange, types: &mut TypeStore) -> TypeId {
+	use source_map::Nullable;
+
+	let on = if let FloatRange::Inclusive { .. } = range {
+		TypeId::INCLUSIVE_RANGE
+	} else {
+		TypeId::EXCLUSIVE_RANGE
+	};
+	let (FloatRange::Inclusive { floor, ceiling } | FloatRange::Exclusive { floor, ceiling }) =
+		range;
+	let floor = types.new_constant_type(crate::Constant::Number(floor));
+	let ceiling = types.new_constant_type(crate::Constant::Number(ceiling));
+	let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+		(TypeId::NUMBER_FLOOR_GENERIC, (floor, SpanWithSource::NULL)),
+		(TypeId::NUMBER_CEILING_GENERIC, (ceiling, SpanWithSource::NULL)),
+	]));
+	types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }))
 }
 
 #[must_use]
@@ -164,9 +231,11 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 		arguments,
 	}) = ty
 	{
-		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC)
+		arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC)
 	} else if let Type::And(lhs, rhs) = ty {
 		get_multiple(*lhs, types).or_else(|| get_multiple(*rhs, types))
+	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
+		Some(on)
 	} else {
 		None
 	}
@@ -174,22 +243,83 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 
 #[allow(clippy::match_like_matches_macro)]
 #[must_use]
-pub fn can_be_not_a_number(on: TypeId, types: &TypeStore) -> bool {
-	let on = get_constraint(on, types).unwrap_or(on);
+pub fn is_not_not_a_number(on: TypeId, types: &TypeStore) -> bool {
 	if on == TypeId::NOT_NOT_A_NUMBER {
 		true
+	} else if on == TypeId::NUMBER_TYPE || on == TypeId::ANY_TYPE {
+		false
 	} else {
 		let ty = types.get_type_by_id(on);
 		if let Type::And(lhs, rhs) = ty {
-			can_be_not_a_number(*lhs, types) || can_be_not_a_number(*rhs, types)
+			is_not_not_a_number(*lhs, types) || is_not_not_a_number(*rhs, types)
+		} else if let Type::Or(lhs, rhs) = ty {
+			is_not_not_a_number(*lhs, types) && is_not_not_a_number(*rhs, types)
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF | TypeId::LESS_THAN | TypeId::GREATER_THAN,
+			on: TypeId::MULTIPLE_OF | TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
 			arguments: _,
 		}) = ty
 		{
 			true
+		} else if let Type::AliasTo { to, .. } = ty {
+			is_not_not_a_number(*to, types)
+		} else if let Some(constraint) = get_constraint(on, types) {
+			is_not_not_a_number(constraint, types)
 		} else {
-			false
+			true
 		}
 	}
+}
+
+pub fn new_intrinsic(intrinsic: &Intrinsic, argument: TypeId, types: &mut TypeStore) -> TypeId {
+	use source_map::Nullable;
+	let (on, to_pair) =
+		match intrinsic {
+			Intrinsic::Uppercase => (TypeId::STRING_UPPERCASE, TypeId::STRING_GENERIC),
+			Intrinsic::Lowercase => (TypeId::STRING_LOWERCASE, TypeId::STRING_GENERIC),
+			Intrinsic::Capitalize => (TypeId::STRING_CAPITALIZE, TypeId::STRING_GENERIC),
+			Intrinsic::Uncapitalize => (TypeId::STRING_UNCAPITALIZE, TypeId::STRING_GENERIC),
+			Intrinsic::NoInfer => (TypeId::NO_INFER, TypeId::T_TYPE),
+			Intrinsic::Literal => (TypeId::LITERAL_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::LessThan => {
+				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+					(TypeId::NUMBER_FLOOR_GENERIC, (TypeId::NEG_INFINITY, SpanWithSource::NULL)),
+					(TypeId::NUMBER_CEILING_GENERIC, (argument, SpanWithSource::NULL)),
+				]));
+
+				return types.register_type(Type::PartiallyAppliedGenerics(
+					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
+				));
+			}
+			Intrinsic::GreaterThan => {
+				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+					(TypeId::NUMBER_FLOOR_GENERIC, (argument, SpanWithSource::NULL)),
+					(TypeId::NUMBER_CEILING_GENERIC, (TypeId::INFINITY, SpanWithSource::NULL)),
+				]));
+
+				return types.register_type(Type::PartiallyAppliedGenerics(
+					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
+				));
+			}
+			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_FLOOR_GENERIC),
+			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
+			Intrinsic::Not => {
+				// Double negation
+				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+					on: TypeId::NOT_RESTRICTION,
+					arguments: GenericArguments::ExplicitRestrictions(args),
+				}) = types.get_type_by_id(argument)
+				{
+					return args.get(&TypeId::T_TYPE).unwrap().0;
+				}
+
+				(TypeId::NOT_RESTRICTION, TypeId::T_TYPE)
+			}
+			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
+		};
+	let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+		to_pair,
+		(argument, SpanWithSource::NULL),
+	)]));
+
+	types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }))
 }

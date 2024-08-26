@@ -6,7 +6,7 @@ use super::{
 
 use crate::{
 	context::{get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior},
-	diagnostics::{TypeStringRepresentation, TDZ},
+	diagnostics::{TypeStringRepresentation, VariableUsedInTDZ},
 	features::{
 		iteration::{self, IterationKind},
 		objects::SpecialObject,
@@ -93,8 +93,8 @@ pub(crate) fn apply_events(
 									ty
 								} else {
 									diagnostics.errors.push(
-										crate::types::calling::FunctionCallingError::TDZ {
-											error: TDZ {
+										crate::types::calling::FunctionCallingError::VariableUsedInTDZ {
+											error: VariableUsedInTDZ {
 												variable_name: top_environment
 													.get_variable_name(*id)
 													.to_owned(),
@@ -110,6 +110,7 @@ pub(crate) fn apply_events(
 								input.this_value.get(top_environment, types, *position)
 							}
 						};
+						crate::utilities::notify!("Set to {:?}", value);
 						type_arguments.set_during_application(*id, value);
 					}
 				}

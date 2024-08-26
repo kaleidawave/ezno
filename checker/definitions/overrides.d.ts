@@ -77,7 +77,8 @@ declare class Array<T> {
         let i: number = 0;
         while (i < length) {
             const value = this[i];
-            if (!cb(value, i++)) {
+            const result = cb(value, i++) as boolean;
+            if (!result) {
                 return false
             }
         }
@@ -103,10 +104,10 @@ declare class Array<T> {
         if (length === 0) {
             return ""
         }
-        let s: string = "" + this[0];
+        let s: string = "" + (this[0] as string);
         while (i < length) {
             s += joiner;
-            s += this[i++];
+            s += this[i++] as string;
         }
         return s
     }
@@ -118,9 +119,17 @@ declare class Array<T> {
             return this[index]
         }
     }
+
+    static isArray(item: any) {
+        return item instanceof Array;
+    }
 }
 
 type Record<K extends string, T> = { [P in K]: T }
+
+type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
+type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+type Integer = MultipleOf<1>;
 
 declare class Map<T, U> {
     #keys: Array<T> = [];
@@ -129,9 +138,9 @@ declare class Map<T, U> {
 
 declare class Math {
     @Constant
-    static sin(x: number): number;
+    static sin(x: number): InclusiveRange<-1, 1>;
     @Constant
-    static cos(x: number): number;
+    static cos(x: number): InclusiveRange<-1, 1>;
     @Constant
     static tan(x: number): number;
     @Constant
@@ -147,11 +156,14 @@ declare class Math {
     @Constant
     static trunc(x: number): number;
 
+    @Constant
+    static imul(x: number, y: number): number;
+
     static PI: 3.141592653589793
     static E: 2.718281828459045
 
     @InputOutput
-    static random(): number;
+    static random(): InclusiveRange<0, 1>;
 }
 
 @Primitive("string")
@@ -170,6 +182,20 @@ declare class String {
 
     // TODO
     split(splitter: string): Array<string>;
+}
+
+@Primitive("number")
+declare class Number {
+    static NEGATIVE_INFINITY: NegativeInfinity;
+    static POSITIVE_INFINITY: Infinity;
+
+    // static isFinite(item: any) {
+    //     return !(item === Number.NEGATIVE_INFINITY || item === Number.POSITIVE_INFINITY || Number.isNaN(item))
+    // }
+
+    static isNaN(item: any) {
+        return item !== item;
+    }
 }
 
 declare class Promise<T> { }
@@ -377,7 +403,7 @@ declare class Object {
         return entries
     }
 
-    // TODO multiple arguments
+    // TODO spread source
     static assign(target: object, source: object): object {
         for (const key in source) {
             target[key] = source[key]
