@@ -113,6 +113,7 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 						.without_source()
 						.union(rhs_pos.without_source())
 						.with_source(environment.get_source());
+
 					checking_data.diagnostics_container.add_warning(
 						crate::TypeCheckWarning::DisjointEquality {
 							lhs: TypeStringRepresentation::from_type_id(
@@ -131,12 +132,14 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 						},
 					);
 				}
+
 				result
 			} else {
 				let position = lhs_pos
 					.without_source()
 					.union(rhs_pos.without_source())
 					.with_source(environment.get_source());
+
 				checking_data.diagnostics_container.add_error(
 					crate::TypeCheckError::InvalidEqualityOperation {
 						operator,
@@ -155,6 +158,7 @@ pub fn evaluate_pure_binary_operation_handle_errors<
 						position,
 					},
 				);
+
 				TypeId::ERROR_TYPE
 			}
 		}
@@ -243,30 +247,63 @@ pub fn evaluate_mathematical_operation(
 		types.get_type_by_id(lhs).is_dependent() || types.get_type_by_id(rhs).is_dependent();
 
 	if is_dependent {
-		{
-			if let MathematicalAndBitwise::Add = operator {
-				if !simple_subtype(lhs, TypeId::STRING_OR_NUMBER, info, types)
-					|| !simple_subtype(rhs, TypeId::STRING_OR_NUMBER, info, types)
-				{
-					return Err(());
-				}
-			} else {
-				let left_is_number = simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types);
-				if !left_is_number || !simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types) {
-					return Err(());
-				}
+		let can_be_string = if let MathematicalAndBitwise::Add = operator {
+			let left_is_string = simple_subtype(lhs, TypeId::STRING_TYPE, info, types);
+			let right_is_string = simple_subtype(lhs, TypeId::STRING_TYPE, info, types);
+			let left_is_string_or_number =
+				left_is_string || simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types);
+			let right_is_string_or_number =
+				right_is_string || simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types);
+			if !left_is_string_or_number || !right_is_string_or_number {
+				return Err(());
 			}
-		}
+			left_is_string || right_is_string
+		} else {
+			let left_is_number = simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types);
+			if !left_is_number || !simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types) {
+				return Err(());
+			}
+			false
+		};
 
 		// :)
 		if let (MathematicalAndBitwise::Exponent, TypeId::ONE, true) =
-			(operator, rhs, crate::types::intrinsics::is_not_not_a_number(lhs, types))
+			(operator, rhs, intrinsics::is_not_not_a_number(lhs, types))
 		{
-			Ok(lhs)
-		} else {
-			let constructor = crate::types::Constructor::BinaryOperator { lhs, operator, rhs };
-			Ok(types.register_type(crate::Type::Constructor(constructor)))
+			return Ok(lhs);
+		} else if let (MathematicalAndBitwise::Add, TypeId::ZERO)
+		| (MathematicalAndBitwise::Multiply, TypeId::ONE) = (operator, rhs)
+		{
+			return Ok(lhs);
+		} else if let (MathematicalAndBitwise::Add, TypeId::ZERO)
+		| (MathematicalAndBitwise::Multiply, TypeId::ONE) = (operator, lhs)
+		{
+			return Ok(rhs);
 		}
+
+		let result = if can_be_string {
+			TypeId::STRING_TYPE
+		} else if let (
+			MathematicalAndBitwise::Add | MathematicalAndBitwise::Multiply,
+			Some(lhs_range),
+			Some(rhs_range),
+		) = (operator, intrinsics::get_range(lhs, types), intrinsics::get_range(rhs, types))
+		{
+			match operator {
+				MathematicalAndBitwise::Add => {
+					intrinsics::range_to_type(lhs_range.space_addition(rhs_range), types)
+				}
+				MathematicalAndBitwise::Multiply => {
+					intrinsics::range_to_type(lhs_range.space_multiplication(rhs_range), types)
+				}
+				_ => unreachable!(),
+			}
+		} else {
+			TypeId::NUMBER_TYPE
+		};
+
+		let constructor = crate::types::Constructor::BinaryOperator { lhs, operator, rhs, result };
+		Ok(types.register_type(crate::Type::Constructor(constructor)))
 	} else {
 		attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
 	}
@@ -321,8 +358,8 @@ pub fn evaluate_equality_inequality_operation(
 
 			if is_dependent {
 				if lhs == rhs
-					&& crate::types::intrinsics::is_not_not_a_number(lhs, types)
-					&& crate::types::intrinsics::is_not_not_a_number(rhs, types)
+					&& intrinsics::is_not_not_a_number(lhs, types)
+					&& intrinsics::is_not_not_a_number(rhs, types)
 				{
 					// I think this is okay
 					return Ok((TypeId::TRUE, EqualityAndInequalityResultKind::Constant));
@@ -405,6 +442,7 @@ pub fn evaluate_equality_inequality_operation(
 						lhs: op_lhs,
 						operator,
 						rhs: op_rhs,
+						result: _,
 					}) = types.get_type_by_id(lhs)
 					{
 						if let (

@@ -906,6 +906,7 @@ fn calculate_result_of_loop(
 					lhs: assignment,
 					operator: _,
 					rhs: increments_by,
+					result: _,
 				}) = value_after_running_expressions_in_loop
 				{
 					debug_assert!(

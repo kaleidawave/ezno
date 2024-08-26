@@ -371,6 +371,7 @@ pub(crate) fn type_is_subtype_with_generics(
 			if let Type::RootPolyType(PolyNature::Error(to)) = t {
 				// (unless specified) treat as subtype as error would have already been thrown
 				return if state.others.allow_errors && *to == TypeId::ANY_TYPE {
+					crate::utilities::notify!("Here");
 					SubTypeResult::IsSubType
 				} else {
 					type_is_subtype(base_type, *to, state, information, types)
@@ -845,7 +846,7 @@ pub(crate) fn type_is_subtype_with_generics(
 					return if let Type::Constant(rhs_constant) = subtype {
 						type_is_subtype_with_generics(
 							(inner, base_type_arguments),
-							(rhs_constant.get_backing_type_id(), ty_structure_arguments),
+							(rhs_constant.get_backing_type(), ty_structure_arguments),
 							state,
 							information,
 							types,
@@ -878,7 +879,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 				TypeId::MULTIPLE_OF => {
 					let argument =
-						arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap();
+						arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
 
 					let right_multiple = crate::types::intrinsics::get_multiple(ty, types);
 					return if let (
@@ -1398,7 +1399,7 @@ pub(crate) fn type_is_subtype_with_generics(
 		// TODO WIP nominal mechanism
 		Type::Class { .. } => match subtype {
 			Type::Constant(constant) => {
-				if constant.get_backing_type_id() == base_type {
+				if constant.get_backing_type() == base_type {
 					SubTypeResult::IsSubType
 				} else {
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
@@ -1460,7 +1461,7 @@ pub(crate) fn type_is_subtype_with_generics(
 			// TODO a bit messy
 			match subtype {
 				Type::Constant(constant) => {
-					if constant.get_backing_type_id() == base_type {
+					if constant.get_backing_type() == base_type {
 						SubTypeResult::IsSubType
 					} else {
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
@@ -1506,7 +1507,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				| Type::Class { .. }
 				| Type::AliasTo { .. }
 				| Type::Interface { .. } => {
-					crate::utilities::notify!("lhs={:?} rhs={:?}", left_ty, right_ty);
+					crate::utilities::notify!("supertype={:?}, subtype={:?}", supertype, subtype);
 					// TODO
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
@@ -2837,6 +2838,7 @@ pub(crate) fn slice_matches_type(
 			lhs,
 			rhs,
 			operator: MathematicalAndBitwise::Add,
+			result: _,
 		}) => {
 			let lhs = base_type_arguments
 				.as_ref()
@@ -2919,7 +2921,7 @@ pub(crate) fn number_matches_type(
 			arguments,
 		}) => {
 			let argument =
-				arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap();
+				arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
 			if let Type::Constant(Constant::Number(argument)) = types.get_type_by_id(argument) {
 				let number: ordered_float::NotNan<f64> = number.try_into().unwrap();
 				(number % argument) == 0.

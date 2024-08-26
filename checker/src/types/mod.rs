@@ -144,8 +144,8 @@ impl TypeId {
 	// Ezno intrinsics
 
 	/// Used in [`Self::INCLUSIVE_RANGE`], [`Self::EXCLUSIVE_RANGE`] and [`Self::MULTIPLE_OF`]
-	pub const NUMBER_BOTTOM_GENERIC: Self = Self(44);
-	pub const NUMBER_TOP_GENERIC: Self = Self(45);
+	pub const NUMBER_FLOOR_GENERIC: Self = Self(44);
+	pub const NUMBER_CEILING_GENERIC: Self = Self(45);
 	pub const INCLUSIVE_RANGE: Self = Self(46);
 	pub const EXCLUSIVE_RANGE: Self = Self(47);
 	pub const MULTIPLE_OF: Self = Self(48);
@@ -371,11 +371,12 @@ impl Type {
 /// - Unary operations are encoded as BinaryOperations
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Constructor {
-	// TODO separate add?
 	BinaryOperator {
 		lhs: TypeId,
 		operator: MathematicalAndBitwise,
 		rhs: TypeId,
+		/// for add + number intrinsics
+		result: TypeId,
 	},
 	CanonicalRelationOperator {
 		lhs: TypeId,
@@ -670,25 +671,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
 		Type::RootPolyType(nature) => Some(nature.get_constraint()),
 		Type::Constructor(constructor) => match constructor.clone() {
-			Constructor::BinaryOperator { lhs, operator, rhs } => {
-				if let MathematicalAndBitwise::Add = operator {
-					let lhs = get_larger_type(lhs, types);
-					let rhs = get_larger_type(rhs, types);
-					// TODO these need to be generated
-					if let (TypeId::NUMBER_TYPE, TypeId::NUMBER_TYPE) = (lhs, rhs) {
-						Some(TypeId::NUMBER_TYPE)
-					} else if let (TypeId::STRING_TYPE, _) | (_, TypeId::STRING_TYPE) = (lhs, rhs) {
-						Some(TypeId::STRING_TYPE)
-					} else {
-						crate::utilities::notify!("lhs = {:?}", types.get_type_by_id(lhs));
-						crate::utilities::notify!("TODO use existing conditional");
-						Some(TypeId::NUMBER_TYPE)
-					}
-				} else {
-					Some(TypeId::NUMBER_TYPE)
-				}
-			}
-			Constructor::Awaited { on: _, result }
+			Constructor::BinaryOperator { result, .. }
+			| Constructor::Awaited { on: _, result }
 			| Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, mode: _ } => {
 				// crate::utilities::notify!("Here, result of a property get");
@@ -727,7 +711,7 @@ pub fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	if let Some(poly_base) = get_constraint(on, types) {
 		poly_base
 	} else if let Type::Constant(cst) = types.get_type_by_id(on) {
-		cst.get_backing_type_id()
+		cst.get_backing_type()
 	} else {
 		on
 	}
@@ -936,6 +920,8 @@ impl Counter {
 					lhs: *value,
 					operator: MathematicalAndBitwise::Add,
 					rhs: TypeId::ONE,
+					// TODO could be greater than
+					result: TypeId::NUMBER_TYPE,
 				}));
 			}
 		}
@@ -947,6 +933,8 @@ impl Counter {
 			lhs: ty,
 			operator: MathematicalAndBitwise::Add,
 			rhs: current,
+			// TODO could be greater than
+			result: TypeId::NUMBER_TYPE,
 		}));
 		*self = Counter::AddTo(new);
 	}
@@ -986,10 +974,10 @@ pub(crate) mod helpers {
 			Type::Constructor(c) => {
 				if let Constructor::KeyOf(..) = c {
 					true
-				} else if let Constructor::BinaryOperator { lhs, rhs, operator: _ } = c {
+				} else if let Constructor::BinaryOperator { lhs, rhs, operator: _, result: _ } = c {
 					references_key_of(*lhs, types) || references_key_of(*rhs, types)
 				} else {
-					// TODO might have missed something here
+					crate::utilities::notify!("TODO might have missed keyof {:?}", c);
 					false
 				}
 			}

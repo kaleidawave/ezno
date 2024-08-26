@@ -204,9 +204,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 			if let TypeId::EXCLUSIVE_RANGE = *on {
 				// let inclusive = *on == TypeId::INCLUSIVE_RANGE;
 				let floor =
-					arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap();
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
 				let ceiling =
-					arguments.get_structure_restriction(TypeId::NUMBER_TOP_GENERIC).unwrap();
+					arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap();
 				if let TypeId::NEG_INFINITY = floor {
 					buf.push_str("LessThan<");
 					print_type_into_buf(ceiling, buf, cycles, args, types, info, debug);
@@ -411,7 +411,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 			}
 			constructor if debug => match constructor {
-				Constructor::BinaryOperator { lhs, operator, rhs } => {
+				Constructor::BinaryOperator { lhs, operator, rhs, result: _ } => {
 					print_type_into_buf(*lhs, buf, cycles, args, types, info, debug);
 					write!(buf, " {operator:?} ").unwrap();
 					print_type_into_buf(*rhs, buf, cycles, args, types, info, debug);

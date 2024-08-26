@@ -252,7 +252,7 @@ declare class Math {
     static E: 2.718281828459045
 
     @InputOutput
-    static random(): InclusiveRange<0, 1>;
+    static random(): 0 | InclusiveRange<0, 1>;
 }
 
 @Primitive("string")

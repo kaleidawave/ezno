@@ -526,9 +526,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						crate::utilities::notify!("found wildcard");
 						let after = idx.into_type(&mut checking_data.types);
 
-						let key = checking_data.types.new_intrinsic(
+						let key = crate::types::intrinsics::new_intrinsic(
 							&crate::types::intrinsics::Intrinsic::GreaterThan,
 							after,
+							&mut checking_data.types,
 						);
 
 						let item_type = checking_data.types.register_type(Type::Constructor(
@@ -717,6 +718,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							lhs: acc,
 							operator: crate::features::operations::MathematicalAndBitwise::Add,
 							rhs: lhs,
+							result: TypeId::STRING_TYPE,
 						},
 					))
 				};
@@ -733,6 +735,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					lhs: acc,
 					operator: crate::features::operations::MathematicalAndBitwise::Add,
 					rhs,
+					result: TypeId::STRING_TYPE,
 				};
 				acc = checking_data.types.register_type(Type::Constructor(constructor));
 			}
@@ -748,6 +751,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							lhs: acc,
 							operator: crate::features::operations::MathematicalAndBitwise::Add,
 							rhs: lhs,
+							result: TypeId::STRING_TYPE,
 						},
 					))
 				}

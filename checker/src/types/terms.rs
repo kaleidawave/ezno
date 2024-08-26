@@ -44,7 +44,7 @@ impl Constant {
 	}
 
 	#[must_use]
-	pub fn get_backing_type_id(&self) -> TypeId {
+	pub fn get_backing_type(&self) -> TypeId {
 		match self {
 			Constant::Number(_) | Constant::NaN => TypeId::NUMBER_TYPE,
 			Constant::String(_) => TypeId::STRING_TYPE,

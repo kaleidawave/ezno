@@ -1,21 +1,20 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{features::regexp::RegExp, types::intrinsics::Intrinsic, Constant, Map as SmallMap};
 use source_map::{Nullable, Span, SpanWithSource};
 
 use crate::{
-	features::{functions::ClosureId, objects::SpecialObject},
-	types::{
-		functions::{FunctionBehavior, FunctionType},
-		logical::{Logical, LogicalOrValid},
-		PolyNature, Type,
-	},
-	Environment, FunctionId, TypeId,
+	features::{functions::ClosureId, objects::SpecialObject, regexp::RegExp},
+	Constant, Environment, FunctionId, Map as SmallMap, TypeId,
 };
 
 use super::{
-	generics::generic_type_arguments::GenericArguments, get_constraint, properties::PropertyKey,
-	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, TypeExtends,
+	functions::{FunctionBehavior, FunctionType},
+	generics::generic_type_arguments::GenericArguments,
+	get_constraint,
+	logical::{Logical, LogicalOrValid},
+	properties::PropertyKey,
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, PolyNature, Type,
+	TypeExtends,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -153,17 +152,23 @@ impl Default for TypeStore {
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
 				name: "InclusiveRange".into(),
-				parameters: Some(vec![TypeId::NUMBER_BOTTOM_GENERIC, TypeId::NUMBER_TOP_GENERIC]),
+				parameters: Some(vec![
+					TypeId::NUMBER_FLOOR_GENERIC,
+					TypeId::NUMBER_CEILING_GENERIC,
+				]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
 				name: "ExclusiveRange".into(),
-				parameters: Some(vec![TypeId::NUMBER_BOTTOM_GENERIC, TypeId::NUMBER_TOP_GENERIC]),
+				parameters: Some(vec![
+					TypeId::NUMBER_FLOOR_GENERIC,
+					TypeId::NUMBER_CEILING_GENERIC,
+				]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
-				parameters: Some(vec![TypeId::NUMBER_BOTTOM_GENERIC]),
+				parameters: Some(vec![TypeId::NUMBER_FLOOR_GENERIC]),
 			},
 			// Intermediate for the below
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -624,61 +629,5 @@ impl TypeStore {
 
 	pub(crate) fn new_key_of(&mut self, of: TypeId) -> TypeId {
 		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
-	}
-
-	pub(crate) fn new_intrinsic(&mut self, intrinsic: &Intrinsic, argument: TypeId) -> TypeId {
-		use source_map::Nullable;
-		let (on, to_pair) = match intrinsic {
-			Intrinsic::Uppercase => (TypeId::STRING_UPPERCASE, TypeId::STRING_GENERIC),
-			Intrinsic::Lowercase => (TypeId::STRING_LOWERCASE, TypeId::STRING_GENERIC),
-			Intrinsic::Capitalize => (TypeId::STRING_CAPITALIZE, TypeId::STRING_GENERIC),
-			Intrinsic::Uncapitalize => (TypeId::STRING_UNCAPITALIZE, TypeId::STRING_GENERIC),
-			Intrinsic::NoInfer => (TypeId::NO_INFER, TypeId::T_TYPE),
-			Intrinsic::Literal => (TypeId::LITERAL_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::LessThan => {
-				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
-					(TypeId::NUMBER_BOTTOM_GENERIC, (TypeId::NEG_INFINITY, SpanWithSource::NULL)),
-					(TypeId::NUMBER_TOP_GENERIC, (argument, SpanWithSource::NULL)),
-				]));
-
-				return self.register_type(Type::PartiallyAppliedGenerics(
-					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
-				));
-			}
-			Intrinsic::GreaterThan => {
-				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
-					(TypeId::NUMBER_BOTTOM_GENERIC, (argument, SpanWithSource::NULL)),
-					(TypeId::NUMBER_TOP_GENERIC, (TypeId::INFINITY, SpanWithSource::NULL)),
-				]));
-
-				return self.register_type(Type::PartiallyAppliedGenerics(
-					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
-				));
-			}
-			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_BOTTOM_GENERIC),
-			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
-			Intrinsic::Not => {
-				// Double negation
-				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-					on: TypeId::NOT_RESTRICTION,
-					arguments: GenericArguments::ExplicitRestrictions(args),
-				}) = self.get_type_by_id(argument)
-				{
-					return args.get(&TypeId::T_TYPE).unwrap().0;
-				}
-
-				(TypeId::NOT_RESTRICTION, TypeId::T_TYPE)
-			}
-			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
-		};
-		let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
-			to_pair,
-			(argument, SpanWithSource::NULL),
-		)]));
-
-		self.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on,
-			arguments,
-		}))
 	}
 }

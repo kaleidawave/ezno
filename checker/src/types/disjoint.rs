@@ -142,7 +142,7 @@ pub fn types_are_disjoint(
 			// Little bit complex here because dealing with decimal types, not integers
 			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
 				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap(),
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
 				),
 				types.get_type_by_id(rhs),
 			) {
@@ -162,7 +162,7 @@ pub fn types_are_disjoint(
 			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
 				types.get_type_by_id(lhs),
 				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_BOTTOM_GENERIC).unwrap(),
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
 				),
 			) {
 				let result = lhs % rhs != 0.;
@@ -183,7 +183,7 @@ pub fn types_are_disjoint(
 				lhs_cst != rhs_cst
 			} else {
 				types_are_disjoint(
-					lhs_cst.get_backing_type_id(),
+					lhs_cst.get_backing_type(),
 					rhs,
 					already_checked,
 					information,
@@ -191,13 +191,7 @@ pub fn types_are_disjoint(
 				)
 			}
 		} else if let Type::Constant(rhs_cst) = rhs_ty {
-			types_are_disjoint(
-				rhs_cst.get_backing_type_id(),
-				lhs,
-				already_checked,
-				information,
-				types,
-			)
+			types_are_disjoint(rhs_cst.get_backing_type(), lhs, already_checked, information, types)
 		} else {
 			crate::utilities::notify!(
 				"{:?} cap {:?} == empty ? cases. Might be missing, calling disjoint",

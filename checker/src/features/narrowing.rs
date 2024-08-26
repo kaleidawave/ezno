@@ -69,6 +69,7 @@ pub fn narrow_based_on_expression(
 					lhs: operand,
 					operator: MathematicalAndBitwise::Modulo,
 					rhs: modulo,
+					result: _,
 				}) = types.get_type_by_id(*lhs)
 				{
 					if *rhs == TypeId::ZERO {
@@ -78,9 +79,10 @@ pub fn narrow_based_on_expression(
 						if negate {
 							crate::utilities::notify!("TODO do we not divisable by?");
 						} else {
-							let narrowed_to = types.new_intrinsic(
+							let narrowed_to = crate::types::intrinsics::new_intrinsic(
 								&crate::types::intrinsics::Intrinsic::MultipleOf,
 								modulo,
+								types,
 							);
 							let narrowed = types.new_narrowed(from, narrowed_to);
 							into.insert(from, narrowed);
@@ -122,7 +124,11 @@ pub fn narrow_based_on_expression(
 							let narrowed_to = types.new_or_type_from_iterator(result);
 							types.new_narrowed(lhs, narrowed_to)
 						} else {
-							types.new_intrinsic(&crate::types::intrinsics::Intrinsic::Not, *rhs)
+							crate::types::intrinsics::new_intrinsic(
+								&crate::types::intrinsics::Intrinsic::Not,
+								*rhs,
+								types,
+							)
 						};
 						types.new_narrowed(lhs, narrowed_to)
 					} else {
@@ -178,13 +184,19 @@ pub fn narrow_based_on_expression(
 					return;
 				}
 				if types.get_type_by_id(lhs).is_dependent() {
-					let narrowed_to =
-						types.new_intrinsic(&crate::types::intrinsics::Intrinsic::LessThan, rhs);
+					let narrowed_to = crate::types::intrinsics::new_intrinsic(
+						&crate::types::intrinsics::Intrinsic::LessThan,
+						rhs,
+						types,
+					);
 					let narrowed = types.new_narrowed(lhs, narrowed_to);
 					into.insert(lhs, narrowed);
 				} else if types.get_type_by_id(rhs).is_dependent() {
-					let narrowed_to =
-						types.new_intrinsic(&crate::types::intrinsics::Intrinsic::GreaterThan, lhs);
+					let narrowed_to = crate::types::intrinsics::new_intrinsic(
+						&crate::types::intrinsics::Intrinsic::GreaterThan,
+						lhs,
+						types,
+					);
 					let narrowed = types.new_narrowed(rhs, narrowed_to);
 					into.insert(rhs, narrowed);
 				}

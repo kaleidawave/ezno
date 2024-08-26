@@ -635,6 +635,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			if *is_optional {
 				let null_or_undefined =
 					is_null_or_undefined(on, environment, &mut checking_data.types);
+
+				crate::utilities::notify!("{:?}", null_or_undefined);
+
 				Instance::RValue(new_conditional_context(
 					environment,
 					(null_or_undefined, parent.get_position()),

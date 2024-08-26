@@ -136,6 +136,18 @@ function func(a: number) {
 
 - Expected string, found boolean
 
+#### Ranges after operators
+
+```ts
+function func(a: number) {
+	(Math.sin(a) * 5) satisfies null;
+	((Math.sin(a) + 10)) * 2 satisfies string;
+}
+```
+
+- Expected null, found InclusiveRange\<-5, 5>
+- Expected string, found InclusiveRange\<18, 22>
+
 #### Not disjoint
 
 ```ts
