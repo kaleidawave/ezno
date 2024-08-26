@@ -65,7 +65,8 @@ impl RegExp {
 		// let start_pred = compiled_regex.start_pred;
 		// let loops = compiled_regex.loops;
 		let groups = compiled_regex.groups + 1;
-		let named_group_indices = compiled_regex.named_group_indices.iter().map(|(l, r)| (l.clone(), *r)).collect();
+		let named_group_indices =
+			compiled_regex.named_group_indices.iter().map(|(l, r)| (l.clone(), *r)).collect();
 		// let flags = compiled_regex.flags;
 
 		let re = Regex::from(compiled_regex);
