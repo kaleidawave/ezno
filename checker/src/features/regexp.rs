@@ -1,5 +1,3 @@
-use std::{collections::HashMap, fmt};
-
 use regress::{backends, Flags, Regex};
 use source_map::{SourceId, SpanWithSource};
 
@@ -17,7 +15,7 @@ pub struct RegExp {
 	source: String,
 	re: Regex,
 	groups: u32,
-	named_group_indices: HashMap<String, u16>,
+	named_group_indices: crate::Map<String, u16>,
 	flags_unsupported: bool,
 	used: bool,
 }
@@ -60,14 +58,14 @@ impl RegExp {
 			backends::emit(&ire)
 		};
 
-		// dbg!(&compiled_regex);
+		// crate::utilities::notify!("{:?}", compiled_regex);
 
 		// let insns = compiled_regex.insns;
 		// let brackets = compiled_regex.brackets;
 		// let start_pred = compiled_regex.start_pred;
 		// let loops = compiled_regex.loops;
 		let groups = compiled_regex.groups + 1;
-		let named_group_indices = compiled_regex.named_group_indices.clone();
+		let named_group_indices = compiled_regex.named_group_indices.iter().map(|(l, r)| (l.clone(), *r)).collect();
 		// let flags = compiled_regex.flags;
 
 		let re = Regex::from(compiled_regex);
@@ -304,8 +302,8 @@ impl RegExp {
 	}
 }
 
-impl fmt::Display for RegExp {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for RegExp {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.source)
 	}
 }

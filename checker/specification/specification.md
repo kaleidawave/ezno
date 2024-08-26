@@ -2486,11 +2486,12 @@ match.groups satisfies string;
 const regexp = /.*(?<x>[a-z]+)(?<y>[0-9]+)/;
 const match = regexp.exec("ez as abc123");
 match.input satisfies number;
-match.groups satisfies boolean;
+match.groups.x satisfies "c";
+match.groups.y satisfies boolean;
 ```
 
 - Expected number, found "ez as abc123"
-- Expected boolean, found { x: "c", y: "123" }
+- Expected boolean, found "123"
 
 #### Null and undefined
 
