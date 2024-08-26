@@ -93,6 +93,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 							.types_to_types
 							.get_exact(class.name.identifier.get_position())
 							.copied();
+
 						// TODO mark as exported
 						let _ = synthesise_class_declaration(
 							class,

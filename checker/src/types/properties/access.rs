@@ -1041,7 +1041,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					mode,
 				)?
 			} else {
-				todo!()
+				todo!("left is {:?}", left)
 			};
 			let (_, right) = if let LogicalOrValid::Logical(right) = *right {
 				resolve_property_on_logical(
@@ -1053,7 +1053,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					mode,
 				)?
 			} else {
-				todo!()
+				todo!("right is {:?}", *right)
 			};
 			Some((PropertyKind::Direct, types.new_conditional_type(condition, left, right)))
 			// } else {

@@ -957,8 +957,8 @@ impl IteratorHelper {
 		checking_data: &mut CheckingData<T, A>,
 		position: SpanWithSource,
 	) -> Result<Self, ()> {
-		use crate::context::invocation::CheckThings;
 		use crate::call_type_handle_errors;
+		use crate::context::invocation::CheckThings;
 
 		let (iterator, _) = {
 			crate::utilities::notify!("Here");
@@ -1057,7 +1057,9 @@ impl IteratorHelper {
 		position: SpanWithSource,
 	) -> Option<TypeId> {
 		use crate::context::invocation::CheckThings;
-		use crate::types::calling::{CallingInput, application_result_to_return_type, CallingOutput,Callable};
+		use crate::types::calling::{
+			application_result_to_return_type, Callable, CallingInput, CallingOutput,
+		};
 
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
@@ -1076,12 +1078,7 @@ impl IteratorHelper {
 		);
 
 		match result {
-			Ok(CallingOutput {
-				result,
-				called,
-				special,
-				result_was_const_computation,
-			}) => {
+			Ok(CallingOutput { result, called, special, result_was_const_computation }) => {
 				let result = application_result_to_return_type(
 					result,
 					top_environment,

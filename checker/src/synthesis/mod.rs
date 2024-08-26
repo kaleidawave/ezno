@@ -201,9 +201,32 @@ impl crate::ASTImplementation for EznoParser {
 			}
 			parser::statements::ForLoopStatementInitialiser::VarStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
-					"var in for statement initiliser",
+					"var in for statement initiliser (treating as `let`)",
 					stmt.get_position().with_source(environment.get_source()),
 				);
+				// TODO temp?
+				{
+					for declaration in &stmt.declarations {
+						let constraint = type_annotations::get_annotation_from_declaration(
+							declaration,
+							environment,
+							checking_data,
+						);
+						register_variable(
+							declaration.name.get_ast_ref(),
+							environment,
+							checking_data,
+							VariableRegisterArguments {
+								constant: false,
+								space: constraint,
+								// Important!
+								initial_value: Some(TypeId::UNDEFINED_TYPE),
+								// `var` declarations can be redeclared!
+								allow_reregistration: true,
+							},
+						);
+					}
+				}
 			}
 			parser::statements::ForLoopStatementInitialiser::Expression(expr) => {
 				checking_data.raise_unimplemented_error(

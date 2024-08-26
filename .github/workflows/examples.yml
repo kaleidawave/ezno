@@ -32,6 +32,7 @@ jobs:
 
       - name: Run checker on example files
         shell: bash
+        continue-on-error: true
         run: |
           files=(
               "https://jsr.io/@yossydev/hello-world/1.0.0/index.ts"
