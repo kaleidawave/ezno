@@ -56,6 +56,11 @@ pub struct VariableUsedInTDZ {
 	pub position: SpanWithSource,
 }
 
+pub struct InvalidRegexp {
+	pub error: String,
+	pub position: SpanWithSource,
+}
+
 pub struct NotInLoopOrCouldNotFindLabel {
 	pub label: Label,
 	pub position: SpanWithSource,
@@ -461,6 +466,7 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CannotDeleteProperty(CannotDeleteFromError),
+	InvalidRegexp(InvalidRegexp),
 }
 
 #[allow(clippy::useless_format)]
@@ -863,7 +869,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				} => Diagnostic::Position {
 					reason: match property {
 						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to property of type {ty}"),
-						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}'") 
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}'")
 					},
 					position,
 					kind,
@@ -886,7 +892,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				} => Diagnostic::Position {
 					reason: match property {
 						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to property of type {ty} as it is a getter"),
-						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}' as it is a getter") 
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}' as it is a getter")
 					},
 					position,
 					kind,
@@ -897,12 +903,17 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				} => Diagnostic::Position {
 					reason: match property {
 						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to non-existent property of type {ty}"),
-						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to non-existent property '{property}'") 
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to non-existent property '{property}'")
 					},
 					position,
 					kind,
 				}
-			}
+			},
+			TypeCheckError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
+				reason: format!("Invalid regular expression: {error}"),
+				position,
+				kind,
+			},
 		}
 	}
 }
@@ -1221,6 +1232,11 @@ fn function_calling_error_diagnostic(
 				position: call_site,
 				kind,
 			}
+		}
+		FunctionCallingError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
+			reason: format!("Invalid regular expression: {error}"),
+			position,
+			kind,
 		}
 	}
 }

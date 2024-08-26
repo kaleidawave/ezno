@@ -653,7 +653,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 				}
 			} else {
-				if let Some(prototype) = prototype {
+				if let Some(prototype) =
+					prototype.filter(|prototype| !matches!(*prototype, TypeId::NULL_TYPE))
+				{
 					// crate::utilities::notify!("P during print {:?}", prototype);
 					buf.push('[');
 					print_type_into_buf(prototype, buf, cycles, args, types, info, debug);
@@ -820,15 +822,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push_str(" }");
 			}
-			SpecialObject::RegularExpression { content, .. } => {
-				// TODO flags
-				if let Type::Constant(crate::Constant::String(name)) =
-					types.get_type_by_id(*content)
-				{
-					write!(buf, "/{name}/").unwrap();
-				} else {
-					buf.push_str("RegExp");
-				}
+			SpecialObject::RegularExpression(exp) => {
+				buf.push_str(exp.source());
 			}
 			SpecialObject::Function(..) => unreachable!(),
 		},

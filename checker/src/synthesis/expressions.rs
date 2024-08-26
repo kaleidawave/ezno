@@ -93,6 +93,25 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::StringLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
+		Expression::RegexLiteral { pattern, flags, position } => {
+			let regexp = checking_data.types.new_regexp(pattern, flags, position);
+
+			match regexp {
+				Ok(regexp) => Instance::RValue(regexp),
+				Err(error) => {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::InvalidRegexp(
+							crate::diagnostics::InvalidRegexp {
+								error,
+								position: position.with_source(environment.get_source()),
+							},
+						),
+					);
+
+					return TypeId::ERROR_TYPE;
+				}
+			}
+		}
 		Expression::NumberLiteral(value, ..) => {
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
 				v.try_into().unwrap()
@@ -855,12 +874,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::Null(_) => return TypeId::NULL_TYPE,
 		Expression::JSXRoot(jsx_root) => {
 			Instance::RValue(synthesise_jsx_root(jsx_root, environment, checking_data))
-		}
-		Expression::RegexLiteral { pattern, flags: _, position: _ } => {
-			let content = checking_data.types.new_constant_type(Constant::String(pattern.clone()));
-			Instance::RValue(checking_data.types.register_type(crate::Type::SpecialObject(
-				crate::types::SpecialObject::RegularExpression { content },
-			)))
 		}
 		Expression::Comment { on, .. } => {
 			return synthesise_expression(on, environment, checking_data, expecting);

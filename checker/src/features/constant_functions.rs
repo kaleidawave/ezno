@@ -6,7 +6,9 @@ use crate::{
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
-		calling::{Callable, FunctionCallingError, SynthesisedArgument, ThisValue},
+		calling::{
+			Callable, CallingDiagnostics, FunctionCallingError, SynthesisedArgument, ThisValue,
+		},
 		logical::{Logical, LogicalOrValid},
 		printing::print_type,
 		properties::{AccessMode, Descriptor, PropertyKey, Publicity},
@@ -49,7 +51,7 @@ pub(crate) fn call_constant_function(
 	// TODO `mut` for satisfies which needs checking. Also needed for freeze etc
 	environment: &mut Environment,
 	call_site: SpanWithSource,
-	diagnostics: &mut crate::types::calling::CallingDiagnostics,
+	diagnostics: &mut CallingDiagnostics,
 ) -> Result<ConstantOutput, ConstantFunctionError> {
 	// crate::utilities::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
@@ -128,7 +130,9 @@ pub(crate) fn call_constant_function(
 					"toUpperCase" => Constant::String(s.to_uppercase()),
 					"toLowerCase" => Constant::String(s.to_lowercase()),
 					"string_length" => Constant::Number(
-						(s.len() as f64).try_into().map_err(|_| ConstantFunctionError::BadCall)?,
+						(s.encode_utf16().count() as f64)
+							.try_into()
+							.map_err(|_| ConstantFunctionError::BadCall)?,
 					),
 					_ => unreachable!(),
 				});
@@ -586,6 +590,55 @@ pub(crate) fn call_constant_function(
 		"JSON:stringify" => {
 			crate::utilities::notify!("TODO JSON:stringify");
 			Err(ConstantFunctionError::BadCall)
+		}
+		"regexp:constructor" => {
+			let pattern = types
+				.get_type_by_id(arguments.first().unwrap().non_spread_type().expect("pattern"));
+			let flags =
+				arguments.get(1).map(|a| types.get_type_by_id(a.non_spread_type().expect("flags")));
+
+			let Type::Constant(Constant::String(pattern)) = pattern else {
+				return Err(ConstantFunctionError::BadCall);
+			};
+			let flags = match flags {
+				Some(flags) => {
+					let Type::Constant(Constant::String(flags)) = flags else {
+						return Err(ConstantFunctionError::BadCall);
+					};
+
+					Some(flags.clone())
+				}
+				None => None,
+			};
+
+			let regexp = types.new_regexp(&pattern.clone(), &flags, &call_site.without_source());
+
+			match regexp {
+				Ok(regex) => Ok(ConstantOutput::Value(regex)),
+				Err(error) => Err(ConstantFunctionError::FunctionCallingError(
+					FunctionCallingError::InvalidRegexp(crate::diagnostics::InvalidRegexp {
+						error,
+						position: call_site,
+					}),
+				)),
+			}
+		}
+		"regexp:exec" => {
+			let this = this_argument.get_passed().map(|t| types.get_type_by_id(t));
+
+			if let Some(Type::SpecialObject(SpecialObject::RegularExpression(regexp))) = this {
+				let pattern_type_id =
+					arguments.first().unwrap().non_spread_type().expect("pattern");
+
+				Ok(ConstantOutput::Value(regexp.clone().exec(
+					pattern_type_id,
+					types,
+					environment,
+					call_site,
+				)))
+			} else {
+				Err(ConstantFunctionError::BadCall)
+			}
 		}
 		// "satisfies" => {
 		// 	let ty = arguments

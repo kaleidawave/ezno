@@ -17,6 +17,7 @@ pub mod modules;
 pub mod narrowing;
 pub mod objects;
 pub mod operations;
+pub mod regexp;
 pub mod template_literal;
 pub mod variables;
 

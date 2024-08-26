@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{types::intrinsics::Intrinsic, Constant, Map as SmallMap};
-use source_map::{Nullable, SpanWithSource};
+use crate::{features::regexp::RegExp, types::intrinsics::Intrinsic, Constant, Map as SmallMap};
+use source_map::{Nullable, Span, SpanWithSource};
 
 use crate::{
 	features::{functions::ClosureId, objects::SpecialObject},
@@ -502,6 +502,18 @@ impl TypeStore {
 				TypeId::ERROR_TYPE
 			}
 		}
+	}
+
+	pub fn new_regexp(
+		&mut self,
+		pattern: &str,
+		flags: &Option<String>,
+		_position: &Span,
+	) -> Result<TypeId, String> {
+		let regexp = RegExp::new(pattern, flags.as_ref().map(String::as_str))?;
+		let ty = Type::SpecialObject(SpecialObject::RegularExpression(regexp));
+
+		Ok(self.register_type(ty))
 	}
 
 	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {

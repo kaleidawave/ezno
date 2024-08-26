@@ -1501,8 +1501,12 @@ pub(crate) fn type_is_subtype_with_generics(
 						types,
 					)
 				}
-				Type::AliasTo { .. } | Type::Interface { .. } => {
-					crate::utilities::notify!("lhs={:?} rhs={:?}", supertype, subtype);
+				Type::FunctionReference(_)
+				| Type::SpecialObject(_)
+				| Type::Class { .. }
+				| Type::AliasTo { .. }
+				| Type::Interface { .. } => {
+					crate::utilities::notify!("lhs={:?} rhs={:?}", left_ty, right_ty);
 					// TODO
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
@@ -1543,12 +1547,6 @@ pub(crate) fn type_is_subtype_with_generics(
 					// 		types,
 					// 	)
 					// }
-				}
-				Type::FunctionReference(_) => todo!(),
-				Type::SpecialObject(_) => todo!(),
-				Type::Class { .. } => {
-					crate::utilities::notify!("lhs={:?} and rhs={:?}", supertype, subtype);
-					todo!()
 				}
 			}
 		}
