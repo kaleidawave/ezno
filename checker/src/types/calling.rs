@@ -1012,6 +1012,7 @@ pub enum FunctionCallingError {
 		/// Should be set by parent
 		call_site: SpanWithSource,
 	},
+	InvalidRegexp(crate::diagnostics::InvalidRegexp),
 	/// For #18
 	SetPropertyConstraint {
 		property_type: TypeStringRepresentation,

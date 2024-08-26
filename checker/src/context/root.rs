@@ -64,6 +64,7 @@ impl RootContext {
 			("void".to_owned(), TypeId::VOID_TYPE),
 			("Array".to_owned(), TypeId::ARRAY_TYPE),
 			("Promise".to_owned(), TypeId::PROMISE_TYPE),
+			("RegExp".to_owned(), TypeId::REGEXP_TYPE),
 			("ImportMeta".to_owned(), TypeId::IMPORT_META),
 			("Function".to_owned(), TypeId::FUNCTION_TYPE),
 			("object".to_owned(), TypeId::OBJECT_TYPE),

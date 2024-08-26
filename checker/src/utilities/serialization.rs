@@ -198,6 +198,16 @@ impl BinarySerializable for SourceId {
 	}
 }
 
+impl BinarySerializable for u16 {
+	fn serialize(self, buf: &mut Vec<u8>) {
+		buf.extend_from_slice(&self.to_le_bytes());
+	}
+
+	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, _source: SourceId) -> Self {
+		u16::from_le_bytes([iter.next().unwrap(), iter.next().unwrap()])
+	}
+}
+
 impl BinarySerializable for u32 {
 	fn serialize(self, buf: &mut Vec<u8>) {
 		buf.extend_from_slice(&self.to_le_bytes());

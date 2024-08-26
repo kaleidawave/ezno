@@ -174,6 +174,37 @@ declare class String {
 
 declare class Promise<T> { }
 
+declare class RegExp {
+    @Constant("regexp:constructor")
+    constructor(pattern: string, flags?: string);
+
+    @Constant("regexp:exec")
+    exec(input: string): RegExpExecArray | null;
+}
+
+// es5
+interface RegExpExecArray extends Array<string> {
+    /**
+     * The index of the search at which the result was found.
+     */
+    index: number;
+    /**
+     * A copy of the search string.
+     */
+    input: string;
+    /**
+     * The first match. This will always be present because `null` will be returned if there are no matches.
+     */
+    0: string;
+}
+
+// es2018
+interface RegExpExecArray {
+    groups?: {
+        [key: string]: string;
+    };
+}
+
 type ResponseBody = string;
 
 declare class Response {
