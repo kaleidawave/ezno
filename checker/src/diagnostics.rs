@@ -58,6 +58,11 @@ pub struct TDZ {
 	pub position: SpanWithSource,
 }
 
+pub struct InvalidRegexp {
+	pub error: String,
+	pub position: SpanWithSource,
+}
+
 pub struct NotInLoopOrCouldNotFindLabel {
 	pub label: Label,
 	pub position: SpanWithSource,
@@ -452,10 +457,7 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CannotDeleteProperty(CannotDeleteFromError),
-	InvalidRegexp {
-		error: String,
-		position: SpanWithSource,
-	},
+	InvalidRegexp(InvalidRegexp),
 }
 
 #[allow(clippy::useless_format)]
@@ -871,7 +873,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				}
 			},
-			TypeCheckError::InvalidRegexp { error, position } => Diagnostic::Position {
+			TypeCheckError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
 				reason: format!("Invalid regular expression: {error}"),
 				position,
 				kind,
@@ -1184,6 +1186,11 @@ fn function_calling_error_diagnostic(
 				position: call_site,
 				kind,
 			}
+		}
+		FunctionCallingError::InvalidRegexp(InvalidRegexp { error, position }) => Diagnostic::Position {
+			reason: format!("Invalid regular expression: {error}"),
+			position,
+			kind,
 		}
 	}
 }

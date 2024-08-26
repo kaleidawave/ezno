@@ -595,12 +595,16 @@ pub(crate) fn call_constant_function(
 				None => None,
 			};
 
-			let regexp =
-				types.new_regexp(&pattern.clone(), &flags, &call_site.clone().without_source());
+			let regexp = types.new_regexp(&pattern.clone(), &flags, &call_site.without_source());
 
 			match regexp {
 				Ok(regex) => Ok(ConstantOutput::Value(regex)),
-				Err(_err) => Err(ConstantFunctionError::BadCall),
+				Err(error) => Err(ConstantFunctionError::FunctionCallingError(
+					FunctionCallingError::InvalidRegexp(crate::diagnostics::InvalidRegexp {
+						error,
+						position: call_site,
+					}),
+				)),
 			}
 		}
 		"regexp:exec" => {

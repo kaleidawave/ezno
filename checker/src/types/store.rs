@@ -497,7 +497,7 @@ impl TypeStore {
 		flags: &Option<String>,
 		_position: &Span,
 	) -> Result<TypeId, String> {
-		let regexp = RegExp::new(pattern, flags.as_ref().map(|s| s.as_str()))?;
+		let regexp = RegExp::new(pattern, flags.as_ref().map(String::as_str))?;
 		let ty = Type::SpecialObject(SpecialObject::RegularExpression(regexp));
 
 		Ok(self.register_type(ty))

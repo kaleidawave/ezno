@@ -2444,6 +2444,16 @@ const regexp = /hi/ satisfies string;
 
 - Expected string, found /hi/
 
+#### Invalid regular expressions
+
+```ts
+const regexp1 = /(?a2)/;
+const regexp2 = new RegExp("?a2");
+```
+
+- Invalid regular expression: Invalid token at named capture group identifier
+- Invalid regular expression: Invalid atom character
+
 #### Constant `RegExp.exec`
 
 ```ts
@@ -2468,7 +2478,7 @@ match.groups satisfies string;
 ```
 
 - Expected number, found "Hi Ben"
-- Expected string, found [null] { name: "Ben" }
+- Expected string, found { name: "Ben" }
 
 #### Constant `RegExp.exec` groups greedy
 
@@ -2480,7 +2490,7 @@ match.groups satisfies boolean;
 ```
 
 - Expected number, found "ez as abc123"
-- Expected boolean, found [null] { x: "c", y: "123" }
+- Expected boolean, found { x: "c", y: "123" }
 
 #### Null and undefined
 

@@ -632,7 +632,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 				}
 			} else {
-				if let Some(prototype) = prototype {
+				if let Some(prototype) =
+					prototype.filter(|prototype| !matches!(*prototype, TypeId::NULL_TYPE))
+				{
 					// crate::utilities::notify!("P during print {:?}", prototype);
 					buf.push('[');
 					print_type_into_buf(prototype, buf, cycles, args, types, info, debug);

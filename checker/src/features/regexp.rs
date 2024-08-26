@@ -35,6 +35,7 @@ impl RegExp {
 
 		if let Some(flag_options) = flag_options {
 			for flag in flag_options.chars() {
+				#[allow(clippy::match_same_arms)]
 				match flag {
 					'd' => flags_unsupported = true, // indices for substring matches are not supported
 					'g' => flags_unsupported = true, // stateful regex is not supported
@@ -74,10 +75,12 @@ impl RegExp {
 		Ok(Self { source, re, groups, named_group_indices, flags_unsupported, used: false })
 	}
 
+	#[must_use]
 	pub fn source(&self) -> &str {
 		&self.source
 	}
 
+	#[must_use]
 	pub fn used(&self) -> bool {
 		self.used
 	}
@@ -93,7 +96,9 @@ impl RegExp {
 
 		match (self.flags_unsupported, pattern_type) {
 			(false, Type::Constant(Constant::String(pattern))) => {
-				self.exec_constant(pattern.clone(), pattern_type_id, types, environment, call_site)
+				// Needed to not mutually borrow mutable types
+				let pattern = pattern.clone();
+				self.exec_constant(&pattern, pattern_type_id, types, environment, call_site)
 			}
 			_ => self.exec_variable(types, environment, call_site),
 		}
@@ -101,7 +106,7 @@ impl RegExp {
 
 	pub(crate) fn exec_constant(
 		&self,
-		pattern: String,
+		pattern: &str,
 		pattern_type_id: TypeId,
 		types: &mut TypeStore,
 		environment: &mut Environment,
@@ -118,7 +123,7 @@ impl RegExp {
 			&mut environment.info,
 		);
 
-		match self.re.find(&pattern) {
+		match self.re.find(pattern) {
 			Some(match_) => {
 				{
 					let index = types.new_constant_type(Constant::Number(
@@ -192,7 +197,7 @@ impl RegExp {
 
 				{
 					let length = types.new_constant_type(Constant::Number(
-						(self.groups as f64).try_into().unwrap(),
+						f64::from(self.groups).try_into().unwrap(),
 					));
 
 					object.append(
@@ -258,7 +263,7 @@ impl RegExp {
 					&mut environment.info,
 				);
 
-				for (name, _i) in self.named_group_indices.iter() {
+				for name in self.named_group_indices.keys() {
 					let key = PropertyKey::String(name.to_string().into());
 
 					named_groups_object.append(
@@ -283,8 +288,8 @@ impl RegExp {
 		}
 
 		{
-			let length =
-				types.new_constant_type(Constant::Number((self.groups as f64).try_into().unwrap()));
+			let length = types
+				.new_constant_type(Constant::Number(f64::from(self.groups).try_into().unwrap()));
 
 			object.append(
 				Publicity::Public,

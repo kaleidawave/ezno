@@ -99,10 +99,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			match regexp {
 				Ok(regexp) => Instance::RValue(regexp),
 				Err(error) => {
-					checking_data.diagnostics_container.add_error(TypeCheckError::InvalidRegexp {
-						error,
-						position: position.with_source(environment.get_source()),
-					});
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::InvalidRegexp(
+							crate::diagnostics::InvalidRegexp {
+								error,
+								position: position.with_source(environment.get_source()),
+							},
+						),
+					);
 
 					return TypeId::ERROR_TYPE;
 				}
