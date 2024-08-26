@@ -7,10 +7,7 @@ use crate::{
 	features::{
 		functions::{ClosureChain, ClosureId},
 		objects::{Proxy, SpecialObject},
-		operations::{
-			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
-			evaluate_pure_unary_operator,
-		},
+		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
 	},
 	subtyping::{State, SubTypingOptions},
 	types::{
@@ -99,7 +96,7 @@ pub(crate) fn substitute(
 		}
 		// Specialisation for object type annotation (todo could do per property in future)
 		// Can return functions from functions somehow as well
-		Type::FunctionReference(..) | Type::Object(ObjectNature::AnonymousTypeAnnotation) => {
+		Type::FunctionReference(..) | Type::Object(ObjectNature::AnonymousTypeAnnotation(_)) => {
 			// crate::utilities::notify!("{:?}", arguments.arguments);
 			// Apply curring
 			if arguments.arguments.is_empty() {
@@ -206,14 +203,17 @@ pub(crate) fn substitute(
 			let rhs = substitute(rhs, arguments, environment, types);
 			types.new_or_type(lhs, rhs)
 		}
+		Type::Narrowed { from, .. } => substitute(*from, arguments, environment, types),
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) | PolyNature::Error(_) = nature {
 				id
-			} else if let PolyNature::FunctionGeneric { .. }
-			| PolyNature::StructureGeneric { .. }
-			| PolyNature::InferGeneric { .. } = nature
-			{
+			} else if let PolyNature::InferGeneric { .. } = nature {
 				// Infer generic is fine for `type Index<T> = T extends Array<infer I> ? I : never`;
+				crate::utilities::notify!("No argument for infer generic (sometimes fine)");
+				id
+			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
+				nature
+			{
 				crate::utilities::notify!(
 					"Could not find argument for explicit generic {:?} (nature={:?})",
 					id,
@@ -237,7 +237,8 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_mathematical_operation(lhs, operator, rhs, types, false) {
+				match evaluate_mathematical_operation(lhs, operator, rhs, environment, types, false)
+				{
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
@@ -248,14 +249,6 @@ pub(crate) fn substitute(
 					}
 				}
 			}
-			Constructor::UnaryOperator { operand, operator, .. } => {
-				let operand = substitute(operand, arguments, environment, types);
-				evaluate_pure_unary_operator(
-					operator, operand, types,
-					// Restrictions should have been made ahead of time
-					false,
-				)
-			}
 			Constructor::ConditionalResult {
 				condition,
 				truthy_result,
@@ -263,9 +256,10 @@ pub(crate) fn substitute(
 				result_union: _,
 			} => {
 				// TSC behavior, use `compute_extends_rule` which does distribution
-				if let Type::Constructor(Constructor::TypeRelationOperator(
-					crate::types::TypeRelationOperator::Extends { item, extends },
-				)) = types.get_type_by_id(condition)
+				if let Type::Constructor(Constructor::TypeExtends(crate::types::TypeExtends {
+					item,
+					extends,
+				})) = types.get_type_by_id(condition)
 				{
 					// crate::utilities::notify!("Here!");
 
@@ -372,7 +366,7 @@ pub(crate) fn substitute(
 						}))
 					}
 				} else if let Type::Interface { .. }
-				| Type::Object(ObjectNature::AnonymousTypeAnnotation)
+				| Type::Object(ObjectNature::AnonymousTypeAnnotation(_))
 				| Type::AliasTo { .. } = on_type
 				{
 					// TODO union ors etc
@@ -413,19 +407,20 @@ pub(crate) fn substitute(
 						}
 						Ok(value) => {
 							crate::utilities::notify!("TODO {:?}", value);
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 						Err(err) => {
 							crate::utilities::notify!("{:?}", err);
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 					}
 				} else {
-					todo!(
+					crate::utilities::notify!(
 						"Constructor::Property ({:?}[{:?}]) should be covered by events",
 						on_type,
 						under
 					);
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
 			Constructor::Image { .. } => {
@@ -472,87 +467,108 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false)
+				let result = evaluate_equality_inequality_operation(
+					lhs,
+					&operator,
+					rhs,
+					environment,
+					types,
+					false,
+				);
+
+				if let Ok((left, _warning)) = result {
+					left
+				} else {
+					crate::utilities::notify!("Error here");
+					TypeId::OPEN_BOOLEAN_TYPE
+				}
 			}
 			Constructor::TypeOperator(op) => match op {
 				crate::types::TypeOperator::TypeOf(ty) => {
 					let ty = substitute(ty, arguments, environment, types);
 					crate::features::type_of_operator(ty, types)
 				}
-				crate::types::TypeOperator::PrototypeOf(_) => {
-					unreachable!("'PrototypeOf' should be specialised by events")
-				}
 				crate::types::TypeOperator::HasProperty(_, _) => {
 					unreachable!("'HasProperty' should be specialised by events")
 				}
-			},
-			Constructor::TypeRelationOperator(op) => match op {
-				crate::types::TypeRelationOperator::Extends { item, extends } => {
-					let before = item;
-					let item = substitute(item, arguments, environment, types);
-					let extends = substitute(extends, arguments, environment, types);
-
-					{
-						use crate::types::printing::print_type;
-
-						crate::utilities::notify!(
-							"Subtyping {} (prev {}) :>= {} ({:?})",
-							print_type(item, types, environment, true),
-							print_type(before, types, environment, true),
-							print_type(extends, types, environment, true),
-							&arguments.arguments
-						);
-					}
-
-					let mut state = crate::subtyping::State {
-						already_checked: Default::default(),
-						mode: Default::default(),
-						contributions: None,
-						object_constraints: None,
-						others: Default::default(),
-					};
-					let result = crate::subtyping::type_is_subtype(
-						extends,
-						item,
-						&mut state,
+				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
+					let lhs = substitute(lhs, arguments, environment, types);
+					let rhs_prototype = substitute(rhs_prototype, arguments, environment, types);
+					crate::features::instance_of_operator_rhs_prototype(
+						lhs,
+						rhs_prototype,
 						environment,
 						types,
-					);
-
-					// let base = crate::types::get_larger_type(item, types);
-					// let does_extend = base == extends;
-					// crate::utilities::notify!(
-					// 	"Extends result {:?} base={:?} extends={:?}",
-					// 	does_extend,
-					// 	crate::types::printing::print_type(base, types, environment, true),
-					// 	crate::types::printing::print_type(extends, types, environment, true)
-					// );
-					if result.is_subtype() {
-						TypeId::TRUE
-					} else {
-						TypeId::FALSE
-					}
-
-					// let does_extend = get_larger_type(ty, types) == extends;
-					// crate::utilities::notify!("Extends result {:?}", does_extend);
-					// if does_extend {
-					// 	TypeId::TRUE
-					// } else {
-					// 	TypeId::FALSE
-					// }
-
-					// TODO special behavior that doesn't need to collect errors...
-					// let result = type_is_subtype(extends, ty, environment, types);
-
-					// let does_extend = matches!(result, crate::subtyping::SubTypeResult::IsSubType);
-
-					// if does_extend {
-					// 	TypeId::TRUE
-					// } else {
-					// 	TypeId::FALSE
-					// }
+					)
+					// unreachable!("'HasProperty' should be specialised by events")
 				}
 			},
+			Constructor::TypeExtends(op) => {
+				let crate::types::TypeExtends { item, extends } = op;
+				let before = item;
+				let item = substitute(item, arguments, environment, types);
+				let extends = substitute(extends, arguments, environment, types);
+
+				{
+					use crate::types::printing::print_type;
+
+					crate::utilities::notify!(
+						"Subtyping {} (prev {}) :>= {} ({:?})",
+						print_type(item, types, environment, true),
+						print_type(before, types, environment, true),
+						print_type(extends, types, environment, true),
+						&arguments.arguments
+					);
+				}
+
+				let mut state = crate::subtyping::State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: None,
+					object_constraints: None,
+					others: Default::default(),
+				};
+				let result = crate::subtyping::type_is_subtype(
+					extends,
+					item,
+					&mut state,
+					environment,
+					types,
+				);
+
+				// let base = crate::types::get_larger_type(item, types);
+				// let does_extend = base == extends;
+				// crate::utilities::notify!(
+				// 	"Extends result {:?} base={:?} extends={:?}",
+				// 	does_extend,
+				// 	crate::types::printing::print_type(base, types, environment, true),
+				// 	crate::types::printing::print_type(extends, types, environment, true)
+				// );
+				if result.is_subtype() {
+					TypeId::TRUE
+				} else {
+					TypeId::FALSE
+				}
+
+				// let does_extend = get_larger_type(ty, types) == extends;
+				// crate::utilities::notify!("Extends result {:?}", does_extend);
+				// if does_extend {
+				// 	TypeId::TRUE
+				// } else {
+				// 	TypeId::FALSE
+				// }
+
+				// TODO special behavior that doesn't need to collect errors...
+				// let result = type_is_subtype(extends, ty, environment, types);
+
+				// let does_extend = matches!(result, crate::subtyping::SubTypeResult::IsSubType);
+
+				// if does_extend {
+				// 	TypeId::TRUE
+				// } else {
+				// 	TypeId::FALSE
+				// }
+			}
 			Constructor::Awaited { .. } => todo!("should have effect result"),
 			Constructor::KeyOf(on) => {
 				let on = substitute(on, arguments, environment, types);

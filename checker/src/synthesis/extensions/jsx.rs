@@ -31,7 +31,7 @@ pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
 				"JSX fragment",
 				fragment.get_position().with_source(environment.get_source()),
 			);
-			TypeId::ERROR_TYPE
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
 	}
 }
@@ -502,14 +502,14 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 				"spread JSX attribute",
 				pos.with_source(environment.get_source()),
 			);
-			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::ERROR_TYPE);
+			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::UNIMPLEMENTED_ERROR_TYPE);
 		}
 		JSXAttribute::Shorthand(expr) => {
 			checking_data.raise_unimplemented_error(
 				"shorthand JSX attribute",
 				expr.get_position().with_source(environment.get_source()),
 			);
-			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::ERROR_TYPE);
+			return (PropertyKey::String(Cow::Borrowed("err")), TypeId::UNIMPLEMENTED_ERROR_TYPE);
 		}
 	};
 

@@ -1,6 +1,6 @@
 #[cfg(feature = "ezno-parser")]
 #[test]
-fn type_mappings() {
+fn partial_checking() {
 	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
 
 	// Below source has several issues

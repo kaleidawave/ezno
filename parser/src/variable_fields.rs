@@ -309,8 +309,8 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 					default_value.to_string_from_buffer(buf, options, local);
 				}
 			}
-			Self::Comment { content, is_multiline, position: _ } => {
-				if options.should_add_comment(*is_multiline && content.starts_with('*')) {
+			Self::Comment { content, is_multiline: _is_multiline, position: _ } => {
+				if options.should_add_comment(content) {
 					buf.push_str("/*");
 					buf.push_str(content);
 					buf.push_str("*/");
@@ -755,7 +755,7 @@ mod tests {
 					None,
 					Some(
 						Deref @ Expression::NumberLiteral(
-							crate::NumberRepresentation::Number { .. },
+							crate::number::NumberRepresentation::Number { .. },
 							span!(6, 7),
 						),
 					),

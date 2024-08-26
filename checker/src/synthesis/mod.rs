@@ -113,6 +113,12 @@ impl crate::ASTImplementation for EznoParser {
 		ASTNode::get_position(expression)
 	}
 
+	fn multiple_expression_position<'_a>(
+		expression: &'_a Self::MultipleExpression<'_a>,
+	) -> source_map::Span {
+		ASTNode::get_position(expression)
+	}
+
 	fn type_parameter_name<'_a>(parameter: &'_a Self::TypeParameter<'_a>) -> &'_a str {
 		&parameter.name
 	}
@@ -143,7 +149,12 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_type_annotation(annotation, environment, checking_data)
 	}
 
-	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions {
+	fn parse_options(
+		is_js: bool,
+		extra_syntax: bool,
+		parse_comments: bool,
+		lsp_mode: bool,
+	) -> Self::ParseOptions {
 		parser::ParseOptions {
 			comments: if parse_comments {
 				parser::Comments::JustDocumentation
@@ -152,6 +163,7 @@ impl crate::ASTImplementation for EznoParser {
 			},
 			type_annotations: !is_js,
 			partial_syntax: lsp_mode,
+			is_expressions: extra_syntax,
 			..Default::default()
 		}
 	}
@@ -254,7 +266,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 					"big int as property key",
 					pos.with_source(environment.get_source()),
 				);
-				PropertyKey::Type(TypeId::ERROR_TYPE)
+				PropertyKey::Type(TypeId::UNIMPLEMENTED_ERROR_TYPE)
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {

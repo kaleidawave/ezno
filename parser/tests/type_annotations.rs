@@ -131,13 +131,31 @@ type Record<T extends string, V> = { [P in T]: V };
 type Something<T extends string, V> = { [P in T as `get${P}`]: V };
 type Something<T, V extends keyof T> = { [P in keyof T]: V }
 "#
-	.trim()
-	.replace("    ", "\t");
+	.trim();
 
 	let parse_options = ParseOptions { type_definition_module: true, ..Default::default() };
 
-	let module = Module::from_string(input.clone(), parse_options).unwrap();
+	let module = Module::from_string(input.to_owned(), parse_options).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 
-	assert_eq!(output, input.clone());
+	assert_eq!(output, input);
+}
+
+// Currently broken #165
+#[test]
+#[ignore]
+fn jsx_nuances() {
+	let input = r#"
+function x(a: <T>(a: number, b: T) => T) {}
+
+type B<T extends boolean> = T ? string : <U>(a: number, b: U) => T;
+"#
+	.trim();
+
+	let parse_options = ParseOptions { jsx: true, ..Default::default() };
+
+	let module = Module::from_string(input.to_owned(), parse_options).unwrap();
+	let output = module.to_string(&ToStringOptions::typescript());
+
+	assert_eq!(output, input);
 }

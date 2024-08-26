@@ -188,7 +188,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						parser::declarations::import::ImportedItems::Parts(parts) => {
 							crate::utilities::notify!("{:?}", parts);
 							crate::features::modules::ImportKind::Parts(
-								parts.iter().flatten().filter_map(import_part_to_name_pair),
+								parts.iter().flatten().filter_map(part_to_name_pair),
 							)
 						}
 						parser::declarations::import::ImportedItems::All { under } => match under {
@@ -263,7 +263,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						},
 					..
 				}) => {
-					let parts = parts.iter().filter_map(export_part_to_name_pair);
+					let parts = parts.iter().filter_map(part_to_name_pair);
 
 					import_items(
 						environment,
@@ -588,7 +588,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 									checking_data,
 								);
 								(overloads, actual)
-							} else if function.name.declare {
+							} else if function.name.is_declare {
 								let actual = overloads.pop().unwrap();
 								(overloads, actual)
 							} else {
@@ -618,11 +618,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						let value = super::functions::build_overloaded_function(
 							crate::FunctionId(environment.get_source(), function.position.start),
 							crate::types::functions::FunctionBehavior::Function {
-								this_id: TypeId::ERROR_TYPE,
-								prototype: TypeId::ERROR_TYPE,
+								this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
+								prototype: TypeId::IS_ASSIGNED_VALUE_LATER,
 								is_async: function.header.is_async(),
 								is_generator: function.header.is_generator(),
-								name: TypeId::ERROR_TYPE,
+								name: TypeId::IS_ASSIGNED_VALUE_LATER,
 							},
 							overloads,
 							actual,
@@ -740,7 +740,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
 				});
 
-				let value = if function.name.declare {
+				let value = if function.name.is_declare {
 					let (overloaded, _last) = (false, function);
 					//  if function.has_body() {
 					// } else {
@@ -842,68 +842,29 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	}
 }
 
-fn import_part_to_name_pair(item: &parser::declarations::ImportPart) -> Option<NamePair<'_>> {
-	match item {
-		parser::declarations::ImportPart::Name(name) => {
-			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: name, r#as: name, position: *position })
-			} else {
-				None
-			}
-		}
-		parser::declarations::ImportPart::NameWithAlias { name, alias, position } => {
-			Some(NamePair {
-				value: match alias {
-					parser::declarations::ImportExportName::Reference(item)
-					| parser::declarations::ImportExportName::Quoted(item, _) => item,
-					parser::declarations::ImportExportName::Marker(_) => {
-						// TODO I think okay
-						return None;
-					}
-				},
-				r#as: name,
-				position: *position,
-			})
-		}
-		parser::declarations::ImportPart::PrefixComment(_, item, _) => {
-			item.as_deref().and_then(import_part_to_name_pair)
-		}
-		parser::declarations::ImportPart::PostfixComment(item, _, _) => {
-			import_part_to_name_pair(item)
-		}
-	}
-}
-
-pub(super) fn export_part_to_name_pair(
-	item: &parser::declarations::export::ExportPart,
+// TODO with `type`
+pub(super) fn part_to_name_pair<T: parser::declarations::ImportOrExport>(
+	item: &parser::declarations::ImportExportPart<T>,
 ) -> Option<NamePair<'_>> {
-	match item {
-		parser::declarations::export::ExportPart::Name(name) => {
-			if let VariableIdentifier::Standard(name, position) = name {
-				Some(NamePair { value: name, r#as: name, position: *position })
-			} else {
-				None
+	if let VariableIdentifier::Standard(ref name, position) = item.name {
+		let value = match &item.alias {
+			Some(
+				parser::declarations::ImportExportName::Reference(item)
+				| parser::declarations::ImportExportName::Quoted(item, _),
+			) => item,
+			Some(parser::declarations::ImportExportName::Marker(_)) => {
+				// TODO I think okay
+				return None;
 			}
+			None => name,
+		};
+		if T::PREFIX {
+			Some(NamePair { value, r#as: name, position })
+		} else {
+			Some(NamePair { value: name, r#as: value, position })
 		}
-		parser::declarations::export::ExportPart::NameWithAlias { name, alias, position } => {
-			Some(NamePair {
-				value: name,
-				r#as: match alias {
-					parser::declarations::ImportExportName::Reference(item)
-					| parser::declarations::ImportExportName::Quoted(item, _) => item,
-					parser::declarations::ImportExportName::Marker(_) => {
-						return None;
-					}
-				},
-				position: *position,
-			})
-		}
-		parser::declarations::export::ExportPart::PrefixComment(_, item, _) => {
-			item.as_deref().and_then(export_part_to_name_pair)
-		}
-		parser::declarations::export::ExportPart::PostfixComment(item, _, _) => {
-			export_part_to_name_pair(item)
-		}
+	} else {
+		None
 	}
 }
 

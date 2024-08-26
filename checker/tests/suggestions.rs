@@ -1,4 +1,5 @@
-const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
+// const SIMPLE_DTS: Option<&str> = Some(include_str!("../definitions/simple.d.ts"));
+const SIMPLE_DTS: Option<&str> = None;
 
 #[cfg(feature = "ezno-parser")]
 #[test]

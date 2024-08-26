@@ -133,6 +133,9 @@ pub(crate) struct FormatArguments {
 	/// path to input file
 	#[argh(positional)]
 	pub path: PathBuf,
+	/// check whether file is formatted
+	#[argh(switch)]
+	pub check: bool,
 }
 
 /// Upgrade/update the ezno binary to the latest version
@@ -333,7 +336,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			}
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
-			nested: ExperimentalSubcommand::Format(FormatArguments { path }),
+			nested: ExperimentalSubcommand::Format(FormatArguments { path, check }),
 		}) => {
 			use parser::{source_map::FileSystem, ASTNode, Module, ToStringOptions};
 
@@ -348,7 +351,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 			let source_id = files.new_source_id(path.clone(), input.clone());
 			let res = Module::from_string(
-				input,
+				input.clone(),
 				ParseOptions { retain_blank_lines: true, ..Default::default() },
 			);
 			match res {
@@ -358,9 +361,22 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						include_type_annotations: true,
 						..Default::default()
 					};
-					let _ = fs::write(path.clone(), module.to_string(&options));
-					print_to_cli(format_args!("Formatted {} 🎉", path.display()));
-					ExitCode::SUCCESS
+					let output = module.to_string(&options);
+					if check {
+						if input == output {
+							ExitCode::SUCCESS
+						} else {
+							print_to_cli(format_args!(
+								"{}",
+								pretty_assertions::StrComparison::new(&input, &output)
+							));
+							ExitCode::FAILURE
+						}
+					} else {
+						let _ = fs::write(path.clone(), output);
+						print_to_cli(format_args!("Formatted {} 🎉", path.display()));
+						ExitCode::SUCCESS
+					}
 				}
 				Err(err) => {
 					report_diagnostics_to_cli(

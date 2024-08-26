@@ -83,7 +83,6 @@ use crate::{ParseError, Quoted};
 )]
 #[cfg_attr(feature = "extras", automaton_mappings(
     ">!" => TSXToken::InvertAssign,
-    "/%" => TSXToken::DividesOperator,
     "<@>" => TSXToken::ComposeOperator,
     "|>" => TSXToken::PipeOperator,
 ))]
@@ -94,6 +93,8 @@ pub enum TSXToken {
     NumberLiteral(String),
     StringLiteral(String, Quoted),
     MultiLineComment(String), Comment(String),
+	/// <https://262.ecma-international.org/15.0/index.html#sec-hashbang>
+    HashBangComment(String),
     RegexLiteral(String), RegexFlagLiteral(String),
     TemplateLiteralStart, TemplateLiteralChunk(String), TemplateLiteralEnd,
     TemplateLiteralExpressionStart, TemplateLiteralExpressionEnd,
@@ -152,11 +153,11 @@ pub enum TSXToken {
     // <> and </>
     JSXFragmentStart, JSXFragmentEnd,
     /// <!-- -->
-    JSXComment(String),
+    JSXComment(String), 
+	/// For top level HTML
+	DocTypeHTML,
 
     // Non standard
-    #[cfg(feature = "extras")]
-    DividesOperator,
     #[cfg(feature = "extras")]
     InvertAssign,
     #[cfg(feature = "extras")]
@@ -183,7 +184,6 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::JSXClosingTagName(lit)
 			| TSXToken::TemplateLiteralChunk(lit)
 			| TSXToken::JSXAttributeKey(lit)
-			| TSXToken::JSXAttributeValue(lit)
 			| TSXToken::JSXContent(lit)
 			| TSXToken::JSXTagName(lit)
 			| TSXToken::Identifier(lit)
@@ -192,10 +192,14 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 
 			TSXToken::JSXComment(comment) => comment.len() as u32 + 7,
 			TSXToken::MultiLineComment(comment) => comment.len() as u32 + 4,
-			TSXToken::StringLiteral(comment, _) | TSXToken::Comment(comment) => {
-				comment.len() as u32 + 2
+			TSXToken::StringLiteral(comment, _)
+			| TSXToken::Comment(comment)
+			| TSXToken::HashBangComment(comment) => comment.len() as u32 + 2,
+			TSXToken::JSXAttributeValue(value) | TSXToken::RegexLiteral(value) => {
+				value.len() as u32 + 2
 			}
-			TSXToken::RegexLiteral(regex) => regex.len() as u32 + 2,
+
+			TSXToken::DocTypeHTML => 15,
 
 			TSXToken::Comma
 			| TSXToken::SemiColon
@@ -282,7 +286,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			TSXToken::EOS => 0,
 
 			#[cfg(feature = "extras")]
-			TSXToken::InvertAssign | TSXToken::DividesOperator | TSXToken::PipeOperator => 2,
+			TSXToken::InvertAssign | TSXToken::PipeOperator => 2,
 			#[cfg(feature = "extras")]
 			TSXToken::ComposeOperator => 3,
 		}
@@ -356,6 +360,19 @@ impl TSXKeyword {
 		matches!(self, TSXKeyword::Function | TSXKeyword::Async)
 	}
 
+	#[cfg(feature = "extras")]
+	pub(crate) fn is_in_method_header(self) -> bool {
+		matches!(
+			self,
+			TSXKeyword::Generator | TSXKeyword::Get | TSXKeyword::Set | TSXKeyword::Async
+		)
+	}
+
+	#[cfg(not(feature = "extras"))]
+	pub(crate) fn is_in_method_header(self) -> bool {
+		matches!(self, TSXKeyword::Get | TSXKeyword::Set | TSXKeyword::Async)
+	}
+
 	#[allow(clippy::cast_possible_truncation)]
 	pub(crate) fn length(self) -> u32 {
 		self.to_str().len() as u32
@@ -407,12 +424,13 @@ impl TSXToken {
 	pub fn is_expression_prefix(&self) -> bool {
 		matches!(
 			self,
-			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::In | TSXKeyword::Of | TSXKeyword::Await)
+			TSXToken::Keyword(TSXKeyword::Return | TSXKeyword::Case | TSXKeyword::Yield | TSXKeyword::Throw | TSXKeyword::TypeOf | TSXKeyword::In | TSXKeyword::Of | TSXKeyword::Await | TSXKeyword::Do | TSXKeyword::Extends | TSXKeyword::Void)
 				| TSXToken::Arrow
 				// for `const x = 2; /something/g`
 				| TSXToken::SemiColon
 				| TSXToken::OpenParentheses
 				| TSXToken::OpenBrace
+				| TSXToken::OpenBracket
 				| TSXToken::JSXExpressionStart
 				| TSXToken::QuestionMark
 				| TSXToken::Colon

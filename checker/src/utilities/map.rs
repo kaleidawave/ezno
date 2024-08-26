@@ -13,6 +13,7 @@ impl<K, V> Map<K, V>
 where
 	K: PartialEq,
 {
+	#[must_use]
 	pub fn new() -> Self {
 		Default::default()
 	}

@@ -17,7 +17,7 @@ fn expr() {
 					)
 				),
 				rhs: Expression::NumberLiteral(
-					ezno_parser::NumberRepresentation::from(4f64),
+					ezno_parser::number::NumberRepresentation::from(4f64),
 					source_map::Nullable::NULL
 				)
 				.into(),
@@ -44,7 +44,7 @@ fn stmt_with_expr_interpolation() {
 				),
 			)),
 			expression: Some(Expression::NumberLiteral(
-				ezno_parser::NumberRepresentation::from(-0.8715757724135882),
+				ezno_parser::number::NumberRepresentation::from(-0.8715757724135882),
 				source_map::Nullable::NULL,
 			)),
 			type_annotation: None,
@@ -78,7 +78,7 @@ fn stmt_with_var_name_interpolation() {
 				),
 			)),
 			expression: Some(Expression::NumberLiteral(
-				ezno_parser::NumberRepresentation::from(4f64),
+				ezno_parser::number::NumberRepresentation::from(4f64),
 				source_map::Nullable::NULL,
 			)),
 			type_annotation: None,

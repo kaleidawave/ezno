@@ -93,6 +93,7 @@ jobs:
           cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./all.tsx
 
           ./target/release/ezno check all.tsx --timings || true
+          hyperfine -i './target/release/ezno check all.tsx'
           echo "::endgroup::"
             
       - name: Run checker performance on large file
@@ -101,15 +102,17 @@ jobs:
           echo "::group::Running large"
 
           cat ./checker/specification/specification.md > main.md
-          cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./code.tsx
+          cargo run -p ezno-parser --example code_blocks_to_script main.md --comment-headers --out ./code.tsx
+
           for i in {1..10}; do
             cat ./code.tsx >> large.tsx
           done
 
           ./target/release/ezno check large.tsx --timings --max-diagnostics 0 || true
+           hyperfine -i './target/release/ezno check large.tsx'
           echo "::endgroup::"
 
-      - name: Run parser, minfier/stringer performance
+      - name: Run parsing & stringing (minfied) benchmarks
         shell: bash
         run: |
           strings=(

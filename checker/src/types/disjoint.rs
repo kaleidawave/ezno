@@ -1,5 +1,5 @@
-use super::PartiallyAppliedGenerics;
-use crate::{context::InformationChain, types::TypeStore, Type, TypeId};
+use super::{Constant, PartiallyAppliedGenerics, Type, TypeId, TypeStore};
+use crate::context::InformationChain;
 
 /// For equality + [`crate::intrinsics::Intrinsics::Not`]
 ///
@@ -9,56 +9,48 @@ use crate::{context::InformationChain, types::TypeStore, Type, TypeId};
 ///
 /// Could shrink some logic here but is more readable verbose
 pub fn types_are_disjoint(
-	left: TypeId,
-	right: TypeId,
+	lhs: TypeId,
+	rhs: TypeId,
 	already_checked: &mut Vec<(TypeId, TypeId)>,
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> bool {
-	if left == right {
+	// crate::utilities::notify!("are disjoint? {:?}", (lhs, rhs));
+
+	if lhs == rhs || lhs == TypeId::ANY_TYPE || rhs == TypeId::ANY_TYPE {
 		false
-	} else if already_checked.iter().any(|pair| *pair == (left, right)) {
+	} else if already_checked.iter().any(|pair| *pair == (lhs, rhs)) {
 		// TODO explain why `true`
 		true
 	} else {
-		let left_ty = types.get_type_by_id(left);
-		let right_ty = types.get_type_by_id(right);
+		let lhs_ty = types.get_type_by_id(lhs);
+		let rhs_ty = types.get_type_by_id(rhs);
 
-		// if let Type::Constructor(Constructor::KeyOf(_)) = left_ty {
-		// 	todo!("get property != ")
-		// } else
-		if let Type::Constant(left_cst) = left_ty {
-			if let Type::Constant(right_cst) = right_ty {
-				left_cst != right_cst
-			} else {
-				left_cst.get_backing_type_id() != right
-			}
-		} else if let Type::Constant(right_cst) = right_ty {
-			right_cst.get_backing_type_id() != left
-		} else if let Type::Or(left_left, left_right) = left_ty {
-			types_are_disjoint(*left_left, right, already_checked, information, types)
-				&& types_are_disjoint(*left_right, right, already_checked, information, types)
-		} else if let Type::And(left_left, left_right) = left_ty {
-			types_are_disjoint(*left_left, right, already_checked, information, types)
-				|| types_are_disjoint(*left_right, right, already_checked, information, types)
-		} else if let Type::Or(right_left, right_right) = right_ty {
-			types_are_disjoint(left, *right_left, already_checked, information, types)
-				&& types_are_disjoint(left, *right_right, already_checked, information, types)
-		} else if let Type::And(right_left, right_right) = right_ty {
-			types_are_disjoint(left, *right_left, already_checked, information, types)
-				|| types_are_disjoint(left, *right_right, already_checked, information, types)
-		} else if let Type::AliasTo { to, parameters: None, name: _ } = left_ty {
+		// Order of these branches matter
+		if let Type::Or(lhs_lhs, lhs_rhs) = lhs_ty {
+			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
+				&& types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
+		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
+			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
+				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
+		} else if let Type::Or(rhs_lhs, rhs_rhs) = rhs_ty {
+			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
+				&& types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
+		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_ty {
+			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
+				|| types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
+		} else if let Type::AliasTo { to, parameters: None, name: _ } = lhs_ty {
 			// TODO temp fix, need infer ANY
 			if matches!(*to, TypeId::ANY_TYPE) {
 				true
 			} else {
-				types_are_disjoint(*to, right, already_checked, information, types)
+				types_are_disjoint(*to, rhs, already_checked, information, types)
 			}
-		} else if let Type::AliasTo { to, parameters: None, name: _ } = right_ty {
+		} else if let Type::AliasTo { to, parameters: None, name: _ } = rhs_ty {
 			if matches!(*to, TypeId::ANY_TYPE) {
 				true
 			} else {
-				types_are_disjoint(left, *to, already_checked, information, types)
+				types_are_disjoint(lhs, *to, already_checked, information, types)
 			}
 		} else if let (
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -66,26 +58,145 @@ pub fn types_are_disjoint(
 				arguments: _arguments,
 			}),
 			Type::Object(super::ObjectNature::RealDeal),
-		) = (left_ty, right_ty)
+		) = (lhs_ty, rhs_ty)
 		{
-			let rhs_prototype = information
-				.get_chain_of_info()
-				.find_map(|info| info.prototypes.get(&right).copied());
+			let rhs_prototype =
+				information.get_chain_of_info().find_map(|info| info.prototypes.get(&rhs).copied());
 			// {
 			// 		if let Some(lhs_prototype) = info.prototypes.get(&lhs).copied() {
-			// 	let rhs_prototype = information.get_prototype_of(right);
+			// 	let rhs_prototype = information.get_prototype_of(rhs);
 
 			// TODO leaving arguments out of picture for now
 			rhs_prototype != Some(TypeId::ARRAY_TYPE)
-		} else if let (Type::Object(super::ObjectNature::RealDeal), _)
-		| (_, Type::Object(super::ObjectNature::RealDeal)) = (left_ty, right_ty)
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::NOT_RESTRICTION,
+			arguments,
+		}) = lhs_ty
 		{
-			true
+			use super::subtyping;
+			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let mut state = subtyping::State {
+				// TODO
+				already_checked: already_checked.clone(),
+				mode: Default::default(),
+				contributions: None,
+				others: subtyping::SubTypingOptions { allow_errors: true },
+				object_constraints: None,
+			};
+
+			crate::utilities::notify!("{:?}", (lhs, inner));
+
+			subtyping::type_is_subtype(rhs, inner, &mut state, information, types).is_subtype()
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::NOT_RESTRICTION,
+			arguments,
+		}) = rhs_ty
+		{
+			use super::subtyping;
+			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let mut state = subtyping::State {
+				// TODO
+				already_checked: already_checked.clone(),
+				mode: Default::default(),
+				contributions: None,
+				others: subtyping::SubTypingOptions { allow_errors: true },
+				object_constraints: None,
+			};
+
+			crate::utilities::notify!("{:?}", (lhs, inner));
+
+			subtyping::type_is_subtype(lhs, inner, &mut state, information, types).is_subtype()
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+			arguments: _,
+		}) = lhs_ty
+		{
+			let range = super::intrinsics::get_range(lhs, types).unwrap();
+			if let Some(rhs_range) = super::intrinsics::get_range(rhs, types) {
+				let overlap = range.overlaps(rhs_range);
+				crate::utilities::notify!("{:?}", overlap);
+				!overlap
+			} else {
+				crate::utilities::notify!("Here");
+				true
+			}
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+			arguments: _,
+		}) = rhs_ty
+		{
+			let range = super::intrinsics::get_range(rhs, types).unwrap();
+			if let Some(lhs_range) = super::intrinsics::get_range(lhs, types) {
+				let overlap = range.overlaps(lhs_range);
+				crate::utilities::notify!("{:?}", overlap);
+				!overlap
+			} else {
+				crate::utilities::notify!("Here");
+				true
+			}
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::MULTIPLE_OF,
+			arguments,
+		}) = lhs_ty
+		{
+			// Little bit complex here because dealing with decimal types, not integers
+			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
+				types.get_type_by_id(
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
+				),
+				types.get_type_by_id(rhs),
+			) {
+				let result = rhs % lhs != 0.;
+				crate::utilities::notify!("{:?} {:?}", rhs, lhs);
+				result
+			} else {
+				crate::utilities::notify!("Here");
+				false
+			}
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::MULTIPLE_OF,
+			arguments,
+		}) = rhs_ty
+		{
+			// Little bit complex here because dealing with decimal types, not integers
+			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
+				types.get_type_by_id(lhs),
+				types.get_type_by_id(
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
+				),
+			) {
+				let result = lhs % rhs != 0.;
+				crate::utilities::notify!("{:?} {:?}", lhs, rhs);
+				result
+			} else {
+				crate::utilities::notify!("Here");
+				false
+			}
+		} else if let Some(lhs) = super::get_constraint(lhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
+		} else if let Some(rhs) = super::get_constraint(rhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
+		} else if let Type::Constant(lhs_cst) = lhs_ty {
+			if let Type::Constant(rhs_cst) = rhs_ty {
+				lhs_cst != rhs_cst
+			} else {
+				types_are_disjoint(
+					lhs_cst.get_backing_type(),
+					rhs,
+					already_checked,
+					information,
+					types,
+				)
+			}
+		} else if let Type::Constant(rhs_cst) = rhs_ty {
+			types_are_disjoint(rhs_cst.get_backing_type(), lhs, already_checked, information, types)
 		} else {
 			crate::utilities::notify!(
 				"{:?} cap {:?} == empty ? cases. Might be missing, calling disjoint",
-				left_ty,
-				right_ty
+				lhs_ty,
+				rhs_ty
 			);
 			true
 		}

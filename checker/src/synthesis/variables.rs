@@ -168,7 +168,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 				let initial_value = argument.initial_value;
 
 				let space = if let Some(space) = argument.space {
-					let rest = checking_data.types.new_anonymous_interface_type();
+					let mut rest = Vec::new();
 					for (publicity, key, property) in get_properties_on_single_type(
 						space,
 						&checking_data.types,
@@ -181,10 +181,14 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 								continue;
 							}
 						}
-
-						environment.info.register_property_on_type(rest, publicity, key, property);
+						rest.push((publicity, key, property));
 					}
-					Some(rest)
+					if rest.is_empty() {
+						None
+					} else {
+						let rest = checking_data.types.new_anonymous_interface_type(rest);
+						Some(rest)
+					}
 				} else {
 					None
 				};
