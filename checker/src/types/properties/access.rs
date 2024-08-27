@@ -896,10 +896,10 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						| Type::And(_, _)
 						| Type::AliasTo { to: _, name: _, parameters: _ }
 						| Type::Or(_, _) => {
-							crate::utilities::notify!(
-							    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
-							    property, ty
-						    );
+							// crate::utilities::notify!(
+							//     "property was {:?} {:?}, which should be NOT be able to be returned from a function",
+							//     property, ty
+							// );
 
 							Some((PropertyKind::Direct, value))
 						}
@@ -937,7 +937,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						// TODO
 						call_site: source_map::Nullable::NULL,
 						// TODO
-						max_inline: 0,
+						max_inline: behavior.max_inline(),
 					};
 					let result =
 						getter.call(Vec::new(), input, environment, (behavior, diagnostics), types);
@@ -1164,8 +1164,7 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 			called_with_new: CalledWithNew::GetterOrSetter { this_type: handler },
 			// TODO
 			call_site: source_map::Nullable::NULL,
-			// TODO
-			max_inline: 0,
+			max_inline: behavior.max_inline(),
 		};
 		let result = crate::types::calling::Callable::Type(get_trap).call(
 			arguments,

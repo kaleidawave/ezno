@@ -227,12 +227,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		args.push(SynthesisedArgument { value: child_nodes, position, spread: false });
 	}
 
-	let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+	let mut check_things = CheckThings::new_from_options(&checking_data.options);
 
 	let calling_input = CallingInput {
 		called_with_new: CalledWithNew::None,
 		call_site: position,
-		max_inline: checking_data.options.max_inline_count,
+		max_inline: checking_data.options.max_inline,
 	};
 
 	let mut diagnostics = Default::default();

@@ -634,7 +634,18 @@ obj satisfies string;
 ```
 
 - Expected string, found { a: 1, b: 2, c: 3 }
-s
+
+#### `in` operator
+
+```ts
+const obj = { a: 2 };
+("a" in obj) satisfies string;
+("b" in obj) satisfies true;
+```
+
+- Expected string, found true
+- Expected true, found false
+
 ### Excess properties
 
 > The following work through the same mechanism as forward inference
@@ -2375,6 +2386,39 @@ fakeRead(array1)
 
 ### Operators
 
+#### Type of mathematical operator
+
+```ts
+function func(x: number, y: number, a: string, b: string) {
+	(x * 2) satisfies null;
+	(a + x) satisfies string;
+	(a + "hi") satisfies string;
+	(x + y) satisfies number;
+}
+```
+
+- Expected null, found number
+
+#### Type of relation operators
+
+```ts
+declare var x: number;
+(x < 4) satisfies string;
+(x === 4) satisfies Math;
+```
+
+- Expected string, found boolean
+- Expected Math, found boolean
+
+#### Type of logical operators
+
+```ts
+declare var x: number, y: boolean;
+(x && y) satisfies string;
+```
+
+- Expected string, found boolean | number
+
 #### Always known math
 
 ```ts
@@ -2531,7 +2575,7 @@ function func(param: number) {
 
 - This equality is always false as Not<2> and 2 have no overlap
 
-### Statements, declarations and expressions
+### Type structures
 
 > Some of these are part of synthesis, rather than checking
 
@@ -2593,6 +2637,45 @@ interface X {
 - Expected 4, found 5
 - Type { a: 3 } is not assignable to type X
 
+#### Interface merging
+
+```ts
+interface X {
+	a: string,
+	b: boolean
+}
+
+{
+	interface X {
+		c: number
+	}
+
+	const x: X = { a: "field", b: false, c: false }
+	const y: X = { a: "field", b: false, c: 2 }
+}
+```
+
+- Type { a: "field", b: false, c: false } is not assignable to type X
+
+#### Interfaces do not merge with aliases
+
+```ts
+type X = { a: string }
+
+{
+	interface X {
+		b: number
+	}
+
+	const x: X = { b: 3 } // Don't require 'a' here <-
+	const y: X = { b: "NaN" }
+}
+```
+
+- Type { b: "NaN" } is not assignable to type X
+
+### Expressions
+
 #### Null and undefined
 
 ```ts
@@ -2619,46 +2702,6 @@ const name = "Ben";
 ```
 
 - Expected "Hi Ben", found "Hello Ben"
-
-#### `in` operator
-
-```ts
-const obj = { a: 2 };
-("a" in obj) satisfies string;
-("b" in obj) satisfies true;
-```
-
-- Expected string, found true
-- Expected true, found false
-
-#### Type of mathematical operator
-
-```ts
-declare var x: number;
-(x * 2) satisfies string
-```
-
-- Expected string, found number
-
-#### Type of relation operators
-
-```ts
-declare var x: number;
-(x < 4) satisfies string;
-(x === 4) satisfies Math;
-```
-
-- Expected string, found boolean
-- Expected Math, found boolean
-
-#### Type of logical operators
-
-```ts
-declare var x: number, y: boolean;
-(x && y) satisfies string;
-```
-
-- Expected string, found boolean | number
 
 #### Object literal (constant) computed key
 
@@ -2701,42 +2744,41 @@ d satisfies 1;
 
 - Expected 1, found 2
 
-#### Interface merging
+#### Object destructuring assignment
+
+> Added in #127
 
 ```ts
-interface X {
-	a: string,
-	b: boolean
-}
+const o = { a: 1, b: { c: 3 } };
 
-{
-	interface X {
-		c: number
-	}
+let a, b, d;
+({
+	d = o.a++,
+	b: { c: b = 7 },
+	a,
+} = o);
 
-	const x: X = { a: "field", b: false, c: false }
-	const y: X = { a: "field", b: false, c: 2 }
-}
+a satisfies string;
+b satisfies boolean;
+d satisfies 3;
 ```
 
-- Type { a: "field", b: false, c: false } is not assignable to type X
+- Expected string, found 2
+- Expected boolean, found 3
+- Expected 3, found 1
 
-#### Interfaces do not merge with aliases
+#### Tagged template literal
 
 ```ts
-type X = { a: string }
-
-{
-	interface X {
-		b: number
-	}
-
-	const x: X = { b: 3 } // Don't require 'a' here <-
-	const y: X = { b: "NaN" }
+function myTag(static_parts: Array<string>, other: string) {
+	return { static_parts, other }
 }
+
+const name = "Ben";
+myTag`${name}Hello ` satisfies string;
 ```
 
-- Type { b: "NaN" } is not assignable to type X
+- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
 
 #### As casts
 
@@ -2793,29 +2835,6 @@ s satisfies number;
 - Expected string, found undefined
 - Expected number, found "hello"
 
-#### Object destructuring assignment
-
-> Added in #127
-
-```ts
-const o = { a: 1, b: { c: 3 } };
-
-let a, b, d;
-({
-	d = o.a++,
-	b: { c: b = 7 },
-	a,
-} = o);
-
-a satisfies string;
-b satisfies boolean;
-d satisfies 3;
-```
-
-- Expected string, found 2
-- Expected boolean, found 3
-- Expected 3, found 1
-
 #### `import.meta`
 
 > Unfortunately because of bundling `url` and `resolve` cannot have known results so just `string`
@@ -2856,19 +2875,6 @@ isArray({ }) satisfies null;
 - Expected string, found true
 - Expected null, found false
 
-#### Tagged template literal
-
-```ts
-function myTag(static_parts: Array<string>, other: string) {
-	return { static_parts, other }
-}
-
-const name = "Ben";
-myTag`${name}Hello ` satisfies string;
-```
-
-- Expected string, found { static_parts: ["", "Hello "], other: "Ben" }
-
 #### Interface generic constraint checking
 
 ```ts
@@ -2889,7 +2895,7 @@ interface BoxString<T extends string> {
 	inner: T
 }
 
-let x: BoxString<string, number>;
+let item: BoxString<string, number>;
 ```
 
 - Expected 1 type argument, but got 2
@@ -2897,20 +2903,20 @@ let x: BoxString<string, number>;
 #### Optional property access
 
 ```ts
-interface X {
+interface Item {
     a: string
     b: string
 }
 
-function func(x: X | null) {
-	x.a;
-	x?.b satisfies number;
+function func(param: Item | null) {
+	param.a;
+	param?.b satisfies number;
 }
 ```
 
 > TODO message should just be null
 
-- No property 'a' on X | null
+- No property 'a' on Item | null
 - Expected number, found undefined | string
 
 ### Regular expressions
@@ -3262,6 +3268,30 @@ doThingWithX(new Y())
 ```
 
 - Argument of type [Y] { a: 2 } is not assignable to parameter of type X
+
+### Constructor hoisting
+
+```ts
+class Palindrome {
+    inner: string
+
+    constructor(middle: string) {
+        this.inner = middle;
+    }
+
+    append(wrap: string) {
+        return new Palindrome(wrap + this.inner + wrap)
+    }
+
+    badFunction() {
+        return new Palindrome(5)
+    }
+}
+
+new Palindrome("y").append("a").append("k").inner satisfies "kayak";
+```
+
+- 5 not assignable to string
 
 ### Types
 

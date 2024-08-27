@@ -479,7 +479,7 @@ impl<'a> Environment<'a> {
 						&key,
 						self,
 						(
-							&mut CheckThings { debug_types: checking_data.options.debug_types },
+							&mut CheckThings::new_from_options(&checking_data.options),
 							&mut diagnostics,
 						),
 						&mut checking_data.types,
@@ -780,7 +780,7 @@ impl<'a> Environment<'a> {
 			publicity,
 			under,
 			self,
-			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			(&mut CheckThings::new_from_options(&checking_data.options), &mut diagnostics),
 			&mut checking_data.types,
 			position,
 			mode,
@@ -1212,7 +1212,7 @@ impl<'a> Environment<'a> {
 			(publicity, under, new),
 			setter_position,
 			self,
-			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			(&mut CheckThings::new_from_options(&checking_data.options), &mut diagnostics),
 			&mut checking_data.types,
 		);
 		diagnostics.append_to(

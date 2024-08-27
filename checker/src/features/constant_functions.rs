@@ -342,7 +342,7 @@ pub(crate) fn call_constant_function(
 
 				let under = PropertyKey::from_type(property, types);
 				// TODO
-				let mut behavior = CheckThings { debug_types: true };
+				let mut behavior = CheckThings { debug_types: true, max_inline: 10 };
 				let publicity = Publicity::Public;
 				let mode = AccessMode::Regular;
 
@@ -612,13 +612,11 @@ pub(crate) fn call_constant_function(
 			let Type::Constant(Constant::String(pattern)) = pattern else {
 				return Err(ConstantFunctionError::CannotComputeConstant);
 			};
-			let flags = match flags {
-				Some(flags) => {
-					let Type::Constant(Constant::String(flags)) = flags else {
-						return Err(ConstantFunctionError::CannotComputeConstant);
-					};
 
-					Some(flags.clone())
+			let flags = match flags {
+				Some(Type::Constant(Constant::String(flags))) => Some(flags.clone()),
+				Some(_) => {
+					return Err(ConstantFunctionError::CannotComputeConstant);
 				}
 				None => None,
 			};

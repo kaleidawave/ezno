@@ -29,11 +29,20 @@ pub trait CallCheckingBehavior {
 	fn debug_types(&self) -> bool {
 		false
 	}
+
+	fn max_inline(&self) -> u16;
 }
 
 /// Top level. Evaluating directly, rather than deep in event application
 pub struct CheckThings {
 	pub debug_types: bool,
+	pub max_inline: u16,
+}
+
+impl CheckThings {
+	pub fn new_from_options(options: &crate::TypeCheckOptions) -> Self {
+		CheckThings { debug_types: options.debug_types, max_inline: options.max_inline }
+	}
 }
 
 impl CallCheckingBehavior for CheckThings {
@@ -56,16 +65,21 @@ impl CallCheckingBehavior for CheckThings {
 		function_id: FunctionId,
 		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T {
-		let mut target = InvocationContext(vec![InvocationKind::Function(function_id)]);
+		let mut target =
+			InvocationContext(vec![InvocationKind::Function(function_id)], self.max_inline);
 		cb(&mut target)
 	}
 
 	fn debug_types(&self) -> bool {
 		self.debug_types
 	}
+
+	fn max_inline(&self) -> u16 {
+		self.max_inline
+	}
 }
 
-pub struct InvocationContext(Vec<InvocationKind>);
+pub struct InvocationContext(Vec<InvocationKind>, u16);
 
 /// TODO want to have type arguments on each of these
 pub(crate) enum InvocationKind {
@@ -115,12 +129,16 @@ impl CallCheckingBehavior for InvocationContext {
 		self.0.pop();
 		value
 	}
+
+	fn max_inline(&self) -> u16 {
+		self.1
+	}
 }
 
 impl InvocationContext {
 	/// TODO temp for loop unrolling
-	pub(crate) fn new_empty() -> Self {
-		InvocationContext(Vec::new())
+	pub(crate) fn new_empty(max_inline: u16) -> Self {
+		InvocationContext(Vec::new(), max_inline)
 	}
 
 	pub(crate) fn in_unknown(&self) -> bool {

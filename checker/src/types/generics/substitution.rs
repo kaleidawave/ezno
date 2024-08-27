@@ -242,7 +242,7 @@ pub(crate) fn substitute(
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
-							"Cannot {:?} {operator:?} {:?} (restriction or something failed)",
+							"Cannot {} {operator:?} {} (restriction or something failed)",
 							crate::types::printing::print_type(lhs, types, environment, true),
 							crate::types::printing::print_type(rhs, types, environment, true)
 						);
@@ -423,37 +423,13 @@ pub(crate) fn substitute(
 					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
-			Constructor::Image { .. } => {
-				let on = crate::types::printing::print_type(id, types, environment, true);
-				todo!("Constructor::Image {on} should be covered by events");
-				// id
-
-				// let on = substitute(on, arguments, environment);
-
-				// crate::utilities::notify!("Substituted {}", environment.debug_type(on));
-
-				// let func_arguments = with
-				// 	.into_iter()
-				// 	.map(|argument| match argument {
-				// 		synthesisedArgument::NonSpread { ty, pos } => {
-				// 			let ty = substitute(*ty, arguments, environment);
-				// 			synthesisedArgument::NonSpread { ty, pos: pos.clone() }
-				// 		}
-				// 	})
-				// 	.collect::<Vec<_>>();
-
-				// let FunctionCallResult { returned_type, warnings } =
-				// 	call_type(on, func_arguments, None, None, environment, checking_data)
-				// 		.expect("Inferred constraints and checking failed");
-
-				// crate::utilities::notify!("TODO getting a property not substituted during calling");
-
-				// let on = substitute(on, arguments, environment, checking_data);
-				// let property = substitute(property, arguments, environment, checking_data);
-
-				// environment
-				// 	.get_property(on, property, checking_data, None)
-				// 	.expect("Inferred constraints and checking failed for a property")
+			Constructor::Image { result, .. } => {
+				// TS `ReturnType` doesn't use this
+				{
+					// let _on = crate::types::printing::print_type(id, types, environment, true);
+					crate::utilities::notify!("Constructor::Image should be covered by events");
+				}
+				result
 			}
 			Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 				let operator = match operator {
@@ -489,7 +465,12 @@ pub(crate) fn substitute(
 					crate::features::type_of_operator(ty, types)
 				}
 				crate::types::TypeOperator::HasProperty(_, _) => {
-					unreachable!("'HasProperty' should be specialised by events")
+					{
+						crate::utilities::notify!(
+							"TypeOperator::HasProperty should be covered by events"
+						);
+					}
+					TypeId::OPEN_BOOLEAN_TYPE
 				}
 				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
 					let lhs = substitute(lhs, arguments, environment, types);
@@ -569,7 +550,10 @@ pub(crate) fn substitute(
 				// 	TypeId::FALSE
 				// }
 			}
-			Constructor::Awaited { .. } => todo!("should have effect result"),
+			Constructor::Awaited { .. } => {
+				crate::utilities::notify!("should have effect result");
+				TypeId::ERROR_TYPE
+			}
 			Constructor::KeyOf(on) => {
 				let on = substitute(on, arguments, environment, types);
 				types.new_key_of(on)

@@ -244,7 +244,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 					checking_data,
 				);
 
-			let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+			let mut check_things = CheckThings::new_from_options(&checking_data.options);
 			let mut diagnostics = CallingDiagnostics::default();
 			let result = call_logical(
 				callable,
@@ -820,10 +820,17 @@ fn call_logical<B: CallCheckingBehavior>(
 						top_environment,
 						types,
 					);
-					let reflects_dependency = if types.get_type_by_id(result_as_type).is_constant()
-					{
-						None
-					} else {
+
+					let should_create_dependent_output = !types
+						.get_type_by_id(result_as_type)
+						.is_constant() || matches!(
+						(&function_type.behavior, &function_type.effect),
+						(
+							FunctionBehavior::Constructor { .. },
+							FunctionEffect::Constant { .. } | FunctionEffect::Unknown { .. }
+						)
+					);
+					let reflects_dependency = if should_create_dependent_output {
 						let id = types.register_type(Type::Constructor(Constructor::Image {
 							// TODO
 							on: function.from.expect("function `on`"),
@@ -833,6 +840,8 @@ fn call_logical<B: CallCheckingBehavior>(
 						}));
 
 						Some(id)
+					} else {
+						None
 					};
 
 					result.result = Some(ApplicationResult::Return {
@@ -1143,12 +1152,14 @@ impl FunctionType {
 			});
 		}
 
-		let result = if let FunctionEffect::SideEffects {
-			events,
-			closed_over_variables,
-			free_variables: _,
-		} = &self.effect
-		{
+		let evalute_events = matches!(&self.effect, FunctionEffect::SideEffects { events, .. } if events.len() < input.max_inline.into());
+
+		let result = if evalute_events {
+			let FunctionEffect::SideEffects { events, closed_over_variables, free_variables: _ } =
+				&self.effect
+			else {
+				unreachable!()
+			};
 			behavior.new_function_context(self.id, |target| {
 				// crate::utilities::notify!("events: {:?}", events);
 				{
@@ -1255,9 +1266,9 @@ impl FunctionType {
 
 		// TODO what does super return?
 		let result = if let CalledWithNew::New { .. } = input.called_with_new {
-			// TODO ridiculous early return primitive rule
 			let returned = match self.behavior {
 				FunctionBehavior::ArrowFunction { .. } | FunctionBehavior::Method { .. } => {
+					crate::utilities::notify!("Should not be here");
 					TypeId::ERROR_TYPE
 				}
 				FunctionBehavior::Constructor { prototype: _, this_object_type, name: _ } => {

@@ -344,7 +344,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						.unwrap();
 
 					// Lift members
-					super::classes::register_statement_class_with_members(
+					let constructor = super::classes::register_statement_class_with_members(
 						ty,
 						class,
 						environment,
@@ -355,7 +355,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					let argument = VariableRegisterArguments {
 						// TODO functions are constant references
 						constant: true,
-						space: Some(ty),
+						space: Some(constructor),
 						initial_value: None,
 						allow_reregistration: false,
 					};

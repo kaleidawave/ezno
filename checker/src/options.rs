@@ -49,7 +49,8 @@ pub struct TypeCheckOptions {
 	/// Evaluate exports to detect dead code
 	pub evaluate_exports: bool,
 
-	pub max_inline_count: u16,
+	/// For events
+	pub max_inline: u16,
 
 	pub measure_time: bool,
 
@@ -74,7 +75,7 @@ impl Default for TypeCheckOptions {
 			// TODO false at some point hopefully!
 			allow_type_casts: true,
 			evaluate_exports: false,
-			max_inline_count: 300,
+			max_inline: 300,
 			measure_time: false,
 			debug_dts: false,
 			extra_syntax: true,

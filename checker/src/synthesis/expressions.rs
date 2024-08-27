@@ -1150,7 +1150,7 @@ fn call_function<T: crate::ReadFromFS>(
 		CallingInput {
 			called_with_new,
 			call_site: call_site.with_source(environment.get_source()),
-			max_inline: checking_data.options.max_inline_count,
+			max_inline: checking_data.options.max_inline,
 		},
 		environment,
 		checking_data,

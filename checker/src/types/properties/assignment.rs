@@ -488,8 +488,7 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 			let input = CallingInput {
 				called_with_new: CalledWithNew::GetterOrSetter { this_type },
 				call_site: position,
-				// TODO
-				max_inline: 0,
+				max_inline: behavior.max_inline(),
 			};
 
 			let result = setter.call(vec![arg], input, environment, (behavior, diagnostics), types);
@@ -588,8 +587,7 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 			called_with_new: CalledWithNew::GetterOrSetter { this_type: handler },
 			// TODO
 			call_site: source_map::Nullable::NULL,
-			// TODO
-			max_inline: 0,
+			max_inline: behavior.max_inline(),
 		};
 		let result = crate::types::calling::Callable::Type(set_trap).call(
 			arguments,

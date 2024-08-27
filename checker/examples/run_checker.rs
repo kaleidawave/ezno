@@ -20,6 +20,7 @@ fn main() {
 	let no_lib = args.iter().any(|item| item == "--no-lib");
 	let debug_dts = args.iter().any(|item| item == "--debug-dts");
 	let extras = args.iter().any(|item| item == "--extras");
+	let basic = args.iter().any(|item| item == "--basic");
 
 	let now = Instant::now();
 
@@ -40,14 +41,17 @@ fn main() {
 
 	let entry_points = vec![path.to_path_buf()];
 
-	let options = TypeCheckOptions {
+	let mut options = TypeCheckOptions {
 		debug_types,
 		record_all_assignments_and_reads: true,
-		max_inline_count: 600,
 		debug_dts,
 		extra_syntax: extras,
 		..Default::default()
 	};
+
+	if basic {
+		options.max_inline = 0;
+	}
 
 	let result = check_project::<_, synthesis::EznoParser>(
 		entry_points,

@@ -492,12 +492,13 @@ fn synthesise_class_declaration_extends_and_members<
 /// Also sets variable for hoisting
 ///
 /// Builds the type of the class
+#[must_use]
 pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	class_type: TypeId,
 	class: &ClassDeclaration<StatementPosition>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) {
+) -> TypeId {
 	let class_type2 = checking_data.types.get_type_by_id(class_type);
 
 	let Type::Class { name: _, type_parameters } = class_type2 else {
@@ -516,15 +517,18 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 
 			sub_environment.named_types.insert(name.clone(), *parameter);
 		}
-		register_extends_and_member(class, class_type, &mut sub_environment, checking_data);
+
+		let result =
+			register_extends_and_member(class, class_type, &mut sub_environment, checking_data);
 		{
 			let crate::context::LocalInformation { current_properties, prototypes, .. } =
 				sub_environment.info;
 			environment.info.current_properties.extend(current_properties);
 			environment.info.prototypes.extend(prototypes);
 		}
+		result
 	} else {
-		register_extends_and_member(class, class_type, environment, checking_data);
+		register_extends_and_member(class, class_type, environment, checking_data)
 	}
 }
 
@@ -533,7 +537,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 	class_type: TypeId,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) {
+) -> TypeId {
 	if let Some(ref extends) = class.extends {
 		let extends = get_extends_as_simple_type(extends, environment, checking_data);
 
@@ -547,6 +551,9 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 	// checking_data.local_type_mappings.types_to_types.push(class.position, class_type);
 
 	let mut members_iter = class.members.iter().peekable();
+
+	let mut found_constructor = None::<TypeId>;
+
 	while let Some(member) = members_iter.next() {
 		match &member.on {
 			ClassMember::Method(initial_is_static, method) => {
@@ -591,7 +598,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 									.with_source(environment.get_source()),
 							},
 						);
-						return;
+						continue;
 					}
 				} else {
 					let actual = synthesise_shape(method, environment, checking_data);
@@ -716,13 +723,46 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					value,
 				);
 			}
-			ClassMember::Constructor(c) => {
-				if !c.has_body() {
-					crate::utilities::notify!("TODO possible constructor overloading");
-				}
+			ClassMember::Constructor(constructor) => {
+				let internal_effect = get_internal_function_effect_from_decorators(
+					&member.decorators,
+					"",
+					environment,
+				);
+
+				let actual = synthesise_shape(constructor, environment, checking_data);
+
+				let constructor = build_overloaded_function(
+					FunctionId(environment.get_source(), constructor.position.start),
+					crate::types::functions::FunctionBehavior::Constructor {
+						// The prototype of the base object
+						prototype: class_type,
+						// The id of the generic that needs to be pulled out
+						this_object_type: TypeId::ERROR_TYPE,
+						name: TypeId::ANY_TYPE,
+					},
+					Vec::new(),
+					actual,
+					environment,
+					&mut checking_data.types,
+					&mut checking_data.diagnostics_container,
+					if let Some(ie) = internal_effect {
+						ie.into()
+					} else {
+						crate::types::functions::FunctionEffect::Unknown
+					},
+				);
+
+				found_constructor = Some(constructor);
 			}
 			ClassMember::StaticBlock(_) | ClassMember::Comment(_, _, _) => {}
 		}
+	}
+
+	if let Some(constructor) = found_constructor {
+		constructor
+	} else {
+		TypeId::ERROR_TYPE
 	}
 }
 

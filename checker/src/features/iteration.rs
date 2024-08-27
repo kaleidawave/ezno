@@ -56,7 +56,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	let application_input = ApplicationInput {
 		this_value: crate::types::calling::ThisValue::UseParent,
 		call_site: position,
-		max_inline: checking_data.options.max_inline_count,
+		max_inline: checking_data.options.max_inline,
 	};
 
 	match behavior {
@@ -124,7 +124,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
-				&mut InvocationContext::new_empty(),
+				&mut InvocationContext::new_empty(checking_data.options.max_inline),
 				&mut diagnostics,
 				&mut checking_data.types,
 			);
@@ -192,7 +192,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
-				&mut InvocationContext::new_empty(),
+				&mut InvocationContext::new_empty(checking_data.options.max_inline),
 				&mut diagnostics,
 				&mut checking_data.types,
 			);
@@ -334,7 +334,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
-				&mut InvocationContext::new_empty(),
+				&mut InvocationContext::new_empty(checking_data.options.max_inline),
 				&mut diagnostics,
 				&mut checking_data.types,
 			);
@@ -386,7 +386,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				RunBehavior::References(closes_over),
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
-				&mut InvocationContext::new_empty(),
+				&mut InvocationContext::new_empty(checking_data.options.max_inline),
 				&mut diagnostics,
 				&mut checking_data.types,
 			);
@@ -968,7 +968,7 @@ impl IteratorHelper {
 				&crate::types::properties::PropertyKey::Type(TypeId::SYMBOL_ITERATOR),
 				environment,
 				(
-					&mut CheckThings { debug_types: checking_data.options.debug_types },
+					&mut CheckThings::new_from_options(&checking_data.options),
 					&mut Default::default(),
 				),
 				&mut checking_data.types,
@@ -984,7 +984,7 @@ impl IteratorHelper {
 			let input = crate::types::calling::CallingInput {
 				called_with_new: crate::types::calling::CalledWithNew::None,
 				call_site: position,
-				max_inline: checking_data.options.max_inline_count,
+				max_inline: checking_data.options.max_inline,
 			};
 
 			call_type_handle_errors(
@@ -1004,10 +1004,7 @@ impl IteratorHelper {
 			crate::types::properties::Publicity::Public,
 			&crate::types::properties::PropertyKey::String(std::borrow::Cow::Borrowed("next")),
 			environment,
-			(
-				&mut CheckThings { debug_types: checking_data.options.debug_types },
-				&mut Default::default(),
-			),
+			(&mut CheckThings::new_from_options(&checking_data.options), &mut Default::default()),
 			&mut checking_data.types,
 			position,
 			crate::types::properties::AccessMode::Regular,
@@ -1064,16 +1061,13 @@ impl IteratorHelper {
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
 			call_site: position,
-			max_inline: checking_data.options.max_inline_count,
+			max_inline: checking_data.options.max_inline,
 		};
 		let result = self.inner.call(
 			Vec::new(),
 			input,
 			top_environment,
-			(
-				&mut CheckThings { debug_types: checking_data.options.debug_types },
-				&mut Default::default(),
-			),
+			(&mut CheckThings::new_from_options(&checking_data.options), &mut Default::default()),
 			&mut checking_data.types,
 		);
 
@@ -1104,7 +1098,7 @@ impl IteratorHelper {
 					&done_key,
 					top_environment,
 					(
-						&mut CheckThings { debug_types: checking_data.options.debug_types },
+						&mut CheckThings::new_from_options(&checking_data.options),
 						&mut Default::default(),
 					),
 					&mut checking_data.types,
@@ -1132,7 +1126,7 @@ impl IteratorHelper {
 						&value_key,
 						top_environment,
 						(
-							&mut CheckThings { debug_types: checking_data.options.debug_types },
+							&mut CheckThings::new_from_options(&checking_data.options),
 							&mut Default::default(),
 						),
 						&mut checking_data.types,
