@@ -397,6 +397,8 @@ impl TypeStore {
 			otherwise_result
 		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
+		} else if condition == TypeId::OPEN_BOOLEAN_TYPE {
+			self.new_or_type(truthy_result, otherwise_result)
 		} else if let Type::Constructor(Constructor::ConditionalResult {
 			condition,
 			// TODO technically any falsy, truthy reverse pair is okay

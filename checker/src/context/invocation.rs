@@ -261,7 +261,6 @@ impl InvocationContext {
 						truthy_info,
 						Some(otherwise_info),
 						types,
-						condition_position,
 					);
 				}
 				crate::GeneralContext::Root(_) => {

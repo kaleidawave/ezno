@@ -1,9 +1,39 @@
 use crate::{
-	context::{information::merge_info, Context, Syntax},
-	types::is_type_truthy_falsy,
+	context::{
+		environment::ReturnState, information::merge_info, Context, LocalInformation, Syntax,
+	},
+	types::{is_type_truthy_falsy, TypeStore},
 	CheckingData, Decidable, Environment, Scope, TypeId,
 };
 use source_map::Span;
+
+pub trait ConditionalResult {
+	fn non_result_result() -> Self;
+
+	fn new_condition(condition: TypeId, left: Self, right: Self, types: &mut TypeStore) -> Self;
+}
+
+impl ConditionalResult for () {
+	fn non_result_result() -> Self {}
+
+	fn new_condition(
+		_condition: TypeId,
+		_left: Self,
+		_right: Self,
+		_types: &mut TypeStore,
+	) -> Self {
+	}
+}
+
+impl ConditionalResult for TypeId {
+	fn non_result_result() -> Self {
+		TypeId::UNDEFINED_TYPE
+	}
+
+	fn new_condition(condition: TypeId, left: Self, right: Self, types: &mut TypeStore) -> Self {
+		types.new_conditional_type(condition, left, right)
+	}
+}
 
 /// For top level checking
 pub fn new_conditional_context<T, A, R>(
@@ -15,7 +45,7 @@ pub fn new_conditional_context<T, A, R>(
 ) -> R
 where
 	A: crate::ASTImplementation,
-	R: crate::types::TypeCombinable,
+	R: ConditionalResult,
 	T: crate::ReadFromFS,
 {
 	if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
@@ -32,11 +62,11 @@ where
 		} else if let Some(else_evaluate) = else_evaluate {
 			else_evaluate(environment, checking_data)
 		} else {
-			R::default()
+			R::non_result_result()
 		};
 	}
 
-	let (truthy_result, truthy_info) = {
+	let (truthy_return_state, truthy_result, mut truthy_info) = {
 		let mut truthy_environment = environment
 			.new_lexical_environment(Scope::Conditional { antecedent: condition, is_switch: None });
 
@@ -52,7 +82,7 @@ where
 		let result = then_evaluate(&mut truthy_environment, checking_data);
 
 		let Context {
-			context_type: Syntax { free_variables, closed_over_references, .. },
+			context_type: Syntax { free_variables, closed_over_references, state, .. },
 			info,
 			possibly_mutated_objects,
 			possibly_mutated_variables,
@@ -65,11 +95,13 @@ where
 		environment.possibly_mutated_objects.extend(possibly_mutated_objects);
 		environment.possibly_mutated_variables.extend(possibly_mutated_variables);
 
-		(result, info)
+		(state, result, info)
 	};
 
-	let (falsy_result, falsy_info) = if let Some(else_evaluate) = else_evaluate {
-		let mut falsy_environment = environment.new_lexical_environment(Scope::Conditional {
+	let (otherwise_return_state, otherwise_result, mut otherwise_info) = if let Some(else_evaluate) =
+		else_evaluate
+	{
+		let mut otherwise_environment = environment.new_lexical_environment(Scope::Conditional {
 			antecedent: checking_data.types.new_logical_negation_type(condition),
 			is_switch: None,
 		});
@@ -81,17 +113,17 @@ where
 			&mut checking_data.types,
 		);
 
-		falsy_environment.info.narrowed_values = values;
+		otherwise_environment.info.narrowed_values = values;
 
-		let result = else_evaluate(&mut falsy_environment, checking_data);
+		let result = else_evaluate(&mut otherwise_environment, checking_data);
 
 		let Context {
-			context_type: Syntax { free_variables, closed_over_references, .. },
+			context_type: Syntax { free_variables, closed_over_references, state, .. },
 			info,
 			possibly_mutated_objects,
 			possibly_mutated_variables,
 			..
-		} = falsy_environment;
+		} = otherwise_environment;
 
 		environment.context_type.free_variables.extend(free_variables);
 		environment.context_type.closed_over_references.extend(closed_over_references);
@@ -99,40 +131,84 @@ where
 		environment.possibly_mutated_objects.extend(possibly_mutated_objects);
 		environment.possibly_mutated_variables.extend(possibly_mutated_variables);
 
-		(result, Some(info))
+		(state, result, Some(info))
 	} else {
-		(R::default(), None)
+		(ReturnState::None, R::non_result_result(), None)
 	};
 
 	let combined_result =
-		R::combine(condition, truthy_result, falsy_result, &mut checking_data.types);
+		R::new_condition(condition, truthy_result, otherwise_result, &mut checking_data.types);
 
 	let position = position.with_source(environment.get_source());
 
-	match environment.context_type.parent {
-		crate::GeneralContext::Syntax(syn_parent) => {
-			merge_info(
-				syn_parent,
-				&mut environment.info,
+	// Add contional events
+	{
+		use crate::events::Event;
+
+		let truthy: &mut LocalInformation = &mut truthy_info;
+		let otherwise: Option<&mut LocalInformation> = otherwise_info.as_mut();
+		let onto: &mut LocalInformation = &mut environment.info;
+
+		let truthy_events = truthy.events.len() as u32;
+		let otherwise_events = otherwise.as_ref().map_or(0, |f| f.events.len() as u32);
+
+		if truthy_events + otherwise_events != 0 {
+			onto.events.push(Event::Conditionally {
 				condition,
-				truthy_info,
-				falsy_info,
-				&mut checking_data.types,
+				truthy_events,
+				otherwise_events,
 				position,
-			);
-		}
-		crate::GeneralContext::Root(root_parent) => {
-			merge_info(
-				root_parent,
-				&mut environment.info,
-				condition,
-				truthy_info,
-				falsy_info,
-				&mut checking_data.types,
-				position,
-			);
+			});
+
+			onto.events.append(&mut truthy.events);
+			if let Some(otherwise) = otherwise {
+				// crate::utilities::notify!("truthy events={:?}, otherwise events={:?}", truthy.events, otherwise.events);
+				// todo!()
+				// onto.events.append(&mut otherwise.events);
+			}
+
+			onto.events.push(Event::EndOfControlFlow(truthy_events + otherwise_events));
 		}
 	}
+
+	match (truthy_return_state.is_finished(), otherwise_return_state.is_finished()) {
+		(true, true) => {
+			// Don't have to do anything here
+		}
+		(false, true) => {
+			environment.info.extend(truthy_info, None);
+		}
+		(true, false) => {
+			if let Some(otherwise_info) = otherwise_info {
+				environment.info.extend(otherwise_info, None);
+			}
+		}
+		(false, false) => match environment.context_type.parent {
+			crate::GeneralContext::Syntax(syn_parent) => {
+				merge_info(
+					syn_parent,
+					&mut environment.info,
+					condition,
+					truthy_info,
+					otherwise_info,
+					&mut checking_data.types,
+				);
+			}
+			crate::GeneralContext::Root(root_parent) => {
+				merge_info(
+					root_parent,
+					&mut environment.info,
+					condition,
+					truthy_info,
+					otherwise_info,
+					&mut checking_data.types,
+				);
+			}
+		},
+	}
+
+	environment.context_type.state =
+		truthy_return_state.merge(otherwise_return_state, condition, &mut checking_data.types);
 
 	combined_result
 }

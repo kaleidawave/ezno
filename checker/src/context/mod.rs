@@ -125,6 +125,8 @@ pub trait ContextType: Sized {
 
 	fn as_syntax(&self) -> Option<&Syntax>;
 
+	fn set_state(&mut self, _state: environment::ReturnState);
+
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 }
 
@@ -554,6 +556,7 @@ impl<T: ContextType> Context<T> {
 				requests: Default::default(),
 				closed_over_references: Default::default(),
 				location: None,
+				state: Default::default(),
 			},
 			can_reference_this: self.can_reference_this.clone(),
 			// TODO maybe based on something in the AST
@@ -601,6 +604,7 @@ impl<T: ContextType> Context<T> {
 					closed_over_references,
 					location: _,
 					requests: _,
+					state,
 				},
 			can_reference_this,
 			variable_names,
@@ -616,6 +620,8 @@ impl<T: ContextType> Context<T> {
 
 		// 	self_state.append_termination(state);
 		// }
+
+		self.context_type.set_state(state);
 
 		self.variable_names.extend(variable_names);
 		self.possibly_mutated_objects.extend(possibly_mutated_objects);
@@ -719,7 +725,6 @@ impl<T: ContextType> Context<T> {
 					None
 				} else if self.context_type.get_parent().is_some() {
 					self.info.events.append(&mut info.events);
-					self.info.state.append(info.state);
 					None
 				} else {
 					Some((info, Default::default()))

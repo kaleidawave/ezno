@@ -44,56 +44,10 @@ pub struct LocalInformation {
 	/// TODO how will chaining but not cycles work
 	pub(crate) narrowed_values: crate::Map<TypeId, TypeId>,
 
-	pub(crate) state: ReturnState,
-
 	/// For super calls etc
 	///
 	/// TODO not great that this has to be Option to satisfy Default
 	pub(crate) value_of_this: ThisValue,
-}
-
-#[derive(Debug, Default, binary_serialize_derive::BinarySerializable, Clone)]
-pub(crate) enum ReturnState {
-	#[default]
-	Continued,
-	Rolling {
-		under: TypeId,
-		returned: TypeId,
-	},
-	Finished(TypeId),
-}
-
-impl ReturnState {
-	pub(crate) fn is_finished(&self) -> bool {
-		matches!(self, ReturnState::Finished(..))
-	}
-
-	pub(crate) fn get_returned(self, types: &mut TypeStore) -> TypeId {
-		match self {
-			ReturnState::Continued => TypeId::UNDEFINED_TYPE,
-			ReturnState::Rolling { under, returned } => {
-				types.new_conditional_type(under, returned, TypeId::UNDEFINED_TYPE)
-			}
-			ReturnState::Finished(ty) => ty,
-		}
-	}
-
-	pub(crate) fn append(&mut self, new: ReturnState) {
-		match self {
-			ReturnState::Continued => *self = new,
-			ReturnState::Rolling { .. } => match new {
-				ReturnState::Continued => {}
-				ReturnState::Rolling { .. } => {
-					crate::utilities::notify!("Warning not accepting second rolling");
-				}
-				new @ ReturnState::Finished(_) => {
-					crate::utilities::notify!("Warning overwriting conditional");
-					*self = new;
-				}
-			},
-			ReturnState::Finished(_) => todo!(),
-		}
-	}
 }
 
 impl LocalInformation {
@@ -215,7 +169,6 @@ impl LocalInformation {
 		self.closure_current_values.extend(other.closure_current_values);
 		self.frozen.extend(other.frozen);
 		self.narrowed_values.extend(other.narrowed_values);
-		self.state = other.state;
 	}
 
 	/// TODO explain when `ref`
@@ -230,12 +183,6 @@ impl LocalInformation {
 			.extend(other.closure_current_values.iter().map(|(l, r)| (l.clone(), *r)));
 		self.frozen.extend(other.frozen.iter().clone());
 		self.narrowed_values.extend(other.narrowed_values.iter().copied());
-		self.state = other.state.clone();
-	}
-
-	#[must_use]
-	pub fn is_finished(&self) -> bool {
-		self.state.is_finished()
 	}
 }
 
@@ -274,125 +221,35 @@ pub fn merge_info(
 	mut truthy: LocalInformation,
 	mut otherwise: Option<LocalInformation>,
 	types: &mut TypeStore,
-	position: SpanWithSource,
 ) {
-	// TODO I think these are okay
-	// Bias sets what happens after
-	let (new_state, carry_information_from) = match (
-		truthy.state.clone(),
-		otherwise.as_ref().map_or(ReturnState::Continued, |o| o.state.clone()),
-	) {
-		(ReturnState::Continued, ReturnState::Continued) => (ReturnState::Continued, None),
-		(ReturnState::Finished(returned), ReturnState::Continued) => {
-			(ReturnState::Rolling { under: condition, returned }, Some(false))
-		}
-		(ReturnState::Continued, ReturnState::Finished(returned)) => (
-			ReturnState::Rolling { under: types.new_logical_negation_type(condition), returned },
-			Some(true),
-		),
-		(ReturnState::Continued, rhs @ ReturnState::Rolling { .. }) => (rhs, None),
-		(ReturnState::Rolling { under, returned }, ReturnState::Continued) => (
-			ReturnState::Rolling { under: types.new_logical_and_type(condition, under), returned },
-			None,
-		),
-		(
-			ReturnState::Rolling { under: truthy_under, returned: truthy_returned },
-			ReturnState::Rolling { under: otherwise_under, returned: otherwise_returned },
-		) => {
-			let under = types.new_logical_or_type(truthy_under, otherwise_under);
-			let returned =
-				types.new_conditional_type(condition, truthy_returned, otherwise_returned);
-			(ReturnState::Rolling { under, returned }, None)
-		}
-		(lhs @ ReturnState::Rolling { .. }, ReturnState::Finished(_)) => (lhs, Some(true)),
-		(ReturnState::Finished(_), rhs @ ReturnState::Rolling { .. }) => (rhs, Some(false)),
-		(ReturnState::Finished(truthy_return), ReturnState::Finished(otherwise_return)) => (
-			ReturnState::Finished(types.new_conditional_type(
-				condition,
-				truthy_return,
-				otherwise_return,
-			)),
-			None,
-		),
-	};
+	// TODO don't need to do above some scope
+	for (var, true_value) in truthy.variable_current_value {
+		crate::utilities::notify!("{:?} {:?}", var, true_value);
+		// TODO don't get value above certain scope...
+		let otherwise_value = otherwise
+			.as_mut()
+			// Remove is important here
+			.and_then(|otherwise| otherwise.variable_current_value.remove(&var))
+			.or_else(|| onto.variable_current_value.get(&var).copied())
+			.or_else(|| {
+				parents
+					.get_chain_of_info()
+					.find_map(|info| info.variable_current_value.get(&var))
+					.copied()
+			})
+			.unwrap_or(TypeId::ERROR_TYPE);
 
-	let truthy_events = truthy.events.len() as u32;
-	let otherwise_events = otherwise.as_ref().map_or(0, |f| f.events.len() as u32);
+		let new = types.new_conditional_type(condition, true_value, otherwise_value);
 
-	if truthy_events + otherwise_events != 0 {
-		onto.events.push(Event::Conditionally {
-			condition,
-			truthy_events,
-			otherwise_events,
-			position,
-		});
-
-		onto.events.append(&mut truthy.events);
-		if let Some(ref mut otherwise) = otherwise {
-			// crate::utilities::notify!("truthy events={:?}, otherwise events={:?}", truthy.events, otherwise.events);
-			onto.events.append(&mut otherwise.events);
-		}
-
-		onto.events.push(Event::EndOfControlFlow(truthy_events + otherwise_events));
+		onto.variable_current_value.insert(var, new);
 	}
 
-	if new_state.is_finished() {
-		onto.state = new_state;
-		return;
+	// TODO temp fix for `... ? { ... } : { ... }`. Breaks for the fact that property
+	// properties might be targeting something above the current condition (e.g. `x ? (y.a = 2) : false`);
+	onto.current_properties.extend(truthy.current_properties.drain());
+	if let Some(ref mut otherwise) = otherwise {
+		onto.current_properties.extend(otherwise.current_properties.drain());
 	}
 
-	if let Some(carry_information_from) = carry_information_from {
-		#[allow(clippy::match_bool)]
-		match carry_information_from {
-			true => {
-				onto.extend(truthy, None);
-			}
-			false => {
-				if let Some(otherwise) = otherwise {
-					onto.extend(otherwise, None);
-				} else {
-					// Could negate existing, but starting again handles types better
-					let values = crate::features::narrowing::narrow_based_on_expression_into_vec(
-						condition, true, parents, types,
-					);
-
-					onto.narrowed_values = values;
-					onto.state = new_state;
-				}
-			}
-		}
-	} else {
-		onto.state = new_state;
-
-		// TODO don't need to do above some scope
-		for (var, true_value) in truthy.variable_current_value {
-			crate::utilities::notify!("{:?} {:?}", var, true_value);
-			// TODO don't get value above certain scope...
-			let otherwise_value = otherwise
-				.as_mut()
-				// Remove is important here
-				.and_then(|otherwise| otherwise.variable_current_value.remove(&var))
-				.or_else(|| onto.variable_current_value.get(&var).copied())
-				.or_else(|| {
-					parents
-						.get_chain_of_info()
-						.find_map(|info| info.variable_current_value.get(&var))
-						.copied()
-				})
-				.unwrap_or(TypeId::ERROR_TYPE);
-
-			let new = types.new_conditional_type(condition, true_value, otherwise_value);
-
-			onto.variable_current_value.insert(var, new);
-		}
-
-		// TODO temp fix for `... ? { ... } : { ... }`. Breaks for the fact that property
-		// properties might be targeting something above the current condition (e.g. `x ? (y.a = 2) : false`);
-		onto.current_properties.extend(truthy.current_properties.drain());
-		if let Some(ref mut otherwise) = otherwise {
-			onto.current_properties.extend(otherwise.current_properties.drain());
-		}
-
-		// TODO set more information?
-	}
+	// TODO set more information?
 }

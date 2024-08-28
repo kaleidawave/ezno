@@ -33,7 +33,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 		}
 
 		// TODO conditionals and more etc
-		if environment.info.is_finished() {
+		if environment.is_finished() {
 			break;
 		}
 	}

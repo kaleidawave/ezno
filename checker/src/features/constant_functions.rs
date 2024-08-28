@@ -121,6 +121,25 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
+		"parseFloat" => {
+			if let (1, Some(Type::Constant(Constant::String(string)))) =
+				(arguments.len(), arguments.get(0).map(|arg| types.get_type_by_id(arg.value)))
+			{
+				// TODO temp
+				let value = if let Ok(value) = string.parse::<f64>() {
+					if let Ok(value) = ordered_float::NotNan::<f64>::try_from(value) {
+						types.new_constant_type(Constant::Number(value))
+					} else {
+						TypeId::NAN
+					}
+				} else {
+					TypeId::NAN
+				};
+				Ok(ConstantOutput::Value(value))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
 		// String stuff. TODO could this be replaced by intrinsics
 		"toUpperCase" | "toLowerCase" | "string_length" => {
 			if let Some(Type::Constant(Constant::String(s))) =
@@ -636,10 +655,11 @@ pub(crate) fn call_constant_function(
 		"regexp:exec" => {
 			let this = this_argument.get_passed().map(|t| types.get_type_by_id(t));
 
-			if let Some(Type::SpecialObject(SpecialObject::RegularExpression(regexp))) = this {
-				let pattern_type_id =
-					arguments.first().unwrap().non_spread_type().expect("pattern");
-
+			if let (
+				Some(Type::SpecialObject(SpecialObject::RegularExpression(regexp))),
+				Some(pattern_type_id),
+			) = (this, arguments.first().and_then(|arg| arg.non_spread_type().ok()))
+			{
 				Ok(ConstantOutput::Value(regexp.clone().exec(
 					pattern_type_id,
 					types,
@@ -675,7 +695,7 @@ pub(crate) fn call_constant_function(
 		// 	}
 		// }
 		"debug_state" => {
-			Ok(ConstantOutput::Diagnostic(format!("State={:?}", environment.info.state)))
+			Ok(ConstantOutput::Diagnostic(format!("State={:?}", environment.context_type.state)))
 		}
 		"debug_context" => Ok(ConstantOutput::Diagnostic(environment.debug())),
 		"context_id" => Ok(ConstantOutput::Diagnostic(format!("in {:?}", environment.context_id))),

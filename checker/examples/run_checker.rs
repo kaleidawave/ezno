@@ -1,5 +1,5 @@
 #[cfg(feature = "ezno-parser")]
-fn main() {
+fn main() -> std::process::ExitCode {
 	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
 	use std::{fs, path::Path, time::Instant};
 
@@ -78,6 +78,8 @@ fn main() {
 		}
 	}
 
+	let has_error = result.diagnostics.has_error();
+
 	if args.iter().any(|arg| arg == "--time") {
 		let end = now.elapsed();
 		let count = result.diagnostics.into_iter().len();
@@ -111,9 +113,15 @@ fn main() {
 			}
 		}
 	}
+
+	if has_error {
+		std::process::ExitCode::FAILURE
+	} else {
+		std::process::ExitCode::SUCCESS
+	}
 }
 
 #[cfg(not(feature = "ezno-parser"))]
 fn main() {
-	println!("Requires 'ezno-parser'")
+	panic!("Requires 'ezno-parser'")
 }

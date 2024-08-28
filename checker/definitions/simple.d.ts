@@ -169,13 +169,13 @@ declare class Array<T> {
     //     return s
     // }
 
-    // at(index: number) {
-    //     if (index < 0) {
-    //         return this[index + this.length]
-    //     } else {
-    //         return this[index]
-    //     }
-    // }
+    at(index: number) {
+        if (index < 0) {
+            return this[index + this.length]
+        } else {
+            return this[index]
+        }
+    }
 
     /// TODO incorrect definition, doesn't account for realms
     static isArray(item: any) {
@@ -192,21 +192,20 @@ declare class Map<K, V> {
         this.#values = []
     }
 
-    // get(key: K): V | undefined {
-    //     // return this.#keys;
-    //     const { length } = this.#keys;
-    //     for (let i = 0; i < length; i++) {
-    //         const s = length - 1 - i;
-    //         if (this.#keys[s] === key) {
-    //             return this.#values[s]
-    //         }
-    //     }
-    // }
+    get(key: K): V | undefined {
+        const { length } = this.#keys;
+        for (let i = 0; i < length; i++) {
+            const s = length - 1 - i;
+            if (this.#keys[s] === key) {
+                return this.#values[s]
+            }
+        }
+    }
 
-    // set(key: K, value: V) {
-    //     this.#keys.push(key);
-    //     this.#values.push(value);
-    // }
+    set(key: K, value: V) {
+        this.#keys.push(key);
+        this.#values.push(value);
+    }
 }
 
 type Record<K extends string, T> = { [P in K]: T }
@@ -254,6 +253,9 @@ declare class Math {
     @InputOutput
     static random(): 0 | InclusiveRange<0, 1>;
 }
+
+@Constant
+declare function parseFloat(input: string): number;
 
 @Primitive("string")
 declare class String {
@@ -422,8 +424,30 @@ declare class Object {
 }
 
 declare class RegExp {
-    @Constant("RegExp:constructor")
-        constructor(s: string)
+    @Constant("regexp:constructor")
+        constructor(pattern: string, flags?: string);
+
+    @Constant("regexp:exec")
+    exec(input: string): RegExpExecArray | null;
+}
+
+interface RegExpExecArray extends Array<string> {
+    /**
+     * The index of the search at which the result was found.
+     */
+    index: number;
+    /**
+     * A copy of the search string.
+     */
+    input: string;
+    /**
+     * The first match. This will always be present because `null` will be returned if there are no matches.
+     */
+    0: string;
+    // es2018
+    groups?: {
+        [key: string]: string;
+    };
 }
 
 // WIP

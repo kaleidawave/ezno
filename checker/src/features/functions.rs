@@ -244,6 +244,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	let Some(GeneralContext::Syntax(parent)) = environment.context_type.get_parent() else {
 		unreachable!()
 	};
+
 	merge_info(
 		*parent,
 		&mut environment.info,
@@ -251,7 +252,6 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		out.unwrap().0,
 		None,
 		&mut checking_data.types,
-		at,
 	);
 
 	result
@@ -833,11 +833,16 @@ where
 		// 	function.get_name()
 		// );
 
-		let info = function_environment.info;
-		let variable_names = function_environment.variable_names;
-
 		let returned = if function.has_body() {
-			let returned = info.state.get_returned(&mut checking_data.types);
+			use crate::utilities::accumulator::Accumulator;
+			let returned = match function_environment.context_type.state {
+				Accumulator::Some(v) => v,
+				Accumulator::Accumulating {
+					condition,
+					value,
+				} => checking_data.types.new_conditional_type(condition, value, TypeId::UNDEFINED_TYPE),
+				Accumulator::None => TypeId::UNDEFINED_TYPE,
+			};
 
 			// TODO temp fix for predicates. This should be really be done in `environment.throw` ()?
 			if let Some(ReturnType(expected, _)) = return_type_annotation {
@@ -908,6 +913,9 @@ where
 			// 	crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
 			// }
 		}
+
+		let info = function_environment.info;
+		let variable_names = function_environment.variable_names;
 
 		// TODO this fixes prototypes and properties being lost during printing and subtyping of the return type
 		{
