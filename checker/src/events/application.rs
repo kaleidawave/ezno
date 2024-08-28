@@ -21,6 +21,7 @@ use crate::{
 		properties::{assignment::SetPropertyError, get_property, set_property, PropertyValue},
 		substitute, PartiallyAppliedGenerics, TypeId, TypeStore,
 	},
+	utilities::accumulator::Accumulator,
 	Decidable, Environment, Type,
 };
 
@@ -34,7 +35,6 @@ pub(crate) struct ApplicationInput {
 /// `type_arguments` are mutable to add new ones during lookup etc
 ///
 /// because `events` are flat the iteration here is a little bit unintuitive
-#[must_use]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_events(
 	events: &[Event],
@@ -44,19 +44,16 @@ pub(crate) fn apply_events(
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
 	mut diagnostics: &mut CallingDiagnostics,
-) -> Option<ApplicationResult> {
-	let mut trailing = None::<(TypeId, ApplicationResult)>;
-
-	// TODO this could be done better
+) -> Accumulator<TypeId, ApplicationResult> {
+	let mut state = Accumulator::None;
+	// TODO this could be handled better
 	let unknown_mode = target.in_unknown();
 
-	// crate::utilities::notify!("Running {:?}", events);
-
 	let mut idx = 0;
-	while idx < events.len() {
+	while idx < events.len() && !state.is_finished() {
 		let event = &events[idx];
 
-		// 	crate::utilities::notify!("Running single {:?}", event);
+		// crate::utilities::notify!("Running single {:?}", event);
 
 		match &event {
 			Event::ReadsReference { reference, reflects_dependency, position } => {
@@ -274,13 +271,13 @@ pub(crate) fn apply_events(
 						};
 						let result =
 							on.call(with, input, top_environment, (target, diagnostics), types);
-						if let Ok(result) = result {
-							if let Some(ApplicationResult::Throw { .. }) = result.result {
-								// TODO conditional here
-								return result.result;
-							}
 
-							if let Some(reflects_dependency) = reflects_dependency {
+						if let Ok(result) = result {
+							crate::utilities::notify!("Here {:?}", result.result);
+							if let ApplicationResult::Throw { .. } = &result.result {
+								// TODO conditional here
+								state.append(result.result, types);
+							} else if let Some(reflects_dependency) = reflects_dependency {
 								let as_type = calling::application_result_to_return_type(
 									result.result,
 									top_environment,
@@ -289,15 +286,6 @@ pub(crate) fn apply_events(
 								type_arguments
 									.set_during_application(*reflects_dependency, as_type);
 							}
-
-						// if result.thrown_type != TypeId::NEVER_TYPE {
-						// 	// TODO
-						// 	// return FinalEvent::Throw {
-						// 	// 	thrown: result.thrown_type,
-						// 	// 	position: source_map::Nullable::NULL,
-						// 	// }
-						// 	// .into();
-						// }
 						} else {
 							crate::utilities::notify!(
 								"inference and or checking failed at function"
@@ -372,10 +360,10 @@ pub(crate) fn apply_events(
 								)
 							});
 
-						if result.is_some() {
-							crate::utilities::notify!("Here {:?}", result);
-							return result;
-						}
+						// TODO condition = TypeId::TRUE weird
+						crate::utilities::notify!("Here {:?}, current {:?}", result, state);
+						state = result.merge(state, TypeId::TRUE, types);
+						crate::utilities::notify!("Here {:?}", state);
 					}
 					Decidable::Unknown(condition) => {
 						// TODO early returns
@@ -408,43 +396,14 @@ pub(crate) fn apply_events(
 
 						(type_arguments, diagnostics) = data;
 
-						match (truthy_result, otherwise_result) {
-							(Some(truthy_result), Some(otherwise_result)) => {
-								return Some(ApplicationResult::Or {
-									on: condition,
-									truthy_result: Box::new(truthy_result),
-									otherwise_result: Box::new(otherwise_result),
-								});
-							}
-							(None, Some(right)) => {
-								let negated_condition = types.new_logical_negation_type(condition);
-								trailing = Some(match trailing {
-									Some((existing_condition, existing)) => (
-										negated_condition,
-										ApplicationResult::Or {
-											on: existing_condition,
-											truthy_result: Box::new(existing),
-											otherwise_result: Box::new(right),
-										},
-									),
-									None => (negated_condition, right),
-								});
-							}
-							(Some(left), None) => {
-								trailing = Some(match trailing {
-									Some((existing_condition, existing)) => (
-										condition,
-										ApplicationResult::Or {
-											on: existing_condition,
-											truthy_result: Box::new(existing),
-											otherwise_result: Box::new(left),
-										},
-									),
-									None => (condition, left),
-								});
-							}
-							(None, None) => {}
-						}
+						crate::utilities::notify!("{:?} {:?}", truthy_result, otherwise_result);
+
+						// TODO could this be better? Seems to duplicate behavior during initial sythesis
+						state = state.merge(truthy_result, condition, types);
+						let not_condition = types.new_logical_negation_type(condition);
+						state = state.merge(otherwise_result, not_condition, types);
+
+						crate::utilities::notify!("{:?}", state);
 					}
 				}
 				// Don't run condition again
@@ -557,16 +516,69 @@ pub(crate) fn apply_events(
 					)
 				});
 
-				crate::utilities::notify!("Inner loop returned {:?}", result);
+				// TODO is this always true?
+				state = state.merge(result, TypeId::TRUE, types);
 
-				if result.is_some() {
-					return result;
-				}
 				idx += *iterate_over as usize + 1;
 			}
 			Event::ExceptionTrap { investigate, handle, finally, trapped_type_id } => {
+				fn extract_thrown_from_application_result(
+					result: ApplicationResult,
+					to: &mut Vec<(TypeId, SpanWithSource)>,
+				) -> Option<ApplicationResult> {
+					match result {
+						ApplicationResult::Throw { thrown, position } => {
+							to.push((thrown, position));
+							None
+						}
+						ApplicationResult::Or { condition, truthy_result, otherwise_result } => {
+							let truthy_result =
+								extract_thrown_from_application_result(*truthy_result, to);
+							let otherwise_result =
+								extract_thrown_from_application_result(*otherwise_result, to);
+
+							match (truthy_result, otherwise_result) {
+								(Some(truthy_result), Some(otherwise_result)) => {
+									let (truthy_result, otherwise_result) =
+										(Box::new(truthy_result), Box::new(otherwise_result));
+									Some(ApplicationResult::Or {
+										condition,
+										truthy_result,
+										otherwise_result,
+									})
+								}
+								(value @ Some(_), None) | (None, value @ Some(_)) => value,
+								(None, None) => None,
+							}
+						}
+						value => Some(value),
+					}
+				}
+
+				fn extract_thrown_from_accumulator(
+					on: Accumulator<TypeId, ApplicationResult>,
+					to: &mut Vec<(TypeId, SpanWithSource)>,
+				) -> Accumulator<TypeId, ApplicationResult> {
+					match on {
+						Accumulator::Some(value) => {
+							match extract_thrown_from_application_result(value, to) {
+								Some(value) => Accumulator::Some(value),
+								None => Accumulator::None,
+							}
+						}
+						Accumulator::Accumulating { condition, value } => {
+							match extract_thrown_from_application_result(value, to) {
+								Some(value) => Accumulator::Accumulating { condition, value },
+								None => Accumulator::None,
+							}
+						}
+						Accumulator::None => Accumulator::None,
+					}
+				}
+
 				let (investigate, handle, finally) =
 					(*investigate as usize, *handle as usize, *finally as usize);
+
 				let total = investigate + handle + finally;
 				let offset = idx + 1;
 
@@ -580,87 +592,64 @@ pub(crate) fn apply_events(
 					diagnostics,
 				);
 
-				if let Some(result) = inner_result {
-					// TODO finally + what if no catch (handle)
+				let mut values = Vec::new();
+				let inner = extract_thrown_from_accumulator(inner_result, &mut values);
+				state = inner.merge(state, TypeId::TRUE, types);
 
-					match result {
-						ApplicationResult::Or { .. } => {
-							todo!()
-						}
-						ApplicationResult::Yield { .. } => {
-							todo!()
-						}
-						ApplicationResult::Return { .. }
-						| ApplicationResult::Break { .. }
-						| ApplicationResult::Continue { .. } => return Some(result),
-						ApplicationResult::Throw { thrown, position } => {
-							if let Some(trap) = trapped_type_id {
-								type_arguments.set_during_application(trap.generic_type, thrown);
+				if let Some(trap) = trapped_type_id {
+					let mut acc = TypeId::NEVER_TYPE;
+					for (thrown, position) in values {
+						let mut state = crate::subtyping::State {
+							already_checked: Default::default(),
+							mode: crate::subtyping::SubTypingMode::default(),
+							contributions: None,
+							object_constraints: None,
+							others: crate::subtyping::SubTypingOptions::default(),
+						};
 
-								if let Some(constraint) = trap.constrained {
-									crate::utilities::notify!("TODO check using function");
+						let constraint = trap.constrained.unwrap_or(TypeId::ANY_TYPE);
+						let result =
+							type_is_subtype(constraint, thrown, &mut state, top_environment, types);
 
-									let mut state = crate::subtyping::State {
-										already_checked: Default::default(),
-										mode: crate::subtyping::SubTypingMode::default(),
-										contributions: None,
-										object_constraints: None,
-										others: crate::subtyping::SubTypingOptions::default(),
-									};
-
-									let result = type_is_subtype(
-										constraint,
-										thrown,
-										&mut state,
-										top_environment,
-										types,
-									);
-
-									if let crate::subtyping::SubTypeResult::IsNotSubType(_reason) =
-										result
-									{
-										diagnostics.errors.push(
-											FunctionCallingError::CannotCatch {
-												catch: TypeStringRepresentation::from_type_id(
-													constraint,
-													top_environment,
-													types,
-													false,
-												),
-												thrown: TypeStringRepresentation::from_type_id(
-													thrown,
-													top_environment,
-													types,
-													false,
-												),
-												thrown_position: position,
-											},
-										);
-									}
-								}
-							}
-
-							let handler =
-								&events[(offset + investigate)..(offset + investigate + handle)];
-
-							let result = apply_events(
-								handler,
-								input,
-								type_arguments,
-								top_environment,
-								target,
-								types,
-								diagnostics,
-							);
-
-							if result.is_some() {
-								return result;
-							}
+						if let crate::subtyping::SubTypeResult::IsNotSubType(_reason) = result {
+							diagnostics.errors.push(FunctionCallingError::CannotCatch {
+								catch: TypeStringRepresentation::from_type_id(
+									constraint,
+									top_environment,
+									types,
+									false,
+								),
+								thrown: TypeStringRepresentation::from_type_id(
+									thrown,
+									top_environment,
+									types,
+									false,
+								),
+								thrown_position: position,
+							});
+						} else {
+							acc = types.new_or_type(acc, thrown);
 						}
 					}
-				} else {
-					crate::utilities::notify!("todo {:?}", inner_result);
+
+					type_arguments.set_during_application(trap.generic_type, acc);
 				}
+
+				let handler = &events[(offset + investigate)..(offset + investigate + handle)];
+
+				let result = apply_events(
+					handler,
+					input,
+					type_arguments,
+					top_environment,
+					target,
+					types,
+					diagnostics,
+				);
+
+				crate::utilities::notify!("{:?}", result);
+				state = result.merge(state, TypeId::TRUE, types);
+				crate::utilities::notify!("{:?}", state);
 
 				idx += total;
 			}
@@ -781,63 +770,55 @@ pub(crate) fn apply_events(
 			},
 			Event::FinalEvent(final_event) => {
 				// I think this is okay
-				if !unknown_mode {
-					let application_result = match final_event {
-						FinalEvent::Break { carry, position } => ApplicationResult::Break {
-							// TODO is this correct?
-							carry: carry.saturating_sub(target.get_iteration_depth()),
+				let result = match final_event {
+					FinalEvent::Break { carry, position } => ApplicationResult::Break {
+						// TODO is this correct?
+						carry: carry.saturating_sub(target.get_iteration_depth()),
+						position: *position,
+					},
+					FinalEvent::Continue { carry, position } => ApplicationResult::Continue {
+						// TODO is this correct?
+						carry: carry.saturating_sub(target.get_iteration_depth()),
+						position: *position,
+					},
+					FinalEvent::Throw { thrown, position } => {
+						let substituted_thrown =
+							substitute(*thrown, type_arguments, top_environment, types);
+						if target.in_unconditional() {
+							let value = TypeStringRepresentation::from_type_id(
+								substituted_thrown,
+								// TODO is this okay?
+								top_environment,
+								types,
+								false,
+							);
+							let warning =
+								crate::diagnostics::TypeCheckWarning::ConditionalExceptionInvoked {
+									value,
+									call_site: input.call_site,
+								};
+							diagnostics.warnings.push(warning);
+						}
+						ApplicationResult::Throw { thrown: substituted_thrown, position: *position }
+					}
+					FinalEvent::Return { returned, position } => {
+						let substituted_returned =
+							substitute(*returned, type_arguments, top_environment, types);
+						ApplicationResult::Return {
+							returned: substituted_returned,
 							position: *position,
-						},
-						FinalEvent::Continue { carry, position } => ApplicationResult::Continue {
-							// TODO is this correct?
-							carry: carry.saturating_sub(target.get_iteration_depth()),
-							position: *position,
-						},
-						FinalEvent::Throw { thrown, position } => {
-							let substituted_thrown =
-								substitute(*thrown, type_arguments, top_environment, types);
-							if target.in_unconditional() {
-								let value = TypeStringRepresentation::from_type_id(
-									substituted_thrown,
-									// TODO is this okay?
-									top_environment,
-									types,
-									false,
-								);
-								let warning =
-									crate::diagnostics::TypeCheckWarning::ConditionalExceptionInvoked {
-										value,
-										call_site: input.call_site,
-									};
-								diagnostics.warnings.push(warning);
-							}
-							ApplicationResult::Throw {
-								thrown: substituted_thrown,
-								position: *position,
-							}
 						}
-						FinalEvent::Return { returned, position } => {
-							let substituted_returned =
-								substitute(*returned, type_arguments, top_environment, types);
-							ApplicationResult::Return {
-								returned: substituted_returned,
-								position: *position,
-							}
-						}
-					};
-					return Some(if let Some((on, trailing)) = trailing {
-						ApplicationResult::Or {
-							on,
-							truthy_result: Box::new(trailing),
-							otherwise_result: Box::new(application_result),
-						}
-					} else {
-						application_result
-					});
-				}
+					}
+				};
+
+				// TODO WIP ...?
+				// let condition = if unknown_mode { TypeId::OPEN_BOOLEAN_TYPE } else { TypeId::TRUE };
+
+				state.append(result, types);
 			}
 		}
 		idx += 1;
 	}
-	None
+
+	state
 }

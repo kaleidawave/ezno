@@ -40,6 +40,52 @@ numberMap.get(3) satisfies string;
 
 - Expected string, found undefined
 
+### Function calling
+
+#### Recursion
+
+> WIP
+
+```ts
+type List<T> = { item: T, parent: List<T> } | null;
+
+function listToString(item: List<string>): string {
+    if (item) {
+        return item.item + listToString(item.parent);
+    } else {
+        return ""
+    }
+}
+
+listToString({ item: "B", parent: { item: "e", parent: { item: "n", parent: null } } }) satisfies null;
+```
+
+- Expected null, found "Ben"
+
+#### Recursion (cylic case)
+
+> WIP, returns when call stack > 10 & encounters same function id call
+
+```ts
+type List<T> = { item: T, parent: List<T> } | null;
+
+function listToString(item: List<string>): string {
+    if (item) {
+        return item.item + listToString(item.parent);
+    } else {
+        return ""
+    }
+}
+
+const start = { item: "B", parent: { item: "e", parent: null } };
+start.parent.parent = start;
+listToString(start) satisfies null;
+```
+
+> TODO should catch lol
+
+- Expected null, found string
+
 ### Control flow
 
 #### Conditional break

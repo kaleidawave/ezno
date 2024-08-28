@@ -877,12 +877,22 @@ a satisfies 3;
 
 - Expected 3, found 1 | 2
 
-### RegExp
+### Classes
 
-#### Regexp patterns
+> Currently have an issue in the parser #199
+
+#### Generic constructors
 
 ```ts
-new RegExp("<string>x").group.string
+class Box<T> {
+	value: T;
+
+	constructor(value: T) {
+		this.value = value;
+	}
+}
+
+const myBox = new Box<number>("hi");
 ```
 
-- ?
+- Argument of type "hi" is not assignable to parameter of type number

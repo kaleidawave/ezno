@@ -3,10 +3,7 @@
 use source_map::SpanWithSource;
 
 use super::LocalInformation;
-use crate::{
-	context::information::merge_info, events::ApplicationResult, types::TypeStore, Environment,
-	FunctionId, TypeId,
-};
+use crate::{context::information::merge_info, types::TypeStore, Environment, FunctionId, TypeId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub trait CallCheckingBehavior {
@@ -116,7 +113,13 @@ impl CallCheckingBehavior for InvocationContext {
 	}
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
-		self.0.iter().any(|kind| matches!(kind, InvocationKind::Function(id) if function_id == *id))
+		// TODO temp
+		const MAX_CALL_STACK: usize = 10;
+		self.0.len() > MAX_CALL_STACK
+			&& self
+				.0
+				.iter()
+				.any(|kind| matches!(kind, InvocationKind::Function(id) if function_id == *id))
 	}
 
 	fn new_function_context<T>(
@@ -169,10 +172,10 @@ impl InvocationContext {
 		}
 	}
 
-	pub(crate) fn new_unconditional_target(
+	pub(crate) fn new_unconditional_target<R>(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<ApplicationResult>,
-	) -> Option<ApplicationResult> {
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> R,
+	) -> R {
 		self.0.push(InvocationKind::AlwaysTrue);
 		let result = cb(self);
 		self.0.pop();
@@ -207,7 +210,7 @@ impl InvocationContext {
 		&mut self,
 		top_environment: &mut Environment,
 		types: &mut TypeStore,
-		(condition, condition_position): (TypeId, SpanWithSource),
+		(condition, _condition_position): (TypeId, SpanWithSource),
 		(input_left, input_right): (T, T),
 		mut data: I,
 		cb: impl for<'a> Fn(
@@ -234,7 +237,8 @@ impl InvocationContext {
 		// let info = self.get_latest_info(top_environment);
 
 		if self.0.iter().any(|x| matches!(x, InvocationKind::Conditional(_))) {
-			todo!("nested, get latest")
+			crate::utilities::notify!("Here");
+		// todo!("nested, get latest")
 		// let local_information = &mut top_environment.info;
 		// match top_environment.context_type.parent {
 		// 	crate::GeneralContext::Syntax(env) => {

@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use parser::{
 	ast::LHSOfAssignment, expressions::assignments::VariableOrPropertyAccess, VariableField,
 	VariableIdentifier,
@@ -205,9 +203,7 @@ fn synthesise_object_property_key(
 	_environment: &Environment,
 ) -> PropertyKey<'static> {
 	match name {
-		parser::VariableIdentifier::Standard(name, _pos) => {
-			PropertyKey::String(Cow::Owned(name.to_owned()))
-		}
+		parser::VariableIdentifier::Standard(name, _pos) => PropertyKey::from(name.to_owned()),
 		parser::VariableIdentifier::Marker(..) => PropertyKey::new_empty_property_key(),
 	}
 }
@@ -240,7 +236,7 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 						if *is_private { Publicity::Private } else { Publicity::Public };
 					Reference::Property {
 						on: parent_ty,
-						with: PropertyKey::String(Cow::Owned(property.clone())),
+						with: PropertyKey::from(property.clone()),
 						position: position.with_source(environment.get_source()),
 						publicity,
 					}

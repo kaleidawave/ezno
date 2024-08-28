@@ -35,10 +35,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	for item in items {
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
-				Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
-					"enum",
-					r#enum.on.position.with_source(environment.get_source()),
-				),
 				Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
 					"namespace",
 					ns.position.with_source(environment.get_source()),
@@ -275,6 +271,31 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						true,
 						*type_definitions_only,
 					);
+				}
+				Declaration::Enum(r#enum) => {
+					// TODO WIP implementation
+					let result = environment.declare_alias::<EznoParser>(
+						&r#enum.on.name,
+						None,
+						r#enum.on.get_position(),
+						&mut checking_data.types,
+					);
+					if let Ok(ty) = result {
+						checking_data
+							.local_type_mappings
+							.types_to_types
+							.push(r#enum.get_position(), ty);
+
+						checking_data.types.update_alias(ty, TypeId::NUMBER_TYPE);
+					} else {
+						let position = r#enum.get_position().with_source(environment.get_source());
+						checking_data.diagnostics_container.add_error(
+							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+								name: r#enum.on.name.to_owned(),
+								position,
+							},
+						);
+					}
 				}
 				Declaration::DeclareVariable(_)
 				| Declaration::Variable(_)
@@ -665,9 +686,20 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				// Declaration::Interface(Decorated { on: r#enum, .. })
 				Declaration::Enum(r#enum) => {
-					checking_data.raise_unimplemented_error(
-						"enum",
-						r#enum.position.with_source(environment.get_source()),
+					let argument = VariableRegisterArguments {
+						constant: true,
+						space: None,
+						initial_value: None,
+						allow_reregistration: false,
+					};
+
+					environment.register_variable_handle_error(
+						&r#enum.on.name,
+						argument,
+						r#enum.on.get_position().with_source(environment.get_source()),
+						&mut checking_data.diagnostics_container,
+						&mut checking_data.local_type_mappings,
+						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
 				Declaration::DeclareVariable(DeclareVariableDeclaration {

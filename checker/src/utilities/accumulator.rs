@@ -1,5 +1,6 @@
 /// WIP
 /// In the context of the type checker
+#[must_use]
 #[derive(Default, Debug)]
 pub enum Accumulator<C, V> {
 	Some(V),
@@ -36,7 +37,7 @@ pub trait Condition: Clone + Copy {
 	fn condition(self, left: Self, right: Self, helper: &mut Self::Associate) -> Self;
 }
 
-pub trait Result<C: Condition>: Clone + Copy {
+pub trait Result<C: Condition> {
 	/// if condition ? left : right.
 	// TODO bad definition to re use thing
 	fn new_condition(
@@ -59,8 +60,11 @@ impl<C: Condition, V: Result<C>> Accumulator<C, V> {
 			Self::Some(_) => {
 				crate::utilities::notify!("unreachable");
 			}
-			Self::Accumulating { condition, value: existing } => {
-				*self = Self::Some(V::new_condition(*condition, *existing, new, helper));
+			Self::Accumulating { .. } => {
+				let Self::Accumulating { condition, value: existing } = std::mem::take(self) else {
+					unreachable!();
+				};
+				*self = Self::Some(V::new_condition(condition, existing, new, helper));
 			}
 			Self::None => {
 				*self = Self::Some(new);

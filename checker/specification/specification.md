@@ -1074,7 +1074,7 @@ function func(value: number) {
 	return "another"
 }
 
-func satisfies (a: number) => "is three" | "another";
+func satisfies (a: number) => number;
 
 function loop(value: number) {
 	for (let i = 0; i < 10; i++) {
@@ -1085,7 +1085,7 @@ function loop(value: number) {
 	return "another"
 }
 
-loop satisfies (a: number) => "something" | "another";
+loop satisfies (a: number) => null;
 
 function sometimes(a: boolean) {
 	if (a) {
@@ -1096,6 +1096,8 @@ function sometimes(a: boolean) {
 sometimes satisfies (a: boolean) => string;
 ```
 
+- Expected (a: number) => number, found (value: number) => "is three" | "another"
+- Expected (a: number) => null, found (value: number) => "something" | "another"
 - Expected (a: boolean) => string, found (a: boolean) => "sometimes" | undefined
 
 #### `throw` in body
@@ -1980,23 +1982,6 @@ i satisfies string;
 ```
 
 - Expected string, found 1 | 2
-
-#### Conditional return
-
-```ts
-declare let string: string;
-
-function stringIsHi(s: string) {
-	if (s === "hi") {
-		return true
-	}
-	return false
-}
-
-stringIsHi(string) satisfies number;
-```
-
-- Expected number, found boolean
 
 #### Early return
 
@@ -3269,7 +3254,7 @@ doThingWithX(new Y())
 
 - Argument of type [Y] { a: 2 } is not assignable to parameter of type X
 
-### Constructor hoisting
+#### Constructor hoisting
 
 ```ts
 class Palindrome {
@@ -3291,7 +3276,7 @@ class Palindrome {
 new Palindrome("y").append("a").append("k").inner satisfies "kayak";
 ```
 
-- 5 not assignable to string
+- Argument of type 5 is not assignable to parameter of type string
 
 ### Types
 

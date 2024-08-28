@@ -513,5 +513,5 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 		}
 	};
 
-	(PropertyKey::String(Cow::Owned(key.clone())), value)
+	(PropertyKey::from(key.clone()), value)
 }

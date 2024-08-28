@@ -117,7 +117,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let mut diagnostics = CallingDiagnostics::default();
 
-			run_iteration_block(
+			let _result = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				&events,
 				&application_input,
@@ -185,7 +185,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let mut diagnostics = CallingDiagnostics::default();
 
-			run_iteration_block(
+			let _result = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
 				&events,
 				&application_input,
@@ -327,7 +327,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let mut diagnostics = CallingDiagnostics::default();
 
-			run_iteration_block(
+			let _result = run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				&events,
 				&application_input,
@@ -379,7 +379,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let mut diagnostics = CallingDiagnostics::default();
 
-			run_iteration_block(
+			let _result = run_iteration_block(
 				IterationKind::Properties { on, variable },
 				&events,
 				&application_input,
@@ -453,6 +453,8 @@ pub enum RunBehavior {
 	References(ClosedOverReferencesInScope),
 }
 
+use crate::utilities::accumulator::Accumulator;
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_iteration_block(
 	condition: IterationKind,
@@ -464,7 +466,7 @@ pub(crate) fn run_iteration_block(
 	invocation_context: &mut InvocationContext,
 	errors: &mut CallingDiagnostics,
 	types: &mut TypeStore,
-) -> Option<ApplicationResult> {
+) -> Accumulator<TypeId, ApplicationResult> {
 	// {
 	// 	let mut s = String::new();
 	// 	debug_effects(&mut s, events, types, top_environment, 0, true);
@@ -542,8 +544,7 @@ pub(crate) fn run_iteration_block(
 					invocation_context,
 					top_environment,
 					types,
-				);
-				None
+				)
 			}
 		}
 		IterationKind::Properties { on, variable } => {
@@ -584,14 +585,14 @@ pub(crate) fn run_iteration_block(
 					invocation_context,
 					top_environment,
 					types,
-				);
-				None
+				)
 			}
 		}
 		IterationKind::Iterator { .. } => {
 			// if let Some(mut iterations) = non_exorbitant_amount_of_iterations {
 			// 	tod
 			// } else {
+			crate::utilities::notify!("Temp here");
 			evaluate_unknown_iteration_for_loop(
 				events,
 				initial,
@@ -600,8 +601,7 @@ pub(crate) fn run_iteration_block(
 				invocation_context,
 				top_environment,
 				types,
-			);
-			None
+			)
 			// }
 		}
 	}
@@ -619,8 +619,9 @@ fn run_iteration_loop(
 	errors: &mut CallingDiagnostics,
 	// For `for in` (TODO for of)
 	mut each_iteration: impl for<'a> FnMut(&'a mut SubstitutionArguments, &mut TypeStore),
-) -> Option<ApplicationResult> {
+) -> Accumulator<TypeId, ApplicationResult> {
 	invocation_context.new_loop_iteration(|invocation_context| {
+		let mut accumulator = Accumulator::None;
 		crate::utilities::notify!("running inline events: {:#?}", events);
 		for _ in 0..iterations {
 			each_iteration(type_arguments, types);
@@ -634,29 +635,10 @@ fn run_iteration_loop(
 				errors,
 			);
 
-			if let Some(result) = result {
-				crate::utilities::notify!("{:?}", result);
-				match result {
-					ApplicationResult::Continue { carry: 0, position: _ } => {
-						continue;
-					}
-					ApplicationResult::Break { carry: 0, position: _ } => {
-						break;
-					}
-					ApplicationResult::Continue { carry, position } => {
-						return Some(ApplicationResult::Continue { carry: carry - 1, position });
-					}
-					ApplicationResult::Break { carry, position } => {
-						return Some(ApplicationResult::Break { carry: carry - 1, position });
-					}
-					result => {
-						return Some(result);
-					}
-				}
-			}
+			accumulator = accumulator.merge(result, TypeId::TRUE, types);
 		}
 
-		None
+		accumulator
 	})
 }
 
@@ -668,7 +650,7 @@ fn evaluate_unknown_iteration_for_loop(
 	invocation_context: &mut InvocationContext,
 	top_environment: &mut Environment,
 	types: &mut TypeStore,
-) {
+) -> Accumulator<TypeId, ApplicationResult> {
 	let initial = match initial {
 		RunBehavior::Run => ClosedOverVariables(Default::default()),
 		RunBehavior::References(v) => {
@@ -680,7 +662,7 @@ fn evaluate_unknown_iteration_for_loop(
 
 	// Make rest of scope aware of changes under the loop
 	// TODO can skip if at the end of a function
-	let _res = invocation_context.new_unknown_target(|invocation_context| {
+	let res = invocation_context.new_unknown_target(|invocation_context| {
 		// TODO
 		let max_inline = 10;
 
@@ -727,6 +709,8 @@ fn evaluate_unknown_iteration_for_loop(
 		get_latest_info.events.extend(events.iter().cloned());
 		get_latest_info.events.push(Event::EndOfControlFlow(events.len() as u32));
 	}
+
+	res
 }
 
 /// Denotes values at the end of a loop

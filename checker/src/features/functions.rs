@@ -649,7 +649,29 @@ where
 	let mut function_environment = base_environment.new_lexical_environment(Scope::Function(scope));
 
 	if function.has_body() {
-		let type_parameters = function.type_parameters(&mut function_environment, checking_data);
+		let type_parameters = if let Some((ref prototype, _)) = constructor {
+			// Class generics here
+			checking_data.types.get_type_by_id(*prototype).get_parameters().map(|parameters| {
+				parameters
+					.into_iter()
+					.map(|ty| {
+						let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
+							checking_data.types.get_type_by_id(ty)
+						else {
+							unreachable!()
+						};
+						crate::types::generics::GenericTypeParameter {
+							name: name.clone(),
+							// Using its associated [`Type`], its restriction can be found
+							type_id: ty,
+							default: None,
+						}
+					})
+					.collect()
+			})
+		} else {
+			function.type_parameters(&mut function_environment, checking_data)
+		};
 
 		// TODO should be in function, but then requires mutable environment :(
 		let this_constraint =
@@ -689,7 +711,7 @@ where
 							let prototype = checking_data.types.register_type(Type::Constructor(
 								Constructor::Property {
 									on: TypeId::NEW_TARGET_ARG,
-									under: PropertyKey::String(Cow::Owned("value".to_owned())),
+									under: PropertyKey::from("value"),
 									result: this_constraint,
 									mode: types::properties::AccessMode::Regular,
 								},
@@ -837,10 +859,9 @@ where
 			use crate::utilities::accumulator::Accumulator;
 			let returned = match function_environment.context_type.state {
 				Accumulator::Some(v) => v,
-				Accumulator::Accumulating {
-					condition,
-					value,
-				} => checking_data.types.new_conditional_type(condition, value, TypeId::UNDEFINED_TYPE),
+				Accumulator::Accumulating { condition, value } => checking_data
+					.types
+					.new_conditional_type(condition, value, TypeId::UNDEFINED_TYPE),
 				Accumulator::None => TypeId::UNDEFINED_TYPE,
 			};
 

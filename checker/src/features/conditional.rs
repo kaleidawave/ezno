@@ -98,43 +98,43 @@ where
 		(state, result, info)
 	};
 
-	let (otherwise_return_state, otherwise_result, mut otherwise_info) = if let Some(else_evaluate) =
-		else_evaluate
-	{
-		let mut otherwise_environment = environment.new_lexical_environment(Scope::Conditional {
-			antecedent: checking_data.types.new_logical_negation_type(condition),
-			is_switch: None,
-		});
+	let (otherwise_return_state, otherwise_result, mut otherwise_info) =
+		if let Some(else_evaluate) = else_evaluate {
+			let mut otherwise_environment =
+				environment.new_lexical_environment(Scope::Conditional {
+					antecedent: checking_data.types.new_logical_negation_type(condition),
+					is_switch: None,
+				});
 
-		let values = super::narrowing::narrow_based_on_expression_into_vec(
-			condition,
-			true,
-			environment,
-			&mut checking_data.types,
-		);
+			let values = super::narrowing::narrow_based_on_expression_into_vec(
+				condition,
+				true,
+				environment,
+				&mut checking_data.types,
+			);
 
-		otherwise_environment.info.narrowed_values = values;
+			otherwise_environment.info.narrowed_values = values;
 
-		let result = else_evaluate(&mut otherwise_environment, checking_data);
+			let result = else_evaluate(&mut otherwise_environment, checking_data);
 
-		let Context {
-			context_type: Syntax { free_variables, closed_over_references, state, .. },
-			info,
-			possibly_mutated_objects,
-			possibly_mutated_variables,
-			..
-		} = otherwise_environment;
+			let Context {
+				context_type: Syntax { free_variables, closed_over_references, state, .. },
+				info,
+				possibly_mutated_objects,
+				possibly_mutated_variables,
+				..
+			} = otherwise_environment;
 
-		environment.context_type.free_variables.extend(free_variables);
-		environment.context_type.closed_over_references.extend(closed_over_references);
+			environment.context_type.free_variables.extend(free_variables);
+			environment.context_type.closed_over_references.extend(closed_over_references);
 
-		environment.possibly_mutated_objects.extend(possibly_mutated_objects);
-		environment.possibly_mutated_variables.extend(possibly_mutated_variables);
+			environment.possibly_mutated_objects.extend(possibly_mutated_objects);
+			environment.possibly_mutated_variables.extend(possibly_mutated_variables);
 
-		(state, result, Some(info))
-	} else {
-		(ReturnState::None, R::non_result_result(), None)
-	};
+			(state, result, Some(info))
+		} else {
+			(ReturnState::None, R::non_result_result(), None)
+		};
 
 	let combined_result =
 		R::new_condition(condition, truthy_result, otherwise_result, &mut checking_data.types);
@@ -164,7 +164,7 @@ where
 			if let Some(otherwise) = otherwise {
 				// crate::utilities::notify!("truthy events={:?}, otherwise events={:?}", truthy.events, otherwise.events);
 				// todo!()
-				// onto.events.append(&mut otherwise.events);
+				onto.events.append(&mut otherwise.events);
 			}
 
 			onto.events.push(Event::EndOfControlFlow(truthy_events + otherwise_events));
@@ -181,6 +181,16 @@ where
 		(true, false) => {
 			if let Some(otherwise_info) = otherwise_info {
 				environment.info.extend(otherwise_info, None);
+			} else {
+				// Could negate existing, but starting again handles types better
+				let values = crate::features::narrowing::narrow_based_on_expression_into_vec(
+					condition,
+					true,
+					environment,
+					&mut checking_data.types,
+				);
+
+				environment.info.narrowed_values = values;
 			}
 		}
 		(false, false) => match environment.context_type.parent {

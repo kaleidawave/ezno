@@ -245,7 +245,7 @@ pub enum CallingTiming {
 ///
 /// Similar to [`FinalEvent`] but includes different information + or
 /// `break` and `continue` don't apply for function returns (but do for iteration and conditionals)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ApplicationResult {
 	Return {
 		returned: TypeId,
@@ -270,8 +270,32 @@ pub enum ApplicationResult {
 	},
 	/// One of these is `Some`.
 	Or {
-		on: TypeId,
+		condition: TypeId,
 		truthy_result: Box<ApplicationResult>,
 		otherwise_result: Box<ApplicationResult>,
 	},
+}
+
+pub type AccumulatedApplicationResult =
+	crate::utilities::accumulator::Accumulator<TypeId, ApplicationResult>;
+
+impl crate::utilities::accumulator::Result<TypeId> for ApplicationResult {
+	fn new_condition(
+		condition: TypeId,
+		left: Self,
+		right: Self,
+		_helper: &mut crate::TypeStore,
+	) -> Self {
+		if condition == TypeId::TRUE {
+			left
+		} else if condition == TypeId::FALSE {
+			right
+		} else {
+			ApplicationResult::Or {
+				condition,
+				truthy_result: Box::new(left),
+				otherwise_result: Box::new(right),
+			}
+		}
+	}
 }

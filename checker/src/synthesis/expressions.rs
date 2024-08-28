@@ -440,8 +440,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 									} else {
 										Publicity::Public
 									};
-									let property =
-										PropertyKey::String(Cow::Owned(property.clone()));
+									let property = PropertyKey::from(property.clone());
 
 									let position = position.with_source(environment.get_source());
 									match crate::features::delete_operator(
@@ -1314,7 +1313,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				}
 			}
 			ObjectLiteralMember::Shorthand(name, position) => {
-				let key = PropertyKey::String(Cow::Owned(name.clone()));
+				let key = PropertyKey::from(name.clone());
 				let get_variable = environment.get_variable_handle_error(
 					name,
 					position.with_source(environment.get_source()),
