@@ -43,7 +43,7 @@ fn main() -> std::process::ExitCode {
 
 	let mut options = TypeCheckOptions {
 		debug_types,
-		record_all_assignments_and_reads: true,
+		record_all_assignments_and_reads: extras,
 		debug_dts,
 		extra_syntax: extras,
 		..Default::default()

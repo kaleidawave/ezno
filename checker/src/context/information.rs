@@ -228,7 +228,7 @@ pub fn merge_info(
 		// TODO don't get value above certain scope...
 		let otherwise_value = otherwise
 			.as_mut()
-			// Remove is important here
+			// `.remove` is important here
 			.and_then(|otherwise| otherwise.variable_current_value.remove(&var))
 			.or_else(|| onto.variable_current_value.get(&var).copied())
 			.or_else(|| {
@@ -236,12 +236,17 @@ pub fn merge_info(
 					.get_chain_of_info()
 					.find_map(|info| info.variable_current_value.get(&var))
 					.copied()
-			})
-			.unwrap_or(TypeId::ERROR_TYPE);
+			});
 
-		let new = types.new_conditional_type(condition, true_value, otherwise_value);
-
-		onto.variable_current_value.insert(var, new);
+		if let Some(otherwise_value) = otherwise_value {
+			let new = types.new_conditional_type(condition, true_value, otherwise_value);
+			onto.variable_current_value.insert(var, new);
+		} else {
+			crate::utilities::notify!(
+				"Could not find value for variable. {:?}. This is okay for free variables",
+				&onto.variable_current_value
+			);
+		}
 	}
 
 	// TODO temp fix for `... ? { ... } : { ... }`. Breaks for the fact that property

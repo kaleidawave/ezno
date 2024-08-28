@@ -725,9 +725,9 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		types,
 	);
 
-	{
-		crate::utilities::notify!("Access {:?} result {:?}", under, result);
-	}
+	// {
+	// 	crate::utilities::notify!("Access {:?} result {:?}", under, result);
+	// }
 
 	match result {
 		Ok(LogicalOrValid::Logical(logical)) => {

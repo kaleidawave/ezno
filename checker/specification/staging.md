@@ -113,9 +113,9 @@ declare var value: string;
 let a: string | number = 0;
 
 function conditional(v: string) {
-	if (v === "value") {
-		a = "hi"
-	}
+    if (v === "value") {
+        a = "hi"
+    }
 }
 conditional(value);
 a satisfies string;
@@ -147,3 +147,42 @@ result satisfies boolean;
 
 - Expected string, found 3
 - Expected boolean, found 6
+
+### Narrowing
+
+#### From `contains`
+
+> Uses accumulation in events
+
+```ts
+function func(item: string) {
+    const condition = ["a", "b", "c"].contains(item);
+
+    if (condition) {
+        item satisfies number;
+    }
+}
+```
+
+- Expected number, found "a" | "b" | "c"
+
+### Extras
+
+#### TypeScript Enum
+
+> TODO temp implementation
+
+```ts
+enum Color {
+    Red,
+    Blue
+}
+
+const color1: Color = Color.Red;
+(color1 === Color.Red) satisfies string;
+```
+
+> Must be used with `extra_syntax: true`
+
+- enum must be used with 'extras' option
+- Expected string, found true

@@ -107,7 +107,6 @@ pub(crate) fn apply_events(
 								input.this_value.get(top_environment, types, *position)
 							}
 						};
-						crate::utilities::notify!("Set to {:?}", value);
 						type_arguments.set_during_application(*id, value);
 					}
 				}
@@ -138,6 +137,12 @@ pub(crate) fn apply_events(
 					}
 
 					info.variable_current_value.insert(*variable, new_value);
+
+					// crate::utilities::notify!(
+					// 	"{:?} @ ... = {:?}",
+					// 	state,
+					// 	types.get_type_by_id(new_value)
+					// );
 				}
 			}
 			Event::Getter { on, under, reflects_dependency, publicity, position, mode } => {
@@ -328,7 +333,11 @@ pub(crate) fn apply_events(
 				let condition = substitute(*condition, type_arguments, top_environment, types);
 
 				let fixed_result = is_type_truthy_falsy(condition, types);
-				// crate::utilities::notify!("Condition {:?} {:?}", types.get_type_by_id(condition), result);
+				crate::utilities::notify!(
+					"Condition {:?} {:?}",
+					types.get_type_by_id(condition),
+					fixed_result
+				);
 
 				let (truthy_events, otherwise_events) =
 					(*truthy_events as usize, *otherwise_events as usize);
@@ -360,10 +369,9 @@ pub(crate) fn apply_events(
 								)
 							});
 
-						// TODO condition = TypeId::TRUE weird
-						crate::utilities::notify!("Here {:?}, current {:?}", result, state);
-						state = result.merge(state, TypeId::TRUE, types);
-						crate::utilities::notify!("Here {:?}", state);
+						crate::utilities::notify!("{:?} <- {:?}", state, result);
+						state.merge_unconditionally(result, types);
+						crate::utilities::notify!("{:?}", state);
 					}
 					Decidable::Unknown(condition) => {
 						// TODO early returns
@@ -396,14 +404,8 @@ pub(crate) fn apply_events(
 
 						(type_arguments, diagnostics) = data;
 
-						crate::utilities::notify!("{:?} {:?}", truthy_result, otherwise_result);
-
 						// TODO could this be better? Seems to duplicate behavior during initial sythesis
-						state = state.merge(truthy_result, condition, types);
-						let not_condition = types.new_logical_negation_type(condition);
-						state = state.merge(otherwise_result, not_condition, types);
-
-						crate::utilities::notify!("{:?}", state);
+						state = truthy_result.merge(otherwise_result, condition, types)
 					}
 				}
 				// Don't run condition again
@@ -516,8 +518,7 @@ pub(crate) fn apply_events(
 					)
 				});
 
-				// TODO is this always true?
-				state = state.merge(result, TypeId::TRUE, types);
+				state.merge_unconditionally(result, types);
 
 				idx += *iterate_over as usize + 1;
 			}
@@ -594,7 +595,7 @@ pub(crate) fn apply_events(
 
 				let mut values = Vec::new();
 				let inner = extract_thrown_from_accumulator(inner_result, &mut values);
-				state = inner.merge(state, TypeId::TRUE, types);
+				state.merge_unconditionally(inner, types);
 
 				if let Some(trap) = trapped_type_id {
 					let mut acc = TypeId::NEVER_TYPE;
@@ -647,9 +648,7 @@ pub(crate) fn apply_events(
 					diagnostics,
 				);
 
-				crate::utilities::notify!("{:?}", result);
-				state = result.merge(state, TypeId::TRUE, types);
-				crate::utilities::notify!("{:?}", state);
+				state.merge_unconditionally(result, types);
 
 				idx += total;
 			}
@@ -814,11 +813,15 @@ pub(crate) fn apply_events(
 				// TODO WIP ...?
 				// let condition = if unknown_mode { TypeId::OPEN_BOOLEAN_TYPE } else { TypeId::TRUE };
 
+				crate::utilities::notify!("prev {:?}", &state);
 				state.append(result, types);
+				crate::utilities::notify!("new {:?}", &state);
 			}
 		}
 		idx += 1;
 	}
+
+	// crate::utilities::notify!("Exiting with {:?}", state);
 
 	state
 }

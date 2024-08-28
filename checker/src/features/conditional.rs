@@ -162,8 +162,6 @@ where
 
 			onto.events.append(&mut truthy.events);
 			if let Some(otherwise) = otherwise {
-				// crate::utilities::notify!("truthy events={:?}, otherwise events={:?}", truthy.events, otherwise.events);
-				// todo!()
 				onto.events.append(&mut otherwise.events);
 			}
 
@@ -194,9 +192,9 @@ where
 			}
 		}
 		(false, false) => match environment.context_type.parent {
-			crate::GeneralContext::Syntax(syn_parent) => {
+			crate::GeneralContext::Syntax(parent) => {
 				merge_info(
-					syn_parent,
+					parent,
 					&mut environment.info,
 					condition,
 					truthy_info,
@@ -204,9 +202,9 @@ where
 					&mut checking_data.types,
 				);
 			}
-			crate::GeneralContext::Root(root_parent) => {
+			crate::GeneralContext::Root(parent) => {
 				merge_info(
-					root_parent,
+					parent,
 					&mut environment.info,
 					condition,
 					truthy_info,
@@ -217,6 +215,7 @@ where
 		},
 	}
 
+	// TODO append
 	environment.context_type.state =
 		truthy_return_state.merge(otherwise_return_state, condition, &mut checking_data.types);
 

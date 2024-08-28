@@ -196,7 +196,7 @@ impl InvocationContext {
 		let depth =
 			self.0.iter().filter(|p| matches!(p, InvocationKind::LoopIteration)).count() as u8;
 		// TODO can this every go > 1
-		crate::utilities::notify!("Iteration depth {}", depth);
+		// crate::utilities::notify!("Iteration depth {}", depth);
 		depth
 	}
 
@@ -257,9 +257,9 @@ impl InvocationContext {
 		} else {
 			let local_information = &mut top_environment.info;
 			match top_environment.context_type.parent {
-				crate::GeneralContext::Syntax(env) => {
+				crate::GeneralContext::Syntax(parent) => {
 					merge_info(
-						env,
+						parent,
 						local_information,
 						condition,
 						truthy_info,
@@ -267,8 +267,15 @@ impl InvocationContext {
 						types,
 					);
 				}
-				crate::GeneralContext::Root(_) => {
-					crate::utilities::notify!("Top environment is root?");
+				crate::GeneralContext::Root(parent) => {
+					merge_info(
+						parent,
+						local_information,
+						condition,
+						truthy_info,
+						Some(otherwise_info),
+						types,
+					);
 				}
 			}
 		}

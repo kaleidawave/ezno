@@ -621,7 +621,7 @@ fn run_iteration_loop(
 	mut each_iteration: impl for<'a> FnMut(&'a mut SubstitutionArguments, &mut TypeStore),
 ) -> Accumulator<TypeId, ApplicationResult> {
 	invocation_context.new_loop_iteration(|invocation_context| {
-		let mut accumulator = Accumulator::None;
+		let mut state = Accumulator::None;
 		crate::utilities::notify!("running inline events: {:#?}", events);
 		for _ in 0..iterations {
 			each_iteration(type_arguments, types);
@@ -635,10 +635,61 @@ fn run_iteration_loop(
 				errors,
 			);
 
-			accumulator = accumulator.merge(result, TypeId::TRUE, types);
+			match result {
+				Accumulator::Some(value) => match value {
+					ApplicationResult::Or { .. } => {
+						todo!("{:?}", value)
+					}
+					ApplicationResult::Break { carry: 0, position: _ } => break,
+					ApplicationResult::Continue { carry: 0, position: _ } => {
+						continue;
+					}
+					ApplicationResult::Break { carry, position } => {
+						state
+							.append(ApplicationResult::Break { carry: carry - 1, position }, types);
+						return state;
+					}
+					ApplicationResult::Continue { carry, position } => {
+						state.append(
+							ApplicationResult::Continue { carry: carry - 1, position },
+							types,
+						);
+						return state;
+					}
+					result => {
+						state.append(result, types);
+						return state;
+					}
+				},
+				Accumulator::Accumulating { condition: r_condition, value: r } => {
+					// TODO WIP
+					match state {
+						Accumulator::Some(_) => {
+							crate::utilities::notify!("unreachable");
+						}
+						Accumulator::Accumulating { condition: l_condition, value: l } => {
+							crate::utilities::notify!("prev {:?}", (&l_condition, &l));
+							state = Accumulator::Accumulating {
+								condition: types.new_logical_or_type(l_condition, r_condition),
+								value: ApplicationResult::Or {
+									condition: r_condition,
+									truthy_result: Box::new(r),
+									otherwise_result: Box::new(l),
+								},
+							};
+							crate::utilities::notify!("new {:?}", state);
+						}
+						Accumulator::None => {
+							state = Accumulator::Accumulating { condition: r_condition, value: r };
+							crate::utilities::notify!("Here {:?}", state);
+						}
+					}
+				}
+				Accumulator::None => {}
+			}
 		}
 
-		accumulator
+		state
 	})
 }
 

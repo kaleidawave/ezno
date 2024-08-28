@@ -72,6 +72,38 @@ impl<C: Condition, V: Result<C>> Accumulator<C, V> {
 		}
 	}
 
+	pub fn merge_unconditionally(&mut self, new: Self, helper: &mut C::Associate) {
+		match self {
+			Self::Some(_) => {
+				crate::utilities::notify!("unreachable");
+			}
+			Self::Accumulating { .. } => match new {
+				Self::Some(new) => {
+					let Self::Accumulating { condition, value: existing } = std::mem::take(self)
+					else {
+						unreachable!();
+					};
+					*self = Self::Some(V::new_condition(condition, existing, new, helper));
+				}
+				Self::Accumulating { condition: new_condition, value: new } => {
+					let Self::Accumulating { condition: existing_condition, value: existing } =
+						std::mem::take(self)
+					else {
+						unreachable!();
+					};
+					*self = Self::Accumulating {
+						condition: existing_condition.or(new_condition, helper),
+						value: V::new_condition(existing_condition, existing, new, helper),
+					};
+				}
+				Self::None => {}
+			},
+			Self::None => {
+				*self = new;
+			}
+		}
+	}
+
 	pub fn merge(self, other: Self, condition: C, helper: &mut C::Associate) -> Self {
 		match (self, other) {
 			(Self::Some(l), Self::Some(r)) => Self::Some(V::new_condition(condition, l, r, helper)),

@@ -273,6 +273,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 				Declaration::Enum(r#enum) => {
+					if checking_data.options.extra_syntax {
+						checking_data.diagnostics_container.add_warning(
+							crate::diagnostics::TypeCheckWarning::ItemMustBeUsedWithFlag {
+								item: "enum",
+								position: r#enum.on.position.with_source(environment.get_source()),
+							},
+						);
+					}
+
 					// TODO WIP implementation
 					let result = environment.declare_alias::<EznoParser>(
 						&r#enum.on.name,

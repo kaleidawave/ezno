@@ -169,6 +169,19 @@ declare class Array<T> {
     //     return s
     // }
 
+    contains(looking_for: any): boolean {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            i++;
+            if (looking_for === value) {
+                return true
+            }
+        }
+        return false
+    }
+
     at(index: number) {
         if (index < 0) {
             return this[index + this.length]
