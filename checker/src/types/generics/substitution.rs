@@ -25,17 +25,22 @@ use super::generic_type_arguments::GenericArguments;
 
 pub struct SubstitutionArguments<'a> {
 	/// for extends + parent generics
-	pub(crate) parent: Option<&'a SubstitutionArguments<'a>>,
+	pub(crate) parent: Option<crate::utilities::cow_box::CowBox<'a, SubstitutionArguments<'a>>>,
 	pub(crate) arguments: crate::Map<TypeId, TypeId>,
 	pub(crate) closures: Vec<ClosureId>,
 }
 
 impl<'a> ClosureChain for SubstitutionArguments<'a> {
-	fn get_fact_from_closure<T, R>(&self, _fact: &LocalInformation, cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
-		self.closures.iter().copied().find_map(cb)
+		let on_main = self.closures.iter().copied().find_map(&cb);
+		if let Some(ref parent) = self.parent {
+			parent.get_fact_from_closure(fact, cb)
+		} else {
+			on_main
+		}
 	}
 }
 
@@ -50,7 +55,16 @@ impl<'a> SubstitutionArguments<'a> {
 		self.arguments
 			.get(&id)
 			.copied()
-			.or_else(|| self.parent.and_then(|parent| parent.get_argument(id)))
+			.or_else(|| self.parent.as_ref().and_then(|parent| parent.get_argument(id)))
+	}
+
+	#[must_use]
+	pub fn get_closures(&self) -> Vec<ClosureId> {
+		let mut closures = self.closures.clone();
+		if let Some(ref parent) = self.parent {
+			closures.append(&mut parent.get_closures());
+		}
+		closures
 	}
 
 	#[must_use]
@@ -85,12 +99,13 @@ pub(crate) fn substitute(
 		// Type::SpecialObject(SpecialObject::ClassConstructor { .. })
 		Type::Object(ObjectNature::RealDeal) => {
 			// Apply curring
-			if arguments.closures.is_empty() {
+			let closures = arguments.get_closures();
+			if closures.is_empty() {
 				id
 			} else {
 				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: id,
-					arguments: GenericArguments::Closure(arguments.closures.clone()),
+					arguments: GenericArguments::Closure(closures),
 				}))
 			}
 		}
@@ -129,12 +144,13 @@ pub(crate) fn substitute(
 				id
 			};
 			// Apply curring
-			if arguments.closures.is_empty() {
+			let closures = arguments.get_closures();
+			if closures.is_empty() {
 				id
 			} else {
 				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: id,
-					arguments: GenericArguments::Closure(arguments.closures.clone()),
+					arguments: GenericArguments::Closure(closures),
 				}))
 			}
 		}
@@ -631,7 +647,7 @@ pub(crate) fn compute_extends_rule(
 					.collect();
 
 				let arguments = SubstitutionArguments {
-					parent: Some(arguments),
+					parent: Some(arguments.into()),
 					arguments: args,
 					closures: Default::default(),
 				};

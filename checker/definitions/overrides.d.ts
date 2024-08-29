@@ -112,7 +112,7 @@ declare class Array<T> {
         return s
     }
 
-    contains(looking_for: any): boolean {
+    includes(looking_for: any): boolean {
         const { length } = this;
         let i: number = 0;
         while (i < length) {

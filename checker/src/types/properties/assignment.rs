@@ -324,7 +324,7 @@ fn set_on_logical<B: CallCheckingBehavior>(
 		Logical::Implies { on: og, antecedent } => {
 			crate::utilities::notify!("antecedent={:?}", antecedent);
 			let generics = crate::types::GenericChainLink::FunctionRoot {
-				parent_arguments: Some(&antecedent),
+				structure_arguments: Some(&antecedent),
 				call_site_type_arguments: None,
 				// TODO weird?
 				type_arguments: &crate::Map::default(),

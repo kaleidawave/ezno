@@ -92,18 +92,18 @@ declare class Array<T> {
     //     return mapped;
     // }
 
-    // // // TODO any is debatable
-    // filter(cb: (t: T, i?: number) => any): Array<T> {
-    //     const { length } = this, filtered: Array<T> = [];
-    //     let i: number = 0;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         if (cb(value, i++)) {
-    //             filtered.push(value)
-    //         }
-    //     }
-    //     return filtered;
-    // }
+    // TODO any is debatable
+    filter(cb: (t: T, i?: number) => any): Array<T> {
+        const { length } = this, filtered: Array<T> = [];
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            if (cb(value, i++)) {
+                filtered.push(value)
+            }
+        }
+        return filtered;
+    }
 
     // // TODO any is debatable
     // find(cb: (t: T, i?: number) => any): T | undefined {

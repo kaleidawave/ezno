@@ -14,7 +14,7 @@ pub enum GenericChainLink<'a> {
 		call_site_type_arguments: Option<&'a TypeRestrictions>,
 		type_arguments: &'a crate::Map<TypeId, TypeId>,
 		/// From whatever the function was on
-		parent_arguments: Option<&'a GenericArguments>,
+		structure_arguments: Option<&'a GenericArguments>,
 	},
 	// For walking through [`Type::PartiallyAppliedGenerics`]
 	PartiallyAppliedGenericArgumentsLink {
@@ -141,10 +141,10 @@ impl<'a> GenericChainLink<'a> {
 				.map(CovariantContribution::TypeId)
 				.or_else(|| parent_link.and_then(|f| f.get_argument_covariant(on))),
 			GenericChainLink::FunctionRoot {
-				parent_arguments,
+				structure_arguments,
 				call_site_type_arguments,
 				type_arguments,
-			} => parent_arguments
+			} => structure_arguments
 				.and_then(|parent| {
 					parent.get_structure_restriction(on).map(CovariantContribution::TypeId)
 				})
@@ -235,10 +235,10 @@ impl<'a> GenericChainLink<'a> {
 				.get_structure_restriction(on)
 				.or_else(|| parent_link.and_then(|parent| parent.get_single_argument(on))),
 			GenericChainLink::FunctionRoot {
-				parent_arguments,
+				structure_arguments,
 				call_site_type_arguments,
 				type_arguments,
-			} => parent_arguments
+			} => structure_arguments
 				.and_then(|parent| parent.get_structure_restriction(on))
 				.or_else(|| {
 					call_site_type_arguments.and_then(|ta1| ta1.get(&on).map(|(arg, _)| *arg))
@@ -288,12 +288,12 @@ impl<'a> GenericChainLink<'a> {
 				}
 			}
 			GenericChainLink::FunctionRoot {
-				parent_arguments,
+				structure_arguments,
 				call_site_type_arguments: _,
 				type_arguments,
 			} => {
 				arguments.arguments.extend(type_arguments.iter().map(|(k, v)| (*k, *v)));
-				if let Some(value) = parent_arguments {
+				if let Some(value) = structure_arguments {
 					match value {
 						GenericArguments::ExplicitRestrictions(n) => {
 							arguments.arguments.extend(n.iter().map(|(k, v)| (*k, v.0)));

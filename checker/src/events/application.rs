@@ -127,7 +127,7 @@ pub(crate) fn apply_events(
 					// TODO temp assigns to many contexts, which is bad.
 					// Closures should have an indicator of what they close over #56
 					let info = target.get_latest_info(top_environment);
-					for id in &type_arguments.closures {
+					for id in &type_arguments.get_closures() {
 						info.closure_current_values
 							.insert((*id, RootReference::Variable(*variable)), new_value);
 					}
@@ -405,7 +405,8 @@ pub(crate) fn apply_events(
 						(type_arguments, diagnostics) = data;
 
 						// TODO could this be better? Seems to duplicate behavior during initial sythesis
-						let new = truthy_return_state.merge(otherwise_return_state, condition, types);
+						let new =
+							truthy_return_state.merge(otherwise_return_state, condition, types);
 						state.merge_unconditionally(new, types);
 					}
 				}
@@ -757,12 +758,13 @@ pub(crate) fn apply_events(
 						SpecialObject::Function(*function, Default::default()),
 					));
 					// Apply curring
-					let new_function_ty = if type_arguments.closures.is_empty() {
+					let closures = type_arguments.get_closures();
+					let new_function_ty = if closures.is_empty() {
 						new_function_ty
 					} else {
 						types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 							on: new_function_ty,
-							arguments:  crate::types::generics::generic_type_arguments::GenericArguments::Closure(type_arguments.closures.clone()),
+							arguments:  crate::types::generics::generic_type_arguments::GenericArguments::Closure(closures),
 						}))
 					};
 					type_arguments.set_during_application(*referenced_in_scope_as, new_function_ty);

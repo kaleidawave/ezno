@@ -182,13 +182,13 @@ result satisfies boolean;
 
 ### Narrowing
 
-#### From `contains`
+#### From `includes`
 
 > Uses accumulation in events
 
 ```ts
 function func(item: string) {
-    const condition = ["a", "b", "c"].contains(item);
+    const condition = ["a", "b", "c"].includes(item);
 
     if (condition) {
         item satisfies number;
