@@ -1141,6 +1141,11 @@ impl Expression {
 					// a mutable reader here
 					let token = if let TSXToken::OpenChevron = token {
 						if is_generic_arguments(reader) {
+							if AssociativityDirection::LeftToRight
+								.should_return(parent_precedence, FUNCTION_CALL_PRECEDENCE)
+							{
+								return Ok(top);
+							}
 							let _ = reader.next();
 							let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
 								reader, state, options, None,

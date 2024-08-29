@@ -649,7 +649,29 @@ where
 	let mut function_environment = base_environment.new_lexical_environment(Scope::Function(scope));
 
 	if function.has_body() {
-		let type_parameters = function.type_parameters(&mut function_environment, checking_data);
+		let type_parameters = if let Some((ref prototype, _)) = constructor {
+			// Class generics here
+			checking_data.types.get_type_by_id(*prototype).get_parameters().map(|parameters| {
+				parameters
+					.into_iter()
+					.map(|ty| {
+						let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
+							checking_data.types.get_type_by_id(ty)
+						else {
+							unreachable!()
+						};
+						crate::types::generics::GenericTypeParameter {
+							name: name.clone(),
+							// Using its associated [`Type`], its restriction can be found
+							type_id: ty,
+							default: None,
+						}
+					})
+					.collect()
+			})
+		} else {
+			function.type_parameters(&mut function_environment, checking_data)
+		};
 
 		// TODO should be in function, but then requires mutable environment :(
 		let this_constraint =

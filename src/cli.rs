@@ -121,6 +121,9 @@ pub(crate) struct CheckArguments {
 	/// compact diagnostics
 	#[argh(switch)]
 	pub compact_diagnostics: bool,
+	/// disable certain features
+	#[argh(switch)]
+	pub basic: bool,
 	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
 	#[argh(option, default = "MaxDiagnostics::default()")]
 	pub max_diagnostics: MaxDiagnostics,
@@ -201,6 +204,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				timings,
 				compact_diagnostics,
 				max_diagnostics,
+				basic,
 			} = check_arguments;
 
 			let mut type_check_options: TypeCheckOptions = Default::default();
@@ -208,6 +212,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			#[cfg(not(target_family = "wasm"))]
 			{
 				type_check_options.measure_time = timings;
+			}
+
+			if basic {
+				type_check_options.max_inline = 0;
 			}
 
 			let entry_points = match get_entry_points(input) {
@@ -224,7 +232,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			let result = if diagnostics.has_error() {
 				if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
 					let count = diagnostics.into_iter().count();
-					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
+					print_to_cli(format_args!(
+						"Found {count} type errors and warnings {}",
+						console::Emoji(" 😬", ":/")
+					))
 				} else {
 					report_diagnostics_to_cli(
 						diagnostics,
@@ -244,7 +255,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					max_diagnostics,
 				)
 				.unwrap();
-				print_to_cli(format_args!("No type errors found 🎉"));
+				print_to_cli(format_args!("No type errors found {}", console::Emoji("🎉", ":)")));
 				ExitCode::SUCCESS
 			};
 
@@ -320,7 +331,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						build_config.max_diagnostics,
 					)
 					.unwrap();
-					print_to_cli(format_args!("Project built successfully 🎉"));
+					print_to_cli(format_args!(
+						"Project built successfully {}",
+						console::Emoji("🎉", ":)")
+					));
 					ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
@@ -374,7 +388,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						}
 					} else {
 						let _ = fs::write(path.clone(), output);
-						print_to_cli(format_args!("Formatted {} 🎉", path.display()));
+						print_to_cli(format_args!("Formatted {}", path.display()));
 						ExitCode::SUCCESS
 					}
 				}
