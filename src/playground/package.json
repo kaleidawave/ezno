@@ -10,7 +10,11 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^5.2.12"
+    "vite": "^5.2.12",
+    "lz-string": "^1.5.0",
+    "marked": "^10.0.0",
+    "shiki": "^0.14.7",
+    "typescript": "5.3"
   },
   "dependencies": {
     "@codemirror/commands": "^6.3.3",
