@@ -8,13 +8,14 @@ use crate::{
 	context::{Environment, InformationChain, LocalInformation},
 	diagnostics::TypeCheckError,
 	features::functions::{
-		function_to_property, synthesise_function, ClassPropertiesToRegister,
-		FunctionRegisterBehavior, GetterSetter, SynthesisableFunction, class_generics_to_function_generics, ReturnType
+		class_generics_to_function_generics, function_to_property, synthesise_function,
+		ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter, ReturnType,
+		SynthesisableFunction,
 	},
 	types::{
 		classes::ClassValue,
 		properties::{PropertyKey, Publicity},
-		FunctionType, PolyNature, SynthesisedParameters
+		FunctionType, PolyNature, SynthesisedParameters,
 	},
 	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 };
@@ -763,7 +764,8 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 	if let Some(constructor) = found_constructor {
 		constructor
 	} else {
-		let return_type = ReturnType(class_type, class.position.with_source(environment.get_source()));
+		let return_type =
+			ReturnType(class_type, class.position.with_source(environment.get_source()));
 		build_overloaded_function(
 			FunctionId(environment.get_source(), class.position.start),
 			crate::types::functions::FunctionBehavior::Constructor {
@@ -782,7 +784,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 			environment,
 			&mut checking_data.types,
 			&mut checking_data.diagnostics_container,
-			crate::types::functions::FunctionEffect::Unknown
+			crate::types::functions::FunctionEffect::Unknown,
 		)
 	}
 }

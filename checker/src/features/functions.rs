@@ -1137,7 +1137,10 @@ pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environm
 	}
 }
 
-pub fn class_generics_to_function_generics(prototype: TypeId, types: &TypeStore) -> Option<GenericTypeParameters> {
+pub fn class_generics_to_function_generics(
+	prototype: TypeId,
+	types: &TypeStore,
+) -> Option<GenericTypeParameters> {
 	types.get_type_by_id(prototype).get_parameters().map(|parameters| {
 		parameters
 			.into_iter()

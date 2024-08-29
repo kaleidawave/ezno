@@ -98,8 +98,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				Declaration::Class(Decorated { on: class, .. })
 				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
+					on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
 					..
 				}) => {
 					let result = environment.declare_class::<EznoParser>(
@@ -139,10 +138,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::TypeAlias(alias)
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Item {
-							exported: Exportable::TypeAlias(alias),
-							position: _,
-						},
+						ExportDeclaration::Item { exported: Exportable::TypeAlias(alias), position: _ },
 					..
 				}) => {
 					let result = environment.declare_alias::<EznoParser>(
@@ -272,7 +268,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						*type_definitions_only,
 					);
 				}
-				Declaration::Enum(Decorated { on: r#enum, .. }) | Declaration::Export(Decorated {
+				Declaration::Enum(Decorated { on: r#enum, .. })
+				| Declaration::Export(Decorated {
 					on:
 						ExportDeclaration::Item {
 							exported: Exportable::EnumDeclaration(r#enum),
@@ -367,8 +364,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				Declaration::Class(Decorated { on: class, .. })
 				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
+					on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
 					..
 				}) => {
 					let name_position =
@@ -421,10 +417,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::TypeAlias(alias)
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Item {
-							exported: Exportable::TypeAlias(alias),
-							position: _,
-						},
+						ExportDeclaration::Item { exported: Exportable::TypeAlias(alias), position: _ },
 					..
 				}) => {
 					let ty = checking_data
@@ -700,7 +693,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 					}
 				}
-				Declaration::Enum(Decorated { on: r#enum, .. }) | Declaration::Export(Decorated {
+				Declaration::Enum(Decorated { on: r#enum, .. })
+				| Declaration::Export(Decorated {
 					on:
 						ExportDeclaration::Item {
 							exported: Exportable::EnumDeclaration(r#enum),
@@ -774,10 +768,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			Declaration::Function(Decorated { on: function, decorators, .. })
 			| Declaration::Export(Decorated {
 				on:
-					ExportDeclaration::Item {
-						exported: Exportable::Function(function),
-						position: _,
-					},
+					ExportDeclaration::Item { exported: Exportable::Function(function), position: _ },
 				decorators,
 				..
 			}),

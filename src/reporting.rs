@@ -123,7 +123,7 @@ where
 		#[cfg(not(target_family = "wasm"))]
 		emit(&mut writer, &config, &files, &diagnostic)?;
 	}
-	
+
 	#[cfg(not(target_family = "wasm"))]
 	writer.flush().unwrap();
 
