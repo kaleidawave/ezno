@@ -20,6 +20,6 @@
     "@codemirror/view": "^6.23.0",
     "@lezer/highlight": "^1.2.0",
     "@lezer/javascript": "^1.4.13",
-    "ezno": "=0.0.21"
+    "ezno": "^0.0.22"
   }
 }

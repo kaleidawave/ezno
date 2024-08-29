@@ -6,7 +6,6 @@ import { parser as jsParser } from "@lezer/javascript";
 import { tags } from "@lezer/highlight";
 import { HighlightStyle, syntaxHighlighting, LanguageSupport, LRLanguage } from "@codemirror/language";
 import { init as init_ezno, check_with_options, get_version } from "ezno";
-// import lz from "lz-string";
 
 const diagnosticsEntry = document.querySelector(".diagnostics");
 const editorParent = document.querySelector("#editor");
@@ -40,12 +39,12 @@ const theme = EditorView.theme({
 
 const STORE = "https://kaleidawave-savednamedplaygrounds.web.val.run"
 
-
 let text = "const x: 2 = 3;";
 let initialText = text;
 
 const { searchParams } = new URL(location);
 const id = searchParams.get("id");
+const raw = searchParams.get("raw-example");
 
 if (id) {
   fetch(STORE + `?id=${id}`, { method: "GET" }).then(res => res.json()).then((result) => {
@@ -57,6 +56,9 @@ if (id) {
     }
   })
 } else {
+  if (raw) {
+    initialText = raw;
+  }
   setup()
 }
 
@@ -69,7 +71,7 @@ async function setup() {
 
   function getLinter() {
     return linter((args) => {
-      text = args.state.doc.text.toString();
+      text = args.state.doc.text.join("\n");
       try {
         const start = performance.now();
         currentState = check_with_options(ROOT_PATH, (_) => text, { lsp_mode: true, store_type_mappings: true });
@@ -96,7 +98,7 @@ async function setup() {
   }
 
   function getHover() {
-    const cursor = hoverTooltip((view, pos, side) => {
+    const cursor = hoverTooltip((_view, pos, _side) => {
       if (currentState) {
         const type = currentState.get_type_at_position(ROOT_PATH, pos);
         if (typeof type !== "undefined") {
@@ -104,7 +106,7 @@ async function setup() {
             pos,
             end: pos,
             above: true,
-            create(view) {
+            create(_view) {
               let dom = document.createElement("div")
               dom.textContent = type
               // TODO!
@@ -139,7 +141,7 @@ async function setup() {
     return [cursor, cursorTooltipBaseTheme]
   }
 
-  let editor = new EditorView({
+  const _editor = new EditorView({
     state: EditorState.create({
       doc: Text.of([text]),
       extensions: [
