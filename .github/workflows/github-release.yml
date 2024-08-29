@@ -57,25 +57,24 @@ jobs:
         run: |
           SPONSORS=$(gh api graphql -f query='{
             user(login: "kaleidawave") {
-              sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
+                sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
                 edges {
-                  node {
+                    node {
                     sponsor {
-                      name, login
+                        name, login
                     }
-                  }
+                    }
                 }
-              }
+                }
             }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",") | join(",")')
-          
-          echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
+          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",")')
 
           CONTRIBUTORS=$(
             gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
           )
-
-          echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
+            
+          echo "SPONSORS=$SPONSORS" # >> $GITHUB_OUTPUT
+          echo "CONTRIBUTORS=$CONTRIBUTORS"
 
         shell: bash
         env:
