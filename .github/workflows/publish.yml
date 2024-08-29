@@ -60,26 +60,27 @@ jobs:
 
       - id: get-sponsors
         run: |
-          SPONSORS=$(gh api graphql -f query='{
-            user(login: "kaleidawave") {
-              sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
-                edges {
-                  node {
-                    sponsor {
-                      name, login
-                    }
+          SPONSORS=$(
+              gh api graphql -f query='{
+                  user(login: "kaleidawave") {
+                      sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
+                      edges {
+                          node {
+                          sponsor {
+                              name, login
+                          }
+                          }
+                      }
+                      }
                   }
-                }
-              }
-            }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",") | join(",")')
-          
-          echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
-
-          CONTRIBUTORS=$(
-            gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
+              }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",")'
           )
 
+          CONTRIBUTORS=$(
+              gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
+          )
+
+          echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
 
         shell: bash
@@ -103,7 +104,7 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         if: ${{ inputs.ezno-version != 'none' }}
         with:
-          packages: wasm-pack@0.12.1
+          packages: wasm-pack@0.13.0
 
       - name: Set NPM package version & build
         id: set-npm-version

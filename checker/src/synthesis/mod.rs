@@ -24,9 +24,9 @@ use parser::{
 use source_map::SourceId;
 
 use crate::{
-	context::{Names, VariableRegisterArguments},
+	context::{Environment, LocalInformation, Names, VariableRegisterArguments},
 	types::properties::PropertyKey,
-	CheckingData, Diagnostic, Environment, LocalInformation, RootContext, TypeId, VariableId,
+	CheckingData, Diagnostic, RootContext, TypeId, VariableId,
 };
 
 use self::{
@@ -91,13 +91,13 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_block(&module.items, module_environment, checking_data);
 	}
 
-	fn synthesise_definition_file<T: crate::ReadFromFS>(
-		file: Self::DefinitionFile<'_>,
+	fn synthesise_definition_module<T: crate::ReadFromFS>(
+		module: &Self::DefinitionFile<'_>,
 		source: SourceId,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
 	) -> (Names, LocalInformation) {
-		definitions::type_definition_file(file, source, checking_data, root)
+		definitions::type_definition_file(module, source, checking_data, root)
 	}
 
 	fn synthesise_expression<U: crate::ReadFromFS>(
@@ -113,8 +113,26 @@ impl crate::ASTImplementation for EznoParser {
 		ASTNode::get_position(expression)
 	}
 
+	fn multiple_expression_position<'_a>(
+		expression: &'_a Self::MultipleExpression<'_a>,
+	) -> source_map::Span {
+		ASTNode::get_position(expression)
+	}
+
 	fn type_parameter_name<'_a>(parameter: &'_a Self::TypeParameter<'_a>) -> &'_a str {
 		&parameter.name
+	}
+
+	fn synthesise_type_parameter_extends<T: crate::ReadFromFS>(
+		parameter: &Self::TypeParameter<'_>,
+		environment: &mut Environment,
+		checking_data: &mut crate::CheckingData<T, Self>,
+	) -> TypeId {
+		if let Some(ref extends) = parameter.extends {
+			synthesise_type_annotation(extends, environment, checking_data)
+		} else {
+			TypeId::ANY_TYPE
+		}
 	}
 
 	fn type_annotation_position<'_a>(
@@ -131,7 +149,12 @@ impl crate::ASTImplementation for EznoParser {
 		synthesise_type_annotation(annotation, environment, checking_data)
 	}
 
-	fn parse_options(is_js: bool, parse_comments: bool, lsp_mode: bool) -> Self::ParseOptions {
+	fn parse_options(
+		is_js: bool,
+		extra_syntax: bool,
+		parse_comments: bool,
+		lsp_mode: bool,
+	) -> Self::ParseOptions {
 		parser::ParseOptions {
 			comments: if parse_comments {
 				parser::Comments::JustDocumentation
@@ -140,6 +163,7 @@ impl crate::ASTImplementation for EznoParser {
 			},
 			type_annotations: !is_js,
 			partial_syntax: lsp_mode,
+			is_expressions: extra_syntax,
 			..Default::default()
 		}
 	}
@@ -166,10 +190,27 @@ impl crate::ASTImplementation for EznoParser {
 			parser::statements::ForLoopStatementInitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
-				synthesise_variable_declaration(declaration, environment, checking_data, false);
+				synthesise_variable_declaration(
+					declaration,
+					environment,
+					checking_data,
+					false,
+					// IMPORTANT!
+					checking_data.options.infer_sensible_constraints_in_for_loops,
+				);
 			}
-			parser::statements::ForLoopStatementInitialiser::VarStatement(_) => todo!(),
-			parser::statements::ForLoopStatementInitialiser::Expression(_) => todo!(),
+			parser::statements::ForLoopStatementInitialiser::VarStatement(stmt) => {
+				checking_data.raise_unimplemented_error(
+					"var in for statement initiliser",
+					stmt.get_position().with_source(environment.get_source()),
+				);
+			}
+			parser::statements::ForLoopStatementInitialiser::Expression(expr) => {
+				checking_data.raise_unimplemented_error(
+					"expression as for statement initiliser",
+					expr.get_position().with_source(environment.get_source()),
+				);
+			}
 		}
 	}
 
@@ -209,21 +250,23 @@ pub(super) fn parser_property_key_to_checker_property_key<
 		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Identifier(value, ..) => {
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
-		ParserPropertyKey::NumberLiteral(number, _) => {
+		ParserPropertyKey::NumberLiteral(number, pos) => {
 			let result = f64::try_from(number.clone());
-			match result {
-				Ok(v) => {
-					// TODO is there a better way
-					#[allow(clippy::float_cmp)]
-					if v.floor() == v {
-						PropertyKey::from_usize(v as usize)
-					} else {
-						// TODO
-						PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
-					}
+			if let Ok(v) = result {
+				// TODO is there a better way
+				#[allow(clippy::float_cmp)]
+				if v.floor() == v {
+					PropertyKey::from_usize(v as usize)
+				} else {
+					// TODO
+					PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
 				}
-				// TODO
-				Err(()) => todo!(),
+			} else {
+				checking_data.raise_unimplemented_error(
+					"big int as property key",
+					pos.with_source(environment.get_source()),
+				);
+				PropertyKey::Type(TypeId::UNIMPLEMENTED_ERROR_TYPE)
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {
@@ -275,7 +318,7 @@ impl StatementOrExpressionVariable for ExpressionPosition {
 
 /// For the REPL in Ezno's CLI
 pub mod interactive {
-	use std::{collections::HashSet, mem, path::PathBuf};
+	use std::{mem, path::PathBuf};
 
 	use source_map::{FileSystem, MapFileStore, SourceId, WithPathMap};
 
@@ -295,7 +338,7 @@ pub mod interactive {
 	impl<'a, T: crate::ReadFromFS> State<'a, T> {
 		pub fn new(
 			resolver: &'a T,
-			type_definition_files: HashSet<PathBuf>,
+			type_definition_files: Vec<PathBuf>,
 		) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 			let mut root = RootContext::new_with_primitive_references();
 			let mut checking_data =

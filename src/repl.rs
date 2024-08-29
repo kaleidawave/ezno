@@ -5,7 +5,7 @@ use argh::FromArgs;
 use parser::{visiting::VisitorsMut, ASTNode};
 use parser::{Expression, Module, Statement};
 
-use crate::reporting::emit_diagnostics;
+use crate::reporting::report_diagnostics_to_cli;
 use crate::utilities::print_to_cli;
 
 /// Run project repl using deno. (`deno` command must be in path)
@@ -50,8 +50,13 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 	let mut state = match state {
 		Ok(state) => state,
 		Err((diagnostics, fs)) => {
-			emit_diagnostics(diagnostics, &fs, false, crate::utilities::MaxDiagnostics::All)
-				.unwrap();
+			report_diagnostics_to_cli(
+				diagnostics,
+				&fs,
+				false,
+				crate::utilities::MaxDiagnostics::All,
+			)
+			.unwrap();
 			return;
 		}
 	};
@@ -79,6 +84,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let result = if input.trim_start().starts_with('{') {
 			Expression::from_string_with_options(input, options, offset).map(|(expression, _)| {
 				Module {
+					hashbang_comment: None,
 					span: expression.get_position(),
 					items: vec![Statement::Expression(expression.into()).into()],
 				}
@@ -90,7 +96,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 		let mut item = match result {
 			Ok(item) => item,
 			Err(err) => {
-				emit_diagnostics(
+				report_diagnostics_to_cli(
 					std::iter::once((err, source).into()),
 					state.get_fs_ref(),
 					false,
@@ -117,7 +123,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 
 		match result {
 			Ok((last_ty, diagnostics)) => {
-				emit_diagnostics(
+				report_diagnostics_to_cli(
 					diagnostics,
 					state.get_fs_ref(),
 					false,
@@ -129,7 +135,7 @@ pub(crate) fn run_repl<U: crate::CLIInputResolver>(
 				}
 			}
 			Err(diagnostics) => {
-				emit_diagnostics(
+				report_diagnostics_to_cli(
 					diagnostics,
 					state.get_fs_ref(),
 					false,

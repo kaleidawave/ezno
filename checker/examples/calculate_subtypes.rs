@@ -16,7 +16,7 @@ fn main() {
 	let mut types = TypeStore::default();
 
 	basics(&mut environment, &mut types);
-	contributions(&mut environment, &mut types)
+	contributions(&mut environment, &mut types);
 }
 
 fn basics(environment: &mut Environment, types: &mut TypeStore) {
@@ -29,22 +29,22 @@ fn basics(environment: &mut Environment, types: &mut TypeStore) {
 	{
 		let result = type_is_subtype_object(TypeId::NUMBER_TYPE, five, environment, types);
 
-		eprintln!("number :> 5 {result:?}")
+		eprintln!("number :> 5 {result:?}");
 	}
 	{
 		let result =
 			type_is_subtype_object(TypeId::NUMBER_TYPE, TypeId::STRING_TYPE, environment, types);
 
-		eprintln!("number :> string {result:?}")
+		eprintln!("number :> string {result:?}");
 	}
 	{
 		let result =
 			type_is_subtype_object(string_or_number, TypeId::STRING_TYPE, environment, types);
 
-		eprintln!("string | number :> string {result:?}")
+		eprintln!("string | number :> string {result:?}");
 	}
 
-	eprintln!("--------------\n")
+	eprintln!("--------------\n");
 }
 
 fn contributions(environment: &mut Environment, types: &mut TypeStore) {
@@ -53,16 +53,11 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 		environment.new_explicit_type_parameter("T", Some(TypeId::NUMBER_TYPE), None, types);
 
 	// create `{}` and add `inner: T`
-	let object = types.new_anonymous_interface_type();
-	let inner = PropertyKey::String(std::borrow::Cow::Owned("inner".to_owned()));
-	environment.info.register_property(
-		object,
+	let object = types.new_anonymous_interface_type(vec![(
 		Publicity::Public,
-		inner.clone(),
+		PropertyKey::String(std::borrow::Cow::Owned("inner".to_owned())),
 		PropertyValue::Value(generic_parameter.type_id),
-		false,
-		source_map::SpanWithSource::NULL,
-	);
+	)]);
 
 	let or = types.new_or_type(generic_parameter.type_id, object);
 	let parameter = types.new_function_parameter(or);
@@ -77,11 +72,11 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 			&mut environment.info,
 		);
 		basis.append(
-			environment,
 			Publicity::Public,
-			inner,
+			PropertyKey::String(std::borrow::Cow::Owned("inner".to_owned())),
 			PropertyValue::Value(five),
 			source_map::SpanWithSource::NULL,
+			&mut environment.info,
 		);
 		basis.build_object()
 	};
@@ -96,7 +91,7 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 			others: SubTypingOptions::default(),
 			object_constraints: None,
 		};
-		let result = type_is_subtype(parameter, five_obj, &mut state, &environment, &types);
+		let result = type_is_subtype(parameter, five_obj, &mut state, environment, types);
 
 		let contributions = state.contributions.as_ref().unwrap();
 

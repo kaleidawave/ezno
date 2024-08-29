@@ -6,7 +6,7 @@ use crate::{
 		information::{get_value_of_constant_import_variable, LocalInformation},
 		VariableRegisterArguments,
 	},
-	parse_source, CheckingData, Environment, Instance, Scope, Type, TypeId, TypeMappings,
+	parse_source, CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings,
 	VariableId,
 };
 
@@ -31,7 +31,7 @@ pub enum ImportKind<'a, T: Iterator<Item = NamePair<'a>>> {
 	Everything,
 }
 
-/// A module once it has been type chedked (note could have type errorts that have been raised) and all information has been resolved about it
+/// A module once it has been type checked (note could have type errors that have been raised) and all information has been resolved about it
 pub struct SynthesisedModule<M> {
 	pub content: M,
 	pub exported: Exported,
@@ -59,14 +59,15 @@ impl<M> SynthesisedModule<M> {
 pub struct Exported {
 	pub default: Option<TypeId>,
 	/// Mutability purely for the mutation thingy
-	pub named: Vec<(String, (VariableId, VariableMutability))>,
-	pub named_types: Vec<(String, TypeId)>,
+	pub named: Map<String, (VariableId, VariableMutability)>,
+	pub named_types: Map<String, TypeId>,
 }
 
 pub type ExportedVariable = (VariableId, VariableMutability);
 
 impl Exported {
-	pub(crate) fn get_export(
+	#[must_use]
+	pub fn get_export(
 		&self,
 		want: &str,
 		type_only: bool,
@@ -74,22 +75,23 @@ impl Exported {
 		let variable = if type_only {
 			None
 		} else {
-			self.named
-				.iter()
-				.find_map(|(export, value)| (export == want).then_some((value.0, value.1)))
+			self.named.get(want).map(|(name, mutability)| (*name, *mutability))
 		};
 
-		let r#type =
-			self.named_types.iter().find_map(|(export, value)| (export == want).then_some(*value));
+		let r#type = self.named_types.get(want).copied();
 
 		(variable, r#type)
+	}
+
+	pub fn keys(&self) -> impl Iterator<Item = &str> {
+		self.named.keys().chain(self.named_types.keys()).map(AsRef::as_ref)
 	}
 }
 
 /// After a syntax error
 pub struct InvalidModule;
 
-/// The result of syntehsising a module
+/// The result of synthesising a module
 pub type FinalModule<M> = Result<SynthesisedModule<M>, InvalidModule>;
 
 #[derive(Debug, Clone)]
@@ -131,6 +133,14 @@ pub fn import_items<
 			crate::diagnostics::TypeCheckError::CannotOpenFile {
 				file: err.clone(),
 				import_position: Some(import_position.with_source(environment.get_source())),
+				possibles: checking_data
+					.modules
+					.files
+					.get_paths()
+					.keys()
+					.filter_map(|path| path.to_str())
+					.collect(),
+				partial_import_path,
 			},
 		);
 	}
@@ -147,11 +157,27 @@ pub fn import_items<
 				};
 				environment.info.variable_current_value.insert(id, *item);
 				let existing = environment.variables.insert(default_name.to_owned(), v);
-				if let Some(_existing) = existing {
-					todo!("diagnostic")
+				if let Some(existing) = existing {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::DuplicateImportName {
+							import_position: position.with_source(current_source),
+							existing_position: match existing {
+								VariableOrImport::Variable { declared_at, .. } => declared_at,
+								VariableOrImport::MutableImport { import_specified_at, .. }
+								| VariableOrImport::ConstantImport {
+									import_specified_at, ..
+								} => import_specified_at,
+							},
+						},
+					);
 				}
 			} else {
-				todo!("emit 'no default export' diagnostic")
+				checking_data.diagnostics_container.add_error(
+					crate::diagnostics::TypeCheckError::NoDefaultExport {
+						position: position.with_source(current_source),
+						partial_import_path,
+					},
+				);
 			}
 		} else {
 			environment.register_variable_handle_error(
@@ -160,9 +186,11 @@ pub fn import_items<
 					constant: true,
 					initial_value: Some(TypeId::ERROR_TYPE),
 					space: None,
+					allow_reregistration: false,
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
@@ -171,32 +199,46 @@ pub fn import_items<
 	match kind {
 		ImportKind::Parts(parts) => {
 			for part in parts {
+				// Here in nested because want to type variables as error otherwise
 				if let Ok(Ok(ref exports)) = exports {
+					crate::utilities::notify!("{:?}", part);
 					let (exported_variable, exported_type) =
 						exports.get_export(part.value, type_only);
 
 					if exported_variable.is_none() && exported_type.is_none() {
+						let possibles = {
+							let mut possibles =
+								crate::get_closest(exports.keys(), part.value).unwrap_or(vec![]);
+							possibles.sort_unstable();
+							possibles
+						};
 						let position = part.position.with_source(current_source);
 						checking_data.diagnostics_container.add_error(
 							crate::diagnostics::TypeCheckError::FieldNotExported {
 								file: partial_import_path,
 								position,
 								importing: part.value,
+								possibles,
 							},
 						);
 
+						// Register error
 						environment.register_variable_handle_error(
 							part.r#as,
 							VariableRegisterArguments {
 								constant: true,
 								space: None,
 								initial_value: Some(TypeId::ERROR_TYPE),
+								allow_reregistration: false,
 							},
 							position,
 							&mut checking_data.diagnostics_container,
+							&mut checking_data.local_type_mappings,
 							checking_data.options.record_all_assignments_and_reads,
 						);
 					}
+
+					// add variable to scope
 					if let Some((variable, mutability)) = exported_variable {
 						let constant = match mutability {
 							VariableMutability::Constant => {
@@ -216,19 +258,40 @@ pub fn import_items<
 								.position
 								.with_source(environment.get_source()),
 						};
+						crate::utilities::notify!("{:?}", part.r#as.to_owned());
 						let existing = environment.variables.insert(part.r#as.to_owned(), v);
-						if let Some(_existing) = existing {
-							todo!("diagnostic")
+						if let Some(existing) = existing {
+							checking_data.diagnostics_container.add_error(
+								crate::diagnostics::TypeCheckError::DuplicateImportName {
+									import_position: part
+										.position
+										.with_source(environment.get_source()),
+									existing_position: match existing {
+										VariableOrImport::Variable { declared_at, .. } => {
+											declared_at
+										}
+										VariableOrImport::MutableImport {
+											import_specified_at,
+											..
+										}
+										| VariableOrImport::ConstantImport {
+											import_specified_at,
+											..
+										} => import_specified_at,
+									},
+								},
+							);
 						}
 						if also_export {
 							if let Scope::Module { ref mut exported, .. } =
 								environment.context_type.scope
 							{
-								exported.named.push((part.r#as.to_owned(), (variable, mutability)));
+								exported.named.insert(part.r#as.to_owned(), (variable, mutability));
 							}
 						}
 					}
 
+					// add type to scope
 					if let Some(ty) = exported_type {
 						let existing = environment.named_types.insert(part.r#as.to_owned(), ty);
 						assert!(existing.is_none(), "TODO exception");
@@ -243,9 +306,11 @@ pub fn import_items<
 							constant: true,
 							space: None,
 							initial_value: Some(TypeId::ERROR_TYPE),
+							allow_reregistration: false,
 						},
 						declared_at,
 						&mut checking_data.diagnostics_container,
+						&mut checking_data.local_type_mappings,
 						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
@@ -253,12 +318,13 @@ pub fn import_items<
 		}
 		ImportKind::All { under, position } => {
 			let value = if let Ok(Ok(ref exports)) = exports {
-				checking_data.types.register_type(Type::SpecialObject(
-					crate::features::objects::SpecialObjects::Import(exports.clone()),
-				))
+				let import_object = crate::Type::SpecialObject(
+					crate::features::objects::SpecialObject::Import(exports.clone()),
+				);
+				checking_data.types.register_type(import_object)
 			} else {
 				crate::utilities::notify!("TODO :?");
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			};
 			environment.register_variable_handle_error(
 				under,
@@ -266,18 +332,20 @@ pub fn import_items<
 					constant: true,
 					space: None,
 					initial_value: Some(value),
+					allow_reregistration: false,
 				},
 				position.with_source(current_source),
 				&mut checking_data.diagnostics_container,
+				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
 		}
 		ImportKind::Everything => {
 			if let Ok(Ok(ref exports)) = exports {
-				for (name, (variable, mutability)) in &exports.named {
+				for (name, (variable, mutability)) in exports.named.iter() {
 					// TODO are variables put into scope?
 					if let Scope::Module { ref mut exported, .. } = environment.context_type.scope {
-						exported.named.push((name.clone(), (*variable, *mutability)));
+						exported.named.insert(name.clone(), (*variable, *mutability));
 					}
 				}
 			} else {
@@ -422,3 +490,18 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		None => Err(CouldNotOpenFile(PathBuf::from(to_import.to_owned()))),
 	}
 }
+
+// pub fn get_possibles_message_for_imports(possibles: &[&str]) -> Vec<String> {
+// 	possibles
+// 		.iter()
+// 		.filter(|file| !file.ends_with(".d.ts"))
+// 		.filter_map(|file| file.strip_suffix(".ts"))
+// 		.map(|file| {
+// 			if file.starts_with("./") || file.starts_with("../") {
+// 				file.to_string()
+// 			} else {
+// 				"./".to_string() + file
+// 			}
+// 		})
+// 		.collect::<Vec<String>>()
+// }

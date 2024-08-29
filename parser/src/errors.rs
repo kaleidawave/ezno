@@ -34,6 +34,7 @@ pub enum ParseErrors<'a> {
 	InvalidRegexFlag,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
+	InvalidLHSOfIs,
 }
 
 impl<'a> Display for ParseErrors<'a> {
@@ -133,6 +134,9 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::CannotHaveRegularMemberAfterSpread => {
 				write!(f, "Cannot have regular member after spread")
 			}
+			ParseErrors::InvalidLHSOfIs => {
+				write!(f, "LHS must be variable reference")
+			}
 		}
 	}
 }
@@ -145,7 +149,7 @@ pub enum LexingErrors {
 	NumberLiteralBaseSpecifierMustPrecededWithZero,
 	InvalidCharacterInJSXTag(char),
 	UnbalancedJSXClosingTags,
-	ExpectedClosingAngleAtEndOfSelfClosingTag,
+	ExpectedClosingChevronAtEndOfSelfClosingTag,
 	InvalidCharacterInAttributeKey(char),
 	UnexpectedCharacter(derive_finite_automaton::InvalidCharacter),
 	EmptyAttributeName,
@@ -162,6 +166,7 @@ pub enum LexingErrors {
 	InvalidUnderscore,
 	CannotLoadLargeFile(usize),
 	ExpectedDashInComment,
+	ExpectedOpenChevron,
 }
 
 impl Display for LexingErrors {
@@ -179,7 +184,7 @@ impl Display for LexingErrors {
 			LexingErrors::InvalidCharacterInJSXTag(chr) => {
 				write!(f, "Invalid character {chr:?} in JSX tag")
 			}
-			LexingErrors::ExpectedClosingAngleAtEndOfSelfClosingTag => {
+			LexingErrors::ExpectedClosingChevronAtEndOfSelfClosingTag => {
 				f.write_str("Expected closing angle at end of self closing JSX tag")
 			}
 			LexingErrors::InvalidCharacterInAttributeKey(chr) => {
@@ -210,6 +215,9 @@ impl Display for LexingErrors {
 			}
 			LexingErrors::ExpectedDashInComment => {
 				f.write_str("JSX comments must have two dashes after `<!` start")
+			}
+			LexingErrors::ExpectedOpenChevron => {
+				f.write_str("Unexpected token in HTML. Expected '<'")
 			}
 		}
 	}

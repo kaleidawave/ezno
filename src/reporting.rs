@@ -80,7 +80,7 @@ fn checker_diagnostic_to_codespan_diagnostic(
 	}
 }
 
-pub(crate) fn emit_diagnostics<T: PathMap, I>(
+pub(crate) fn report_diagnostics_to_cli<T: PathMap, I>(
 	diagnostics: I,
 	fs: &MapFileStore<T>,
 	compact: bool,
@@ -124,10 +124,10 @@ where
 		emit(&mut writer, &config, &files, &diagnostic)?;
 	}
 
-	if count > maximum {
-		#[cfg(not(target_family = "wasm"))]
-		writer.flush().unwrap();
+	#[cfg(not(target_family = "wasm"))]
+	writer.flush().unwrap();
 
+	if count > maximum {
 		crate::utilities::print_to_cli(format_args!(
 			"... and {difference} other errors and warnings",
 			difference = count - maximum

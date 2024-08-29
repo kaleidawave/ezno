@@ -9,6 +9,7 @@ use super::{ASTNode, Span, TSXToken, TokenReader};
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct Module {
+	pub hashbang_comment: Option<String>,
 	pub items: Vec<StatementOrDeclaration>,
 	pub span: Span,
 }
@@ -26,6 +27,11 @@ impl ASTNode for Module {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
+		if let Some(ref hashbang_comment) = self.hashbang_comment {
+			buf.push_str("#!");
+			buf.push_str(hashbang_comment);
+			buf.push_new_line();
+		}
 		statements_and_declarations_to_string(&self.items, buf, options, local);
 	}
 
@@ -38,10 +44,22 @@ impl ASTNode for Module {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let end = state.length_of_source;
-		parse_statements_and_declarations(reader, state, options).map(|statements| Module {
-			items: statements,
-			span: Span { start: 0, source: (), end },
+		let span = Span { start: 0, source: (), end: state.length_of_source };
+		let hashbang_comment = if let Some(crate::Token(TSXToken::HashBangComment(_), _)) =
+			reader.peek()
+		{
+			let Some(crate::Token(TSXToken::HashBangComment(hashbang_comment), _)) = reader.next()
+			else {
+				unreachable!()
+			};
+			Some(hashbang_comment)
+		} else {
+			None
+		};
+		parse_statements_and_declarations(reader, state, options).map(|items| Module {
+			hashbang_comment,
+			items,
+			span,
 		})
 	}
 }

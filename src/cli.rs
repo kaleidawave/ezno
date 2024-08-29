@@ -11,11 +11,11 @@ use std::{
 use crate::{
 	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
 	check::check,
-	reporting::emit_diagnostics,
+	reporting::report_diagnostics_to_cli,
 	utilities::{self, print_to_cli, MaxDiagnostics},
 };
 use argh::FromArgs;
-use checker::CheckOutput;
+use checker::{CheckOutput, TypeCheckOptions};
 use parser::ParseOptions;
 
 /// The Ezno type-checker & compiler
@@ -133,6 +133,9 @@ pub(crate) struct FormatArguments {
 	/// path to input file
 	#[argh(positional)]
 	pub path: PathBuf,
+	/// check whether file is formatted
+	#[argh(switch)]
+	pub check: bool,
 }
 
 /// Upgrade/update the ezno binary to the latest version
@@ -200,30 +203,33 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				max_diagnostics,
 			} = check_arguments;
 
-			#[cfg(not(target_family = "wasm"))]
-			let start = timings.then(std::time::Instant::now);
+			let mut type_check_options: TypeCheckOptions = Default::default();
 
-			let type_check_options = Default::default();
+			#[cfg(not(target_family = "wasm"))]
+			{
+				type_check_options.measure_time = timings;
+			}
 
 			let entry_points = match get_entry_points(input) {
 				Ok(entry_points) => entry_points,
 				Err(_) => return ExitCode::FAILURE,
 			};
 
-			let CheckOutput { diagnostics, module_contents, .. } =
+			let CheckOutput { diagnostics, module_contents, chronometer, types, .. } =
 				check(entry_points, read_file, definition_file.as_deref(), type_check_options);
 
-			#[cfg(not(target_family = "wasm"))]
-			if let Some(start) = start {
-				eprintln!("Checked in {:?}", start.elapsed());
-			};
+			let diagnostics_count = diagnostics.count();
+			let current = timings.then(std::time::Instant::now);
 
-			if diagnostics.has_error() {
+			let result = if diagnostics.has_error() {
 				if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
 					let count = diagnostics.into_iter().count();
-					print_to_cli(format_args!("Found {count} type errors and warnings 😬"))
+					print_to_cli(format_args!(
+						"Found {count} type errors and warnings {}",
+						console::Emoji(" 😬", ":/")
+					))
 				} else {
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						diagnostics,
 						&module_contents,
 						compact_diagnostics,
@@ -234,16 +240,32 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				ExitCode::FAILURE
 			} else {
 				// May be warnings or information here
-				emit_diagnostics(
+				report_diagnostics_to_cli(
 					diagnostics,
 					&module_contents,
 					compact_diagnostics,
 					max_diagnostics,
 				)
 				.unwrap();
-				print_to_cli(format_args!("No type errors found 🎉"));
+				print_to_cli(format_args!("No type errors found {}", console::Emoji("🎉", ":)")));
 				ExitCode::SUCCESS
+			};
+
+			#[cfg(not(target_family = "wasm"))]
+			if timings {
+				let reporting = current.unwrap().elapsed();
+				eprintln!("---\n");
+				eprintln!("Diagnostics:\t{}", diagnostics_count);
+				eprintln!("Types:      \t{}", types.count_of_types());
+				eprintln!("Lines:      \t{}", chronometer.lines);
+				eprintln!("Cache read: \t{:?}", chronometer.cached);
+				eprintln!("FS read:    \t{:?}", chronometer.fs);
+				eprintln!("Parsed in:  \t{:?}", chronometer.parse);
+				eprintln!("Checked in: \t{:?}", chronometer.check);
+				eprintln!("Reporting:  \t{:?}", reporting);
 			}
+
+			result
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Build(build_config),
@@ -294,18 +316,21 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 					for output in outputs {
 						write_file(output.output_path.as_path(), output.content);
 					}
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						diagnostics,
 						&fs,
 						compact_diagnostics,
 						build_config.max_diagnostics,
 					)
 					.unwrap();
-					print_to_cli(format_args!("Project built successfully 🎉"));
+					print_to_cli(format_args!(
+						"Project built successfully {}",
+						console::Emoji("🎉", ":)")
+					));
 					ExitCode::SUCCESS
 				}
 				Err(FailedBuildOutput { fs, diagnostics }) => {
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						diagnostics,
 						&fs,
 						compact_diagnostics,
@@ -317,7 +342,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			}
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
-			nested: ExperimentalSubcommand::Format(FormatArguments { path }),
+			nested: ExperimentalSubcommand::Format(FormatArguments { path, check }),
 		}) => {
 			use parser::{source_map::FileSystem, ASTNode, Module, ToStringOptions};
 
@@ -332,7 +357,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
 			let source_id = files.new_source_id(path.clone(), input.clone());
 			let res = Module::from_string(
-				input,
+				input.clone(),
 				ParseOptions { retain_blank_lines: true, ..Default::default() },
 			);
 			match res {
@@ -342,12 +367,25 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						include_type_annotations: true,
 						..Default::default()
 					};
-					let _ = fs::write(path.clone(), module.to_string(&options));
-					print_to_cli(format_args!("Formatted {} 🎉", path.display()));
-					ExitCode::SUCCESS
+					let output = module.to_string(&options);
+					if check {
+						if input == output {
+							ExitCode::SUCCESS
+						} else {
+							print_to_cli(format_args!(
+								"{}",
+								pretty_assertions::StrComparison::new(&input, &output)
+							));
+							ExitCode::FAILURE
+						}
+					} else {
+						let _ = fs::write(path.clone(), output);
+						print_to_cli(format_args!("Formatted {}", path.display()));
+						ExitCode::SUCCESS
+					}
 				}
 				Err(err) => {
-					emit_diagnostics(
+					report_diagnostics_to_cli(
 						std::iter::once((err, source_id).into()),
 						&files,
 						false,

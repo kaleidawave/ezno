@@ -217,7 +217,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				TypeId::ANY_TYPE,
 			);
 			let thrown_position = stmt.1.with_source(environment.get_source());
-			environment.throw_value(thrown_value, thrown_position);
+			environment.throw_value(thrown_value, thrown_position, &mut checking_data.types);
 		}
 		Statement::Labelled { position: _, name, statement } => {
 			// Labels on invalid statements is caught at parse time
@@ -230,7 +230,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		Statement::VarVariable(stmt) => {
 			for declaration in &stmt.declarations {
-				synthesise_variable_declaration_item(declaration, environment, checking_data, None);
+				synthesise_variable_declaration_item(
+					declaration,
+					environment,
+					checking_data,
+					None,
+					false,
+				);
 			}
 		}
 		Statement::TryCatch(stmt) => new_try_context(

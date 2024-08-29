@@ -1,10 +1,7 @@
-@Constant
-declare function debug_type_independent(t: any): void;
-
 // Eventually this will be merged with existing TS es5.d.ts files but for now is the standalone see #121
 
 interface ImportEnv {
-    [key: string]: string | undefined;
+    [key: string]: string;
 }
 
 interface ImportMeta {
@@ -14,7 +11,7 @@ interface ImportMeta {
 }
 
 declare class Array<T> {
-    [index: number]: T | undefined;
+    [index: number]: T;
 
     length: number;
 
@@ -33,8 +30,7 @@ declare class Array<T> {
             return undefined
         } else {
             const value = this[--this.length];
-            // TODO this currently breaks value?
-            // delete this[this.length];
+            delete this[this.length];
             return value
         }
     }
@@ -81,7 +77,8 @@ declare class Array<T> {
         let i: number = 0;
         while (i < length) {
             const value = this[i];
-            if (!cb(value, i++)) {
+            const result = cb(value, i++) as boolean;
+            if (!result) {
                 return false
             }
         }
@@ -101,45 +98,16 @@ declare class Array<T> {
         return false
     }
 
-    // fill(value: T, start: number = 0, end = this.length): this {
-    //     // TODO
-    //     return this
-    // }
-
-    // reduce<U>(cb: (acc: U, t: T, i?: number) => U, initial?: U): U {
-    //     const { length } = this;
-    //     let acc = initial ?? this[0];
-    //     let i: number = typeof initial === "undefined" ? 1 : 0;;
-    //     while (i < length) {
-    //         const value = this[i];
-    //         acc = cb(acc, value, i++);
-    //     }
-    //     return acc;
-    // }
-
-    // includes(searchElement: T, fromIndex?: number): boolean {
-    //     const { length } = this;
-    //     // TODO this is currently broken
-    //     let i: number = fromIndex ?? 0;
-    //     while (i < length) {
-    //         const value = this[i++];
-    //         if (value === searchElement) {
-    //             return true
-    //         }
-    //     }
-    //     return false
-    // }
-
     join(joiner: string = ","): string {
         const { length } = this;
         let i: number = 1;
         if (length === 0) {
             return ""
         }
-        let s: string = "" + this[0];
+        let s: string = "" + (this[0] as string);
         while (i < length) {
             s += joiner;
-            s += this[i++];
+            s += this[i++] as string;
         }
         return s
     }
@@ -151,9 +119,17 @@ declare class Array<T> {
             return this[index]
         }
     }
+
+    static isArray(item: any) {
+        return item instanceof Array;
+    }
 }
 
 type Record<K extends string, T> = { [P in K]: T }
+
+type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
+type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+type Integer = MultipleOf<1>;
 
 declare class Map<T, U> {
     #keys: Array<T> = [];
@@ -162,9 +138,9 @@ declare class Map<T, U> {
 
 declare class Math {
     @Constant
-    static sin(x: number): number;
+    static sin(x: number): InclusiveRange<-1, 1>;
     @Constant
-    static cos(x: number): number;
+    static cos(x: number): InclusiveRange<-1, 1>;
     @Constant
     static tan(x: number): number;
     @Constant
@@ -173,22 +149,31 @@ declare class Math {
     static sqrt(x: number): number;
     @Constant
     static cbrt(x: number): number;
+    @Constant
+    static log(x: number): number;
 
     // TODO newer method
     @Constant
     static trunc(x: number): number;
 
+    @Constant
+    static imul(x: number, y: number): number;
+
     static PI: 3.141592653589793
+    static E: 2.718281828459045
+
+    @InputOutput
+    static random(): InclusiveRange<0, 1>;
 }
 
 @Primitive("string")
 declare class String {
-    [index: number]: string | undefined;
+    [index: number]: string;
 
     @Constant
-    toUpperCase(): string;
+    toUpperCase(this: string): string;
     @Constant
-    toLowerCase(): string;
+    toLowerCase(this: string): string;
 
     get length(): number;
 
@@ -199,7 +184,52 @@ declare class String {
     split(splitter: string): Array<string>;
 }
 
+@Primitive("number")
+declare class Number {
+    static NEGATIVE_INFINITY: NegativeInfinity;
+    static POSITIVE_INFINITY: Infinity;
+
+    // static isFinite(item: any) {
+    //     return !(item === Number.NEGATIVE_INFINITY || item === Number.POSITIVE_INFINITY || Number.isNaN(item))
+    // }
+
+    static isNaN(item: any) {
+        return item !== item;
+    }
+}
+
 declare class Promise<T> { }
+
+declare class RegExp {
+    @Constant("regexp:constructor")
+    constructor(pattern: string, flags?: string);
+
+    @Constant("regexp:exec")
+    exec(input: string): RegExpExecArray | null;
+}
+
+// es5
+interface RegExpExecArray extends Array<string> {
+    /**
+     * The index of the search at which the result was found.
+     */
+    index: number;
+    /**
+     * A copy of the search string.
+     */
+    input: string;
+    /**
+     * The first match. This will always be present because `null` will be returned if there are no matches.
+     */
+    0: string;
+}
+
+// es2018
+interface RegExpExecArray {
+    groups?: {
+        [key: string]: string;
+    };
+}
 
 type ResponseBody = string;
 
@@ -294,11 +324,11 @@ declare class SyntaxError extends Error {
 
 declare class JSON {
     // TODO any temp
-    @Constant("json:parse", SyntaxError)
+    @Constant("JSON:parse", SyntaxError)
     static parse(input: string): any;
 
     // TODO any temp
-    @Constant("json:stringify")
+    @Constant("JSON:stringify")
     static stringify(input: any): string;
 }
 
@@ -308,12 +338,24 @@ declare class Function {
 
 declare class Symbols {
     // TODO temp
-    iterator: 199
+    static iterator: unique symbol "iterator"
 }
 
 declare class Proxy {
     @Constant("proxy:constructor")
         constructor(obj: any, cb: any);
+}
+
+// Copied from `es5.d.ts`. Could this be an or
+// TODO string keys temp because parser broke
+interface PropertyDescriptor {
+    value?: any;
+    get?(): any;
+    set?(v: any): void;
+
+    writable?: boolean;
+    configurable?: boolean;
+    enumerable?: boolean;
 }
 
 declare class Object {
@@ -323,11 +365,19 @@ declare class Object {
     @Constant
     static getPrototypeOf(on: object): object | null;
 
-    // static create(prototype: object): object {
-    //     const n = {};
-    //     Object.setProtoTypeOf(n, prototype);
-    //     return n
-    // }
+    @Constant
+    static freeze(on: object): object;
+
+    @Constant
+    static isFrozen(on: object): boolean;
+
+    // TODO defineProperties via body (not constant)
+    @Constant
+    static defineProperty(on: object, property: string, discriminator: PropertyDescriptor): boolean;
+
+    // TODO getOwnPropertyDescriptors via body (not constant)
+    @Constant
+    static getOwnPropertyDescriptor(on: object, property: string): PropertyDescriptor;
 
     static keys(on: { [s: string]: any }): Array<string> {
         const keys: Array<string> = [];
@@ -351,6 +401,14 @@ declare class Object {
             entries.push([key, on[key]]);
         }
         return entries
+    }
+
+    // TODO spread source
+    static assign(target: object, source: object): object {
+        for (const key in source) {
+            target[key] = source[key]
+        }
+        return target
     }
 
     // static fromEntries(iterator: any): object {
@@ -415,6 +473,8 @@ declare function debug_context(): void;
 declare function context_id(): void;
 @Constant
 declare function context_id_chain(): void;
+@Constant
+declare function debug_type_independent(t: any): void;
 
 // A function, as it should be!
 @Constant

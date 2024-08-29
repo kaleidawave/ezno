@@ -1,14 +1,10 @@
-use std::{collections::HashMap, path::PathBuf};
-
-use source_map::{SourceId, SpanWithSource};
-
-use super::range_map::RangeMap;
-
 use crate::{
 	features::variables::VariableWithValue,
 	types::{TypeId, TypeStore},
-	GeneralContext, VariableId,
+	GeneralContext, RangeMap, VariableId,
 };
+use source_map::{SourceId, SpanWithSource};
+use std::{collections::HashMap, path::PathBuf};
 
 /// **PER MODULE**
 /// [`TypeMappings`] is used to retaining information between passes, including the synthesise and checking passes
@@ -27,6 +23,9 @@ pub struct TypeMappings {
 	/// Data to a AST mapping. For classes this points to the shape
 	pub types_to_types: RangeMap<TypeId>,
 	pub import_statements_to_pointing_path: RangeMap<PathBuf>,
+
+	/// For places where there are two `var` statements in
+	pub var_aliases: HashMap<u32, VariableId>,
 
 	/// Variable restriction. Cached after hoisting pass. TODO temp needs tidy
 	pub variable_restrictions: HashMap<(SourceId, u32), (TypeId, SpanWithSource)>,

@@ -1,7 +1,7 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
 	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
-	use std::{collections::HashSet, fs, path::Path, time::Instant};
+	use std::{fs, path::Path, time::Instant};
 
 	let default_path = Path::new("private").join("tocheck").join("aaa.tsx");
 	let simple_dts_path = Path::new("checker").join("definitions").join("simple.d.ts");
@@ -12,34 +12,45 @@ fn main() {
 	let path = args
 		.first()
 		.and_then(|arg| (!arg.starts_with("--")).then_some(arg))
-		.map(Path::new)
-		.unwrap_or(default_path.as_path());
+		.map_or(default_path.as_path(), Path::new);
 
 	let use_simple = args.iter().any(|item| item == "--simple-dts");
 	let no_cache = args.iter().any(|item| item == "--no-cache");
 	let debug_types = args.iter().any(|item| item == "--debug-types");
+	let no_lib = args.iter().any(|item| item == "--no-lib");
+	let debug_dts = args.iter().any(|item| item == "--debug-dts");
+	let extras = args.iter().any(|item| item == "--extras");
 
 	let now = Instant::now();
 
 	let resolver = |path: &std::path::Path| fs::read(path).ok();
 
-	let definition_file = if use_simple {
-		simple_dts_path.to_path_buf()
-	} else if no_cache {
-		overrides_dts_path.to_path_buf()
+	let type_definition_files = if no_lib {
+		Vec::new()
 	} else {
-		ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()
+		let definition_file = if use_simple {
+			simple_dts_path.clone()
+		} else if no_cache {
+			overrides_dts_path.clone()
+		} else {
+			ezno_checker::INTERNAL_DEFINITION_FILE_PATH.into()
+		};
+		vec![definition_file]
 	};
-	let type_definition_files = HashSet::from_iter([definition_file]);
+
+	let entry_points = vec![path.to_path_buf()];
 
 	let options = TypeCheckOptions {
 		debug_types,
 		record_all_assignments_and_reads: true,
+		max_inline_count: 600,
+		debug_dts,
+		extra_syntax: extras,
 		..Default::default()
 	};
 
 	let result = check_project::<_, synthesis::EznoParser>(
-		vec![path.to_path_buf()],
+		entry_points,
 		type_definition_files,
 		resolver,
 		options,
@@ -49,7 +60,8 @@ fn main() {
 
 	if args.iter().any(|arg| arg == "--types") {
 		eprintln!("Types:");
-		for (type_id, item) in result.types.into_vec_temp() {
+		let types = result.types.into_vec_temp();
+		for (type_id, item) in &types[types.len().saturating_sub(60)..] {
 			eprintln!("\t{type_id:?}: {item:?}");
 		}
 	}
@@ -66,7 +78,7 @@ fn main() {
 		let end = now.elapsed();
 		let count = result.diagnostics.into_iter().len();
 		eprintln!("Found {count} diagnostics in {end:?}");
-	} else if args.iter().any(|arg| arg == "--debug-diagnostics") {
+	} else if args.iter().any(|arg| arg == "--verbose-diagnostics") {
 		eprintln!("Diagnostics:");
 		for diagnostic in result.diagnostics {
 			eprintln!("{diagnostic:?}");

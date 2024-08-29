@@ -118,7 +118,7 @@ impl ASTNode for ClassMember {
 		}
 
 		// TODO not great
-		let start = reader.peek().unwrap().1;
+		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
 
 		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
 
@@ -221,15 +221,15 @@ impl ASTNode for ClassMember {
 				buf.push_str("static ");
 				block.to_string_from_buffer(buf, options, local.next_level());
 			}
-			Self::Comment(c, is_multiline, _) => {
-				if options.should_add_comment(c.starts_with('.')) {
+			Self::Comment(content, is_multiline, _) => {
+				if options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
-						buf.push_str(c);
+						buf.push_str(content);
 						buf.push_str("*/");
 					} else {
 						buf.push_str("//");
-						buf.push_str(c);
+						buf.push_str(content);
 						buf.push_new_line();
 					}
 				}
@@ -284,7 +284,7 @@ impl FunctionBased for ClassFunctionBase {
 		options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		// TODO not great
-		let start = reader.peek().unwrap().1;
+		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
 		let header = MethodHeader::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
 		Ok((((!header.is_no_modifiers()).then_some(start), header), name))

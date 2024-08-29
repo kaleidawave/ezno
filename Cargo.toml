@@ -14,7 +14,7 @@ members = [
 name = "ezno"
 description = "A JavaScript type checker and compiler. For use as a library or through the CLI"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.21"
+version = "0.0.22"
 edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
@@ -38,15 +38,17 @@ path = "src/main.rs"
 [dependencies]
 # ezno-web-framework = { path = "./plugins/web" }
 
-console = "0.15"
-codespan-reporting = "0.11"
 argh = "0.1"
 base64 = "0.21"
+console = "0.15"
+codespan-reporting = "0.11"
 enum-variants-strings = "0.3"
+glob = "0.3"
+# For `StrComparison` for string comparison
+pretty_assertions = "1.3.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simple-json-parser = "0.0.2"
-glob = "0.3"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # For updating binary
@@ -60,13 +62,13 @@ notify = "6.1.0"
 
 [dependencies.checker]
 path = "./checker"
-version = "0.0.16"
+version = "0.0.17"
 features = ["ezno-parser", "serde-serialize"]
 package = "ezno-checker"
 
 [dependencies.parser]
 path = "./parser"
-version = "0.1.5"
+version = "0.1.6"
 features = ["extras"]
 package = "ezno-parser"
 
@@ -79,16 +81,20 @@ js-sys = "0.3"
 tsify = "0.4.5"
 
 [workspace.lints.clippy]
-all = "deny"
-pedantic = "deny"
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
 cast_precision_loss = "warn"
 cast_possible_truncation = "warn"
 cast_sign_loss = "warn"
 default_trait_access = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
-implicit_hasher = "allow"
 module_name_repetitions = "allow"
 too_many_lines = "allow"
 new_without_default = "allow"
 result_unit_err = "allow"
+thread_local_initializer_can_be_made_const = "allow"
+implicit_hasher = "allow"
+
+[profile.dev]
+debug = false

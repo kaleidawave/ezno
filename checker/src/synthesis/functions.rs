@@ -10,12 +10,11 @@ use parser::{
 
 use crate::{
 	context::{Context, ContextType, Scope, VariableRegisterArguments},
-	features::functions::{
-		synthesise_function_default_value, FunctionBehavior, ReturnType, SynthesisableFunction,
-	},
+	features::functions::{synthesise_function_default_value, ReturnType, SynthesisableFunction},
 	types::{
 		functions::{
-			FunctionType, SynthesisedParameter, SynthesisedParameters, SynthesisedRestParameter,
+			FunctionBehavior, FunctionType, SynthesisedParameter, SynthesisedParameters,
+			SynthesisedRestParameter,
 		},
 		generics::GenericTypeParameters,
 		PartiallyAppliedGenerics, Type, TypeId,
@@ -172,10 +171,9 @@ impl SynthesisableFunctionBody for ExpressionOrBlock {
 	) {
 		match self {
 			ExpressionOrBlock::Expression(expression) => {
-				environment.return_value(
-					&crate::context::environment::Returnable::ArrowFunctionBody(&**expression),
-					checking_data,
-				);
+				let arrow_function_body =
+					crate::context::environment::Returnable::ArrowFunctionBody(&**expression);
+				environment.return_value(&arrow_function_body, checking_data);
 			}
 			ExpressionOrBlock::Block(block) => {
 				block.synthesise_function_body(environment, checking_data);
@@ -257,6 +255,8 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 						constant: false,
 						space: Some(parameter_constraint),
 						initial_value: Some(ty),
+						// :<)
+						allow_reregistration: true,
 					},
 				);
 			};
@@ -302,7 +302,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 
 		let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.info.object_constraints.insert(ty, parameter_constraint);
+		// environment.info.object_constraints.insert(ty, parameter_constraint);
 
 		environment.register_variable_handle_error(
 			&rest_parameter.name,
@@ -311,9 +311,12 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				constant: false,
 				space: Some(parameter_constraint),
 				initial_value: Some(ty),
+				// :<)
+				allow_reregistration: true,
 			},
 			rest_parameter.position.with_source(environment.get_source()),
 			&mut checking_data.diagnostics_container,
+			&mut checking_data.local_type_mappings,
 			checking_data.options.record_all_assignments_and_reads,
 		);
 
@@ -381,14 +384,6 @@ fn synthesise_function_parameters<
 
 			let ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-			// TODO parameter_constraint is stateless to reduce redundancy
-			if !matches!(
-				parameter_constraint,
-				TypeId::NUMBER_TYPE | TypeId::STRING_TYPE | TypeId::BOOLEAN_TYPE
-			) {
-				environment.info.object_constraints.insert(ty, parameter_constraint);
-			}
-
 			let (optional, variable_ty) = match &parameter.additionally {
 				Some(ParameterData::WithDefaultValue(expression)) => {
 					let out = synthesise_function_default_value(
@@ -413,6 +408,8 @@ fn synthesise_function_parameters<
 					constant: false,
 					space: Some(parameter_constraint),
 					initial_value: Some(variable_ty),
+					// :<)
+					allow_reregistration: true,
 				},
 			);
 
@@ -457,7 +454,7 @@ fn synthesise_function_parameters<
 
 		let variable_ty = checking_data.types.new_function_parameter(parameter_constraint);
 
-		environment.info.object_constraints.insert(variable_ty, parameter_constraint);
+		// environment.info.object_constraints.insert(variable_ty, parameter_constraint);
 
 		register_variable(
 			&rest_parameter.name,
@@ -468,6 +465,8 @@ fn synthesise_function_parameters<
 				constant: false,
 				space: Some(parameter_constraint),
 				initial_value: Some(variable_ty),
+				// :<)
+				allow_reregistration: true,
 			},
 		);
 
@@ -532,9 +531,18 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 							parser::PropertyKey::Identifier(ident, _, _) => {
 								buf.push_str(ident);
 							}
-							parser::PropertyKey::StringLiteral(_, _, _) => todo!(),
-							parser::PropertyKey::NumberLiteral(_, _) => todo!(),
-							parser::PropertyKey::Computed(_, _) => todo!(),
+							parser::PropertyKey::StringLiteral(s, _, _) => {
+								buf.push('"');
+								buf.push_str(s);
+								buf.push('"');
+							}
+							parser::PropertyKey::NumberLiteral(n, _) => {
+								buf.push_str(n.clone().as_js_string().as_str());
+							}
+							parser::PropertyKey::Computed(_, _) => {
+								// TODO maybe could do better here?
+								buf.push_str("[...]");
+							}
 						}
 						buf.push_str(": ");
 						buf.push_str(&variable_field_to_string(name.get_ast_ref()));
@@ -712,6 +720,7 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 
 /// TODO WIP
 /// TODO also check generics?
+#[allow(clippy::too_many_arguments)]
 pub(super) fn build_overloaded_function(
 	id: FunctionId,
 	behavior: FunctionBehavior,
@@ -720,6 +729,7 @@ pub(super) fn build_overloaded_function(
 	environment: &Environment,
 	types: &mut crate::types::TypeStore,
 	diagnostics: &mut crate::DiagnosticsContainer,
+	effect: crate::types::FunctionEffect,
 ) -> TypeId {
 	use crate::diagnostics::{TypeCheckError, TypeStringRepresentation};
 	use crate::types::subtyping::{type_is_subtype, State, SubTypeResult};
@@ -733,7 +743,7 @@ pub(super) fn build_overloaded_function(
 		type_parameters: actual.0,
 		parameters: actual.1,
 		return_type: actual.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
-		effect: crate::types::FunctionEffect::Unknown,
+		effect,
 	};
 
 	let actual_func = types.new_hoisted_function_type(as_function);
@@ -820,6 +830,7 @@ pub(super) fn build_overloaded_function(
 			type_parameters: overload.0,
 			parameters: overload.1,
 			return_type: overload.2.map_or(TypeId::ANY_TYPE, |rt| rt.0),
+			// existing is base?
 			effect: crate::types::FunctionEffect::Unknown,
 		};
 

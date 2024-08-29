@@ -57,9 +57,9 @@ fn _register_class_properties_for_later_application<
 ) {
 	let scope = crate::Scope::Function(crate::context::environment::FunctionScope::Constructor {
 		extends: false,
-		type_of_super: Some(TypeId::ERROR_TYPE),
+		type_of_super: Some(TypeId::UNIMPLEMENTED_ERROR_TYPE),
 		// TODO get from above
-		this_object_type: TypeId::ERROR_TYPE,
+		this_object_type: TypeId::UNIMPLEMENTED_ERROR_TYPE,
 	});
 
 	let ((), result, _) = environment.new_lexical_environment_fold_into_parent(
@@ -102,6 +102,6 @@ pub(crate) fn register_properties_into_environment<
 		} else {
 			PropertyValue::Value(TypeId::UNDEFINED_TYPE)
 		};
-		environment.info.register_property(on, publicity, key, value, true, position);
+		environment.info.register_property(on, publicity, key, value, position);
 	}
 }

@@ -3,22 +3,22 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	context::LocalInformation,
 	features::{
-		functions::{ClosureChain, ClosureId, ThisValue},
-		objects::SpecialObjects,
-		operations::{
-			evaluate_equality_inequality_operation, evaluate_mathematical_operation,
-			evaluate_pure_unary_operator,
-		},
+		functions::{ClosureChain, ClosureId},
+		objects::{Proxy, SpecialObject},
+		operations::{evaluate_equality_inequality_operation, evaluate_mathematical_operation},
 	},
 	subtyping::{State, SubTypingOptions},
 	types::{
+		calling::ThisValue,
 		generics::contributions::Contributions,
-		get_constraint,
+		intrinsics::{self, distribute_tsc_string_intrinsic},
+		logical::{BasedOnKey, Logical, LogicalOrValid},
 		properties::{get_property_unbound, Publicity},
 		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	},
-	Decidable, Environment, Logical, PropertyValue, TypeId,
+	Decidable, Environment, PropertyValue, TypeId,
 };
 
 use super::generic_type_arguments::GenericArguments;
@@ -31,7 +31,7 @@ pub struct SubstitutionArguments<'a> {
 }
 
 impl<'a> ClosureChain for SubstitutionArguments<'a> {
-	fn get_fact_from_closure<T, R>(&self, _fact: &crate::LocalInformation, cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, _fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
@@ -82,8 +82,8 @@ pub(crate) fn substitute(
 			id
 		}
 		// Closures for objects
-		Type::SpecialObject(SpecialObjects::ClassConstructor { .. })
-		| Type::Object(ObjectNature::RealDeal) => {
+		// Type::SpecialObject(SpecialObject::ClassConstructor { .. })
+		Type::Object(ObjectNature::RealDeal) => {
 			// Apply curring
 			if arguments.closures.is_empty() {
 				id
@@ -96,30 +96,32 @@ pub(crate) fn substitute(
 		}
 		// Specialisation for object type annotation (todo could do per property in future)
 		// Can return functions from functions somehow as well
-		Type::FunctionReference(..) | Type::Object(ObjectNature::AnonymousTypeAnnotation) => {
+		Type::FunctionReference(..) | Type::Object(ObjectNature::AnonymousTypeAnnotation(_)) => {
+			// crate::utilities::notify!("{:?}", arguments.arguments);
 			// Apply curring
 			if arguments.arguments.is_empty() {
 				id
 			} else {
+				let arguments = GenericArguments::ExplicitRestrictions(
+					arguments
+						.arguments
+						.iter()
+						.map(|(k, v)| (*k, (*v, SpanWithSource::NULL)))
+						.collect(),
+				);
 				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: id,
 					// TODO argument positions
-					arguments: GenericArguments::ExplicitRestrictions(
-						arguments
-							.arguments
-							.iter()
-							.map(|(k, v)| (*k, (*v, SpanWithSource::NULL)))
-							.collect(),
-					),
+					arguments,
 				}))
 			}
 		}
-		Type::SpecialObject(SpecialObjects::Function(f, t)) => {
+		Type::SpecialObject(SpecialObject::Function(f, t)) => {
 			// Substitute the this type
 			let id = if let ThisValue::Passed(p) = t {
 				let function_id = *f;
 				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
-				types.register_type(Type::SpecialObject(SpecialObjects::Function(
+				types.register_type(Type::SpecialObject(SpecialObject::Function(
 					function_id,
 					passed,
 				)))
@@ -141,7 +143,17 @@ pub(crate) fn substitute(
 			arguments: structure_arguments,
 		}) => {
 			let on = *on;
-			let new_structure_arguments = match structure_arguments.clone() {
+			let generic_arguments = structure_arguments.clone();
+
+			// Fold intrinsic type
+			if intrinsics::tsc_string_intrinsic(on) {
+				let arg =
+					structure_arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
+				let value = substitute(arg, arguments, environment, types);
+				return distribute_tsc_string_intrinsic(value, on, types);
+			}
+
+			let new_structure_arguments = match generic_arguments {
 				GenericArguments::ExplicitRestrictions(restrictions) => {
 					let restrictions = restrictions
 						.into_iter()
@@ -163,12 +175,21 @@ pub(crate) fn substitute(
 			}))
 		}
 		Type::SpecialObject(special_object) => match special_object {
-			SpecialObjects::Promise { .. } => todo!(),
-			SpecialObjects::Generator { .. } => todo!(),
-			SpecialObjects::Proxy { .. } => todo!(),
-			SpecialObjects::RegularExpression(_) => todo!(),
-			SpecialObjects::Import(_) => todo!(),
-			_ => unreachable!(),
+			SpecialObject::Promise { .. } => todo!(),
+			SpecialObject::Generator { .. } => todo!(),
+			SpecialObject::Proxy(Proxy { over, handler }) => {
+				let (prev_over, prev_handler) = (*over, *handler);
+				let over = substitute(prev_over, arguments, environment, types);
+				let handler = substitute(prev_handler, arguments, environment, types);
+				crate::utilities::notify!("Here {:?}", (prev_over, prev_handler, over, handler));
+				types.register_type(Type::SpecialObject(SpecialObject::Proxy(Proxy {
+					over,
+					handler,
+				})))
+			}
+			SpecialObject::RegularExpression { .. } => todo!(),
+			SpecialObject::Import(_) | SpecialObject::Null => id,
+			SpecialObject::Function(..) => unreachable!("done above"),
 		},
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;
@@ -182,13 +203,25 @@ pub(crate) fn substitute(
 			let rhs = substitute(rhs, arguments, environment, types);
 			types.new_or_type(lhs, rhs)
 		}
+		Type::Narrowed { from, .. } => substitute(*from, arguments, environment, types),
 		Type::RootPolyType(nature) => {
 			if let PolyNature::Open(_) | PolyNature::Error(_) = nature {
+				id
+			} else if let PolyNature::InferGeneric { .. } = nature {
+				// Infer generic is fine for `type Index<T> = T extends Array<infer I> ? I : never`;
+				crate::utilities::notify!("No argument for infer generic (sometimes fine)");
 				id
 			} else if let PolyNature::FunctionGeneric { .. } | PolyNature::StructureGeneric { .. } =
 				nature
 			{
-				crate::utilities::notify!("Could not find argument for explicit generic {:?}", id);
+				crate::utilities::notify!(
+					"Could not find argument for explicit generic {:?} (nature={:?})",
+					id,
+					nature
+				);
+				id
+			} else if let PolyNature::FreeVariable { .. } = nature {
+				crate::utilities::notify!("Could not find free variable");
 				id
 			} else {
 				// Other root poly types cases handled by the early return
@@ -204,25 +237,14 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_mathematical_operation(lhs, operator, rhs, types, false) {
+				match evaluate_mathematical_operation(lhs, operator, rhs, environment, types, false)
+				{
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
-							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"
-						);
-					}
-				}
-			}
-			Constructor::UnaryOperator { operand, operator, .. } => {
-				match evaluate_pure_unary_operator(
-					operator, operand, types,
-					// Restrictions should have been made ahead of time
-					false,
-				) {
-					Ok(result) => result,
-					Err(()) => {
-						unreachable!(
-							"Cannot {operand:?} {operator:?} (restriction or something failed)"
+							"Cannot {:?} {operator:?} {:?} (restriction or something failed)",
+							crate::types::printing::print_type(lhs, types, environment, true),
+							crate::types::printing::print_type(rhs, types, environment, true)
 						);
 					}
 				}
@@ -233,16 +255,17 @@ pub(crate) fn substitute(
 				otherwise_result,
 				result_union: _,
 			} => {
-				// TSC behavior
-				if let Type::Constructor(Constructor::TypeRelationOperator(
-					crate::types::TypeRelationOperator::Extends { item, extends },
-				)) = types.get_type_by_id(condition)
+				// TSC behavior, use `compute_extends_rule` which does distribution
+				if let Type::Constructor(Constructor::TypeExtends(crate::types::TypeExtends {
+					item,
+					extends,
+				})) = types.get_type_by_id(condition)
 				{
+					// crate::utilities::notify!("Here!");
+
 					let (item, extends) = (*item, *extends);
 					let item = substitute(item, arguments, environment, types);
-
-					// TODO pass generics down via other
-					// let extends = substitute(extends, arguments, environment, types);
+					let extends = substitute(extends, arguments, environment, types);
 
 					return compute_extends_rule(
 						extends,
@@ -303,10 +326,12 @@ pub(crate) fn substitute(
 					types.register_type(Type::Constructor(ty))
 				}
 			}
-			Constructor::Property { on, under, result, bind_this, .. } => {
-				let on = get_constraint(on, types).unwrap_or(on);
+			Constructor::Property { on, under, result, mode, .. } => {
+				let under = under.substitute(arguments, environment, types);
+				let on = substitute(on, arguments, environment, types);
 
 				let on_type = types.get_type_by_id(on);
+
 				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: TypeId::ARRAY_TYPE,
 					arguments,
@@ -318,7 +343,7 @@ pub(crate) fn substitute(
 						let value = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 						types.new_or_type(value, TypeId::UNDEFINED_TYPE)
 					} else {
-						let substitutable = arguments.into_substitutable();
+						let substitutable = arguments.build_substitutable();
 
 						let new_result = substitute(
 							result,
@@ -337,39 +362,65 @@ pub(crate) fn substitute(
 							on,
 							under,
 							result: new_result,
-							bind_this,
+							mode,
 						}))
 					}
 				} else if let Type::Interface { .. }
-				| Type::Object(ObjectNature::AnonymousTypeAnnotation) = on_type
+				| Type::Object(ObjectNature::AnonymousTypeAnnotation(_))
+				| Type::AliasTo { .. } = on_type
 				{
-					let under = match under {
-						crate::types::properties::PropertyKey::Type(under) => {
-							let ty = substitute(under, arguments, environment, types);
-							crate::types::properties::PropertyKey::from_type(ty, types)
-						}
-						under @ crate::types::properties::PropertyKey::String(_) => under.clone(),
-					};
-
 					// TODO union ors etc
-					match get_property_unbound(
+					let get_property = get_property_unbound(
 						(on, None),
 						(Publicity::Public, &under, None),
+						false,
 						environment,
 						types,
-					) {
-						Ok(Logical::Pure(PropertyValue::Value(v))) => v,
-						result => {
-							crate::utilities::notify!("Here!! {:?}", result);
-							TypeId::ERROR_TYPE
+					);
+
+					match get_property {
+						Ok(LogicalOrValid::Logical(value)) => {
+							fn resolve_logical_during_substitution(
+								value: Logical<PropertyValue>,
+								environment: &Environment,
+								types: &mut TypeStore,
+							) -> TypeId {
+								match value {
+									Logical::Pure(v) => {
+										// substitute(id, arguments, environment, types)
+										v.as_get_type(types)
+									}
+									Logical::Or { .. } => todo!("{:?}", value),
+									Logical::Implies { .. } => todo!("{:?}", value),
+									Logical::BasedOnKey(BasedOnKey::Left { .. }) => {
+										todo!("{:?}", value)
+									}
+									Logical::BasedOnKey(BasedOnKey::Right(property_on)) => {
+										property_on
+											.get_on(None, environment, types)
+											.unwrap_or(TypeId::NEVER_TYPE)
+									}
+								}
+							}
+
+							resolve_logical_during_substitution(value, environment, types)
+						}
+						Ok(value) => {
+							crate::utilities::notify!("TODO {:?}", value);
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
+						}
+						Err(err) => {
+							crate::utilities::notify!("{:?}", err);
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 					}
 				} else {
-					todo!(
+					crate::utilities::notify!(
 						"Constructor::Property ({:?}[{:?}]) should be covered by events",
 						on_type,
 						under
 					);
+					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
 			Constructor::Image { .. } => {
@@ -404,18 +455,6 @@ pub(crate) fn substitute(
 				// 	.get_property(on, property, checking_data, None)
 				// 	.expect("Inferred constraints and checking failed for a property")
 			}
-
-			// Constructor::PrototypeOf(prototype) => {
-			// 	let prototype = substitute(prototype, arguments, environment, types);
-			// 	if let Type::AliasTo { to, .. } = types.get_type_by_id(prototype) {
-			// 		crate::utilities::notify!(
-			// 			"TODO temp might have to do more here when specialising a prototype"
-			// 		);
-			// 		*to
-			// 	} else {
-			// 		todo!()
-			// 	}
-			// }
 			Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 				let operator = match operator {
 					crate::features::operations::CanonicalEqualityAndInequality::StrictEqual => {
@@ -428,75 +467,108 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_equality_inequality_operation(lhs, &operator, rhs, types, false) {
-					Ok(result) => result,
-					Err(()) => {
-						unreachable!(
-							"Cannot {lhs:?} {operator:?} {rhs:?} (restriction or something failed)"
-						);
-					}
+				let result = evaluate_equality_inequality_operation(
+					lhs,
+					&operator,
+					rhs,
+					environment,
+					types,
+					false,
+				);
+
+				if let Ok((left, _warning)) = result {
+					left
+				} else {
+					crate::utilities::notify!("Error here");
+					TypeId::OPEN_BOOLEAN_TYPE
 				}
 			}
 			Constructor::TypeOperator(op) => match op {
-				crate::types::TypeOperator::PrototypeOf(_) => todo!(),
 				crate::types::TypeOperator::TypeOf(ty) => {
 					let ty = substitute(ty, arguments, environment, types);
 					crate::features::type_of_operator(ty, types)
 				}
-			},
-			Constructor::TypeRelationOperator(op) => match op {
-				crate::types::TypeRelationOperator::Extends { item, extends } => {
-					let item = substitute(item, arguments, environment, types);
-					let extends = substitute(extends, arguments, environment, types);
-
-					let result = crate::subtyping::type_is_subtype(
-						extends,
-						item,
-						&mut crate::subtyping::State {
-							already_checked: Default::default(),
-							mode: Default::default(),
-							contributions: None,
-							object_constraints: None,
-							others: Default::default(),
-						},
+				crate::types::TypeOperator::HasProperty(_, _) => {
+					unreachable!("'HasProperty' should be specialised by events")
+				}
+				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
+					let lhs = substitute(lhs, arguments, environment, types);
+					let rhs_prototype = substitute(rhs_prototype, arguments, environment, types);
+					crate::features::instance_of_operator_rhs_prototype(
+						lhs,
+						rhs_prototype,
 						environment,
 						types,
-					);
-
-					// let base = crate::types::get_larger_type(item, types);
-					// let does_extend = base == extends;
-					// crate::utilities::notify!(
-					// 	"Extends result {:?} base={:?} extends={:?}",
-					// 	does_extend,
-					// 	crate::types::printing::print_type(base, types, environment, true),
-					// 	crate::types::printing::print_type(extends, types, environment, true)
-					// );
-					if result.is_subtype() {
-						TypeId::TRUE
-					} else {
-						TypeId::FALSE
-					}
-
-					// let does_extend = get_larger_type(ty, types) == extends;
-					// crate::utilities::notify!("Extends result {:?}", does_extend);
-					// if does_extend {
-					// 	TypeId::TRUE
-					// } else {
-					// 	TypeId::FALSE
-					// }
-
-					// TODO special behavior that doesn't need to collect errors...
-					// let result = type_is_subtype(extends, ty, environment, types);
-
-					// let does_extend = matches!(result, crate::subtyping::SubTypeResult::IsSubType);
-
-					// if does_extend {
-					// 	TypeId::TRUE
-					// } else {
-					// 	TypeId::FALSE
-					// }
+					)
+					// unreachable!("'HasProperty' should be specialised by events")
 				}
 			},
+			Constructor::TypeExtends(op) => {
+				let crate::types::TypeExtends { item, extends } = op;
+				let before = item;
+				let item = substitute(item, arguments, environment, types);
+				let extends = substitute(extends, arguments, environment, types);
+
+				{
+					use crate::types::printing::print_type;
+
+					crate::utilities::notify!(
+						"Subtyping {} (prev {}) :>= {} ({:?})",
+						print_type(item, types, environment, true),
+						print_type(before, types, environment, true),
+						print_type(extends, types, environment, true),
+						&arguments.arguments
+					);
+				}
+
+				let mut state = crate::subtyping::State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: None,
+					object_constraints: None,
+					others: Default::default(),
+				};
+				let result = crate::subtyping::type_is_subtype(
+					extends,
+					item,
+					&mut state,
+					environment,
+					types,
+				);
+
+				// let base = crate::types::get_larger_type(item, types);
+				// let does_extend = base == extends;
+				// crate::utilities::notify!(
+				// 	"Extends result {:?} base={:?} extends={:?}",
+				// 	does_extend,
+				// 	crate::types::printing::print_type(base, types, environment, true),
+				// 	crate::types::printing::print_type(extends, types, environment, true)
+				// );
+				if result.is_subtype() {
+					TypeId::TRUE
+				} else {
+					TypeId::FALSE
+				}
+
+				// let does_extend = get_larger_type(ty, types) == extends;
+				// crate::utilities::notify!("Extends result {:?}", does_extend);
+				// if does_extend {
+				// 	TypeId::TRUE
+				// } else {
+				// 	TypeId::FALSE
+				// }
+
+				// TODO special behavior that doesn't need to collect errors...
+				// let result = type_is_subtype(extends, ty, environment, types);
+
+				// let does_extend = matches!(result, crate::subtyping::SubTypeResult::IsSubType);
+
+				// if does_extend {
+				// 	TypeId::TRUE
+				// } else {
+				// 	TypeId::FALSE
+				// }
+			}
 			Constructor::Awaited { .. } => todo!("should have effect result"),
 			Constructor::KeyOf(on) => {
 				let on = substitute(on, arguments, environment, types);
@@ -506,7 +578,7 @@ pub(crate) fn substitute(
 	}
 }
 
-fn compute_extends_rule(
+pub(crate) fn compute_extends_rule(
 	extends: TypeId,
 	item: TypeId,
 	environment: &Environment,

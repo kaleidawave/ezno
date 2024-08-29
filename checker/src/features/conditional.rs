@@ -5,6 +5,7 @@ use crate::{
 };
 use source_map::Span;
 
+/// For top level checking
 pub fn new_conditional_context<T, A, R>(
 	environment: &mut Environment,
 	(condition, position): (TypeId, Span),
@@ -39,16 +40,30 @@ where
 		let mut truthy_environment = environment
 			.new_lexical_environment(Scope::Conditional { antecedent: condition, is_switch: None });
 
+		let values = super::narrowing::narrow_based_on_expression_into_vec(
+			condition,
+			false,
+			environment,
+			&mut checking_data.types,
+		);
+
+		truthy_environment.info.narrowed_values = values;
+
 		let result = then_evaluate(&mut truthy_environment, checking_data);
 
 		let Context {
 			context_type: Syntax { free_variables, closed_over_references, .. },
 			info,
+			possibly_mutated_objects,
+			possibly_mutated_variables,
 			..
 		} = truthy_environment;
 
 		environment.context_type.free_variables.extend(free_variables);
 		environment.context_type.closed_over_references.extend(closed_over_references);
+
+		environment.possibly_mutated_objects.extend(possibly_mutated_objects);
+		environment.possibly_mutated_variables.extend(possibly_mutated_variables);
 
 		(result, info)
 	};
@@ -59,16 +74,30 @@ where
 			is_switch: None,
 		});
 
+		let values = super::narrowing::narrow_based_on_expression_into_vec(
+			condition,
+			true,
+			environment,
+			&mut checking_data.types,
+		);
+
+		falsy_environment.info.narrowed_values = values;
+
 		let result = else_evaluate(&mut falsy_environment, checking_data);
 
 		let Context {
 			context_type: Syntax { free_variables, closed_over_references, .. },
 			info,
+			possibly_mutated_objects,
+			possibly_mutated_variables,
 			..
 		} = falsy_environment;
 
 		environment.context_type.free_variables.extend(free_variables);
 		environment.context_type.closed_over_references.extend(closed_over_references);
+
+		environment.possibly_mutated_objects.extend(possibly_mutated_objects);
+		environment.possibly_mutated_variables.extend(possibly_mutated_variables);
 
 		(result, Some(info))
 	} else {
@@ -81,9 +110,9 @@ where
 	let position = position.with_source(environment.get_source());
 
 	match environment.context_type.parent {
-		crate::GeneralContext::Syntax(syn) => {
+		crate::GeneralContext::Syntax(syn_parent) => {
 			merge_info(
-				syn,
+				syn_parent,
 				&mut environment.info,
 				condition,
 				truthy_info,
@@ -92,9 +121,9 @@ where
 				position,
 			);
 		}
-		crate::GeneralContext::Root(root) => {
+		crate::GeneralContext::Root(root_parent) => {
 			merge_info(
-				root,
+				root_parent,
 				&mut environment.info,
 				condition,
 				truthy_info,

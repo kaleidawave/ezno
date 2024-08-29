@@ -41,7 +41,7 @@ impl StatementOrDeclaration {
 				Declaration::Variable(..)
 					| Declaration::Export(Decorated {
 						on: ExportDeclaration::Default { .. }
-							| ExportDeclaration::Variable {
+							| ExportDeclaration::Item {
 								exported: Exportable::ImportAll { .. }
 									| Exportable::ImportParts { .. } | Exportable::Parts { .. },
 								..
@@ -66,6 +66,7 @@ impl ASTNode for StatementOrDeclaration {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
+		// Exclusively for generator
 		if options.interpolation_points
 			&& matches!(reader.peek(), Some(Token(TSXToken::Identifier(i), _)) if i == MARKER)
 		{
@@ -332,7 +333,7 @@ impl ASTNode for BlockOrSingleStatement {
 						reader,
 						&state.line_starts,
 						stmt.get_position().end,
-						false,
+						options,
 					)?;
 				}
 				Box::new(stmt).into()
@@ -388,9 +389,9 @@ pub(crate) fn parse_statements_and_declarations(
 		let end = item.get_position().end;
 
 		let blank_lines_after_statement = if requires_semi_colon {
-			expect_semi_colon(reader, &state.line_starts, end, options.retain_blank_lines)?
+			expect_semi_colon(reader, &state.line_starts, end, options)?
 		} else if options.retain_blank_lines {
-			let Token(kind, next) = reader.peek().unwrap();
+			let Token(kind, next) = reader.peek().ok_or_else(crate::parse_lexing_error)?;
 			let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
 			if let TSXToken::EOS = kind {
 				lines
@@ -422,6 +423,7 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
+	let mut last_was_empty = false;
 	for (at_end, item) in items.iter().endiate() {
 		if !options.pretty {
 			if let StatementOrDeclaration::Statement(Statement::Expression(
@@ -432,14 +434,29 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			}
 		}
 
+		if options.pretty {
+			// Don't print more than two lines in a row
+			if let StatementOrDeclaration::Statement(
+				Statement::AestheticSemiColon(_) | Statement::Empty(_),
+			) = item
+			{
+				if last_was_empty {
+					continue;
+				}
+				last_was_empty = true;
+			} else {
+				last_was_empty = false;
+			}
+		}
+
 		if let (false, StatementOrDeclaration::Declaration(dec)) =
 			(options.include_type_annotations, item)
 		{
 			match dec {
-				Declaration::Function(item) if item.on.name.declare => {
+				Declaration::Function(item) if item.on.name.is_declare => {
 					continue;
 				}
-				Declaration::Class(item) if item.on.name.declare => {
+				Declaration::Class(item) if item.on.name.is_declare => {
 					continue;
 				}
 				_ => {}

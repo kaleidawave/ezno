@@ -2,26 +2,17 @@ use std::borrow::Cow;
 
 use super::TypeId;
 
-/// Terms
+/// Terms. `null` is a special object
 /// TODO:
-/// - `IntoProof`
 /// - `BigInt` (<https://github.com/rust-num/num-bigint>)
-/// - Separate `NotNull` term, and implement js subtyping
-///
-/// TODO unsure about some of these
 #[derive(Eq, PartialEq, Hash, Debug, Clone, binary_serialize_derive::BinarySerializable)]
 pub enum Constant {
 	Number(ordered_float::NotNan<f64>),
 	String(String),
 	Boolean(bool),
-	Symbol {
-		key: String,
-	},
-	/// A unique function type given
-	/// the `x` reference of `function x() {}`
-	Undefined,
-	Null,
+	Symbol { key: String },
 	NaN,
+	Undefined,
 }
 
 impl Constant {
@@ -33,9 +24,8 @@ impl Constant {
 			Constant::String(value) => Cow::Borrowed(value),
 			Constant::Boolean(value) => Cow::Borrowed(if *value { "true" } else { "false" }),
 			Constant::Symbol { key } => Cow::Owned(format!("Symbol({key})")),
-			Constant::Undefined => Cow::Borrowed("undefined"),
-			Constant::Null => Cow::Borrowed("null"),
 			Constant::NaN => Cow::Borrowed("NaN"),
+			Constant::Undefined => Cow::Borrowed("undefined"),
 		}
 	}
 
@@ -48,21 +38,20 @@ impl Constant {
 			Constant::String(value) => format!("\"{value}\""),
 			Constant::Boolean(value) => if *value { "true" } else { "false" }.to_owned(),
 			Constant::Symbol { key } => format!("Symbol({key})"),
-			Constant::Undefined => "undefined".to_owned(),
-			Constant::Null => "null".to_owned(),
 			Constant::NaN => "NaN".to_owned(),
+			Constant::Undefined => "undefined".to_owned(),
 		}
 	}
 
 	#[must_use]
-	pub fn get_backing_type_id(&self) -> TypeId {
+	pub fn get_backing_type(&self) -> TypeId {
 		match self {
 			Constant::Number(_) | Constant::NaN => TypeId::NUMBER_TYPE,
 			Constant::String(_) => TypeId::STRING_TYPE,
 			Constant::Boolean(_) => TypeId::BOOLEAN_TYPE,
-			Constant::Undefined => TypeId::UNDEFINED_TYPE,
-			Constant::Null => TypeId::NULL_TYPE,
-			Constant::Symbol { .. } => todo!(),
+			Constant::Symbol { .. } => TypeId::SYMBOL_TYPE,
+			// TODO ...
+			Constant::Undefined => TypeId::NEVER_TYPE,
 		}
 	}
 }

@@ -1,7 +1,10 @@
 use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
 
 fn main() {
-	let input = r#"const x = something ? "hello world something x" : "another thing quite long, lolmao. another thing quite long, lolmao";
+	let input = r#"
+import { something, aaa, another_thing, bbb } from "./x.js";
+	
+const x = something ? "hello world something x" : "another thing quite long, lolmao. another thing quite long, lolmao";
 const y = "hello world something x", z = "another thing quite long, lolmao. another thing quite long, lolmao";
 
 function x(a: { something: string, another: number, third: "yes" }, b: Array<{ everything: any }>) {
@@ -17,6 +20,8 @@ function x(a: { something: string, another: number, third: "yes" }, b: Array<{ e
 	for (let i = 0; i < 5; i += 1) {
 		console.log("here 2")
 	}
+
+
 
 	const x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 100, 5000, 1000, 122200, 100];
 }

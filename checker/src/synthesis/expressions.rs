@@ -1,55 +1,60 @@
-use std::{borrow::Cow, convert::TryInto};
+use std::{borrow::Cow, convert::TryInto, str::FromStr};
 
 use parser::{
 	ast::TypeOrConst,
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		operators::{
-			BinaryOperator, IncrementOrDecrement, UnaryOperator, UnaryPrefixAssignmentOperator,
+			BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
+			UnaryPrefixAssignmentOperator,
 		},
 		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	ASTNode, Expression,
+	ASTNode, Expression, ExpressionOrStatementPosition,
 };
-use source_map::SpanWithSource;
+use source_map::{Nullable, SpanWithSource};
 
 use crate::{
-	context::Logical,
+	context::Environment,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
-		self, await_expression,
+		self,
+		assignments::{AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement},
+		await_expression,
 		conditional::new_conditional_context,
 		functions::{
 			function_to_property, register_arrow_function, register_expression_function,
 			synthesise_function, GetterSetter,
 		},
+		in_operator,
+		objects::ObjectBuilder,
+		operations::is_null_or_undefined,
+		operations::{
+			evaluate_logical_operation_with_expression,
+			evaluate_pure_binary_operation_handle_errors, evaluate_unary_operator,
+			EqualityAndInequality, MathematicalAndBitwise, UnaryOperation,
+		},
+		template_literal::synthesise_template_literal_expression,
 		variables::VariableWithValue,
 	},
 	types::{
+		calling::CalledWithNew,
+		properties::Publicity,
+		{Constant, TypeId},
+	},
+	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
+		get_larger_type,
+		logical::{Logical, LogicalOrValid},
 		printing::{print_property_key, print_type},
-		properties::{get_properties_on_single_type, get_property_unbound, PropertyKey},
+		properties::{
+			get_properties_on_single_type, get_property_unbound, AccessMode, PropertyKey,
+		},
 		Constructor,
 	},
-	Decidable, PropertyValue,
-};
-
-use crate::{
-	features::{
-		objects::ObjectBuilder,
-		operations::{
-			evaluate_logical_operation_with_expression,
-			evaluate_pure_binary_operation_handle_errors, evaluate_pure_unary_operator,
-			EqualityAndInequality, MathematicalAndBitwise, PureUnary,
-		},
-		template_literal::synthesise_template_literal_expression,
-	},
-	types::calling::CalledWithNew,
-	types::properties::Publicity,
-	types::{Constant, TypeId},
-	CheckingData, Environment, Instance, SpecialExpressions,
+	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
 };
 
 use super::{
@@ -88,15 +93,36 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::StringLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
-		Expression::RegexLiteral { pattern, flags: _, position: _ } => {
-			return checking_data.types.new_regex(pattern.clone());
+		Expression::RegexLiteral { pattern, flags, position } => {
+			let regexp = checking_data.types.new_regexp(pattern, flags, position);
+
+			match regexp {
+				Ok(regexp) => Instance::RValue(regexp),
+				Err(error) => {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::InvalidRegExp(
+							crate::diagnostics::InvalidRegExp {
+								error,
+								position: position.with_source(environment.get_source()),
+							},
+						),
+					);
+
+					return TypeId::ERROR_TYPE;
+				}
+			}
 		}
 		Expression::NumberLiteral(value, ..) => {
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
-				v.try_into().unwrap()
+				if let Ok(value) = v.try_into() {
+					value
+				} else {
+					crate::utilities::notify!("Returning zero here? {:?}", value);
+					return TypeId::ZERO;
+				}
 			} else {
 				crate::utilities::notify!("TODO big int");
-				return TypeId::ERROR_TYPE;
+				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 			};
 			return checking_data.types.new_constant_type(Constant::Number(not_nan));
 		}
@@ -110,19 +136,23 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) -> Option<(PropertyKey<'static>, TypeId)> {
-				element.0.as_ref().map(|element| match element {
+				element.0.as_ref().and_then(|element| match element {
 					FunctionArgument::Standard(element) => {
 						// TODO based off above
 						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
 							synthesise_expression(element, environment, checking_data, expecting);
-						(
-							PropertyKey::from_usize(match idx {
-								Decidable::Known(idx) => *idx,
-								Decidable::Unknown(_) => todo!(),
-							}),
-							expression_type,
-						)
+						let property = match idx {
+							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
+							Decidable::Unknown(_) => {
+								checking_data.raise_unimplemented_error(
+									"property after array spread",
+									element.get_position().with_source(environment.get_source()),
+								);
+								PropertyKey::Type(TypeId::NUMBER_TYPE)
+							}
+						};
+						Some((property, expression_type))
 					}
 					FunctionArgument::Spread(_expr, position) => {
 						{
@@ -132,15 +162,19 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							);
 						}
 						crate::utilities::notify!("Skipping spread");
-						(
-							PropertyKey::from_usize(match idx {
-								Decidable::Known(idx) => *idx,
-								Decidable::Unknown(_) => todo!(),
-							}),
-							TypeId::ERROR_TYPE,
-						)
+						let property = match idx {
+							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
+							Decidable::Unknown(_) => {
+								checking_data.raise_unimplemented_error(
+									"property after array spread",
+									element.get_position().with_source(environment.get_source()),
+								);
+								PropertyKey::Type(TypeId::NUMBER_TYPE)
+							}
+						};
+						Some((property, TypeId::UNIMPLEMENTED_ERROR_TYPE))
 					}
-					FunctionArgument::Comment { .. } => todo!(),
+					FunctionArgument::Comment { .. } => None,
 				})
 			}
 
@@ -160,11 +194,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					synthesise_array_item(&Decidable::Known(idx), value, environment, checking_data)
 				{
 					basis.append(
-						environment,
 						Publicity::Public,
 						key,
 						crate::types::properties::PropertyValue::Value(value),
 						spread_expression_position,
+						&mut environment.info,
 					);
 				}
 			}
@@ -178,11 +212,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				// TODO: Should there be a position here?
 				basis.append(
-					environment,
 					Publicity::Public,
 					PropertyKey::String("length".into()),
 					value,
 					expression.get_position().with_source(environment.get_source()),
+					&mut environment.info,
 				);
 			}
 
@@ -195,22 +229,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			object_literal.position.with_source(environment.get_source()),
 			expecting,
 		)),
-		Expression::TemplateLiteral(TemplateLiteral { tag, parts, position }) => {
-			let parts_iter = parts.iter().map(|part| match part {
-				parser::expressions::TemplateLiteralPart::Static(value) => {
-					crate::features::template_literal::TemplateLiteralPart::Static(value.as_str())
-				}
-				parser::expressions::TemplateLiteralPart::Dynamic(expr) => {
-					crate::features::template_literal::TemplateLiteralPart::Dynamic(&**expr)
-				}
-			});
+		Expression::TemplateLiteral(TemplateLiteral { tag, parts, last, position }) => {
 			let tag = tag.as_ref().map(|expr| {
 				synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE)
 			});
 
-			Instance::RValue(synthesise_template_literal_expression(
+			Instance::RValue(synthesise_template_literal_expression::<_, EznoParser>(
 				tag,
-				parts_iter,
+				parts.iter().map(|(l, r)| (l.as_str(), r)),
+				last.as_str(),
 				position.with_source(environment.get_source()),
 				environment,
 				checking_data,
@@ -237,7 +264,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					&**rhs,
 					checking_data,
 					environment,
-					// TODO unwrap
+					expecting, // TODO unwrap
 				)
 				.unwrap();
 			}
@@ -283,12 +310,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				| BinaryOperator::NullCoalescing => {
 					unreachable!()
 				}
-				BinaryOperator::Divides | BinaryOperator::Pipe | BinaryOperator::Compose => {
+				BinaryOperator::Pipe | BinaryOperator::Compose => {
 					checking_data.raise_unimplemented_error(
 						"special operations",
 						position.with_source(environment.get_source()),
 					);
-					return TypeId::ERROR_TYPE;
+					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 				}
 			};
 			Instance::RValue(evaluate_pure_binary_operation_handle_errors(
@@ -302,30 +329,63 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::UnaryOperation { operand, operator, position } => {
 			match operator {
 				UnaryOperator::Plus => {
-					todo!("cast to number")
-				}
-				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
 					let operand_type = synthesise_expression(
 						operand,
 						environment,
 						checking_data,
 						TypeId::ANY_TYPE,
 					);
+					return if get_larger_type(operand_type, &checking_data.types)
+						== TypeId::NUMBER_TYPE
+					{
+						// TODO add warning here
+						operand_type
+					} else {
+						checking_data.raise_unimplemented_error(
+							"Unary plus operator",
+							position.with_source(environment.get_source()),
+						);
+						TypeId::UNIMPLEMENTED_ERROR_TYPE
+					};
+				}
+				UnaryOperator::Negation | UnaryOperator::BitwiseNot | UnaryOperator::LogicalNot => {
+					let operand = synthesise_expression(
+						operand,
+						environment,
+						checking_data,
+						TypeId::ANY_TYPE,
+					);
 					let operator = match operator {
-						UnaryOperator::Negation => PureUnary::Negation,
-						UnaryOperator::BitwiseNot => PureUnary::BitwiseNot,
-						UnaryOperator::LogicalNot => PureUnary::LogicalNot,
+						UnaryOperator::Negation => UnaryOperation::Negation,
+						UnaryOperator::BitwiseNot => UnaryOperation::BitwiseNot,
+						UnaryOperator::LogicalNot => UnaryOperation::LogicalNot,
 						_ => unreachable!(),
 					};
-					Instance::RValue(
-						evaluate_pure_unary_operator(
-							operator,
-							operand_type,
-							&mut checking_data.types,
-							checking_data.options.strict_casts,
-						)
-						.unwrap(),
-					)
+					// TODO abstract handling?
+					let result = evaluate_unary_operator(
+						operator,
+						operand,
+						environment,
+						&mut checking_data.types,
+						checking_data.options.strict_casts,
+					);
+					if let Ok(result) = result {
+						Instance::RValue(result)
+					} else {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::InvalidUnaryOperation {
+								operator,
+								operand: TypeStringRepresentation::from_type_id(
+									operand,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								position: position.with_source(environment.get_source()),
+							},
+						);
+						Instance::RValue(TypeId::ERROR_TYPE)
+					}
 				}
 				UnaryOperator::Await => {
 					// TODO get promise T
@@ -376,16 +436,31 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								TypeId::ANY_TYPE,
 							);
 							match property {
-								parser::PropertyReference::Standard {
-									property,
-									is_private: _is_private,
-								} => {
-									let result = environment.delete_property(
+								parser::PropertyReference::Standard { property, is_private } => {
+									let publicity = if *is_private {
+										Publicity::Private
+									} else {
+										Publicity::Public
+									};
+									let property =
+										PropertyKey::String(Cow::Owned(property.clone()));
+
+									let position = position.with_source(environment.get_source());
+									match crate::features::delete_operator(
+										(publicity, property),
 										on,
-										&PropertyKey::String(Cow::Owned(property.clone())),
-										parent.get_position().with_source(environment.get_source()),
-									);
-									return if result { TypeId::TRUE } else { TypeId::FALSE };
+										position,
+										environment,
+										&mut checking_data.types,
+									) {
+										Ok(result) => Instance::RValue(result),
+										Err(err) => {
+											checking_data.diagnostics_container.add_error(
+												TypeCheckError::CannotDeleteProperty(err),
+											);
+											return TypeId::ERROR_TYPE;
+										}
+									}
 								}
 								parser::PropertyReference::Marker(_) => {
 									crate::utilities::notify!("Deleting property marker found");
@@ -407,13 +482,23 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								TypeId::ANY_TYPE,
 							);
 
+							let position = position.with_source(environment.get_source());
 							let property = PropertyKey::from_type(indexer, &checking_data.types);
-							let result = environment.delete_property(
+							match crate::features::delete_operator(
+								(Publicity::Public, property),
 								being_indexed,
-								&property,
-								indexee.get_position().with_source(environment.get_source()),
-							);
-							return if result { TypeId::TRUE } else { TypeId::FALSE };
+								position,
+								environment,
+								&mut checking_data.types,
+							) {
+								Ok(result) => Instance::RValue(result),
+								Err(err) => {
+									checking_data
+										.diagnostics_container
+										.add_error(TypeCheckError::CannotDeleteProperty(err));
+									return TypeId::ERROR_TYPE;
+								}
+							}
 						}
 						_ => {
 							crate::utilities::notify!("Deleting non property raise warning");
@@ -432,7 +517,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						"yield expression",
 						position.with_source(environment.get_source()),
 					);
-					return TypeId::ERROR_TYPE;
+					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 				}
 			}
 		}
@@ -440,9 +525,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let lhs =
 				SynthesiseToAssignable::synthesise_to_assignable(lhs, environment, checking_data);
 
-			return environment.assign_to_assignable_handle_errors(
+			return environment.assign_handle_errors(
 				lhs,
-				crate::features::assignments::AssignmentKind::Assign,
+				AssignmentKind::Assign,
 				Some(&**rhs),
 				*position,
 				checking_data,
@@ -452,7 +537,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let lhs =
 				SynthesiseToAssignable::synthesise_to_assignable(lhs, environment, checking_data);
 
-			return environment.assign_to_assignable_handle_errors(
+			return environment.assign_handle_errors(
 				lhs,
 				operator_to_assignment_kind(*operator),
 				Some(&**rhs),
@@ -468,20 +553,26 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			);
 
 			match operator {
-				UnaryPrefixAssignmentOperator::Invert => todo!(),
+				UnaryPrefixAssignmentOperator::Invert => {
+					checking_data.raise_unimplemented_error(
+						"Invert operator",
+						position.with_source(environment.get_source()),
+					);
+					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+				}
 				UnaryPrefixAssignmentOperator::IncrementOrDecrement(direction) => {
-					return environment.assign_to_assignable_handle_errors(
+					return environment.assign_handle_errors(
 						lhs,
-						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
+						AssignmentKind::IncrementOrDecrement(
 							match direction {
-								IncrementOrDecrement::Increment => {
-									crate::features::assignments::IncrementOrDecrement::Increment
+								ParserIncrementOrDecrement::Increment => {
+									IncrementOrDecrement::Increment
 								}
-								IncrementOrDecrement::Decrement => {
-									crate::features::assignments::IncrementOrDecrement::Decrement
+								ParserIncrementOrDecrement::Decrement => {
+									IncrementOrDecrement::Decrement
 								}
 							},
-							crate::features::assignments::AssignmentReturnStatus::New,
+							AssignmentReturnStatus::New,
 						),
 						None::<&Expression>,
 						*position,
@@ -499,20 +590,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			match operator {
 				parser::expressions::operators::UnaryPostfixAssignmentOperator(direction) => {
 					let direction = match direction {
-						IncrementOrDecrement::Increment => {
-							crate::features::assignments::IncrementOrDecrement::Increment
-						}
-						IncrementOrDecrement::Decrement => {
-							crate::features::assignments::IncrementOrDecrement::Decrement
-						}
+						ParserIncrementOrDecrement::Increment => IncrementOrDecrement::Increment,
+						ParserIncrementOrDecrement::Decrement => IncrementOrDecrement::Decrement,
 					};
-					let operator =
-						crate::features::assignments::AssignmentKind::IncrementOrDecrement(
-							direction,
-							crate::features::assignments::AssignmentReturnStatus::Previous,
-						);
+					let operator = AssignmentKind::IncrementOrDecrement(
+						direction,
+						AssignmentReturnStatus::Previous,
+					);
 
-					return environment.assign_to_assignable_handle_errors(
+					return environment.assign_handle_errors(
 						lhs,
 						operator,
 						None::<&Expression>,
@@ -531,10 +617,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			match get_variable_or_alternatives {
 				Ok(variable) => Instance::LValue(variable),
-				Err(_err) => Instance::RValue(TypeId::ERROR_TYPE),
+				Err(_) => Instance::RValue(TypeId::ERROR_TYPE),
 			}
 		}
-		Expression::PropertyAccess { parent, position, property, is_optional: _, .. } => {
+		Expression::PropertyAccess { parent, position, property, is_optional, .. } => {
 			let on = synthesise_expression(parent, environment, checking_data, TypeId::ANY_TYPE);
 			let (property, publicity) = match property {
 				parser::PropertyReference::Standard { property, is_private } => (
@@ -547,43 +633,107 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				}
 			};
 
-			let result = environment.get_property_handle_errors(
-				on,
-				publicity,
-				&property,
-				checking_data,
-				position.with_source(environment.get_source()),
-				true,
-			);
+			let site = position.with_source(environment.get_source());
+			if *is_optional {
+				let null_or_undefined =
+					is_null_or_undefined(on, environment, &mut checking_data.types);
 
-			match result {
-				Ok(instance) => instance,
-				Err(()) => return TypeId::ERROR_TYPE,
+				// crate::utilities::notify!("{:?}", null_or_undefined);
+
+				Instance::RValue(new_conditional_context(
+					environment,
+					(null_or_undefined, parent.get_position()),
+					|_env: &mut Environment, _data: &mut CheckingData<T, EznoParser>| {
+						TypeId::UNDEFINED_TYPE
+					},
+					Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
+						let on = env.info.narrowed_values.get(&on).copied().unwrap_or(on);
+						let result = env.get_property_handle_errors(
+							on,
+							publicity,
+							&property,
+							data,
+							site,
+							AccessMode::Regular,
+						);
+						match result {
+							Ok(i) => i.get_value(),
+							Err(()) => TypeId::ERROR_TYPE,
+						}
+					}),
+					checking_data,
+				))
+			} else {
+				let result = environment.get_property_handle_errors(
+					on,
+					publicity,
+					&property,
+					checking_data,
+					site,
+					AccessMode::Regular,
+				);
+				match result {
+					Ok(i) => Instance::RValue(i.get_value()),
+					Err(()) => {
+						return TypeId::ERROR_TYPE;
+					}
+				}
 			}
 		}
-		Expression::Index { indexee, indexer, position, .. } => {
+		Expression::Index { indexee, indexer, position, is_optional, .. } => {
 			let being_indexed =
 				synthesise_expression(indexee, environment, checking_data, TypeId::ANY_TYPE);
-			let indexer = synthesise_multiple_expression(
-				indexer,
-				environment,
-				checking_data,
-				TypeId::ANY_TYPE,
-			);
+			let site = position.with_source(environment.get_source());
 
-			// TODO handle differently?
-			let result = environment.get_property_handle_errors(
-				being_indexed,
-				Publicity::Public,
-				&PropertyKey::from_type(indexer, &checking_data.types),
-				checking_data,
-				position.with_source(environment.get_source()),
-				true,
-			);
-
-			match result {
-				Ok(instance) => instance,
-				Err(()) => return TypeId::ERROR_TYPE,
+			if *is_optional {
+				let null_or_undefined =
+					is_null_or_undefined(being_indexed, environment, &mut checking_data.types);
+				Instance::RValue(new_conditional_context(
+					environment,
+					(null_or_undefined, indexee.get_position()),
+					|_env: &mut Environment, _data: &mut CheckingData<T, EznoParser>| {
+						TypeId::UNDEFINED_TYPE
+					},
+					Some(|env: &mut Environment, data: &mut CheckingData<T, EznoParser>| {
+						// Indexer is actually side effected here
+						let indexer =
+							synthesise_multiple_expression(indexer, env, data, TypeId::ANY_TYPE);
+						let result = env.get_property_handle_errors(
+							being_indexed,
+							Publicity::Public,
+							&PropertyKey::from_type(indexer, &data.types),
+							data,
+							site,
+							AccessMode::Regular,
+						);
+						match result {
+							Ok(i) => i.get_value(),
+							Err(()) => TypeId::ERROR_TYPE,
+						}
+					}),
+					checking_data,
+				))
+			} else {
+				let indexer = synthesise_multiple_expression(
+					indexer,
+					environment,
+					checking_data,
+					TypeId::ANY_TYPE,
+				);
+				let result = environment.get_property_handle_errors(
+					being_indexed,
+					Publicity::Public,
+					&PropertyKey::from_type(indexer, &checking_data.types),
+					checking_data,
+					site,
+					AccessMode::Regular,
+				);
+				match result {
+					Ok(i) => Instance::RValue(i.get_value()),
+					Err(()) => {
+						return TypeId::ERROR_TYPE;
+					}
+				}
 			}
 		}
 		Expression::ThisReference(pos) => Instance::RValue(
@@ -599,6 +749,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							&checking_data.types,
 							position.with_source(environment.get_source()),
 						);
+
+						crate::utilities::notify!(
+							"{:?}",
+							checking_data.types.get_type_by_id(super_type)
+						);
+
+						// TODO this gives normal errors. Maybe add something about super here
 						let (result, special) = call_function(
 							super_type,
 							CalledWithNew::Super { this_type },
@@ -620,15 +777,29 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 						Instance::RValue(result)
 					}
-					SuperReference::PropertyAccess { property: _ } => todo!(),
-					SuperReference::Index { indexer: _ } => todo!(),
+					SuperReference::PropertyAccess { property: _ } => {
+						checking_data.raise_unimplemented_error(
+							"Property access on super",
+							position.with_source(environment.get_source()),
+						);
+						return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+					}
+					SuperReference::Index { indexer: _ } => {
+						checking_data.raise_unimplemented_error(
+							"Index on super",
+							position.with_source(environment.get_source()),
+						);
+						return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+					}
 				}
 			} else {
 				crate::utilities::notify!("TODO error");
-				Instance::RValue(TypeId::ERROR_TYPE)
+				Instance::RValue(TypeId::UNIMPLEMENTED_ERROR_TYPE)
 			}
 		}
-		Expression::NewTarget(..) => todo!(),
+		Expression::NewTarget(..) => {
+			return TypeId::NEW_TARGET_ARG;
+		}
 		Expression::FunctionCall { function, type_arguments, arguments, position, .. } => {
 			let on = synthesise_expression(function, environment, checking_data, TypeId::ANY_TYPE);
 
@@ -699,6 +870,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				is_async,
 				is_generator,
 				location,
+				function.name.as_option_str().map(ToOwned::to_owned),
 				function,
 				environment,
 				checking_data,
@@ -715,9 +887,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::ParenthesizedExpression(inner_expression, _) => Instance::RValue(
 			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),
-		Expression::ClassExpression(class) => {
-			Instance::RValue(synthesise_class_declaration(class, environment, checking_data))
-		}
+		Expression::ClassExpression(class) => Instance::RValue(synthesise_class_declaration(
+			class,
+			None,
+			expecting,
+			environment,
+			checking_data,
+		)),
 		Expression::Marker { marker_id: _, position: _ } => {
 			crate::utilities::notify!("Marker expression found");
 			return TypeId::ERROR_TYPE;
@@ -726,7 +902,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			SpecialOperators::AsCast { value, rhs } => {
 				let to_cast = synthesise_expression(value, environment, checking_data, expecting);
 
-				if checking_data.options.allow_cast {
+				if checking_data.options.allow_type_casts {
 					match rhs {
 						TypeOrConst::Type(type_annotation) => {
 							let cast_to = synthesise_type_annotation(
@@ -737,7 +913,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 							// TODO
 							let as_cast =
-								features::as_cast(to_cast, cast_to, &mut checking_data.types);
+								features::tsc::as_cast(to_cast, cast_to, &mut checking_data.types);
 
 							match as_cast {
 								Ok(result) => return result,
@@ -780,33 +956,40 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 				let value = synthesise_expression(value, environment, checking_data, satisfying);
 
-				checking_data.check_satisfies(
+				features::tsc::check_satisfies(
 					value,
 					satisfying,
 					ASTNode::get_position(expression).with_source(environment.get_source()),
 					environment,
+					checking_data,
 				);
 
 				return value;
 			}
 			SpecialOperators::In { lhs, rhs } => {
-				let lhs = match lhs {
-					parser::expressions::InExpressionLHS::PrivateProperty(_) => {
-						checking_data.raise_unimplemented_error(
-							"in on private",
-							position.with_source(environment.get_source()),
-						);
-						return TypeId::ERROR_TYPE;
+				let (publicity, key) = match lhs {
+					parser::expressions::InExpressionLHS::PrivateProperty(key) => {
+						(Publicity::Private, PropertyKey::String(Cow::Borrowed(key)))
 					}
 					parser::expressions::InExpressionLHS::Expression(lhs) => {
-						synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE)
+						let key = synthesise_expression(
+							lhs,
+							environment,
+							checking_data,
+							TypeId::ANY_TYPE,
+						);
+						(Publicity::Public, PropertyKey::from_type(key, &checking_data.types))
 					}
 				};
-				let rhs = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
-				let result = environment
-					.property_in(rhs, &PropertyKey::from_type(lhs, &checking_data.types));
 
-				Instance::RValue(if result { TypeId::TRUE } else { TypeId::FALSE })
+				let rhs = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
+
+				Instance::RValue(in_operator(
+					(publicity, &key),
+					rhs,
+					environment,
+					&mut checking_data.types,
+				))
 			}
 			SpecialOperators::InstanceOf { lhs, rhs } => {
 				let lhs = synthesise_expression(lhs, environment, checking_data, expecting);
@@ -818,10 +1001,22 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					&mut checking_data.types,
 				))
 			}
-			SpecialOperators::NonNullAssertion(_) => todo!(),
-			SpecialOperators::Is { value: _, type_annotation: _ } => {
-				// Special non-standard
-				todo!()
+			SpecialOperators::NonNullAssertion(on) => {
+				let lhs = synthesise_expression(on, environment, checking_data, expecting);
+				Instance::RValue(
+					features::tsc::non_null_assertion(lhs, environment, &mut checking_data.types)
+						.unwrap(),
+				)
+			}
+			SpecialOperators::Is { value, type_annotation } => {
+				let item =
+					synthesise_expression(value, environment, checking_data, TypeId::ANY_TYPE);
+				Instance::RValue(super::extensions::is_expression::new_is_type(
+					item,
+					type_annotation,
+					environment,
+					checking_data,
+				))
 			}
 		},
 		Expression::ImportMeta(_) => {
@@ -832,7 +1027,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				"dynamic import",
 				position.with_source(environment.get_source()),
 			);
-			return TypeId::ERROR_TYPE;
+			return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 		}
 		Expression::IsExpression(is_expr) => {
 			Instance::RValue(synthesise_is_expression(is_expr, environment, checking_data))
@@ -850,8 +1045,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 fn operator_to_assignment_kind(
 	operator: parser::expressions::operators::BinaryAssignmentOperator,
-) -> crate::features::assignments::AssignmentKind {
-	use crate::features::assignments::AssignmentKind;
+) -> AssignmentKind {
 	use parser::expressions::operators::BinaryAssignmentOperator;
 
 	match operator {
@@ -913,9 +1107,9 @@ fn call_function<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,
-	expected: TypeId,
+	expecting: TypeId,
 ) -> (TypeId, Option<SpecialExpressions>) {
-	let generic_type_arguments = type_arguments.as_ref().map(|type_arguments| {
+	let call_site_type_arguments = type_arguments.as_ref().map(|type_arguments| {
 		type_arguments
 			.iter()
 			.map(|generic_type_argument| {
@@ -926,6 +1120,11 @@ fn call_function<T: crate::ReadFromFS>(
 			})
 			.collect::<Vec<_>>()
 	});
+
+	let comment = parser::Expression::VariableReference(
+		String::from_str("undefined").unwrap(),
+		source_map::BaseSpan::NULL,
+	);
 
 	let arguments = arguments
 		.map(|arguments| {
@@ -938,7 +1137,9 @@ fn call_function<T: crate::ReadFromFS>(
 					FunctionArgument::Standard(e) => {
 						UnsynthesisedArgument { spread: false, expression: e }
 					}
-					FunctionArgument::Comment { .. } => todo!(),
+					FunctionArgument::Comment { .. } => {
+						UnsynthesisedArgument { spread: false, expression: &comment }
+					}
 				})
 				.collect::<Vec<_>>()
 		})
@@ -946,15 +1147,16 @@ fn call_function<T: crate::ReadFromFS>(
 
 	crate::types::calling::call_type_handle_errors(
 		function_type_id,
+		call_site_type_arguments,
 		&arguments,
 		CallingInput {
 			called_with_new,
 			call_site: call_site.with_source(environment.get_source()),
-			call_site_type_arguments: generic_type_arguments,
+			max_inline: checking_data.options.max_inline_count,
 		},
 		environment,
 		checking_data,
-		expected,
+		expecting,
 	)
 }
 
@@ -963,10 +1165,15 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	environment: &mut Environment,
 	position: SpanWithSource,
-	expected: TypeId,
+	expecting: TypeId,
 ) -> TypeId {
 	let mut object_builder =
 		ObjectBuilder::new(None, &mut checking_data.types, position, &mut environment.info);
+
+	// {
+	// 	let ty = print_type(expecting, &checking_data.types, environment, true);
+	// 	crate::utilities::notify!("expecting in obj={}", ty);
+	// }
 
 	for member in members {
 		let member_position = member.get_position().with_source(environment.get_source());
@@ -975,7 +1182,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				continue;
 			}
 			ObjectLiteralMember::Spread(spread, pos) => {
-				let spread = synthesise_expression(spread, environment, checking_data, expected);
+				let spread = synthesise_expression(spread, environment, checking_data, expecting);
 
 				// TODO use what about string, what about enumerable ...
 
@@ -985,16 +1192,18 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							spread,
 							&checking_data.types,
 							environment,
+							true,
+							TypeId::ANY_TYPE,
 						);
 
 						for (_, key, value) in get_properties_on_type {
-							// TODO evaluate getters & check enumerability
+							// TODO evaluate getters & check whether enumerable
 							object_builder.append(
-								environment,
 								Publicity::Public,
 								key,
 								value,
 								pos.with_source(environment.get_source()),
+								&mut environment.info,
 							);
 						}
 					}
@@ -1008,11 +1217,15 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							*truthy_result,
 							&checking_data.types,
 							environment,
+							true,
+							TypeId::ANY_TYPE,
 						);
 						let otherwise_properties = get_properties_on_single_type(
 							*otherwise_result,
 							&checking_data.types,
 							environment,
+							true,
+							TypeId::ANY_TYPE,
 						);
 						crate::utilities::notify!(
 							"Here {:?} {:?} {:?} {:?}",
@@ -1052,25 +1265,26 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 									};
 
 								object_builder.append(
-									environment,
 									Publicity::Public,
 									key.clone(),
 									PropertyValue::Value(value),
 									position,
+									&mut environment.info,
 								);
 							}
 						} else {
-							crate::utilities::notify!("Here");
+							// crate::utilities::notify!("Here in conditional spread");
+
 							for (_, key, value) in truthy_properties {
 								object_builder.append(
-									environment,
 									Publicity::Public,
 									key,
 									PropertyValue::ConditionallyExists {
-										on: *condition,
+										condition: *condition,
 										truthy: Box::new(value),
 									},
 									member_position,
+									&mut environment.info,
 								);
 							}
 							let negation =
@@ -1078,35 +1292,26 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 							for (_, key, value) in otherwise_properties {
 								object_builder.append(
-									environment,
 									Publicity::Public,
 									key,
 									PropertyValue::ConditionallyExists {
-										on: negation,
+										condition: negation,
 										truthy: Box::new(value),
 									},
 									member_position,
+									&mut environment.info,
 								);
 							}
 						}
 					}
-					crate::Type::AliasTo { .. }
-					| crate::Type::And { .. }
-					| crate::Type::Or { .. }
-					| crate::Type::RootPolyType { .. }
-					| crate::Type::Constructor { .. }
-					| crate::Type::PartiallyAppliedGenerics { .. }
-					| crate::Type::Interface { .. }
-					| crate::Type::Class { .. }
-					| crate::Type::Constant { .. }
-					| crate::Type::FunctionReference { .. }
-					| crate::Type::SpecialObject(_) => {
+					r#type => {
+						crate::utilities::notify!("more than binary spread {:?}", r#type);
 						checking_data.raise_unimplemented_error(
 							"more than binary spread",
 							pos.with_source(environment.get_source()),
 						);
 
-						return TypeId::ERROR_TYPE;
+						return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 					}
 				}
 			}
@@ -1120,23 +1325,17 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let value = match get_variable {
 					Ok(VariableWithValue(_variable, value)) => value,
 					Err(_err) => {
-						// checking_data.diagnostics_container.add_error(
-						// 	TypeCheckError::CouldNotFindVariable {
-						// 		variable: err.name,
-						// 		possibles: err.possibles,
-						// 		position: position.clone(),
-						// 	},
-						// );
+						// missing handled above
 						TypeId::ERROR_TYPE
 					}
 				};
 
 				object_builder.append(
-					environment,
 					Publicity::Public,
 					key,
 					crate::types::properties::PropertyValue::Value(value),
 					member_position,
+					&mut environment.info,
 				);
 			}
 			ObjectLiteralMember::Property { key, value, position, .. } => {
@@ -1150,21 +1349,22 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				let position_with_source = position.with_source(environment.get_source());
 
 				let maybe_property_expecting = get_property_unbound(
-					(expected, None),
+					(expecting, None),
 					(Publicity::Public, &key, None),
+					false,
 					environment,
 					&checking_data.types,
 				);
 
-				if expected != TypeId::ANY_TYPE
-					&& expected != TypeId::OBJECT_TYPE
+				if expecting != TypeId::ANY_TYPE
+					&& expecting != TypeId::OBJECT_TYPE
 					&& maybe_property_expecting.is_err()
 				{
 					checking_data.diagnostics_container.add_warning(
 						TypeCheckWarning::ExcessProperty {
 							position: position_with_source,
 							expected_type: TypeStringRepresentation::from_type_id(
-								expected,
+								expecting,
 								environment,
 								&checking_data.types,
 								checking_data.options.debug_types,
@@ -1182,16 +1382,27 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				// TODO needs improvement
 				let property_expecting = maybe_property_expecting
 					.ok()
-					.and_then(
-						|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None },
-					)
+					.and_then(|l| {
+						if let LogicalOrValid::Logical(Logical::Pure(l)) = l {
+							Some(l.as_get_type(&checking_data.types))
+						} else {
+							crate::utilities::notify!("TODO expecting {:?}", l);
+							None
+						}
+					})
 					.unwrap_or(TypeId::ANY_TYPE);
 
 				let value =
 					synthesise_expression(value, environment, checking_data, property_expecting);
 
 				let value = crate::types::properties::PropertyValue::Value(value);
-				object_builder.append(environment, Publicity::Public, key, value, member_position);
+				object_builder.append(
+					Publicity::Public,
+					key,
+					value,
+					member_position,
+					&mut environment.info,
+				);
 
 				// let property_name: PropertyName<'static> = property_key.into();
 
@@ -1222,38 +1433,47 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 
 				// TODO needs improvement
 				let property_expecting = get_property_unbound(
-					(expected, None),
+					(expecting, None),
 					(Publicity::Public, &key, None),
+					false,
 					environment,
 					&checking_data.types,
 				)
 				.ok()
-				.and_then(|l| if let Logical::Pure(l) = l { Some(l.as_get_type()) } else { None })
+				.and_then(|l| {
+					if let LogicalOrValid::Logical(Logical::Pure(l)) = l {
+						Some(l.as_get_type(&checking_data.types))
+					} else {
+						crate::utilities::notify!("TODO {:?}", l);
+						None
+					}
+				})
 				.unwrap_or(TypeId::ANY_TYPE);
 
 				let behavior = crate::features::functions::FunctionRegisterBehavior::ObjectMethod {
 					is_async: method.header.is_async(),
 					is_generator: method.header.is_generator(),
 					expecting: property_expecting,
+					name: key.into_name_type(&mut checking_data.types),
 				};
 
 				let function = synthesise_function(method, behavior, environment, checking_data);
 
 				let kind = match &method.header {
-					MethodHeader::Get => GetterSetter::Getter,
-					MethodHeader::Set => GetterSetter::Setter,
-					MethodHeader::Regular { .. } => GetterSetter::None,
+					MethodHeader::Get => Some(GetterSetter::Getter),
+					MethodHeader::Set => Some(GetterSetter::Setter),
+					MethodHeader::Regular { .. } => None,
 				};
 
 				let property =
 					function_to_property(kind, function, &mut checking_data.types, false);
 
 				object_builder.append(
-					environment,
 					Publicity::Public,
 					key,
 					property,
 					member_position,
+					&mut environment.info,
 				);
 			}
 		}

@@ -3,12 +3,11 @@ use std::collections::HashMap;
 
 use source_map::{BaseSpan, Nullable, SpanWithSource};
 
+use super::calling::{Callable, CallingContext, CallingInput};
 use crate::{
-	call_type_handle_errors,
-	context::environment::FunctionScope,
+	context::{environment::FunctionScope, invocation::CheckThings},
 	events::{Event, RootReference},
-	features::functions::{ClassPropertiesToRegister, ClosedOverVariables, FunctionBehavior},
-	types::calling::CallingInput,
+	features::functions::{ClassPropertiesToRegister, ClosedOverVariables},
 	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
 
@@ -30,6 +29,7 @@ pub struct FunctionType {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum FunctionEffect {
+	/// Has synthesised events
 	SideEffects {
 		/// Note that a function can still be considered to be 'pure' and have a non-empty vector of events
 		events: Vec<Event>,
@@ -55,6 +55,7 @@ pub enum FunctionEffect {
 		identifier: String,
 		may_throw: Option<TypeId>,
 	},
+	/// Such as a callback
 	Unknown,
 }
 
@@ -78,10 +79,12 @@ impl From<InternalFunctionEffect> for FunctionEffect {
 }
 
 impl FunctionType {
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new_auto_constructor<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		function_id: FunctionId,
 		class_prototype: TypeId,
 		extends: Option<TypeId>,
+		name: TypeId,
 		properties: ClassPropertiesToRegister<A>,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
@@ -91,7 +94,7 @@ impl FunctionType {
 			extends: false,
 			type_of_super: None,
 			// Set later
-			this_object_type: TypeId::ERROR_TYPE,
+			this_object_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 		});
 
 		let (on, env_data, _) = environment.new_lexical_environment_fold_into_parent(
@@ -114,16 +117,26 @@ impl FunctionType {
 					let input = CallingInput {
 						call_site: BaseSpan::NULL,
 						called_with_new,
-						call_site_type_arguments: None,
+						max_inline: checking_data.options.max_inline_count,
 					};
-					let _ = call_type_handle_errors(
-						extends,
-						&[],
+					let mut diagnostics = Default::default();
+					let result = Callable::Type(extends).call(
+						Vec::new(),
 						input,
 						environment,
-						checking_data,
-						TypeId::ANY_TYPE,
+						(
+							&mut CheckThings { debug_types: checking_data.options.debug_types },
+							&mut diagnostics,
+						),
+						&mut checking_data.types,
 					);
+
+					diagnostics
+						.append_to(CallingContext::Super, &mut checking_data.diagnostics_container);
+					match result {
+						Ok(_) => {}
+						Err(_error) => {}
+					}
 				}
 
 				crate::types::classes::register_properties_into_environment(
@@ -138,8 +151,11 @@ impl FunctionType {
 			},
 		);
 
-		let behavior =
-			FunctionBehavior::Constructor { prototype: class_prototype, this_object_type: on };
+		let behavior = FunctionBehavior::Constructor {
+			prototype: class_prototype,
+			this_object_type: on,
+			name,
+		};
 
 		let (info, _free_variables) = env_data.unwrap();
 		Self {
@@ -157,11 +173,58 @@ impl FunctionType {
 	}
 }
 
-/// TODO temp
+/// TODO different place
+/// TODO maybe generic
 #[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum GetSet {
-	Get,
-	Set,
+pub enum FunctionBehavior {
+	/// For arrow functions, cannot have `this` bound
+	ArrowFunction {
+		is_async: bool,
+	},
+	Method {
+		free_this_id: TypeId,
+		is_async: bool,
+		is_generator: bool,
+		name: TypeId,
+	},
+	/// Functions defined `function`. Extends above by allowing `new`
+	Function {
+		/// This points the general `this` object.
+		/// When calling with:
+		/// - `new`: an arguments should set with (`free_this_id`, *new object*)
+		/// - regularly: bound argument, else parent `this` (I think)
+		this_id: TypeId,
+		/// The function type. [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new)
+		prototype: TypeId,
+		is_async: bool,
+		/// Cannot be called with `new` if true
+		is_generator: bool,
+		/// This is to implement <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/name>
+		name: TypeId,
+	},
+	/// Constructors, require new
+	Constructor {
+		/// The prototype of the base object
+		prototype: TypeId,
+		/// The id of the generic that needs to be pulled out
+		this_object_type: TypeId,
+		name: TypeId,
+	},
+}
+
+impl FunctionBehavior {
+	pub(crate) fn can_be_bound(self) -> bool {
+		matches!(self, Self::Method { .. } | Self::Function { .. })
+	}
+
+	pub(crate) fn get_name(self) -> TypeId {
+		match self {
+			Self::ArrowFunction { .. } => TypeId::EMPTY_STRING,
+			Self::Method { name, .. }
+			| Self::Function { name, .. }
+			| Self::Constructor { name, .. } => name,
+		}
+	}
 }
 
 /// Optionality is indicated by what vector it is in [`SynthesisedParameters`]
@@ -206,23 +269,6 @@ impl SynthesisedParameters {
 			Some((param.ty, param.position))
 		} else {
 			self.rest_parameter.as_ref().map(|rest| (rest.item_type, rest.position))
-		}
-	}
-}
-
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub struct SynthesisedArgument {
-	pub(crate) spread: bool,
-	pub(crate) value: TypeId,
-	pub(crate) position: SpanWithSource,
-}
-
-impl SynthesisedArgument {
-	pub fn non_spread_type(&self) -> Result<TypeId, ()> {
-		if self.spread {
-			Err(())
-		} else {
-			Ok(self.value)
 		}
 	}
 }

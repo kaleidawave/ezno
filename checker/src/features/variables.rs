@@ -3,17 +3,19 @@
 use source_map::{Span, SpanWithSource};
 
 use crate::context::{environment::ContextLocation, AssignmentError, VariableRegisterArguments};
-use crate::diagnostics::{PropertyRepresentation, TypeCheckError, TypeStringRepresentation};
+use crate::diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation};
 use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
 	types::{
-		printing::print_type,
-		properties::{get_property_unbound, PropertyKey, Publicity},
+		logical::{Logical, LogicalOrValid},
+		properties::{
+			get_property_key_names_on_a_single_type, get_property_unbound, PropertyKey, Publicity,
+		},
 		TypeId,
 	},
 	CheckingData, VariableId,
 };
-use crate::{Environment, Instance, Logical};
+use crate::{Environment, Instance};
 use std::fmt::Debug;
 
 /// A variable, that can be referenced. Can be a including class (prototypes) and functions
@@ -28,6 +30,7 @@ pub enum VariableOrImport {
 		/// be turned into a [`VariableId`]
 		declared_at: SpanWithSource,
 		context: ContextLocation,
+		allow_reregistration: bool,
 	},
 	MutableImport {
 		of: VariableId,
@@ -109,14 +112,14 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
-				variable_site: variable_declared_pos,
+				variable_position: variable_declared_pos,
 				value_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
 					expression_type,
 					environment,
 					&checking_data.types,
 					checking_data.options.debug_types,
 				),
-				value_site: expression_declared_pos,
+				value_position: expression_declared_pos,
 			},
 		);
 
@@ -140,34 +143,47 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 		let property_constraint = get_property_unbound(
 			(space, None),
 			(Publicity::Public, under, None),
+			false,
 			environment,
 			&checking_data.types,
 		);
 		if let Ok(value) = property_constraint {
-			match value {
-				Logical::Pure(crate::PropertyValue::Value(value)) => value,
-				Logical::Pure(_) => todo!(),
-				Logical::Or { .. } => todo!(),
-				Logical::Implies { .. } => todo!(),
+			if let LogicalOrValid::Logical(value) = value {
+				match value {
+					Logical::Pure(crate::PropertyValue::Value(value)) => value,
+					Logical::Pure(_) => todo!(),
+					Logical::Or { .. } => todo!(),
+					Logical::Implies { .. } => todo!(),
+					Logical::BasedOnKey { .. } => todo!(),
+				}
+			} else {
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			}
 		} else {
+			let keys;
+			let possibles = if let PropertyKey::String(s) = under {
+				keys = get_property_key_names_on_a_single_type(
+					space,
+					&checking_data.types,
+					environment,
+				);
+				let mut possibles =
+					crate::get_closest(keys.iter().map(AsRef::as_ref), s).unwrap_or(vec![]);
+				possibles.sort_unstable();
+				possibles
+			} else {
+				Vec::new()
+			};
 			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
-				property: match under.clone() {
-					PropertyKey::String(s) => PropertyRepresentation::StringKey(s.to_string()),
-					PropertyKey::Type(t) => PropertyRepresentation::Type(print_type(
-						t,
-						&checking_data.types,
-						environment,
-						false,
-					)),
-				},
+				property: PropertyKeyRepresentation::new(under, environment, &checking_data.types),
 				on: TypeStringRepresentation::from_type_id(
 					space,
 					environment,
 					&checking_data.types,
 					false,
 				),
-				site: position,
+				position,
+				possibles,
 			});
 			TypeId::ERROR_TYPE
 		}
@@ -181,10 +197,15 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 				under,
 				checking_data,
 				position,
-				true,
+				crate::types::properties::AccessMode::Regular,
 			)
 			.map_or(TypeId::ERROR_TYPE, Instance::get_value)
 	});
 
-	VariableRegisterArguments { constant: on.constant, space, initial_value }
+	VariableRegisterArguments {
+		constant: on.constant,
+		space,
+		initial_value,
+		allow_reregistration: on.allow_reregistration,
+	}
 }
