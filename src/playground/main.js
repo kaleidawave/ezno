@@ -173,6 +173,7 @@ async function setup() {
       }).then(res => res.json()).then((result) => {
         if (result.id) {
           url.searchParams.set("id", result.id);
+          url.searchParams.delete("raw");
           history.pushState({}, "", url);
           navigator.clipboard.writeText(url.toString()).then(() => {
             alert("Share URL copied to clipboard")

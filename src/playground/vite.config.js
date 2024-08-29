@@ -1,4 +1,4 @@
-import { defineConfig, normalizePath } from 'vite'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
   clearScreen: false,
@@ -12,5 +12,4 @@ export default defineConfig({
   server: {
     fs: { strict: false }
   },
-  // assetsInclude: ["./node_modules/ezno/dist/shared/*.wasm"]
 })

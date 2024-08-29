@@ -85,7 +85,7 @@ async function renderDifferences(sections) {
             const tscPlaygroundLink = `https://www.typescriptlang.org/play?#code/${codeCompressed}`;
 
             acc += `<li>
-                <h3 id="#${href}">${title}</h3>
+                <h3 id="${href}">${title}</h3>
                 <div>
                     ${highlightedCode}
                     <div>

@@ -1,4 +1,4 @@
-name: Publish playground to GitHub pages
+name: Publish playground (and comparison) to GitHub pages
 
 on:
   workflow_dispatch
