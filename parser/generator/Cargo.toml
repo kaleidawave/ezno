@@ -2,7 +2,7 @@
 name = "ezno-ast-generator"
 description = "Quasi-quoted constant compiled TS definitions for Ezno AST"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.13"
+version = "0.0.14"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"
@@ -17,7 +17,7 @@ proc-macro = true
 quote = "1.0"
 proc-macro2 = "1.0"
 self-rust-tokenize = "0.3.3"
-ezno-parser = { path = "..", version = "0.1.5", features = [
+ezno-parser = { path = "..", version = "0.1.6", features = [
   "self-rust-tokenize",
 ] }
 
