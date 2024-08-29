@@ -44,7 +44,7 @@ let initialText = text;
 
 const { searchParams } = new URL(location);
 const id = searchParams.get("id");
-const raw = searchParams.get("raw-example");
+const raw = searchParams.get("raw");
 
 if (id) {
   fetch(STORE + `?id=${id}`, { method: "GET" }).then(res => res.json()).then((result) => {
@@ -57,7 +57,7 @@ if (id) {
   })
 } else {
   if (raw) {
-    initialText = raw;
+    initialText = text = raw;
   }
   setup()
 }
@@ -145,7 +145,7 @@ async function setup() {
     state: EditorState.create({
       doc: Text.of([text]),
       extensions: [
-        keymap.of([...defaultKeymap, indentWithTab,]), //toggleLineComment
+        keymap.of([...defaultKeymap, indentWithTab, toggleLineComment]),
         EditorState.tabSize.of(4),
         new LanguageSupport(LRLanguage.define({ parser: jsParser.configure({ dialect: "ts" }), languageData: { commentTokens: { line: "// " } } }), [getLinter()]),
         syntaxHighlighting(myHighlightStyle),

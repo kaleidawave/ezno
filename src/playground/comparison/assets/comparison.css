@@ -1,0 +1,82 @@
+body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: 'Inter', sans-serif;
+    padding: 32px;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+main>h2 {
+    margin: 10px 0px;
+}
+
+.comparison>li>div {
+    display: grid;
+    gap: 18px;
+}
+
+.comparison h2,
+.comparison h3 {
+    cursor: pointer;
+    scroll-margin: 40px;
+    margin-top: 40px;
+}
+
+@media screen and (min-width: 1080px) {
+    .comparison>li>div {
+        grid-template-columns: 2fr 3fr;
+    }
+}
+
+.comparison>li>div>pre {
+    overflow-x: auto;
+    border-radius: 6px;
+    font-size: 16px;
+    padding: 16px;
+    margin: 0;
+}
+
+.comparison>li>div>div>pre {
+    margin: 0;
+    padding: 16px;
+    border-radius: 6px;
+}
+
+.tsc-diagnostics {
+    margin-top: 24px;
+}
+
+.ezno-diagnostics>ul,
+.tsc-diagnostics>ul {
+    font-family: 'JetBrains mono', monospace;
+    font-size: 16px;
+    padding-left: 20px;
+    line-height: 28px;
+}
+
+.checker-name {
+    display: flex;
+    gap: 10px;
+}
+
+.checker-name>a {
+    color: #979797;
+    text-transform: lowercase;
+    font-family: monospace;
+}
+
+ul.comparison {
+    list-style: none;
+    padding-left: 0;
+    margin-top: 0;
+}
+
+ul.comparison>li {
+    margin-top: 20px;
+}
