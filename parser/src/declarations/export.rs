@@ -1,8 +1,8 @@
 use crate::{
 	derive_ASTNode, errors::parse_lexing_error, throw_unexpected_token,
-	type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression, ParseError,
-	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
-	TypeAnnotation, VariableIdentifier,
+	type_annotations::TypeAnnotationFunctionParameters, types::enum_declaration::EnumDeclaration,
+	ASTNode, Expression, ParseError, ParseOptions, ParseResult, Span, StatementPosition,
+	TSXKeyword, TSXToken, Token, TypeAnnotation, VariableIdentifier,
 };
 
 use super::{
@@ -19,7 +19,7 @@ use visitable_derive::Visitable;
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ExportDeclaration {
-	Variable {
+	Item {
 		exported: Exportable,
 		position: Span,
 	},
@@ -47,6 +47,7 @@ pub enum Exportable {
 	Variable(VariableDeclaration),
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
+	EnumDeclaration(EnumDeclaration),
 	Parts(Vec<ImportExportPart<ExportDeclaration>>),
 	ImportAll {
 		r#as: Option<VariableIdentifier>,
@@ -137,7 +138,7 @@ impl ASTNode for ExportDeclaration {
 
 				let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
 
-				Ok(ExportDeclaration::Variable {
+				Ok(ExportDeclaration::Item {
 					exported: Exportable::ImportAll { r#as, from },
 					position: start.union(end),
 				})
@@ -148,25 +149,25 @@ impl ASTNode for ExportDeclaration {
 				let class_declaration =
 					ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)?;
 				let position = start.union(class_declaration.get_position());
-				Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
+				Ok(Self::Item { exported: Exportable::Class(class_declaration), position })
+			}
+			Token(TSXToken::Keyword(TSXKeyword::Enum), _) => {
+				let Token(_, start) = reader.next().unwrap();
+				let enum_declaration = EnumDeclaration::from_reader(reader, state, options)?;
+				let position = start.union(enum_declaration.get_position());
+				Ok(Self::Item { exported: Exportable::EnumDeclaration(enum_declaration), position })
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let), _) => {
 				let variable_declaration =
 					VariableDeclaration::from_reader(reader, state, options)?;
 				let position = start.union(variable_declaration.get_position());
-				Ok(Self::Variable {
-					exported: Exportable::Variable(variable_declaration),
-					position,
-				})
+				Ok(Self::Item { exported: Exportable::Variable(variable_declaration), position })
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Interface), _) => {
 				let interface_declaration =
 					InterfaceDeclaration::from_reader(reader, state, options)?;
 				let position = start.union(interface_declaration.get_position());
-				Ok(Self::Variable {
-					exported: Exportable::Interface(interface_declaration),
-					position,
-				})
+				Ok(Self::Item { exported: Exportable::Interface(interface_declaration), position })
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
 				if let Token(TSXToken::OpenBrace, _) =
@@ -188,7 +189,7 @@ impl ASTNode for ExportDeclaration {
 					let (from, end) =
 						ImportLocation::from_reader(reader, state, options, Some(from_pos))?;
 
-					Ok(Self::Variable {
+					Ok(Self::Item {
 						exported: Exportable::ImportParts {
 							parts,
 							from,
@@ -199,7 +200,7 @@ impl ASTNode for ExportDeclaration {
 				} else {
 					let type_alias = TypeAlias::from_reader(reader, state, options)?;
 					let position = start.union(type_alias.get_position());
-					Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
+					Ok(Self::Item { exported: Exportable::TypeAlias(type_alias), position })
 				}
 			}
 			Token(TSXToken::OpenBrace, _) => {
@@ -230,7 +231,7 @@ impl ASTNode for ExportDeclaration {
 
 						let (from, end) =
 							ImportLocation::from_reader(reader, state, options, Some(start))?;
-						Ok(Self::Variable {
+						Ok(Self::Item {
 							exported: Exportable::ImportParts {
 								parts,
 								from,
@@ -246,7 +247,7 @@ impl ASTNode for ExportDeclaration {
 							None,
 							TSXToken::CloseBrace,
 						)?;
-						Ok(Self::Variable {
+						Ok(Self::Item {
 							exported: Exportable::Parts(parts),
 							position: start.union(end),
 						})
@@ -261,10 +262,7 @@ impl ASTNode for ExportDeclaration {
 			Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
 				let function_declaration = StatementFunction::from_reader(reader, state, options)?;
 				let position = start.union(function_declaration.get_position());
-				Ok(Self::Variable {
-					exported: Exportable::Function(function_declaration),
-					position,
-				})
+				Ok(Self::Item { exported: Exportable::Function(function_declaration), position })
 			}
 			_ => throw_unexpected_token(
 				reader,
@@ -288,7 +286,7 @@ impl ASTNode for ExportDeclaration {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			ExportDeclaration::Variable { exported, .. } => {
+			ExportDeclaration::Item { exported, .. } => {
 				buf.push_str("export ");
 				match exported {
 					Exportable::Class(class_declaration) => {
@@ -305,6 +303,9 @@ impl ASTNode for ExportDeclaration {
 					}
 					Exportable::TypeAlias(type_alias) => {
 						type_alias.to_string_from_buffer(buf, options, local);
+					}
+					Exportable::EnumDeclaration(enum_declaration) => {
+						enum_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Parts(parts) => {
 						super::import_export_parts_to_string_from_buffer(

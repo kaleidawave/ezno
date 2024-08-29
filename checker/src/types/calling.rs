@@ -1859,8 +1859,11 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			.iter()
 			.zip(call_site_type_arguments)
 			.map(|(param, (ty, position))| {
-				if let Type::RootPolyType(PolyNature::FunctionGeneric { extends, .. }) =
-					types.get_type_by_id(param.type_id)
+				// StructureGeneric for classes
+				if let Type::RootPolyType(
+					PolyNature::FunctionGeneric { extends, .. }
+					| PolyNature::StructureGeneric { extends, .. },
+				) = types.get_type_by_id(param.type_id)
 				{
 					let mut state = State {
 						already_checked: Default::default(),

@@ -1074,7 +1074,7 @@ impl Expression {
 							type_annotation: Box::new(reference),
 						},
 						#[cfg(feature = "extras")]
-						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::Is {
+						TSXToken::Keyword(TSXKeyword::Is) if options.is_expressions => SpecialOperators::Is {
 							value: top.into(),
 							type_annotation: Box::new(reference),
 						},
@@ -1141,6 +1141,11 @@ impl Expression {
 					// a mutable reader here
 					let token = if let TSXToken::OpenChevron = token {
 						if is_generic_arguments(reader) {
+							if AssociativityDirection::LeftToRight
+								.should_return(parent_precedence, FUNCTION_CALL_PRECEDENCE)
+							{
+								return Ok(top);
+							}
 							let _ = reader.next();
 							let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
 								reader, state, options, None,
@@ -1473,6 +1478,7 @@ impl Expression {
 				#[cfg(feature = "extras")]
 				SpecialOperators::Is { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, options, local);
+					buf.push_str(" is ");
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
 			},

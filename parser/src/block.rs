@@ -41,7 +41,7 @@ impl StatementOrDeclaration {
 				Declaration::Variable(..)
 					| Declaration::Export(Decorated {
 						on: ExportDeclaration::Default { .. }
-							| ExportDeclaration::Variable {
+							| ExportDeclaration::Item {
 								exported: Exportable::ImportAll { .. }
 									| Exportable::ImportParts { .. } | Exportable::Parts { .. },
 								..

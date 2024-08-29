@@ -3263,6 +3263,22 @@ doThingWithX(new Y())
 
 - Argument of type [Y] { a: 2 } is not assignable to parameter of type X
 
+#### Generics to constructor
+
+```ts
+class Box<T> {
+    value: T;
+
+    constructor(value: T) {
+        this.value = value;
+    }
+}
+
+const myBox = new Box<number>("hi");
+```
+
+- Argument of type "hi" is not assignable to parameter of type number
+
 ### Types
 
 #### Non existent type
@@ -3696,7 +3712,7 @@ type GetPrefix<S, End> = S extends `${infer T} ${End}` ? T : false;
 
 - Expected "Hello", found 4
 
-#### `infer ... extends ...`
+#### Infer with extends clause
 
 ```ts
 type X<T> = T extends { a: infer I extends string } ? I : string;
