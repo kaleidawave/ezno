@@ -651,24 +651,7 @@ where
 	if function.has_body() {
 		let type_parameters = if let Some((ref prototype, _)) = constructor {
 			// Class generics here
-			checking_data.types.get_type_by_id(*prototype).get_parameters().map(|parameters| {
-				parameters
-					.into_iter()
-					.map(|ty| {
-						let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
-							checking_data.types.get_type_by_id(ty)
-						else {
-							unreachable!()
-						};
-						crate::types::generics::GenericTypeParameter {
-							name: name.clone(),
-							// Using its associated [`Type`], its restriction can be found
-							type_id: ty,
-							default: None,
-						}
-					})
-					.collect()
-			})
+			class_generics_to_function_generics(*prototype, &checking_data.types)
 		} else {
 			function.type_parameters(&mut function_environment, checking_data)
 		};
@@ -1152,4 +1135,25 @@ pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environm
 	} else {
 		TypeId::EMPTY_STRING
 	}
+}
+
+pub fn class_generics_to_function_generics(prototype: TypeId, types: &TypeStore) -> Option<GenericTypeParameters> {
+	types.get_type_by_id(prototype).get_parameters().map(|parameters| {
+		parameters
+			.into_iter()
+			.map(|ty| {
+				let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
+					types.get_type_by_id(ty)
+				else {
+					unreachable!()
+				};
+				crate::types::generics::GenericTypeParameter {
+					name: name.clone(),
+					// Using its associated [`Type`], its restriction can be found
+					type_id: ty,
+					default: None,
+				}
+			})
+			.collect()
+	})
 }

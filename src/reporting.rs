@@ -123,11 +123,11 @@ where
 		#[cfg(not(target_family = "wasm"))]
 		emit(&mut writer, &config, &files, &diagnostic)?;
 	}
+	
+	#[cfg(not(target_family = "wasm"))]
+	writer.flush().unwrap();
 
 	if count > maximum {
-		#[cfg(not(target_family = "wasm"))]
-		writer.flush().unwrap();
-
 		crate::utilities::print_to_cli(format_args!(
 			"... and {difference} other errors and warnings",
 			difference = count - maximum

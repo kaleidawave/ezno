@@ -114,14 +114,16 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::NumberLiteral(value, ..) => {
 			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
-				v.try_into().unwrap()
+				if let Ok(value) = v.try_into() {
+					value
+				} else {
+					crate::utilities::notify!("Returning zero here? {:?}", value);
+					return TypeId::ZERO;
+				}
 			} else {
 				crate::utilities::notify!("TODO big int");
 				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 			};
-			// if not_nan == 6. {
-			// 	crate::utilities::notify!("{:?}", environment.get_all_named_types());
-			// }
 			return checking_data.types.new_constant_type(Constant::Number(not_nan));
 		}
 		Expression::BooleanLiteral(value, ..) => {

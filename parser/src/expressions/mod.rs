@@ -1074,7 +1074,7 @@ impl Expression {
 							type_annotation: Box::new(reference),
 						},
 						#[cfg(feature = "extras")]
-						TSXToken::Keyword(TSXKeyword::Is) => SpecialOperators::Is {
+						TSXToken::Keyword(TSXKeyword::Is) if options.is_expressions => SpecialOperators::Is {
 							value: top.into(),
 							type_annotation: Box::new(reference),
 						},
@@ -1478,6 +1478,7 @@ impl Expression {
 				#[cfg(feature = "extras")]
 				SpecialOperators::Is { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, options, local);
+					buf.push_str(" is ");
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
 			},

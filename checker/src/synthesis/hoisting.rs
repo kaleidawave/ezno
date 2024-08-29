@@ -35,10 +35,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	for item in items {
 		if let StatementOrDeclaration::Declaration(declaration) = item {
 			match declaration {
-				Declaration::Enum(r#enum) => checking_data.raise_unimplemented_error(
-					"enum",
-					r#enum.on.position.with_source(environment.get_source()),
-				),
 				Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
 					"namespace",
 					ns.position.with_source(environment.get_source()),
@@ -46,7 +42,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::Interface(Decorated { on: interface, .. })
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported: Exportable::Interface(interface),
 							position: _,
 						},
@@ -103,7 +99,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::Class(Decorated { on: class, .. })
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable { exported: Exportable::Class(class), position: _ },
+						ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
 					..
 				}) => {
 					let result = environment.declare_class::<EznoParser>(
@@ -143,7 +139,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::TypeAlias(alias)
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported: Exportable::TypeAlias(alias),
 							position: _,
 						},
@@ -225,7 +221,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported: Exportable::ImportAll { r#as, from },
 							position,
 						},
@@ -256,7 +252,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported:
 								Exportable::ImportParts { parts, from, type_definitions_only, .. },
 							position,
@@ -275,6 +271,47 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						true,
 						*type_definitions_only,
 					);
+				}
+				Declaration::Enum(Decorated { on: r#enum, .. }) | Declaration::Export(Decorated {
+					on:
+						ExportDeclaration::Item {
+							exported: Exportable::EnumDeclaration(r#enum),
+							position: _,
+						},
+					..
+				}) => {
+					if checking_data.options.extra_syntax {
+						checking_data.diagnostics_container.add_warning(
+							crate::diagnostics::TypeCheckWarning::ItemMustBeUsedWithFlag {
+								item: "enum",
+								position: r#enum.position.with_source(environment.get_source()),
+							},
+						);
+					}
+
+					// TODO WIP implementation
+					let result = environment.declare_alias::<EznoParser>(
+						&r#enum.name,
+						None,
+						r#enum.get_position(),
+						&mut checking_data.types,
+					);
+					if let Ok(ty) = result {
+						checking_data
+							.local_type_mappings
+							.types_to_types
+							.push(r#enum.get_position(), ty);
+
+						checking_data.types.update_alias(ty, TypeId::NUMBER_TYPE);
+					} else {
+						let position = r#enum.get_position().with_source(environment.get_source());
+						checking_data.diagnostics_container.add_error(
+							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+								name: r#enum.name.clone(),
+								position,
+							},
+						);
+					}
 				}
 				Declaration::DeclareVariable(_)
 				| Declaration::Variable(_)
@@ -320,7 +357,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::Variable(declaration)
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported: Exportable::Variable(declaration),
 							position: _,
 						},
@@ -331,7 +368,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::Class(Decorated { on: class, .. })
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable { exported: Exportable::Class(class), position: _ },
+						ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
 					..
 				}) => {
 					let name_position =
@@ -344,7 +381,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						.unwrap();
 
 					// Lift members
-					super::classes::register_statement_class_with_members(
+					let constructor = super::classes::register_statement_class_with_members(
 						ty,
 						class,
 						environment,
@@ -355,7 +392,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					let argument = VariableRegisterArguments {
 						// TODO functions are constant references
 						constant: true,
-						space: Some(ty),
+						space: Some(constructor),
 						initial_value: None,
 						allow_reregistration: false,
 					};
@@ -384,7 +421,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::TypeAlias(alias)
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported: Exportable::TypeAlias(alias),
 							position: _,
 						},
@@ -407,7 +444,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::Interface(Decorated { on: interface, .. })
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported: Exportable::Interface(interface),
 							position: _,
 						},
@@ -529,7 +566,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				Declaration::Function(Decorated { on: function, decorators, .. })
 				| Declaration::Export(Decorated {
 					on:
-						ExportDeclaration::Variable {
+						ExportDeclaration::Item {
 							exported: Exportable::Function(function),
 							position: _,
 						},
@@ -663,11 +700,28 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						);
 					}
 				}
-				// Declaration::Interface(Decorated { on: r#enum, .. })
-				Declaration::Enum(r#enum) => {
-					checking_data.raise_unimplemented_error(
-						"enum",
-						r#enum.position.with_source(environment.get_source()),
+				Declaration::Enum(Decorated { on: r#enum, .. }) | Declaration::Export(Decorated {
+					on:
+						ExportDeclaration::Item {
+							exported: Exportable::EnumDeclaration(r#enum),
+							position: _,
+						},
+					..
+				}) => {
+					let argument = VariableRegisterArguments {
+						constant: true,
+						space: None,
+						initial_value: None,
+						allow_reregistration: false,
+					};
+
+					environment.register_variable_handle_error(
+						&r#enum.name,
+						argument,
+						r#enum.get_position().with_source(environment.get_source()),
+						&mut checking_data.diagnostics_container,
+						&mut checking_data.local_type_mappings,
+						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
 				Declaration::DeclareVariable(DeclareVariableDeclaration {
@@ -720,7 +774,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			Declaration::Function(Decorated { on: function, decorators, .. })
 			| Declaration::Export(Decorated {
 				on:
-					ExportDeclaration::Variable {
+					ExportDeclaration::Item {
 						exported: Exportable::Function(function),
 						position: _,
 					},

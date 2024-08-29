@@ -932,8 +932,8 @@ pub enum TypeCheckWarning {
 	},
 	IgnoringAsExpression(SpanWithSource),
 	Unimplemented {
-		thing: &'static str,
-		at: SpanWithSource,
+		item: &'static str,
+		position: SpanWithSource,
 	},
 	UselessExpression {
 		expression_span: SpanWithSource,
@@ -958,6 +958,10 @@ pub enum TypeCheckWarning {
 	DisjointEquality {
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	ItemMustBeUsedWithFlag {
+		item: &'static str,
 		position: SpanWithSource,
 	},
 }
@@ -993,9 +997,14 @@ impl From<TypeCheckWarning> for Diagnostic {
 				position,
 				kind,
 			},
-			TypeCheckWarning::Unimplemented { thing, at } => {
-				Diagnostic::Position { reason: format!("Unsupported: {thing}"), position: at, kind }
+			TypeCheckWarning::Unimplemented { item, position } => {
+				Diagnostic::Position { reason: format!("Unsupported: {item}"), position, kind }
 			}
+			TypeCheckWarning::ItemMustBeUsedWithFlag { item, position } => Diagnostic::Position {
+				reason: format!("{item} must be used with 'extras' option"),
+				position,
+				kind,
+			},
 			TypeCheckWarning::UselessExpression { expression_span } => Diagnostic::Position {
 				reason: "Expression is always true".to_owned(),
 				position: expression_span,
