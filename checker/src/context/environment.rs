@@ -2,7 +2,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-	context::{get_on_ctx, information::ReturnState},
+	context::get_on_ctx,
 	diagnostics::{
 		NotInLoopOrCouldNotFindLabel, PropertyKeyRepresentation, TypeCheckError,
 		TypeStringRepresentation, VariableUsedInTDZ,
@@ -48,6 +48,8 @@ pub enum DeclareInterfaceResult {
 	New(TypeId),
 }
 
+pub type ReturnState = crate::utilities::accumulator::Accumulator<TypeId, TypeId>;
+
 #[derive(Debug)]
 pub struct Syntax<'a> {
 	pub scope: Scope,
@@ -67,6 +69,9 @@ pub struct Syntax<'a> {
 	/// Parameter inference requests
 	/// TODO RHS = Has Property
 	pub requests: Vec<(TypeId, TypeId)>,
+
+	/// Whether the context has returned
+	pub state: ReturnState,
 }
 
 /// Code under a dynamic boundary can run more than once
@@ -94,6 +99,10 @@ impl<'a> ContextType for Syntax<'a> {
 
 	fn as_syntax(&self) -> Option<&Syntax> {
 		Some(self)
+	}
+
+	fn set_state(&mut self, state: ReturnState) {
+		self.state = state;
 	}
 
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
@@ -135,7 +144,6 @@ pub enum FunctionScope {
 		free_this_type: TypeId,
 		is_async: bool,
 		is_generator: bool,
-
 		expected_return: Option<ExpectedReturnType>,
 	},
 	// is new-able
@@ -479,7 +487,7 @@ impl<'a> Environment<'a> {
 						&key,
 						self,
 						(
-							&mut CheckThings { debug_types: checking_data.options.debug_types },
+							&mut CheckThings::new_from_options(&checking_data.options),
 							&mut diagnostics,
 						),
 						&mut checking_data.types,
@@ -780,7 +788,7 @@ impl<'a> Environment<'a> {
 			publicity,
 			under,
 			self,
-			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			(&mut CheckThings::new_from_options(&checking_data.options), &mut diagnostics),
 			&mut checking_data.types,
 			position,
 			mode,
@@ -1048,16 +1056,7 @@ impl<'a> Environment<'a> {
 
 	pub fn throw_value(&mut self, thrown: TypeId, position: SpanWithSource, types: &mut TypeStore) {
 		let final_event = FinalEvent::Throw { thrown, position };
-
-		// WIP
-		let final_return =
-			if let ReturnState::Rolling { under, returned: rolling_returning } = self.info.state {
-				types.new_conditional_type(under, rolling_returning, TypeId::NEVER_TYPE)
-			} else {
-				TypeId::NEVER_TYPE
-			};
-		self.info.state = ReturnState::Finished(final_return);
-
+		self.context_type.state.append(TypeId::NEVER_TYPE, types);
 		self.info.events.push(final_event.into());
 	}
 
@@ -1141,16 +1140,7 @@ impl<'a> Environment<'a> {
 		{
 			let final_event = FinalEvent::Return { returned, position: returned_position };
 			self.info.events.push(final_event.into());
-
-			// WIP
-			let final_return = if let ReturnState::Rolling { under, returned: rolling_returning } =
-				self.info.state
-			{
-				checking_data.types.new_conditional_type(under, rolling_returning, returned)
-			} else {
-				returned
-			};
-			self.info.state = ReturnState::Finished(final_return);
+			self.context_type.state.append(returned, &mut checking_data.types);
 		}
 	}
 
@@ -1212,7 +1202,7 @@ impl<'a> Environment<'a> {
 			(publicity, under, new),
 			setter_position,
 			self,
-			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			(&mut CheckThings::new_from_options(&checking_data.options), &mut diagnostics),
 			&mut checking_data.types,
 		);
 		diagnostics.append_to(
@@ -1544,5 +1534,14 @@ impl<'a> Environment<'a> {
 			crate::utilities::notify!("Raise error diagnostic");
 			TypeId::UNIMPLEMENTED_ERROR_TYPE
 		}
+	}
+
+	pub fn get_returned(&self, _types: &mut TypeStore) -> TypeId {
+		todo!()
+	}
+
+	#[must_use]
+	pub fn is_finished(&self) -> bool {
+		self.context_type.state.is_finished()
 	}
 }

@@ -241,8 +241,9 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	}
 }
 
-#[allow(clippy::match_like_matches_macro)]
+// TODO can this just be `disjoint(TypeId::NAN, .)`?
 #[must_use]
+#[allow(clippy::match_like_matches_macro)]
 pub fn is_not_not_a_number(on: TypeId, types: &TypeStore) -> bool {
 	if on == TypeId::NOT_NOT_A_NUMBER {
 		true

@@ -369,10 +369,10 @@ where
 	}
 
 	/// TODO temp, needs better place
-	pub fn raise_unimplemented_error(&mut self, item: &'static str, span: SpanWithSource) {
+	pub fn raise_unimplemented_error(&mut self, item: &'static str, position: SpanWithSource) {
 		if self.unimplemented_items.insert(item) {
 			self.diagnostics_container
-				.add_warning(TypeCheckWarning::Unimplemented { thing: item, at: span });
+				.add_warning(TypeCheckWarning::Unimplemented { item, position });
 		}
 	}
 

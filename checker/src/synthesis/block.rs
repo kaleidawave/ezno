@@ -1,4 +1,4 @@
-use parser::{ASTNode, Statement, StatementOrDeclaration};
+use parser::{ASTNode, Declaration, Statement, StatementOrDeclaration};
 
 use crate::{context::Environment, diagnostics::TypeCheckWarning, CheckingData};
 
@@ -33,7 +33,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 		}
 
 		// TODO conditionals and more etc
-		if environment.info.is_finished() {
+		if environment.is_finished() {
 			break;
 		}
 	}
@@ -43,7 +43,7 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 			e,
 			StatementOrDeclaration::Statement(
 				Statement::Comment(..) | Statement::MultiLineComment(..) | Statement::Empty(..)
-			)
+			) | StatementOrDeclaration::Declaration(Declaration::Function(..))
 		)
 	}) {
 		checking_data.diagnostics_container.add_warning(TypeCheckWarning::Unreachable(

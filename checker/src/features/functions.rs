@@ -6,7 +6,7 @@ use crate::{
 	context::{
 		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
 		get_on_ctx,
-		information::{merge_info, LocalInformation},
+		information::LocalInformation,
 		ContextType, Syntax,
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
@@ -26,8 +26,8 @@ use crate::{
 		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
 		SynthesisedRestParameter, TypeStore,
 	},
-	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Map,
-	ReadFromFS, Scope, Type, TypeId, VariableId,
+	ASTImplementation, CheckingData, Constant, Environment, FunctionId, Map, ReadFromFS, Scope,
+	Type, TypeId, VariableId,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -184,77 +184,61 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	checking_data: &mut CheckingData<T, A>,
 	expression: &'a A::Expression<'a>,
 ) -> TypeId {
-	let (value, out, ..) = environment.new_lexical_environment_fold_into_parent(
-		Scope::DefaultFunctionParameter {},
-		checking_data,
-		|environment, checking_data| {
-			A::synthesise_expression(expression, parameter_constraint, environment, checking_data)
-		},
-	);
-
-	let at = A::expression_position(expression).with_source(environment.get_source());
-
-	{
-		let result = type_is_subtype_object(
-			parameter_constraint,
-			value,
-			environment,
-			&mut checking_data.types,
-		);
-
-		if let SubTypeResult::IsNotSubType(_) = result {
-			let expected = TypeStringRepresentation::from_type_id(
-				parameter_ty,
-				environment,
-				&checking_data.types,
-				false,
-			);
-
-			let found = TypeStringRepresentation::from_type_id(
-				value,
-				environment,
-				&checking_data.types,
-				false,
-			);
-
-			checking_data
-				.diagnostics_container
-				.add_error(TypeCheckError::InvalidDefaultParameter { at, expected, found });
-		}
-	}
-
 	// Abstraction of `typeof parameter === "undefined"` to generate less types.
-	let is_undefined_condition =
+	let parameter_is_undefined_condition =
 		checking_data.types.register_type(Type::Constructor(Constructor::TypeExtends(
 			types::TypeExtends { item: parameter_ty, extends: TypeId::UNDEFINED_TYPE },
 		)));
 
-	// TODO is this needed
-	// let union = checking_data.types.new_or_type(parameter_ty, value);
+	let at = A::expression_position(expression);
 
-	let result =
-		checking_data.types.register_type(Type::Constructor(Constructor::ConditionalResult {
-			condition: is_undefined_condition,
-			truthy_result: value,
-			otherwise_result: parameter_ty,
-			result_union: parameter_constraint,
-		}));
+	super::conditional::new_conditional_context(
+		environment,
+		(parameter_is_undefined_condition, at),
+		|environment: &mut Environment, checking_data: &mut CheckingData<T, A>| {
+			let inner = A::synthesise_expression(
+				expression,
+				parameter_constraint,
+				environment,
+				checking_data,
+			);
+			let result = type_is_subtype_object(
+				parameter_constraint,
+				inner,
+				environment,
+				&mut checking_data.types,
+			);
 
-	// TODO don't share parent
-	let Some(GeneralContext::Syntax(parent)) = environment.context_type.get_parent() else {
-		unreachable!()
-	};
-	merge_info(
-		*parent,
-		&mut environment.info,
-		is_undefined_condition,
-		out.unwrap().0,
-		None,
-		&mut checking_data.types,
-		at,
-	);
+			if let SubTypeResult::IsNotSubType(_) = result {
+				let expected = TypeStringRepresentation::from_type_id(
+					parameter_ty,
+					environment,
+					&checking_data.types,
+					false,
+				);
 
-	result
+				let found = TypeStringRepresentation::from_type_id(
+					inner,
+					environment,
+					&checking_data.types,
+					false,
+				);
+
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::InvalidDefaultParameter {
+						at: at.with_source(environment.get_source()),
+						expected,
+						found,
+					},
+				);
+			}
+			inner
+		},
+		Some(|_env: &mut Environment, data: &mut CheckingData<T, A>| {
+			data.types.new_narrowed(parameter_ty, parameter_constraint)
+		}),
+		checking_data,
+	)
 }
 
 #[derive(Clone, Copy)]
@@ -649,7 +633,29 @@ where
 	let mut function_environment = base_environment.new_lexical_environment(Scope::Function(scope));
 
 	if function.has_body() {
-		let type_parameters = function.type_parameters(&mut function_environment, checking_data);
+		let type_parameters = if let Some((ref prototype, _)) = constructor {
+			// Class generics here
+			checking_data.types.get_type_by_id(*prototype).get_parameters().map(|parameters| {
+				parameters
+					.into_iter()
+					.map(|ty| {
+						let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
+							checking_data.types.get_type_by_id(ty)
+						else {
+							unreachable!()
+						};
+						crate::types::generics::GenericTypeParameter {
+							name: name.clone(),
+							// Using its associated [`Type`], its restriction can be found
+							type_id: ty,
+							default: None,
+						}
+					})
+					.collect()
+			})
+		} else {
+			function.type_parameters(&mut function_environment, checking_data)
+		};
 
 		// TODO should be in function, but then requires mutable environment :(
 		let this_constraint =
@@ -689,7 +695,7 @@ where
 							let prototype = checking_data.types.register_type(Type::Constructor(
 								Constructor::Property {
 									on: TypeId::NEW_TARGET_ARG,
-									under: PropertyKey::String(Cow::Owned("value".to_owned())),
+									under: PropertyKey::from("value"),
 									result: this_constraint,
 									mode: types::properties::AccessMode::Regular,
 								},
@@ -833,11 +839,15 @@ where
 		// 	function.get_name()
 		// );
 
-		let info = function_environment.info;
-		let variable_names = function_environment.variable_names;
-
 		let returned = if function.has_body() {
-			let returned = info.state.get_returned(&mut checking_data.types);
+			use crate::utilities::accumulator::Accumulator;
+			let returned = match function_environment.context_type.state {
+				Accumulator::Some(v) => v,
+				Accumulator::Accumulating { condition, value } => checking_data
+					.types
+					.new_conditional_type(condition, value, TypeId::UNDEFINED_TYPE),
+				Accumulator::None => TypeId::UNDEFINED_TYPE,
+			};
 
 			// TODO temp fix for predicates. This should be really be done in `environment.throw` ()?
 			if let Some(ReturnType(expected, _)) = return_type_annotation {
@@ -908,6 +918,9 @@ where
 			// 	crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
 			// }
 		}
+
+		let info = function_environment.info;
+		let variable_names = function_environment.variable_names;
 
 		// TODO this fixes prototypes and properties being lost during printing and subtyping of the return type
 		{

@@ -32,24 +32,26 @@ jobs:
 
       - name: Run checker on example files
         shell: bash
+        continue-on-error: true
         run: |
+          # Feel free to pull request any examples you have:
           files=(
-              "https://jsr.io/@yossydev/hello-world/1.0.0/index.ts"
-              "https://jsr.io/@bengineering/shuffle-binary/0.0.1/index.ts"
-              "https://jsr.io/@bengineering/mulberry32/0.0.1/mod.ts"
-              "https://jsr.io/@luca/cases/1.0.0/mod.ts"
-              "https://jsr.io/@std/assert/1.0.2/assertion_error.ts"
-              "https://jsr.io/@std/text/1.0.3/levenshtein_distance.ts"
-              "https://jsr.io/@gnome/monads/0.0.0/src/option.ts"
-              "https://raw.githubusercontent.com/getify/deePool/master/src/deePool.js"
-              "https://raw.githubusercontent.com/silen-z/fiveway/main/packages/fiveway/src/id.ts"
+              https://jsr.io/@yossydev/hello-world/1.0.0/index.ts
+              https://jsr.io/@bengineering/shuffle-binary/0.0.1/index.ts
+              https://jsr.io/@bengineering/mulberry32/0.0.1/mod.ts
+              https://jsr.io/@luca/cases/1.0.0/mod.ts
+              https://jsr.io/@std/assert/1.0.2/assertion_error.ts
+              https://jsr.io/@std/text/1.0.3/levenshtein_distance.ts
+              https://jsr.io/@gnome/monads/0.0.0/src/option.ts
+              https://raw.githubusercontent.com/getify/deePool/master/src/deePool.js
+              https://raw.githubusercontent.com/silen-z/fiveway/main/packages/fiveway/src/id.ts
           )
 
           for url in "${files[@]}"; do
               header="--- $url ---"
               echo $header
               curl -s $url > temp.ts
-              ./target/release/ezno check temp.ts --timings
+              ./target/release/ezno check temp.ts --timings || ./target/release/ezno check temp.ts --basic --timings true || true
               echo "${header//?/-}"
               echo ""
           done

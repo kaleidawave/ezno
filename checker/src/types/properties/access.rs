@@ -24,7 +24,7 @@ use crate::{
 use super::{PropertyKey, PropertyKind, PropertyValue, Publicity};
 
 #[allow(clippy::similar_names)]
-fn get_property_from_list(
+fn get_property_from_vec(
 	(on_properties, on_type_arguments): (&super::Properties, GenericChain),
 	(publicity, under, under_type_arguments): (Publicity, &PropertyKey, GenericChain),
 	info_chain: &impl InformationChain,
@@ -112,7 +112,7 @@ pub(crate) fn resolver(
 	// TODO if on == constant string and property == length. Need to be able to create types here
 	info_chain.get_chain_of_info().find_map(|info: &LocalInformation| {
 		info.current_properties.get(&on).and_then(|on_properties| {
-			get_property_from_list(
+			get_property_from_vec(
 				(on_properties, on_type_arguments),
 				(publicity, under, under_type_arguments),
 				info_chain,
@@ -409,7 +409,7 @@ pub(crate) fn get_property_unbound(
 				})
 			}
 			Type::Object(ObjectNature::AnonymousTypeAnnotation(properties)) => {
-				get_property_from_list(
+				get_property_from_vec(
 					(properties, on_type_arguments),
 					(publicity, under, under_type_arguments),
 					info_chain,
@@ -708,17 +708,6 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		return Some((PropertyKind::Direct, TypeId::ERROR_TYPE));
 	}
 
-	// TODO
-	// Ok(new_conditional_context(
-	// 	environment,
-	// 	(is_lhs_null, lhs.1),
-	// 	|env: &mut Environment, data: &mut CheckingData<T, A>| {
-	// 		A::synthesise_expression(rhs, TypeId::ANY_TYPE, env, data)
-	// 	},
-	// 	Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
-	// 	checking_data,
-	// ))
-
 	let (to_index, via) = if let Some(constraint) = get_constraint(on, types) {
 		(constraint, Some(on))
 	} else if let Some(constraint) = top_environment.possibly_mutated_objects.get(&on).copied() {
@@ -736,9 +725,9 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		types,
 	);
 
-	{
-		crate::utilities::notify!("Access {:?} result {:?}", under, result);
-	}
+	// {
+	// 	crate::utilities::notify!("Access {:?} result {:?}", under, result);
+	// }
 
 	match result {
 		Ok(LogicalOrValid::Logical(logical)) => {
@@ -896,10 +885,10 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						| Type::And(_, _)
 						| Type::AliasTo { to: _, name: _, parameters: _ }
 						| Type::Or(_, _) => {
-							crate::utilities::notify!(
-							    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
-							    property, ty
-						    );
+							// crate::utilities::notify!(
+							//     "property was {:?} {:?}, which should be NOT be able to be returned from a function",
+							//     property, ty
+							// );
 
 							Some((PropertyKind::Direct, value))
 						}
@@ -937,7 +926,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						// TODO
 						call_site: source_map::Nullable::NULL,
 						// TODO
-						max_inline: 0,
+						max_inline: behavior.max_inline(),
 					};
 					let result =
 						getter.call(Vec::new(), input, environment, (behavior, diagnostics), types);
@@ -1041,7 +1030,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					mode,
 				)?
 			} else {
-				todo!()
+				todo!("left is {:?}", left)
 			};
 			let (_, right) = if let LogicalOrValid::Logical(right) = *right {
 				resolve_property_on_logical(
@@ -1053,7 +1042,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					mode,
 				)?
 			} else {
-				todo!()
+				todo!("right is {:?}", *right)
 			};
 			Some((PropertyKind::Direct, types.new_conditional_type(condition, left, right)))
 			// } else {
@@ -1164,8 +1153,7 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 			called_with_new: CalledWithNew::GetterOrSetter { this_type: handler },
 			// TODO
 			call_site: source_map::Nullable::NULL,
-			// TODO
-			max_inline: 0,
+			max_inline: behavior.max_inline(),
 		};
 		let result = crate::types::calling::Callable::Type(get_trap).call(
 			arguments,

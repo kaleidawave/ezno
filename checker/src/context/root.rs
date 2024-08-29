@@ -31,6 +31,10 @@ impl ContextType for Root {
 		None
 	}
 
+	fn set_state(&mut self, _state: super::environment::ReturnState) {
+		crate::utilities::notify!("Should not be here");
+	}
+
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope> {
 		None
 	}

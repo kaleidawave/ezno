@@ -1,5 +1,7 @@
 //! These should probably be made into reusable crates at some point
 
+pub mod accumulator;
+pub mod cow_box;
 mod debugging;
 pub mod float_range;
 pub mod map;

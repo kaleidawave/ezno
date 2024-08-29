@@ -15,26 +15,27 @@ use crate::{
 		},
 		objects::{ObjectBuilder, SpecialObject},
 	},
+	GenericTypeParameters, ReadFromFS, SpecialExpressions,
+};
+
+use crate::utilities::accumulator::Accumulator;
+
+use super::{
+	functions::{FunctionBehavior, FunctionEffect, FunctionType},
+	generics::{
+		contributions::Contributions, generic_type_arguments::GenericArguments,
+		substitution::SubstitutionArguments,
+	},
+	get_constraint, get_structure_arguments_based_on_object_constraint,
+	logical::{Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical},
+	properties::{AccessMode, PropertyKey},
+	substitute,
 	subtyping::{
 		type_is_subtype, type_is_subtype_with_generics, State, SubTypeResult, SubTypingMode,
 		SubTypingOptions,
 	},
-	types::{
-		functions::{FunctionBehavior, FunctionEffect, FunctionType},
-		generics::substitution::SubstitutionArguments,
-		get_structure_arguments_based_on_object_constraint,
-		logical::{Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical},
-		properties::AccessMode,
-		substitute, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
-	},
-	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
-};
-
-use super::{
-	generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
-	get_constraint,
-	properties::PropertyKey,
-	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
+	Constructor, FunctionId, GenericChain, GenericChainLink, ObjectNature,
+	PartiallyAppliedGenerics, PolyNature, Type, TypeId, TypeRestrictions, TypeStore,
 };
 
 /// Other information to do with calling
@@ -167,8 +168,8 @@ pub struct FunctionLike {
 
 pub struct CallingOutput {
 	pub called: Option<FunctionId>,
-	/// TODO should this be
-	pub result: Option<ApplicationResult>,
+	/// TODO hmm
+	pub result: ApplicationResult,
 	pub special: Option<SpecialExpressions>,
 	// pub special: Option<SpecialExpressions>,
 	pub result_was_const_computation: bool,
@@ -199,7 +200,7 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 			// crate::utilities::notify!("{:?}", callable);
 
 			// Fix as `.map` doesn't get this passed down
-			let parent_arguments = if let Logical::Pure(FunctionLike {
+			let structure_arguments = if let Logical::Pure(FunctionLike {
 				this_value: ThisValue::Passed(this_passed),
 				..
 			}) = callable
@@ -239,16 +240,16 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				synthesise_argument_expressions_wrt_parameters(
 					&callable,
 					arguments,
-					(call_site_type_arguments, parent_arguments.as_ref()),
+					(call_site_type_arguments, structure_arguments.as_ref()),
 					environment,
 					checking_data,
 				);
 
-			let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+			let mut check_things = CheckThings::new_from_options(&checking_data.options);
 			let mut diagnostics = CallingDiagnostics::default();
 			let result = call_logical(
 				callable,
-				(arguments, type_argument_restrictions, parent_arguments),
+				(arguments, type_argument_restrictions, structure_arguments),
 				input,
 				environment,
 				&mut checking_data.types,
@@ -309,32 +310,29 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 
 /// TODO also return partial result
 pub fn application_result_to_return_type(
-	result: Option<ApplicationResult>,
+	result: ApplicationResult,
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> TypeId {
-	if let Some(result) = result {
-		match result {
-			// TODO
-			ApplicationResult::Return { returned, position: _ } => returned,
-			ApplicationResult::Throw { thrown, position } => {
-				environment.throw_value(thrown, position, types);
-				TypeId::NEVER_TYPE
-			}
-			ApplicationResult::Yield {} => todo!("Create generator object"),
-			ApplicationResult::Or { on, truthy_result, otherwise_result } => {
-				let truthy_result =
-					application_result_to_return_type(Some(*truthy_result), environment, types);
-				let otherwise_result =
-					application_result_to_return_type(Some(*otherwise_result), environment, types);
-				types.new_conditional_type(on, truthy_result, otherwise_result)
-			}
-			ApplicationResult::Continue { .. } | ApplicationResult::Break { .. } => {
-				unreachable!("returning conditional or break (carry failed)")
-			}
+	match result {
+		// TODO
+		ApplicationResult::Return { returned, position: _ } => returned,
+		ApplicationResult::Throw { thrown, position } => {
+			environment.throw_value(thrown, position, types);
+			TypeId::NEVER_TYPE
 		}
-	} else {
-		TypeId::UNDEFINED_TYPE
+		ApplicationResult::Yield {} => todo!("Create generator object"),
+		ApplicationResult::Or { condition, truthy_result, otherwise_result } => {
+			let truthy_result =
+				application_result_to_return_type(*truthy_result, environment, types);
+			let otherwise_result =
+				application_result_to_return_type(*otherwise_result, environment, types);
+			types.new_conditional_type(condition, truthy_result, otherwise_result)
+		}
+		ApplicationResult::Continue { .. } | ApplicationResult::Break { .. } => {
+			crate::utilities::notify!("Returning conditional or break (carry failed)");
+			TypeId::ERROR_TYPE
+		}
 	}
 }
 
@@ -645,7 +643,10 @@ fn call_logical<B: CallCheckingBehavior>(
 						behavior.get_latest_info(top_environment).events.push(value);
 						return Ok(CallingOutput {
 							called: Some(function_id),
-							result: None,
+							result: ApplicationResult::Return {
+								returned: TypeId::NEVER_TYPE,
+								position: input.call_site,
+							},
 							special: Some(SpecialExpressions::Marker),
 							result_was_const_computation: true,
 						});
@@ -676,10 +677,10 @@ fn call_logical<B: CallCheckingBehavior>(
 									None
 								};
 								return Ok(CallingOutput {
-									result: Some(ApplicationResult::Return {
+									result: ApplicationResult::Return {
 										returned: value,
 										position: input.call_site,
-									}),
+									},
 									called: None,
 									result_was_const_computation: !is_independent_function,
 									special,
@@ -688,7 +689,10 @@ fn call_logical<B: CallCheckingBehavior>(
 							Ok(ConstantOutput::Diagnostic(diagnostic)) => {
 								diagnostics.info.push(InfoDiagnostic(diagnostic, input.call_site));
 								return Ok(CallingOutput {
-									result: None,
+									result: ApplicationResult::Return {
+										returned: TypeId::NEVER_TYPE,
+										position: input.call_site,
+									},
 									called: None,
 									result_was_const_computation: !is_independent_function,
 									// WIP!!
@@ -815,15 +819,19 @@ fn call_logical<B: CallCheckingBehavior>(
 					// }
 
 					let with = arguments.clone().into_boxed_slice();
-					let result_as_type = application_result_to_return_type(
-						result.result.take(),
-						top_environment,
-						types,
+					let result_as_type =
+						application_result_to_return_type(result.result, top_environment, types);
+
+					let should_create_dependent_output = !types
+						.get_type_by_id(result_as_type)
+						.is_constant() || matches!(
+						(&function_type.behavior, &function_type.effect),
+						(
+							FunctionBehavior::Constructor { .. },
+							FunctionEffect::Constant { .. } | FunctionEffect::Unknown { .. }
+						)
 					);
-					let reflects_dependency = if types.get_type_by_id(result_as_type).is_constant()
-					{
-						None
-					} else {
+					let reflects_dependency = if should_create_dependent_output {
 						let id = types.register_type(Type::Constructor(Constructor::Image {
 							// TODO
 							on: function.from.expect("function `on`"),
@@ -833,12 +841,14 @@ fn call_logical<B: CallCheckingBehavior>(
 						}));
 
 						Some(id)
+					} else {
+						None
 					};
 
-					result.result = Some(ApplicationResult::Return {
+					result.result = ApplicationResult::Return {
 						returned: reflects_dependency.unwrap_or(result_as_type),
 						position: input.call_site,
-					});
+					};
 
 					let possibly_thrown = if let FunctionEffect::InputOutput { may_throw, .. }
 					| FunctionEffect::Constant { may_throw, .. } = &function_type.effect
@@ -1072,7 +1082,7 @@ impl FunctionType {
 	/// Calls the function and returns warnings and errors
 	pub(crate) fn call<B: CallCheckingBehavior>(
 		&self,
-		(this_value, arguments, call_site_type_arguments, parent_arguments): (
+		(this_value, arguments, call_site_type_arguments, structure_arguments): (
 			ThisValue,
 			&[SynthesisedArgument],
 			Option<CallSiteTypeArguments>,
@@ -1090,7 +1100,7 @@ impl FunctionType {
 			let returned = types.new_error_type(self.return_type);
 			return Ok(CallingOutput {
 				called: Some(self.id),
-				result: Some(ApplicationResult::Return { returned, position: input.call_site }),
+				result: ApplicationResult::Return { returned, position: input.call_site },
 				// TODO ?
 				special: None,
 				result_was_const_computation: false,
@@ -1105,10 +1115,17 @@ impl FunctionType {
 
 		let errors = CallingDiagnostics::default();
 
+		crate::utilities::notify!("{:?}", structure_arguments);
+
+		let structure_arguments2 = structure_arguments
+			.as_ref()
+			.map(|structure_arguments| Box::new(structure_arguments.build_substitutable()).into());
+
 		let mut type_arguments = SubstitutionArguments {
-			parent: None,
+			parent: structure_arguments2,
 			arguments: crate::Map::default(),
-			closures: if let Some(GenericArguments::Closure(ref cs)) = parent_arguments {
+			// TODO temp fix because something around `parent` here isn't working
+			closures: if let Some(GenericArguments::Closure(ref cs)) = structure_arguments {
 				cs.clone()
 			} else {
 				Default::default()
@@ -1128,7 +1145,7 @@ impl FunctionType {
 		self.assign_arguments_to_parameters::<B>(
 			arguments,
 			&mut type_arguments,
-			(call_site_type_arguments.clone(), parent_arguments.as_ref()),
+			(call_site_type_arguments.clone(), structure_arguments.as_ref()),
 			environment,
 			types,
 			input.call_site,
@@ -1143,12 +1160,14 @@ impl FunctionType {
 			});
 		}
 
-		let result = if let FunctionEffect::SideEffects {
-			events,
-			closed_over_variables,
-			free_variables: _,
-		} = &self.effect
-		{
+		let evalute_events = matches!(&self.effect, FunctionEffect::SideEffects { events, .. } if events.len() < input.max_inline.into());
+
+		let result = if evalute_events {
+			let FunctionEffect::SideEffects { events, closed_over_variables, free_variables: _ } =
+				&self.effect
+			else {
+				unreachable!()
+			};
 			behavior.new_function_context(self.id, |target| {
 				// crate::utilities::notify!("events: {:?}", events);
 				{
@@ -1219,13 +1238,25 @@ impl FunctionType {
 						}
 					}
 
-					result
+					// application_result into returned result
+					match result {
+						Accumulator::Some(v) => v,
+						Accumulator::Accumulating { condition, value } => ApplicationResult::Or {
+							condition,
+							truthy_result: Box::new(value),
+							otherwise_result: Box::new(ApplicationResult::Return {
+								returned: TypeId::UNDEFINED_TYPE,
+								position: SpanWithSource::NULL,
+							}),
+						},
+						Accumulator::None => ApplicationResult::Return {
+							returned: TypeId::UNDEFINED_TYPE,
+							position: SpanWithSource::NULL,
+						},
+					}
 				}
 			})
 		} else {
-			if let Some(_parent_arguments) = parent_arguments {
-				crate::utilities::notify!("TODO");
-			}
 			if let Some(ref call_site_type_arguments) = call_site_type_arguments {
 				for (k, (v, _)) in call_site_type_arguments.iter() {
 					type_arguments.arguments.insert(*k, *v);
@@ -1242,7 +1273,7 @@ impl FunctionType {
 			// );
 
 			let returned = substitute(self.return_type, &type_arguments, environment, types);
-			Some(ApplicationResult::Return { returned, position: input.call_site })
+			ApplicationResult::Return { returned, position: input.call_site }
 		};
 
 		if !diagnostics.errors.is_empty() {
@@ -1255,9 +1286,9 @@ impl FunctionType {
 
 		// TODO what does super return?
 		let result = if let CalledWithNew::New { .. } = input.called_with_new {
-			// TODO ridiculous early return primitive rule
 			let returned = match self.behavior {
 				FunctionBehavior::ArrowFunction { .. } | FunctionBehavior::Method { .. } => {
+					crate::utilities::notify!("Should not be here");
 					TypeId::ERROR_TYPE
 				}
 				FunctionBehavior::Constructor { prototype: _, this_object_type, name: _ } => {
@@ -1275,7 +1306,7 @@ impl FunctionType {
 				}
 			};
 			// TODO if return type is primitive (or replace primitives with new_instance_type)
-			Some(ApplicationResult::Return { returned, position: input.call_site })
+			ApplicationResult::Return { returned, position: input.call_site }
 		} else {
 			result
 		};
@@ -1543,7 +1574,7 @@ impl FunctionType {
 		&self,
 		arguments: &[SynthesisedArgument],
 		type_arguments: &mut SubstitutionArguments<'static>,
-		(call_site_type_arguments, parent_arguments): (
+		(call_site_type_arguments, structure_arguments): (
 			Option<CallSiteTypeArguments>,
 			Option<&GenericArguments>,
 		),
@@ -1568,7 +1599,7 @@ impl FunctionType {
 					let result = check_parameter_type(
 						parameter.ty,
 						call_site_type_arguments.as_ref(),
-						parent_arguments,
+						structure_arguments,
 						argument,
 						type_arguments,
 						environment,
@@ -1577,7 +1608,7 @@ impl FunctionType {
 
 					if let SubTypeResult::IsNotSubType(_reasons) = result {
 						let type_arguments = Some(GenericChainLink::FunctionRoot {
-							parent_arguments,
+							structure_arguments,
 							call_site_type_arguments: call_site_type_arguments.as_ref(),
 							type_arguments: &type_arguments.arguments,
 						});
@@ -1638,7 +1669,7 @@ impl FunctionType {
 						let result = check_parameter_type(
 							rest_parameter.item_type,
 							call_site_type_arguments.as_ref(),
-							parent_arguments,
+							structure_arguments,
 							argument,
 							type_arguments,
 							environment,
@@ -1648,7 +1679,7 @@ impl FunctionType {
 						// TODO different diagnostic?
 						if let SubTypeResult::IsNotSubType(_reasons) = result {
 							let type_arguments = Some(GenericChainLink::FunctionRoot {
-								parent_arguments,
+								structure_arguments,
 								call_site_type_arguments: call_site_type_arguments.as_ref(),
 								type_arguments: &type_arguments.arguments,
 							});
@@ -1839,7 +1870,7 @@ fn check_parameter_type(
 fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTImplementation>(
 	callable: &Logical<FunctionLike>,
 	arguments: &[UnsynthesisedArgument<A>],
-	(call_site_type_arguments, parent_arguments): (
+	(call_site_type_arguments, structure_arguments): (
 		Option<Vec<(TypeId, SpanWithSource)>>,
 		Option<&GenericArguments>,
 	),
@@ -1859,7 +1890,8 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			.iter()
 			.zip(call_site_type_arguments)
 			.map(|(param, (ty, position))| {
-				if let Type::RootPolyType(PolyNature::FunctionGeneric { extends, .. }) =
+				// | PolyNature::StructureGeneric for class constructor type
+				if let Type::RootPolyType(PolyNature::FunctionGeneric { extends, .. } | PolyNature::StructureGeneric { extends, .. }) =
 					types.get_type_by_id(param.type_id)
 				{
 					let mut state = State {
@@ -1876,8 +1908,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 						todo!("generic argument does not match restriction")
 					}
 				} else {
-					todo!();
-					// crate::utilities::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
+					crate::utilities::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
 				};
 
 				(param.type_id, (ty, position))
@@ -1945,10 +1976,10 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 			let parameters = function.parameters.clone();
 
 			let type_arguments = if type_arguments_restrictions.is_some()
-				|| parent_arguments.is_some()
+				|| structure_arguments.is_some()
 			{
 				let mut arguments = type_arguments_restrictions.clone().unwrap_or_default();
-				match parent_arguments {
+				match structure_arguments {
 					Some(GenericArguments::LookUp { on }) => {
 						// TODO copied from somewhere
 						let prototype = environment

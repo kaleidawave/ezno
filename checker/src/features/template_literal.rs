@@ -113,12 +113,12 @@ where
 			},
 		);
 
-		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+		let mut check_things = CheckThings::new_from_options(&checking_data.options);
 
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
 			call_site: position,
-			max_inline: checking_data.options.max_inline_count,
+			max_inline: checking_data.options.max_inline,
 		};
 		let mut diagnostics = Default::default();
 		let result = Callable::Type(tag).call(

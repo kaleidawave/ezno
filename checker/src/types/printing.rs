@@ -404,7 +404,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 								print_type_into_buf(*t, buf, cycles, args, types, info, debug);
 							}
 						}
-						write!(buf, "{ty:?}").unwrap();
+						write!(buf, " {ty:?}").unwrap();
 						buf.push_str(") ");
 					}
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);

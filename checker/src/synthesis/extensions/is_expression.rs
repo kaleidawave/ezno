@@ -40,7 +40,7 @@ pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
 				code.synthesise_function_body(environment, checking_data);
 
 				// TODO this should be done outside
-				let result = environment.info.state.clone().get_returned(&mut checking_data.types);
+				let result = environment.get_returned(&mut checking_data.types);
 
 				returned = if let Some(existing) = returned {
 					// TODO new conditional

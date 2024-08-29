@@ -121,6 +121,25 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
+		"parseFloat" => {
+			if let (1, Some(Type::Constant(Constant::String(string)))) =
+				(arguments.len(), arguments.first().map(|arg| types.get_type_by_id(arg.value)))
+			{
+				// TODO temp
+				let value = if let Ok(value) = string.parse::<f64>() {
+					if let Ok(value) = ordered_float::NotNan::<f64>::try_from(value) {
+						types.new_constant_type(Constant::Number(value))
+					} else {
+						TypeId::NAN
+					}
+				} else {
+					TypeId::NAN
+				};
+				Ok(ConstantOutput::Value(value))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
 		// String stuff. TODO could this be replaced by intrinsics
 		"toUpperCase" | "toLowerCase" | "string_length" => {
 			if let Some(Type::Constant(Constant::String(s))) =
@@ -141,125 +160,6 @@ pub(crate) fn call_constant_function(
 				// This can occur!!
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
-		}
-		"print_type" | "debug_type" | "print_and_debug_type" | "debug_type_independent" => {
-			fn to_string(
-				print: bool,
-				debug: bool,
-				ty: TypeId,
-				types: &TypeStore,
-				environment: &Environment,
-			) -> String {
-				let print = print.then(|| print_type(ty, types, environment, false));
-				let debug = debug.then(|| print_type(ty, types, environment, true));
-
-				match (print, debug) {
-					(Some(print), Some(debug)) => format!("{print} / {debug}"),
-					(None, Some(out)) | (Some(out), None) => out,
-					(None, None) => unreachable!(),
-				}
-			}
-
-			let print = id.contains("print");
-			let debug = id.contains("debug");
-
-			if let Some(arg) = call_site_type_args {
-				let (arg, _pos) = arg.values().next().unwrap();
-				let mut buf = String::from("Types: ");
-				buf.push_str(&to_string(print, debug, *arg, types, environment));
-				Ok(ConstantOutput::Diagnostic(buf))
-			} else {
-				let mut buf = String::from("Types: ");
-				for (not_at_end, arg) in arguments.iter().nendiate() {
-					// crate::utilities::notify!("at end {:?} {:?}", not_at_end, arg);
-					let arg = arg
-						.non_spread_type()
-						.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
-					buf.push_str(&to_string(print, debug, arg, types, environment));
-					if not_at_end {
-						buf.push_str(", ");
-					}
-				}
-				Ok(ConstantOutput::Diagnostic(buf))
-			}
-		}
-		"print_constraint" => {
-			let ty = arguments
-				.first()
-				.ok_or(ConstantFunctionError::CannotComputeConstant)?
-				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
-
-			let constraint = environment
-				.get_chain_of_info()
-				.find_map(|i| i.object_constraints.get(&ty).copied());
-
-			if let Some(constraint) = constraint {
-				let constraint_as_string = print_type(constraint, types, environment, false);
-				Ok(ConstantOutput::Diagnostic(format!("Constraint is: {constraint_as_string}")))
-			} else {
-				Ok(ConstantOutput::Diagnostic("No associate constraint".to_owned()))
-			}
-		}
-		"debug_type_rust" | "debug_type_rust_independent" => {
-			let id = arguments
-				.first()
-				.ok_or(ConstantFunctionError::CannotComputeConstant)?
-				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
-
-			let ty = types.get_type_by_id(id);
-			Ok(ConstantOutput::Diagnostic(format!("Type is: {id:?} = {ty:?}")))
-		}
-		"debug_effects" | "debug_effects_rust" => {
-			let ty = arguments
-				.first()
-				.ok_or(ConstantFunctionError::CannotComputeConstant)?
-				.non_spread_type()
-				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
-
-			// Unwrap structure generics
-			let ty =
-				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, .. }) =
-					types.get_type_by_id(ty)
-				{
-					*on
-				} else {
-					ty
-				};
-
-			let get_type_by_id = types.get_type_by_id(ty);
-			let message = if let Type::SpecialObject(SpecialObject::Function(func, _))
-			| Type::FunctionReference(func) = get_type_by_id
-			{
-				let function_type = types
-					.functions
-					.get(func)
-					.ok_or(ConstantFunctionError::CannotComputeConstant)?;
-
-				let effects = &function_type.effect;
-				if id.ends_with("rust") {
-					format!("{effects:#?}")
-				} else {
-					match effects {
-						FunctionEffect::SideEffects { events, .. } => {
-							let mut buf = String::from("Effects:\n");
-							debug_effects(&mut buf, events, types, environment, 0, true);
-							buf
-						}
-						FunctionEffect::Constant { identifier, may_throw: _ } => {
-							format!("Constant: {identifier}")
-						}
-						FunctionEffect::InputOutput { identifier, may_throw: _ } => {
-							format!("InputOutput: {identifier}")
-						}
-						FunctionEffect::Unknown => "unknown".into(),
-					}
-				}
-			} else {
-				format!("{get_type_by_id:?} is not a function")
-			};
-			Ok(ConstantOutput::Diagnostic(message))
 		}
 		// For functions
 		"bind" => {
@@ -342,7 +242,7 @@ pub(crate) fn call_constant_function(
 
 				let under = PropertyKey::from_type(property, types);
 				// TODO
-				let mut behavior = CheckThings { debug_types: true };
+				let mut behavior = CheckThings { debug_types: true, max_inline: 10 };
 				let publicity = Publicity::Public;
 				let mode = AccessMode::Regular;
 
@@ -586,15 +486,6 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
-		// "RegExp:constructor" => {
-		// 	crate::utilities::notify!("TODO check argument");
-		// 	if let Some(arg) = arguments.first() {
-		// 		Ok(ConstantOutput::Value(features::regular_expressions::new_regexp(features::regular_expressions::TypeIdOrString::TypeId(arg), types, environment)))
-		// 	} else {
-		// 		Err(ConstantFunctionError::CannotComputeConstant)
-		// 	}
-		// }
-		// TODO
 		"JSON:parse" => {
 			crate::utilities::notify!("TODO JSON:parse");
 			Err(ConstantFunctionError::CannotComputeConstant)
@@ -612,13 +503,11 @@ pub(crate) fn call_constant_function(
 			let Type::Constant(Constant::String(pattern)) = pattern else {
 				return Err(ConstantFunctionError::CannotComputeConstant);
 			};
-			let flags = match flags {
-				Some(flags) => {
-					let Type::Constant(Constant::String(flags)) = flags else {
-						return Err(ConstantFunctionError::CannotComputeConstant);
-					};
 
-					Some(flags.clone())
+			let flags = match flags {
+				Some(Type::Constant(Constant::String(flags))) => Some(flags.clone()),
+				Some(_) => {
+					return Err(ConstantFunctionError::CannotComputeConstant);
 				}
 				None => None,
 			};
@@ -638,10 +527,11 @@ pub(crate) fn call_constant_function(
 		"regexp:exec" => {
 			let this = this_argument.get_passed().map(|t| types.get_type_by_id(t));
 
-			if let Some(Type::SpecialObject(SpecialObject::RegularExpression(regexp))) = this {
-				let pattern_type_id =
-					arguments.first().unwrap().non_spread_type().expect("pattern");
-
+			if let (
+				Some(Type::SpecialObject(SpecialObject::RegularExpression(regexp))),
+				Some(pattern_type_id),
+			) = (this, arguments.first().and_then(|arg| arg.non_spread_type().ok()))
+			{
 				Ok(ConstantOutput::Value(regexp.clone().exec(
 					pattern_type_id,
 					types,
@@ -676,8 +566,127 @@ pub(crate) fn call_constant_function(
 		// 		Ok(ConstantOutput::Diagnostic(output))
 		// 	}
 		// }
+		"print_type" | "debug_type" | "print_and_debug_type" | "debug_type_independent" => {
+			fn to_string(
+				print: bool,
+				debug: bool,
+				ty: TypeId,
+				types: &TypeStore,
+				environment: &Environment,
+			) -> String {
+				let print = print.then(|| print_type(ty, types, environment, false));
+				let debug = debug.then(|| print_type(ty, types, environment, true));
+
+				match (print, debug) {
+					(Some(print), Some(debug)) => format!("{print} / {debug}"),
+					(None, Some(out)) | (Some(out), None) => out,
+					(None, None) => unreachable!(),
+				}
+			}
+
+			let print = id.contains("print");
+			let debug = id.contains("debug");
+
+			if let Some(arg) = call_site_type_args {
+				let (arg, _pos) = arg.values().next().unwrap();
+				let mut buf = String::from("Types: ");
+				buf.push_str(&to_string(print, debug, *arg, types, environment));
+				Ok(ConstantOutput::Diagnostic(buf))
+			} else {
+				let mut buf = String::from("Types: ");
+				for (not_at_end, arg) in arguments.iter().nendiate() {
+					// crate::utilities::notify!("at end {:?} {:?}", not_at_end, arg);
+					let arg = arg
+						.non_spread_type()
+						.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
+					buf.push_str(&to_string(print, debug, arg, types, environment));
+					if not_at_end {
+						buf.push_str(", ");
+					}
+				}
+				Ok(ConstantOutput::Diagnostic(buf))
+			}
+		}
+		"print_constraint" => {
+			let ty = arguments
+				.first()
+				.ok_or(ConstantFunctionError::CannotComputeConstant)?
+				.non_spread_type()
+				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
+
+			let constraint = environment
+				.get_chain_of_info()
+				.find_map(|i| i.object_constraints.get(&ty).copied());
+
+			if let Some(constraint) = constraint {
+				let constraint_as_string = print_type(constraint, types, environment, false);
+				Ok(ConstantOutput::Diagnostic(format!("Constraint is: {constraint_as_string}")))
+			} else {
+				Ok(ConstantOutput::Diagnostic("No associate constraint".to_owned()))
+			}
+		}
+		"debug_type_rust" | "debug_type_rust_independent" => {
+			let id = arguments
+				.first()
+				.ok_or(ConstantFunctionError::CannotComputeConstant)?
+				.non_spread_type()
+				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
+
+			let ty = types.get_type_by_id(id);
+			Ok(ConstantOutput::Diagnostic(format!("Type is: {id:?} = {ty:?}")))
+		}
+		"debug_effects" | "debug_effects_rust" => {
+			let ty = arguments
+				.first()
+				.ok_or(ConstantFunctionError::CannotComputeConstant)?
+				.non_spread_type()
+				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
+
+			// Unwrap structure generics
+			let ty =
+				if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, .. }) =
+					types.get_type_by_id(ty)
+				{
+					*on
+				} else {
+					ty
+				};
+
+			let get_type_by_id = types.get_type_by_id(ty);
+			let message = if let Type::SpecialObject(SpecialObject::Function(func, _))
+			| Type::FunctionReference(func) = get_type_by_id
+			{
+				let function_type = types
+					.functions
+					.get(func)
+					.ok_or(ConstantFunctionError::CannotComputeConstant)?;
+
+				let effects = &function_type.effect;
+				if id.ends_with("rust") {
+					format!("{effects:#?}")
+				} else {
+					match effects {
+						FunctionEffect::SideEffects { events, .. } => {
+							let mut buf = String::from("Effects:\n");
+							debug_effects(&mut buf, events, types, environment, 0, true);
+							buf
+						}
+						FunctionEffect::Constant { identifier, may_throw: _ } => {
+							format!("Constant: {identifier}")
+						}
+						FunctionEffect::InputOutput { identifier, may_throw: _ } => {
+							format!("InputOutput: {identifier}")
+						}
+						FunctionEffect::Unknown => "unknown".into(),
+					}
+				}
+			} else {
+				format!("{get_type_by_id:?} is not a function")
+			};
+			Ok(ConstantOutput::Diagnostic(message))
+		}
 		"debug_state" => {
-			Ok(ConstantOutput::Diagnostic(format!("State={:?}", environment.info.state)))
+			Ok(ConstantOutput::Diagnostic(format!("State={:?}", environment.context_type.state)))
 		}
 		"debug_context" => Ok(ConstantOutput::Diagnostic(environment.debug())),
 		"context_id" => Ok(ConstantOutput::Diagnostic(format!("in {:?}", environment.context_id))),

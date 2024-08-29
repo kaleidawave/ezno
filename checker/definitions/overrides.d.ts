@@ -112,6 +112,19 @@ declare class Array<T> {
         return s
     }
 
+    includes(looking_for: any): boolean {
+        const { length } = this;
+        let i: number = 0;
+        while (i < length) {
+            const value = this[i];
+            i++;
+            if (looking_for === value) {
+                return true
+            }
+        }
+        return false
+    }
+
     at(index: number) {
         if (index < 0) {
             return this[index + this.length]
@@ -131,9 +144,29 @@ type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
 type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
 type Integer = MultipleOf<1>;
 
-declare class Map<T, U> {
-    #keys: Array<T> = [];
-    #value: Array<T> = [];
+declare class Map<K, V> {
+    #keys: Array<K>;
+    #values: Array<V>;
+
+    constructor() {
+        this.#keys = []
+        this.#values = []
+    }
+
+    get(key: K): V | undefined {
+        const { length } = this.#keys;
+        for (let i = 0; i < length; i++) {
+            const s = length - 1 - i;
+            if (this.#keys[s] === key) {
+                return this.#values[s]
+            }
+        }
+    }
+
+    set(key: K, value: V) {
+        this.#keys.push(key);
+        this.#values.push(value);
+    }
 }
 
 declare class Math {
@@ -202,7 +235,7 @@ declare class Promise<T> { }
 
 declare class RegExp {
     @Constant("regexp:constructor")
-    constructor(pattern: string, flags?: string);
+        constructor(pattern: string, flags?: string);
 
     @Constant("regexp:exec")
     exec(input: string): RegExpExecArray | null;
@@ -222,10 +255,7 @@ interface RegExpExecArray extends Array<string> {
      * The first match. This will always be present because `null` will be returned if there are no matches.
      */
     0: string;
-}
 
-// es2018
-interface RegExpExecArray {
     groups?: {
         [key: string]: string;
     };
@@ -479,7 +509,129 @@ declare function debug_type_independent(t: any): void;
 // A function, as it should be!
 @Constant
 declare function satisfies<T>(t: T): T;
-
-@Constant
-declare function compile_type_to_object<T>(): any;
 // ↑↑ Ezno Functions ↑↑
+
+// Copied (TODO should be automated merge)
+declare class Headers {
+    // constructor(init?: HeadersInit): Headers;
+
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Headers/append) */
+    append(name: string, value: string): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Headers/delete) */
+    delete(name: string): void;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Headers/get) */
+    get(name: string): string | null;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Headers/getSetCookie) */
+    getSetCookie(): string[];
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Headers/has) */
+    has(name: string): boolean;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Headers/set) */
+    set(name: string, value: string): void;
+    forEach(callbackfn: (value: string, key: string, parent: Headers) => void, thisArg?: any): void;
+}
+
+/**
+ * This Fetch API interface represents a resource request.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request)
+ */
+declare class Request {
+    // constructor(input: RequestInfo | URL, init?: RequestInit): Request
+
+    // /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/body) */
+    // readonly body: ReadableStream<Uint8Array> | null;
+    // /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/bodyUsed) */
+    // readonly bodyUsed: boolean;
+    // /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/arrayBuffer) */
+    // arrayBuffer(): Promise<ArrayBuffer>;
+    // /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/blob) */
+    // blob(): Promise<Blob>;
+    // /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/formData) */
+    // formData(): Promise<FormData>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/json) */
+    json(): Promise<any>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/text) */
+    text(): Promise<string>;
+
+    /**
+     * Returns the cache mode associated with request, which is a string indicating how the request will interact with the browser's cache when fetching.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/cache)
+     */
+    // readonly cache: RequestCache;
+    /**
+     * Returns the credentials mode associated with request, which is a string indicating whether credentials will be sent with the request always, never, or only when sent to a same-origin URL.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/credentials)
+     */
+    // readonly credentials: RequestCredentials;
+    /**
+     * Returns the kind of resource requested by request, e.g., "document" or "script".
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/destination)
+     */
+    // readonly destination: RequestDestination;
+    /**
+     * Returns a Headers object consisting of the headers associated with request. Note that headers added in the network layer by the user agent will not be accounted for in this object, e.g., the "Host" header.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/headers)
+     */
+    readonly headers: Headers;
+    /**
+     * Returns request's subresource integrity metadata, which is a cryptographic hash of the resource being fetched. Its value consists of multiple hashes separated by whitespace. [SRI]
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/integrity)
+     */
+    readonly integrity: string;
+    /**
+     * Returns a boolean indicating whether or not request can outlive the global in which it was created.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/keepalive)
+     */
+    readonly keepalive: boolean;
+    /**
+     * Returns request's HTTP method, which is "GET" by default.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/method)
+     */
+    readonly method: string;
+    /**
+     * Returns the mode associated with request, which is a string indicating whether the request will use CORS, or will be restricted to same-origin URLs.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/mode)
+     */
+    // readonly mode: RequestMode;
+    /**
+     * Returns the redirect mode associated with request, which is a string indicating how redirects for the request will be handled during fetching. A request will follow redirects by default.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/redirect)
+     */
+    // readonly redirect: RequestRedirect;
+    /**
+     * Returns the referrer of request. Its value can be a same-origin URL if explicitly set in init, the empty string to indicate no referrer, and "about:client" when defaulting to the global's default. This is used during fetching to determine the value of the `Referer` header of the request being made.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/referrer)
+     */
+    readonly referrer: string;
+    /**
+     * Returns the referrer policy associated with request. This is used during fetching to compute the value of the request's referrer.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/referrerPolicy)
+     */
+    // readonly referrerPolicy: ReferrerPolicy;
+    /**
+     * Returns the signal associated with request, which is an AbortSignal object indicating whether or not request has been aborted, and its abort event handler.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/signal)
+     */
+    // readonly signal: AbortSignal;
+    /**
+     * Returns the URL of request as a string.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/url)
+     */
+    readonly url: string;
+
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/clone) */
+    clone(): Request;
+}

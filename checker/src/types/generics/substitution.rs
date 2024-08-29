@@ -25,17 +25,22 @@ use super::generic_type_arguments::GenericArguments;
 
 pub struct SubstitutionArguments<'a> {
 	/// for extends + parent generics
-	pub(crate) parent: Option<&'a SubstitutionArguments<'a>>,
+	pub(crate) parent: Option<crate::utilities::cow_box::CowBox<'a, SubstitutionArguments<'a>>>,
 	pub(crate) arguments: crate::Map<TypeId, TypeId>,
 	pub(crate) closures: Vec<ClosureId>,
 }
 
 impl<'a> ClosureChain for SubstitutionArguments<'a> {
-	fn get_fact_from_closure<T, R>(&self, _fact: &LocalInformation, cb: T) -> Option<R>
+	fn get_fact_from_closure<T, R>(&self, fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
 	{
-		self.closures.iter().copied().find_map(cb)
+		let on_main = self.closures.iter().copied().find_map(&cb);
+		if let Some(ref parent) = self.parent {
+			parent.get_fact_from_closure(fact, cb)
+		} else {
+			on_main
+		}
 	}
 }
 
@@ -50,7 +55,16 @@ impl<'a> SubstitutionArguments<'a> {
 		self.arguments
 			.get(&id)
 			.copied()
-			.or_else(|| self.parent.and_then(|parent| parent.get_argument(id)))
+			.or_else(|| self.parent.as_ref().and_then(|parent| parent.get_argument(id)))
+	}
+
+	#[must_use]
+	pub fn get_closures(&self) -> Vec<ClosureId> {
+		let mut closures = self.closures.clone();
+		if let Some(ref parent) = self.parent {
+			closures.append(&mut parent.get_closures());
+		}
+		closures
 	}
 
 	#[must_use]
@@ -85,12 +99,13 @@ pub(crate) fn substitute(
 		// Type::SpecialObject(SpecialObject::ClassConstructor { .. })
 		Type::Object(ObjectNature::RealDeal) => {
 			// Apply curring
-			if arguments.closures.is_empty() {
+			let closures = arguments.get_closures();
+			if closures.is_empty() {
 				id
 			} else {
 				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: id,
-					arguments: GenericArguments::Closure(arguments.closures.clone()),
+					arguments: GenericArguments::Closure(closures),
 				}))
 			}
 		}
@@ -129,12 +144,13 @@ pub(crate) fn substitute(
 				id
 			};
 			// Apply curring
-			if arguments.closures.is_empty() {
+			let closures = arguments.get_closures();
+			if closures.is_empty() {
 				id
 			} else {
 				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 					on: id,
-					arguments: GenericArguments::Closure(arguments.closures.clone()),
+					arguments: GenericArguments::Closure(closures),
 				}))
 			}
 		}
@@ -242,7 +258,7 @@ pub(crate) fn substitute(
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(
-							"Cannot {:?} {operator:?} {:?} (restriction or something failed)",
+							"Cannot {} {operator:?} {} (restriction or something failed)",
 							crate::types::printing::print_type(lhs, types, environment, true),
 							crate::types::printing::print_type(rhs, types, environment, true)
 						);
@@ -423,37 +439,13 @@ pub(crate) fn substitute(
 					TypeId::UNIMPLEMENTED_ERROR_TYPE
 				}
 			}
-			Constructor::Image { .. } => {
-				let on = crate::types::printing::print_type(id, types, environment, true);
-				todo!("Constructor::Image {on} should be covered by events");
-				// id
-
-				// let on = substitute(on, arguments, environment);
-
-				// crate::utilities::notify!("Substituted {}", environment.debug_type(on));
-
-				// let func_arguments = with
-				// 	.into_iter()
-				// 	.map(|argument| match argument {
-				// 		synthesisedArgument::NonSpread { ty, pos } => {
-				// 			let ty = substitute(*ty, arguments, environment);
-				// 			synthesisedArgument::NonSpread { ty, pos: pos.clone() }
-				// 		}
-				// 	})
-				// 	.collect::<Vec<_>>();
-
-				// let FunctionCallResult { returned_type, warnings } =
-				// 	call_type(on, func_arguments, None, None, environment, checking_data)
-				// 		.expect("Inferred constraints and checking failed");
-
-				// crate::utilities::notify!("TODO getting a property not substituted during calling");
-
-				// let on = substitute(on, arguments, environment, checking_data);
-				// let property = substitute(property, arguments, environment, checking_data);
-
-				// environment
-				// 	.get_property(on, property, checking_data, None)
-				// 	.expect("Inferred constraints and checking failed for a property")
+			Constructor::Image { result, .. } => {
+				// TS `ReturnType` doesn't use this
+				{
+					// let _on = crate::types::printing::print_type(id, types, environment, true);
+					crate::utilities::notify!("Constructor::Image should be covered by events");
+				}
+				result
 			}
 			Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
 				let operator = match operator {
@@ -489,7 +481,12 @@ pub(crate) fn substitute(
 					crate::features::type_of_operator(ty, types)
 				}
 				crate::types::TypeOperator::HasProperty(_, _) => {
-					unreachable!("'HasProperty' should be specialised by events")
+					{
+						crate::utilities::notify!(
+							"TypeOperator::HasProperty should be covered by events"
+						);
+					}
+					TypeId::OPEN_BOOLEAN_TYPE
 				}
 				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
 					let lhs = substitute(lhs, arguments, environment, types);
@@ -569,7 +566,10 @@ pub(crate) fn substitute(
 				// 	TypeId::FALSE
 				// }
 			}
-			Constructor::Awaited { .. } => todo!("should have effect result"),
+			Constructor::Awaited { .. } => {
+				crate::utilities::notify!("should have effect result");
+				TypeId::ERROR_TYPE
+			}
 			Constructor::KeyOf(on) => {
 				let on = substitute(on, arguments, environment, types);
 				types.new_key_of(on)
@@ -647,7 +647,7 @@ pub(crate) fn compute_extends_rule(
 					.collect();
 
 				let arguments = SubstitutionArguments {
-					parent: Some(arguments),
+					parent: Some(arguments.into()),
 					arguments: args,
 					closures: Default::default(),
 				};

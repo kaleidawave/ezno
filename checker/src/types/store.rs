@@ -397,6 +397,8 @@ impl TypeStore {
 			otherwise_result
 		} else if truthy_result == TypeId::TRUE && otherwise_result == TypeId::FALSE {
 			condition
+		} else if condition == TypeId::OPEN_BOOLEAN_TYPE {
+			self.new_or_type(truthy_result, otherwise_result)
 		} else if let Type::Constructor(Constructor::ConditionalResult {
 			condition,
 			// TODO technically any falsy, truthy reverse pair is okay
@@ -429,12 +431,18 @@ impl TypeStore {
 
 	/// Doesn't do constant compilation
 	pub(crate) fn new_logical_negation_type(&mut self, condition: TypeId) -> TypeId {
-		self.register_type(Type::Constructor(super::Constructor::ConditionalResult {
-			condition,
-			truthy_result: TypeId::FALSE,
-			otherwise_result: TypeId::TRUE,
-			result_union: TypeId::BOOLEAN_TYPE,
-		}))
+		if condition == TypeId::TRUE {
+			TypeId::FALSE
+		} else if condition == TypeId::FALSE {
+			TypeId::TRUE
+		} else {
+			self.register_type(Type::Constructor(super::Constructor::ConditionalResult {
+				condition,
+				truthy_result: TypeId::FALSE,
+				otherwise_result: TypeId::TRUE,
+				result_union: TypeId::BOOLEAN_TYPE,
+			}))
+		}
 	}
 
 	/// Doesn't evaluate events

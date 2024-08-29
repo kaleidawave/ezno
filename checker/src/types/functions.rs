@@ -117,7 +117,7 @@ impl FunctionType {
 					let input = CallingInput {
 						call_site: BaseSpan::NULL,
 						called_with_new,
-						max_inline: checking_data.options.max_inline_count,
+						max_inline: checking_data.options.max_inline,
 					};
 					let mut diagnostics = Default::default();
 					let result = Callable::Type(extends).call(
@@ -125,7 +125,7 @@ impl FunctionType {
 						input,
 						environment,
 						(
-							&mut CheckThings { debug_types: checking_data.options.debug_types },
+							&mut CheckThings::new_from_options(&checking_data.options),
 							&mut diagnostics,
 						),
 						&mut checking_data.types,

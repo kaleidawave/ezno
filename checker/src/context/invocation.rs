@@ -3,10 +3,7 @@
 use source_map::SpanWithSource;
 
 use super::LocalInformation;
-use crate::{
-	context::information::merge_info, events::ApplicationResult, types::TypeStore, Environment,
-	FunctionId, TypeId,
-};
+use crate::{context::information::merge_info, types::TypeStore, Environment, FunctionId, TypeId};
 
 /// For anything that might involve a call, including gets, sets and actual calls
 pub trait CallCheckingBehavior {
@@ -29,11 +26,21 @@ pub trait CallCheckingBehavior {
 	fn debug_types(&self) -> bool {
 		false
 	}
+
+	fn max_inline(&self) -> u16;
 }
 
 /// Top level. Evaluating directly, rather than deep in event application
 pub struct CheckThings {
 	pub debug_types: bool,
+	pub max_inline: u16,
+}
+
+impl CheckThings {
+	#[must_use]
+	pub fn new_from_options(options: &crate::TypeCheckOptions) -> Self {
+		CheckThings { debug_types: options.debug_types, max_inline: options.max_inline }
+	}
 }
 
 impl CallCheckingBehavior for CheckThings {
@@ -56,16 +63,21 @@ impl CallCheckingBehavior for CheckThings {
 		function_id: FunctionId,
 		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> T {
-		let mut target = InvocationContext(vec![InvocationKind::Function(function_id)]);
+		let mut target =
+			InvocationContext(vec![InvocationKind::Function(function_id)], self.max_inline);
 		cb(&mut target)
 	}
 
 	fn debug_types(&self) -> bool {
 		self.debug_types
 	}
+
+	fn max_inline(&self) -> u16 {
+		self.max_inline
+	}
 }
 
-pub struct InvocationContext(Vec<InvocationKind>);
+pub struct InvocationContext(Vec<InvocationKind>, u16);
 
 /// TODO want to have type arguments on each of these
 pub(crate) enum InvocationKind {
@@ -102,7 +114,13 @@ impl CallCheckingBehavior for InvocationContext {
 	}
 
 	fn in_recursive_cycle(&self, function_id: FunctionId) -> bool {
-		self.0.iter().any(|kind| matches!(kind, InvocationKind::Function(id) if function_id == *id))
+		// TODO temp
+		const MAX_CALL_STACK: usize = 10;
+		self.0.len() > MAX_CALL_STACK
+			&& self
+				.0
+				.iter()
+				.any(|kind| matches!(kind, InvocationKind::Function(id) if function_id == *id))
 	}
 
 	fn new_function_context<T>(
@@ -115,12 +133,16 @@ impl CallCheckingBehavior for InvocationContext {
 		self.0.pop();
 		value
 	}
+
+	fn max_inline(&self) -> u16 {
+		self.1
+	}
 }
 
 impl InvocationContext {
 	/// TODO temp for loop unrolling
-	pub(crate) fn new_empty() -> Self {
-		InvocationContext(Vec::new())
+	pub(crate) fn new_empty(max_inline: u16) -> Self {
+		InvocationContext(Vec::new(), max_inline)
 	}
 
 	pub(crate) fn in_unknown(&self) -> bool {
@@ -151,10 +173,10 @@ impl InvocationContext {
 		}
 	}
 
-	pub(crate) fn new_unconditional_target(
+	pub(crate) fn new_unconditional_target<R>(
 		&mut self,
-		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> Option<ApplicationResult>,
-	) -> Option<ApplicationResult> {
+		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> R,
+	) -> R {
 		self.0.push(InvocationKind::AlwaysTrue);
 		let result = cb(self);
 		self.0.pop();
@@ -175,7 +197,7 @@ impl InvocationContext {
 		let depth =
 			self.0.iter().filter(|p| matches!(p, InvocationKind::LoopIteration)).count() as u8;
 		// TODO can this every go > 1
-		crate::utilities::notify!("Iteration depth {}", depth);
+		// crate::utilities::notify!("Iteration depth {}", depth);
 		depth
 	}
 
@@ -189,7 +211,7 @@ impl InvocationContext {
 		&mut self,
 		top_environment: &mut Environment,
 		types: &mut TypeStore,
-		(condition, condition_position): (TypeId, SpanWithSource),
+		(condition, _condition_position): (TypeId, SpanWithSource),
 		(input_left, input_right): (T, T),
 		mut data: I,
 		cb: impl for<'a> Fn(
@@ -216,7 +238,8 @@ impl InvocationContext {
 		// let info = self.get_latest_info(top_environment);
 
 		if self.0.iter().any(|x| matches!(x, InvocationKind::Conditional(_))) {
-			todo!("nested, get latest")
+			crate::utilities::notify!("Here");
+		// todo!("nested, get latest")
 		// let local_information = &mut top_environment.info;
 		// match top_environment.context_type.parent {
 		// 	crate::GeneralContext::Syntax(env) => {
@@ -235,19 +258,25 @@ impl InvocationContext {
 		} else {
 			let local_information = &mut top_environment.info;
 			match top_environment.context_type.parent {
-				crate::GeneralContext::Syntax(env) => {
+				crate::GeneralContext::Syntax(parent) => {
 					merge_info(
-						env,
+						parent,
 						local_information,
 						condition,
 						truthy_info,
 						Some(otherwise_info),
 						types,
-						condition_position,
 					);
 				}
-				crate::GeneralContext::Root(_) => {
-					crate::utilities::notify!("Top environment is root?");
+				crate::GeneralContext::Root(parent) => {
+					merge_info(
+						parent,
+						local_information,
+						condition,
+						truthy_info,
+						Some(otherwise_info),
+						types,
+					);
 				}
 			}
 		}

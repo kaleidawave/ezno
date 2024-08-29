@@ -10,48 +10,6 @@ use super::{
 	variables::synthesise_variable_declaration_item,
 };
 
-pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
-	declaration: &VariableDeclaration,
-	environment: &mut Environment,
-	checking_data: &mut CheckingData<T, super::EznoParser>,
-	exported: bool,
-	infer_constraint: bool,
-) {
-	match declaration {
-		VariableDeclaration::ConstDeclaration { declarations, .. } => {
-			for variable_declaration in declarations {
-				synthesise_variable_declaration_item(
-					variable_declaration,
-					environment,
-					checking_data,
-					exported.then_some(VariableMutability::Constant),
-					infer_constraint,
-				);
-			}
-		}
-		VariableDeclaration::LetDeclaration { declarations, .. } => {
-			for variable_declaration in declarations {
-				let exported = exported.then(|| {
-					let restriction = checking_data
-						.local_type_mappings
-						.variable_restrictions
-						.get(&(environment.get_source(), variable_declaration.position.start))
-						.map(|(first, _)| *first);
-					VariableMutability::Mutable { reassignment_constraint: restriction }
-				});
-
-				synthesise_variable_declaration_item(
-					variable_declaration,
-					environment,
-					checking_data,
-					exported,
-					infer_constraint,
-				);
-			}
-		}
-	}
-}
-
 pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 	declaration: &Declaration,
 	environment: &mut Environment,
@@ -93,6 +51,7 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 							.types_to_types
 							.get_exact(class.name.identifier.get_position())
 							.copied();
+
 						// TODO mark as exported
 						let _ = synthesise_class_declaration(
 							class,
@@ -172,12 +131,95 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 				);
 			}
 		},
+		Declaration::Enum(r#enum) => {
+			use crate::types::{
+				properties::{PropertyKey, PropertyValue, Publicity},
+				Constant,
+			};
+
+			let mut basis = crate::features::objects::ObjectBuilder::new(
+				None,
+				&mut checking_data.types,
+				r#enum.get_position().with_source(environment.get_source()),
+				&mut environment.info,
+			);
+
+			// TODO remove enumerate, add add function and more
+			for (idx, member) in r#enum.on.members.iter().enumerate() {
+				match member {
+					parser::ast::EnumMember::Variant { name, value, position } => {
+						if let Some(ref _value) = value {
+							checking_data.raise_unimplemented_error(
+								"enum with value",
+								position.with_source(environment.get_source()),
+							);
+						}
+
+						let value = checking_data
+							.types
+							.new_constant_type(Constant::Number((idx as u8).into()));
+
+						basis.append(
+							Publicity::Public,
+							PropertyKey::from(name.clone()),
+							PropertyValue::Value(value),
+							member.get_position().with_source(environment.get_source()),
+							&mut environment.info,
+						);
+					}
+				}
+			}
+
+			let variable = crate::VariableId(environment.get_source(), r#enum.get_position().start);
+			environment.info.variable_current_value.insert(variable, basis.build_object());
+		}
 		Declaration::DeclareVariable(_)
 		| Declaration::Function(_)
-		| Declaration::Enum(_)
 		| Declaration::Interface(_)
 		| Declaration::TypeAlias(_)
 		| Declaration::Namespace(_)
 		| Declaration::Import(_) => {}
+	}
+}
+
+pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
+	declaration: &VariableDeclaration,
+	environment: &mut Environment,
+	checking_data: &mut CheckingData<T, super::EznoParser>,
+	exported: bool,
+	infer_constraint: bool,
+) {
+	match declaration {
+		VariableDeclaration::ConstDeclaration { declarations, .. } => {
+			for variable_declaration in declarations {
+				synthesise_variable_declaration_item(
+					variable_declaration,
+					environment,
+					checking_data,
+					exported.then_some(VariableMutability::Constant),
+					infer_constraint,
+				);
+			}
+		}
+		VariableDeclaration::LetDeclaration { declarations, .. } => {
+			for variable_declaration in declarations {
+				let exported = exported.then(|| {
+					let restriction = checking_data
+						.local_type_mappings
+						.variable_restrictions
+						.get(&(environment.get_source(), variable_declaration.position.start))
+						.map(|(first, _)| *first);
+					VariableMutability::Mutable { reassignment_constraint: restriction }
+				});
+
+				synthesise_variable_declaration_item(
+					variable_declaration,
+					environment,
+					checking_data,
+					exported,
+					infer_constraint,
+				);
+			}
+		}
 	}
 }

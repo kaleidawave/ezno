@@ -752,46 +752,6 @@ impl LookUpGeneric {
 	}
 }
 
-pub trait TypeCombinable {
-	fn combine(
-		condition: TypeId,
-		truthy_result: Self,
-		otherwise_result: Self,
-		types: &mut TypeStore,
-	) -> Self;
-
-	fn default() -> Self;
-}
-
-// For if-else branches
-impl TypeCombinable for () {
-	fn combine(
-		_condition: TypeId,
-		_truthy_result: Self,
-		_otherwise_result: Self,
-		_types: &mut TypeStore,
-	) -> Self {
-	}
-
-	fn default() -> Self {}
-}
-
-// For ternary conditional operators
-impl TypeCombinable for TypeId {
-	fn combine(
-		condition: TypeId,
-		truthy_result: Self,
-		otherwise_result: Self,
-		types: &mut TypeStore,
-	) -> Self {
-		types.new_conditional_type(condition, truthy_result, otherwise_result)
-	}
-
-	fn default() -> Self {
-		TypeId::UNDEFINED_TYPE
-	}
-}
-
 /// Used for **both** inference and narrowing
 pub enum Confirmation {
 	HasProperty { on: (), property: () },
@@ -1103,5 +1063,35 @@ pub(crate) mod helpers {
 		} else {
 			false
 		}
+	}
+}
+
+impl crate::utilities::accumulator::Condition for TypeId {
+	type Associate = TypeStore;
+
+	/// !self
+	fn invert(self, helper: &mut Self::Associate) -> Self {
+		helper.new_logical_negation_type(self)
+	}
+
+	/// self ∧ other
+	fn and(self, other: Self, helper: &mut Self::Associate) -> Self {
+		helper.new_logical_and_type(self, other)
+	}
+
+	/// self ∨ other
+	fn or(self, other: Self, helper: &mut Self::Associate) -> Self {
+		helper.new_logical_or_type(self, other)
+	}
+
+	/// if self ? left : right
+	fn condition(self, left: Self, right: Self, helper: &mut Self::Associate) -> Self {
+		helper.new_conditional_type(self, left, right)
+	}
+}
+
+impl crate::utilities::accumulator::Result<TypeId> for TypeId {
+	fn new_condition(condition: TypeId, left: Self, right: Self, helper: &mut TypeStore) -> Self {
+		helper.new_conditional_type(condition, left, right)
 	}
 }

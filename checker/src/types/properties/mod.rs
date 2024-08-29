@@ -53,6 +53,12 @@ impl From<&'static str> for PropertyKey<'static> {
 	}
 }
 
+impl From<String> for PropertyKey<'static> {
+	fn from(value: String) -> Self {
+		Self::String(Cow::Owned(value))
+	}
+}
+
 // Cannot auto derive BinarySerializable because lifetime
 impl crate::BinarySerializable for PropertyKey<'static> {
 	fn serialize(self, buf: &mut Vec<u8>) {
