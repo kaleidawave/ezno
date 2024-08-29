@@ -123,7 +123,7 @@ pub(crate) fn call_constant_function(
 		}
 		"parseFloat" => {
 			if let (1, Some(Type::Constant(Constant::String(string)))) =
-				(arguments.len(), arguments.get(0).map(|arg| types.get_type_by_id(arg.value)))
+				(arguments.len(), arguments.first().map(|arg| types.get_type_by_id(arg.value)))
 			{
 				// TODO temp
 				let value = if let Ok(value) = string.parse::<f64>() {

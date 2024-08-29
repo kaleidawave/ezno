@@ -37,6 +37,7 @@ pub struct CheckThings {
 }
 
 impl CheckThings {
+	#[must_use]
 	pub fn new_from_options(options: &crate::TypeCheckOptions) -> Self {
 		CheckThings { debug_types: options.debug_types, max_inline: options.max_inline }
 	}

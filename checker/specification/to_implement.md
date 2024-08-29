@@ -481,19 +481,6 @@ const x =[1, 2, 3].values();
 
 - ?
 
-#### Map `set` and `get`
-
-```ts
-const x = new Map();
-x.set(4, 2);
-x.set(4, 3);
-x.get(4) satisfies 2;
-x.get(2) satisfies string;
-```
-
-- Expected 2, found 3
-- Expected string, found undefined
-
 #### Map `items`
 
 ```ts
@@ -628,20 +615,23 @@ class Rectangle implements Draw {
 - Class "MyNumber", does not implement draw
 - Expected string, found CanvasRenderingContext2D
 
-#### Via effect
+#### Generic constructors
+
+> Currently have an issue in the parser #199
 
 ```ts
-function newClass(property, value) {
-	return class {
-		[property] = value
+class Box<T> {
+	value: T;
+
+	constructor(value: T) {
+		this.value = value;
 	}
 }
 
-new (newClass("hello", 2)).hello satisfies 2;
-new (newClass("hi", 6)).hi satisfies string;
+const myBox = new Box<number>("hi");
 ```
 
-- Expected string, found 6
+- Argument of type "hi" is not assignable to parameter of type number
 
 ### Recursion
 
@@ -747,102 +737,6 @@ func(cb => { cb satisfies boolean }, "hi")
 
 - Expected boolean, found "hi"
 
-### Broken
-
-> Was working, now broken (or removed)
-
-#### Destructuring using iterator
-
-```ts
-const [a, b, c] = {
-	[Symbol.iterator]() {
-		return {
-			count: 0,
-			next(this: { count: number }) {
-				return { value: this.count++, done: false }
-			}
-		}
-	}
-}
-
-a satisfies 0; b satisfies string;
-```
-
-- Expected string, found 1
-
-### Closures
-
-#### TDZ
-
-```ts
-function func() {
-    return function () { return closedOverVariable }
-    let closedOverVariable = 2;
-}
-```
-
-- Unreachable statement
-- Function contains unreachable closed over variable 'closedOverVariable'
-
-### Object constraints
-
-#### Mutation by a function with unknown effects
-
-> This is where the object loses its constant-ness
-> Effectively raises it to the parameter type
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 8);
-	return obj;
-}
-
-const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
-object.prop satisfies string;
-```
-
-- Expected 8, found number
-- Expected string, found 2
-
-#### Mutation negated via `readonly`
-
-> This is where the object loses its constant-ness
-
-```ts
-function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
-	const obj = { prop: 8 };
-	callback(obj);
-	(obj.prop satisfies 6);
-}
-```
-
-- Expected 6, found 8
-
-#### Possible mutation breaks object constraint
-
-> This unfortunately can flag up valid code, but handling those is too difficult atm
-
-```ts
-function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
-	const obj: { prop: number } = { prop: 8 };
-	callback(obj);
-}
-```
-
-- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
-
-#### Possible mutation via anytime function
-
-```ts
-const x = { a: 2 }
-setTimeout(() => { Math.sin(x.a) })
-x.a = "hi"
-```
-
-- Cannot assign. Restricted to number
-
 ### Others
 
 #### Pure getter assignment
@@ -866,33 +760,3 @@ obj.a.b.c = 2;
 ```
 
 - Cannot assign to readonly
-
-#### Conditionality destructuring from poly
-
-```ts
-declare let x: { a?: 1 }; // also { a: 1 } | { b: 2 }
-let { a = 2 } = x;
-a satisfies 3;
-```
-
-- Expected 3, found 1 | 2
-
-### Classes
-
-> Currently have an issue in the parser #199
-
-#### Generic constructors
-
-```ts
-class Box<T> {
-	value: T;
-
-	constructor(value: T) {
-		this.value = value;
-	}
-}
-
-const myBox = new Box<number>("hi");
-```
-
-- Argument of type "hi" is not assignable to parameter of type number

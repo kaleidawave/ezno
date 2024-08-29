@@ -1010,10 +1010,8 @@ impl IteratorHelper {
 				position,
 				crate::types::properties::AccessMode::Regular,
 			);
-			let iterator_generator = if let Some((_, ty)) = iterator {
-				ty
-			} else {
-				todo!("error + run block any with error")
+			let Some((_, iterator_generator)) = iterator else {
+				return Err(());
 			};
 
 			let input = crate::types::calling::CallingInput {
@@ -1140,11 +1138,10 @@ impl IteratorHelper {
 					position,
 					crate::types::properties::AccessMode::Regular,
 				);
-				let done = match get_property {
-					Some((_, done)) => done,
-					None => {
-						todo!()
-					}
+
+				let Some((_, done)) = get_property else {
+					crate::utilities::notify!("Here");
+					return None;
 				};
 
 				crate::utilities::notify!("done={:?}", done);

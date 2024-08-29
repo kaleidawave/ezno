@@ -2586,7 +2586,7 @@ pub(crate) fn slice_matches_type(
 					allow_casts,
 				)
 			} else if let Some(contributions) = contributions {
-				assert!(rpt.is_substitutable(), "Cannot substitute into {:?}", rpt);
+				assert!(rpt.is_substitutable(), "Cannot substitute into {rpt:?}");
 				let constraint = rpt.get_constraint();
 				let res = slice_matches_type(
 					(constraint, base_type_arguments),

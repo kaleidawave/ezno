@@ -300,7 +300,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						let position = r#enum.get_position().with_source(environment.get_source());
 						checking_data.diagnostics_container.add_error(
 							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: r#enum.on.name.to_owned(),
+								name: r#enum.on.name.clone(),
 								position,
 							},
 						);

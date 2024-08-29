@@ -25,21 +25,26 @@ pub trait Condition: Clone + Copy {
 	type Associate;
 
 	/// !self
+	#[must_use]
 	fn invert(self, helper: &mut Self::Associate) -> Self;
 
 	/// self ∧ other
+	#[must_use]
 	fn and(self, other: Self, helper: &mut Self::Associate) -> Self;
 
 	/// self ∨ other
+	#[must_use]
 	fn or(self, other: Self, helper: &mut Self::Associate) -> Self;
 
 	/// if self ? left : right
+	#[must_use]
 	fn condition(self, left: Self, right: Self, helper: &mut Self::Associate) -> Self;
 }
 
 pub trait Result<C: Condition> {
 	/// if condition ? left : right.
 	// TODO bad definition to re use thing
+	#[must_use]
 	fn new_condition(
 		condition: C,
 		left: Self,

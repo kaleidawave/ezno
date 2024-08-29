@@ -215,9 +215,8 @@ where
 		},
 	}
 
-	// TODO append
-	environment.context_type.state =
-		truthy_return_state.merge(otherwise_return_state, condition, &mut checking_data.types);
+	let new = truthy_return_state.merge(otherwise_return_state, condition, &mut checking_data.types);
+	environment.context_type.state.merge_unconditionally(new, &mut checking_data.types);
 
 	combined_result
 }

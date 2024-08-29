@@ -88,6 +88,38 @@ listToString(start) satisfies null;
 
 ### Control flow
 
+#### Collecting
+
+> Needs narrowing inside of event application
+
+```ts
+let global: string | null = null;
+
+function one(param: string) {
+    if (param === "a") {
+        return 0
+    }
+    global = "Found";
+
+    if (param === "b") {
+        return 1
+    }
+    if (param === "c") {
+        return 2
+    }
+
+    return 3
+}
+
+declare let argument: "a" | "b";
+one(argument) satisfies null;
+
+global satisfies number;
+```
+
+- Expected null, found 0 | 1
+- Expected number, found null | "found";
+
 #### Conditional break
 
 ```ts
@@ -186,3 +218,101 @@ const color1: Color = Color.Red;
 
 - enum must be used with 'extras' option
 - Expected string, found true
+
+### Conditionality destructuring from poly
+
+```ts
+declare let x: { a?: 1 }; // also { a: 1 } | { b: 2 }
+let { a = 2 } = x;
+a satisfies 3;
+```
+
+- Expected 3, found 1 | 2
+
+#### Creation in function
+
+```ts
+function newClass(property, value) {
+	return class {
+		[property] = value
+	}
+}
+
+new (newClass("hello", 2)).hello satisfies 2;
+new (newClass("hi", 6)).hi satisfies string;
+```
+
+- Expected string, found 6
+
+### Closures
+
+#### TDZ
+
+```ts
+function func() {
+    return function () { return closedOverVariable }
+    let closedOverVariable = 2;
+}
+```
+
+- Unreachable statement
+- Function contains unreachable closed over variable 'closedOverVariable'
+
+### Object constraints
+
+#### Mutation by a function with unknown effects
+
+> This is where the object loses its constant-ness
+> Effectively raises it to the parameter type
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 8);
+	return obj;
+}
+
+const object = doThingWithCallback((obj: { prop: number }) => obj.prop = 2);
+object.prop satisfies string;
+```
+
+- Expected 8, found number
+- Expected string, found 2
+
+#### Mutation negated via `readonly`
+
+> This is where the object loses its constant-ness
+
+```ts
+function doThingWithCallback(callback: (obj: readonly { prop: number }) => any) {
+	const obj = { prop: 8 };
+	callback(obj);
+	(obj.prop satisfies 6);
+}
+```
+
+- Expected 6, found 8
+
+#### Possible mutation breaks object constraint
+
+> This unfortunately can flag up valid code, but handling those is too difficult atm
+
+```ts
+function doThingWithCallback(callback: (obj: { prop: number | string }) => any) {
+	const obj: { prop: number } = { prop: 8 };
+	callback(obj);
+}
+```
+
+- Cannot raise TODO. If possible avoid the constraints or mark parameter as readonly
+
+#### Possible mutation via anytime function
+
+```ts
+const x = { a: 2 }
+setTimeout(() => { Math.sin(x.a) })
+x.a = "hi"
+```
+
+- Cannot assign. Restricted to number

@@ -381,7 +381,7 @@ pub(crate) fn apply_events(
 						let otherwise_events_slice = &events
 							[(offset + truthy_events)..(offset + truthy_events + otherwise_events)];
 
-						let (data, (truthy_result, otherwise_result)) = target
+						let (data, (truthy_return_state, otherwise_return_state)) = target
 							.evaluate_conditionally(
 								top_environment,
 								types,
@@ -405,7 +405,8 @@ pub(crate) fn apply_events(
 						(type_arguments, diagnostics) = data;
 
 						// TODO could this be better? Seems to duplicate behavior during initial sythesis
-						state = truthy_result.merge(otherwise_result, condition, types)
+						let new = truthy_return_state.merge(otherwise_return_state, condition, types);
+						state.merge_unconditionally(new, types);
 					}
 				}
 				// Don't run condition again

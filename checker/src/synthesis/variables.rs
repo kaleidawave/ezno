@@ -368,7 +368,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 						let value = iterator.next(environment, checking_data, position);
 						let value = if let (None, Some(expression)) = (value, default) {
 							synthesise_expression(
-								&*expression,
+								expression,
 								environment,
 								checking_data,
 								TypeId::ANY_TYPE,
