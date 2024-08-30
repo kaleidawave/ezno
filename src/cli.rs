@@ -5,7 +5,7 @@ use std::{
 	path::{Path, PathBuf},
 	process::Command,
 	process::ExitCode,
-	time::Instant,
+	time::{Duration, Instant},
 };
 
 use crate::{
@@ -16,6 +16,8 @@ use crate::{
 };
 use argh::FromArgs;
 use checker::{CheckOutput, TypeCheckOptions};
+use notify::Watcher;
+use notify_debouncer_full::new_debouncer;
 use parser::ParseOptions;
 
 /// The Ezno type-checker & compiler
@@ -114,7 +116,7 @@ pub(crate) struct CheckArguments {
 	pub definition_file: Option<PathBuf>,
 	/// whether to re-check on file changes TODO #164
 	#[argh(switch)]
-	pub _watch: bool,
+	pub watch: bool,
 	/// whether to display check time
 	#[argh(switch)]
 	pub timings: bool,
@@ -172,8 +174,72 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 		Err(_) => None,
 	}
 }
+fn run_checker<T: crate::ReadFromFS>(
+	entry_points: Vec<PathBuf>,
+	read_file: &T,
+	timings: bool,
+	definition_file: Option<PathBuf>,
+	max_diagnostics: MaxDiagnostics,
+	type_check_options: TypeCheckOptions,
+	compact_diagnostics: bool,
+) -> ExitCode {
+	let CheckOutput { diagnostics, module_contents, chronometer, types, .. } =
+		check(entry_points, read_file, definition_file.as_deref(), type_check_options);
 
-pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
+	let diagnostics_count = diagnostics.count();
+	let current = timings.then(std::time::Instant::now);
+
+	let result = if diagnostics.has_error() {
+		if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
+			let count = diagnostics.into_iter().count();
+			print_to_cli(format_args!(
+				"Found {count} type errors and warnings {}",
+				console::Emoji(" 😬", ":/")
+			))
+		} else {
+			report_diagnostics_to_cli(
+				diagnostics,
+				&module_contents,
+				compact_diagnostics,
+				max_diagnostics,
+			)
+			.unwrap();
+		}
+		ExitCode::FAILURE
+	} else {
+		// May be warnings or information here
+		report_diagnostics_to_cli(
+			diagnostics,
+			&module_contents,
+			compact_diagnostics,
+			max_diagnostics,
+		)
+		.unwrap();
+		print_to_cli(format_args!("No type errors found {}", console::Emoji("🎉", ":)")));
+		ExitCode::SUCCESS
+	};
+
+	#[cfg(not(target_family = "wasm"))]
+	if timings {
+		let reporting = current.unwrap().elapsed();
+		eprintln!("---\n");
+		eprintln!("Diagnostics:\t{}", diagnostics_count);
+		eprintln!("Types:      \t{}", types.count_of_types());
+		eprintln!("Lines:      \t{}", chronometer.lines);
+		eprintln!("Cache read: \t{:?}", chronometer.cached);
+		eprintln!("FS read:    \t{:?}", chronometer.fs);
+		eprintln!("Parsed in:  \t{:?}", chronometer.parse);
+		eprintln!("Checked in: \t{:?}", chronometer.check);
+		eprintln!("Reporting:  \t{:?}", reporting);
+	}
+
+	result
+}
+pub fn run_cli<
+	T: crate::ReadFromFS + Send + Sync,
+	U: crate::WriteToFS,
+	V: crate::CLIInputResolver,
+>(
 	cli_arguments: &[&str],
 	read_file: &T,
 	write_file: U,
@@ -196,7 +262,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			let CheckArguments {
 				input,
 				// TODO #164
-				_watch,
+				watch,
 				definition_file,
 				timings,
 				compact_diagnostics,
@@ -215,57 +281,50 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				Err(_) => return ExitCode::FAILURE,
 			};
 
-			let CheckOutput { diagnostics, module_contents, chronometer, types, .. } =
-				check(entry_points, read_file, definition_file.as_deref(), type_check_options);
+			if watch {
+				let (tx, rx) = std::sync::mpsc::channel();
+				let mut debouncer = new_debouncer(Duration::from_millis(200), None, tx).unwrap();
 
-			let diagnostics_count = diagnostics.count();
-			let current = timings.then(std::time::Instant::now);
-
-			let result = if diagnostics.has_error() {
-				if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
-					let count = diagnostics.into_iter().count();
-					print_to_cli(format_args!(
-						"Found {count} type errors and warnings {}",
-						console::Emoji(" 😬", ":/")
-					))
-				} else {
-					report_diagnostics_to_cli(
-						diagnostics,
-						&module_contents,
-						compact_diagnostics,
-						max_diagnostics,
-					)
-					.unwrap();
+				for e in &entry_points {
+					_ = debouncer.watcher().watch(e, notify::RecursiveMode::Recursive).unwrap();
 				}
-				ExitCode::FAILURE
-			} else {
-				// May be warnings or information here
-				report_diagnostics_to_cli(
-					diagnostics,
-					&module_contents,
+				run_checker(
+					entry_points.clone(),
+					read_file,
+					timings,
+					definition_file.clone(),
+					max_diagnostics.clone(),
+					type_check_options.clone(),
 					compact_diagnostics,
-					max_diagnostics,
-				)
-				.unwrap();
-				print_to_cli(format_args!("No type errors found {}", console::Emoji("🎉", ":)")));
-				ExitCode::SUCCESS
-			};
-
-			#[cfg(not(target_family = "wasm"))]
-			if timings {
-				let reporting = current.unwrap().elapsed();
-				eprintln!("---\n");
-				eprintln!("Diagnostics:\t{}", diagnostics_count);
-				eprintln!("Types:      \t{}", types.count_of_types());
-				eprintln!("Lines:      \t{}", chronometer.lines);
-				eprintln!("Cache read: \t{:?}", chronometer.cached);
-				eprintln!("FS read:    \t{:?}", chronometer.fs);
-				eprintln!("Parsed in:  \t{:?}", chronometer.parse);
-				eprintln!("Checked in: \t{:?}", chronometer.check);
-				eprintln!("Reporting:  \t{:?}", reporting);
+				);
+				for res in rx {
+					match res {
+						Ok(_e) => {
+							run_checker(
+								entry_points.clone(),
+								read_file,
+								timings,
+								definition_file.clone(),
+								max_diagnostics.clone(),
+								type_check_options.clone(),
+								compact_diagnostics,
+							);
+						}
+						Err(error) => eprintln!("Error: {error:?}"),
+					}
+				}
+				// Infinite loop here so the compiler is satisfied that this never returns
+				loop {}
 			}
-
-			result
+			run_checker(
+				entry_points,
+				read_file,
+				timings,
+				definition_file,
+				max_diagnostics,
+				type_check_options,
+				compact_diagnostics,
+			)
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Build(build_config),
