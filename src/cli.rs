@@ -114,7 +114,7 @@ pub(crate) struct CheckArguments {
 	/// paths to definition files
 	#[argh(option, short = 'd')]
 	pub definition_file: Option<PathBuf>,
-	/// whether to re-check on file changes TODO #164
+	/// whether to re-check on file changes
 	#[argh(switch)]
 	pub watch: bool,
 	/// whether to display check time
@@ -261,7 +261,6 @@ pub fn run_cli<
 		CompilerSubCommand::Check(check_arguments) => {
 			let CheckArguments {
 				input,
-				// TODO #164
 				watch,
 				definition_file,
 				timings,
