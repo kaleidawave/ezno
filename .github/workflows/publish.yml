@@ -101,11 +101,6 @@ jobs:
         if: ${{ inputs.ezno-version != 'none' }}
         run: rustup target add wasm32-unknown-unknown
 
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        if: ${{ inputs.ezno-version != 'none' }}
-        with:
-          packages: wasm-pack@0.13.0
-
       - name: Set NPM package version & build
         id: set-npm-version
         if: ${{ inputs.ezno-version != 'none' }}
