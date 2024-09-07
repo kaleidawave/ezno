@@ -11,6 +11,7 @@ mod extensions;
 pub mod functions;
 pub mod generator_helpers;
 mod lexer;
+mod lexer2;
 pub mod marker;
 mod modules;
 pub mod number;
@@ -21,6 +22,10 @@ mod tokens;
 pub mod types;
 mod variable_fields;
 pub mod visiting;
+
+pub mod new {
+	pub use super::lexer2::Lexer;
+}
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;

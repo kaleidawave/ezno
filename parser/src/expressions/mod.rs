@@ -38,6 +38,9 @@ pub mod operators;
 pub mod template_literal;
 pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 
+// TODO
+pub mod new;
+
 pub use template_literal::TemplateLiteral;
 
 use operators::{
