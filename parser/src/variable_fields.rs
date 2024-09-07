@@ -35,12 +35,8 @@ pub enum VariableIdentifier {
 }
 
 impl ASTNode for VariableIdentifier {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let (ident, span) = token_as_identifier(reader.next().unwrap(), "variable identifier")?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let (ident, span) = token_as_identifier(reader.next().unwrap(), "variable identifier")?;
 		if ident == "let" {
 			return Err(ParseError::new(ParseErrors::ReservedIdentifier, span));
 		}
@@ -48,7 +44,8 @@ impl ASTNode for VariableIdentifier {
 			Self::Marker(state.new_partial_point_marker(span.get_start()), span)
 		} else {
 			Self::Standard(ident, span)
-		})
+		})"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -102,12 +99,8 @@ pub enum VariableField {
 }
 
 impl ASTNode for VariableField {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		match reader.peek().ok_or_else(parse_lexing_error)?.0 {
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"match reader.peek().ok_or_else(parse_lexing_error)?.0 {
 			TSXToken::OpenBrace => {
 				let Token(_, start_pos) = reader.next().unwrap();
 				let (members, spread, last_pos) =
@@ -121,7 +114,8 @@ impl ASTNode for VariableField {
 				Ok(Self::Array { members, spread, position: start_pos.union(end) })
 			}
 			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, options)?)),
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -193,9 +187,7 @@ pub trait DestructuringFieldInto: ASTNode {
 	type TypeAnnotation: Clone + PartialEq + Debug + Sync + Send + 'static;
 
 	fn type_annotation_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self::TypeAnnotation>;
 }
 
@@ -203,18 +195,17 @@ impl DestructuringFieldInto for VariableField {
 	type TypeAnnotation = Option<crate::TypeAnnotation>;
 
 	fn type_annotation_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self::TypeAnnotation> {
-		if let (true, Some(Token(TSXToken::Colon, _))) =
-			(options.destructuring_type_annotation, reader.peek())
-		{
-			reader.next();
-			crate::TypeAnnotation::from_reader(reader, state, options).map(Some)
-		} else {
-			Ok(None)
-		}
+		todo!()
+		// if let (true, Some(Token(TSXToken::Colon, _))) =
+		// 	(options.destructuring_type_annotation, reader.peek())
+		// {
+		// 	reader.next();
+		// 	crate::TypeAnnotation::from_reader(reader, state, options).map(Some)
+		// } else {
+		// 	Ok(None)
+		// }
 	}
 }
 
@@ -222,9 +213,7 @@ impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
 	type TypeAnnotation = ();
 
 	fn type_annotation_from_reader(
-		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_state: &mut crate::ParsingState,
-		_options: &ParseOptions,
+		_reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self::TypeAnnotation> {
 		Ok(())
 	}
@@ -253,25 +242,18 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 
 	type LAST = SpreadDestructuringField<T>;
 
-	fn parse_last_item(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self::LAST> {
-		let start = reader.expect_next(TSXToken::Spread)?;
-		let node = T::from_reader(reader, state, options)?;
-		let position = start.union(node.get_position());
-		Ok(SpreadDestructuringField(Box::new(node), position))
+	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
+		todo!()
+		// let start = reader.expect_next(TSXToken::Spread)?;
+		// let node = T::from_reader(reader, state, options)?;
+		// let position = start.union(node.get_position());
+		// Ok(SpreadDestructuringField(Box::new(node), position))
 	}
 }
 
 impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let Token(token, _start) = reader.peek().ok_or_else(parse_lexing_error)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let Token(token, _start) = reader.peek().ok_or_else(parse_lexing_error)?;
 		if matches!(token, TSXToken::Comma | TSXToken::CloseBracket) {
 			Ok(Self::None)
 		} else {
@@ -290,7 +272,8 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 			// 		*key.get_position()
 			// 	};
 			Ok(Self::Name(name, annotation, default_value))
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<U: source_map::ToString>(
@@ -355,25 +338,18 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ObjectDestructuringFiel
 
 	type LAST = SpreadDestructuringField<T>;
 
-	fn parse_last_item(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self::LAST> {
-		let start = reader.expect_next(TSXToken::Spread)?;
-		let node = T::from_reader(reader, state, options)?;
-		let position = start.union(node.get_position());
-		Ok(SpreadDestructuringField(Box::new(node), position))
+	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
+		todo!()
+		// let start = reader.expect_next(TSXToken::Spread)?;
+		// let node = T::from_reader(reader, state, options)?;
+		// let position = start.union(node.get_position());
+		// Ok(SpreadDestructuringField(Box::new(node), position))
 	}
 }
 
 impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let key = PropertyKey::from_reader(reader, state, options)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let key = PropertyKey::from_reader(reader, state, options)?;
 		if reader.peek().is_some_and(|Token(t, _)| is_destructuring_into_marker(t, options)) {
 			reader.next();
 			let name = WithComment::<T>::from_reader(reader, state, options)?;
@@ -411,7 +387,8 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 		} else {
 			let token = reader.next().ok_or_else(parse_lexing_error)?;
 			throw_unexpected_token_with_token(token, &[TSXToken::Colon])
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<U: source_map::ToString>(

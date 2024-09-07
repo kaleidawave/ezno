@@ -27,29 +27,16 @@ pub struct Parameter<V> {
 }
 
 pub trait ParameterVisibility: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Self;
+	fn from_reader(reader: &mut crate::new::Lexer) -> Self;
 }
 
 impl ParameterVisibility for () {
-	fn from_reader(
-		_: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_: &mut crate::ParsingState,
-		_: &crate::ParseOptions,
-	) -> Self {
-	}
+	fn from_reader(reader: &mut crate::new::Lexer) -> Self {}
 }
 
 impl ParameterVisibility for Option<crate::types::Visibility> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Option<crate::types::Visibility> {
-		if !options.type_annotations {
+	fn from_reader(reader: &mut crate::new::Lexer) -> Option<crate::types::Visibility> {
+		let _existing = r#"if !options.type_annotations {
 			None
 		} else if let Some(Token(TSXToken::Keyword(t), _)) =
 			reader.conditional_next(crate::types::Visibility::token_is_visibility_specifier)
@@ -62,7 +49,8 @@ impl ParameterVisibility for Option<crate::types::Visibility> {
 			})
 		} else {
 			None
-		}
+		}"#;
+		todo!();
 	}
 }
 
@@ -195,13 +183,10 @@ where
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		let open_paren_span = reader.expect_next(TSXToken::OpenParentheses)?;
-		Self::from_reader_sub_open_parenthesis(reader, state, options, open_paren_span)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let open_paren_span = reader.expect_next(TSXToken::OpenParentheses)?;
+		Self::from_reader_sub_open_parenthesis(reader, state, options, open_paren_span)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -298,12 +283,9 @@ where
 	V: ParameterVisibility,
 {
 	pub(crate) fn from_reader_sub_open_parenthesis(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-		start: TokenStart,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self> {
-		let mut parameters = Vec::new();
+		let _existing = r#"let mut parameters = Vec::new();
 
 		let mut this_type = None::<ThisParameter>;
 		let mut super_type = None::<SuperParameter>;
@@ -427,6 +409,7 @@ where
 
 		let leading = L::try_make(this_type, super_type)?;
 
-		Ok(FunctionParameters { position: start.union(close), parameters, rest_parameter, leading })
+		Ok(FunctionParameters { position: start.union(close), parameters, rest_parameter, leading })"#;
+		todo!();
 	}
 }

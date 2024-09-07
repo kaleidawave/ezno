@@ -20,17 +20,14 @@ impl ASTNode for WhileStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::While)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::While)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		Ok(Self { position: start.union(inner.get_position()), condition, inner })
+		Ok(Self { position: start.union(inner.get_position()), condition, inner })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -64,19 +61,16 @@ impl ASTNode for DoWhileStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::Do)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Do)?;
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		let _ = state.expect_keyword(reader, TSXKeyword::While)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		let position =
 			start.union(reader.expect_next(TSXToken::CloseParentheses)?.get_end_after(1));
-		Ok(Self { condition, inner, position })
+		Ok(Self { condition, inner, position })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

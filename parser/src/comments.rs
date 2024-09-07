@@ -91,12 +91,8 @@ impl<T> WithComment<T> {
 }
 
 impl<T: ASTNode> ASTNode for WithComment<T> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if let Some(token) =
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"if let Some(token) =
 			reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
 		{
 			let Token(TSXToken::MultiLineComment(comment), position) = token else {
@@ -119,7 +115,8 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 			} else {
 				Ok(Self::None(item))
 			}
-		}
+		}"#;
+		todo!();
 	}
 
 	fn get_position(&self) -> Span {

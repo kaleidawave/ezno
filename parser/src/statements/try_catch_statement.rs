@@ -25,12 +25,8 @@ impl ASTNode for TryCatchStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::Try)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Try)?;
 		let try_inner = Block::from_reader(reader, state, options)?;
 
 		let mut catch_inner: Option<Block> = None;
@@ -84,7 +80,8 @@ impl ASTNode for TryCatchStatement {
 			));
 		};
 
-		Ok(Self { try_inner, catch_inner, exception_var, finally_inner, position })
+		Ok(Self { try_inner, catch_inner, exception_var, finally_inner, position })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

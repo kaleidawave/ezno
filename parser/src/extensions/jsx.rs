@@ -39,13 +39,10 @@ impl From<JSXElement> for JSXNode {
 }
 
 impl ASTNode for JSXElement {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start_position = reader.expect_next(TSXToken::JSXOpeningTagStart)?;
-		Self::from_reader_sub_start(reader, state, options, start_position)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start_position = reader.expect_next(TSXToken::JSXOpeningTagStart)?;
+		Self::from_reader_sub_start(reader, state, options, start_position)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -93,13 +90,10 @@ impl ASTNode for JSXFragment {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::JSXFragmentStart)?;
-		Self::from_reader_sub_start(reader, state, options, start)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = reader.expect_next(TSXToken::JSXFragmentStart)?;
+		Self::from_reader_sub_start(reader, state, options, start)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -115,30 +109,23 @@ impl ASTNode for JSXFragment {
 }
 
 impl JSXFragment {
-	fn from_reader_sub_start(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let children = parse_jsx_children(reader, state, options)?;
+	fn from_reader_sub_start(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let children = parse_jsx_children(reader, state, options)?;
 		let end = reader.expect_next_get_end(TSXToken::JSXFragmentEnd)?;
-		Ok(Self { children, position: start.union(end) })
+		Ok(Self { children, position: start.union(end) })"#;
+		todo!();
 	}
 }
 
 impl ASTNode for JSXRoot {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let (is_fragment, span) = match reader.next().ok_or_else(parse_lexing_error)? {
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let (is_fragment, span) = match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::JSXOpeningTagStart, span) => (false, span),
 			Token(TSXToken::JSXFragmentStart, span) => (true, span),
 			_ => panic!(),
 		};
-		Self::from_reader_sub_start(reader, state, options, is_fragment, span)
+		Self::from_reader_sub_start(reader, state, options, is_fragment, span)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -166,16 +153,17 @@ fn parse_jsx_children(
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
 ) -> ParseResult<Vec<JSXNode>> {
-	let mut children = Vec::new();
-	loop {
-		if matches!(
-			reader.peek(),
-			Some(Token(TSXToken::JSXFragmentEnd | TSXToken::JSXClosingTagStart, _))
-		) {
-			return Ok(children);
-		}
-		children.push(JSXNode::from_reader(reader, state, options)?);
-	}
+	todo!()
+	// let mut children = Vec::new();
+	// loop {
+	// 	if matches!(
+	// 		reader.peek(),
+	// 		Some(Token(TSXToken::JSXFragmentEnd | TSXToken::JSXClosingTagStart, _))
+	// 	) {
+	// 		return Ok(children);
+	// 	}
+	// 	children.push(JSXNode::from_reader(reader, state, options)?);
+	// }
 }
 
 fn jsx_children_to_string<T: source_map::ToString>(
@@ -206,18 +194,13 @@ fn jsx_children_to_string<T: source_map::ToString>(
 }
 
 impl JSXRoot {
-	pub(crate) fn from_reader_sub_start(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		is_fragment: bool,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		if is_fragment {
+	pub(crate) fn from_reader_sub_start(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"if is_fragment {
 			Ok(Self::Fragment(JSXFragment::from_reader_sub_start(reader, state, options, start)?))
 		} else {
 			Ok(Self::Element(JSXElement::from_reader_sub_start(reader, state, options, start)?))
-		}
+		}"#;
+		todo!();
 	}
 }
 
@@ -243,12 +226,8 @@ impl ASTNode for JSXNode {
 		}
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let token = reader.next().ok_or_else(parse_lexing_error)?;
 		match token {
 			Token(TSXToken::JSXContent(content), start) => {
 				let position = start.with_length(content.len());
@@ -269,7 +248,8 @@ impl ASTNode for JSXNode {
 				Ok(JSXNode::Comment(comment, pos))
 			}
 			_token => Err(parse_lexing_error()),
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -327,12 +307,9 @@ impl ASTNode for JSXAttribute {
 		}
 	}
 
-	fn from_reader(
-		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_state: &mut crate::ParsingState,
-		_options: &ParseOptions,
-	) -> ParseResult<Self> {
-		todo!("this is currently done in `JSXElement::from_reader`")
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"todo!("this is currently done in `JSXElement::from_reader`")"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -371,13 +348,8 @@ impl ASTNode for JSXAttribute {
 }
 
 impl JSXElement {
-	pub(crate) fn from_reader_sub_start(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let Some(Token(TSXToken::JSXTagName(tag_name), _)) = reader.next() else {
+	pub(crate) fn from_reader_sub_start(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let Some(Token(TSXToken::JSXTagName(tag_name), _)) = reader.next() else {
 			return Err(parse_lexing_error());
 		};
 		let mut attributes = Vec::new();
@@ -464,7 +436,8 @@ impl JSXElement {
 			})
 		} else {
 			Err(parse_lexing_error())
-		}
+		}"#;
+		todo!();
 	}
 }
 

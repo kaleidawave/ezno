@@ -25,13 +25,10 @@ impl ASTNode for Decorator {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let at_pos = reader.expect_next(TSXToken::At)?;
-		Self::from_reader_sub_at_symbol(reader, state, options, at_pos)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let at_pos = reader.expect_next(TSXToken::At)?;
+		Self::from_reader_sub_at_symbol(reader, state, options, at_pos)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -64,13 +61,8 @@ impl ASTNode for Decorator {
 }
 
 impl Decorator {
-	pub(crate) fn from_reader_sub_at_symbol(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		at_pos: TokenStart,
-	) -> ParseResult<Self> {
-		let (name, mut last_position) =
+	pub(crate) fn from_reader_sub_at_symbol(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let (name, mut last_position) =
 			token_as_identifier(reader.next().unwrap(), "Decorator name")?;
 
 		let mut names = vec![name];
@@ -102,7 +94,8 @@ impl Decorator {
 		} else {
 			(None, at_pos.union(last_position))
 		};
-		Ok(Self { name: names, arguments, position })
+		Ok(Self { name: names, arguments, position })"#;
+		todo!();
 	}
 }
 
@@ -122,13 +115,10 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 		*self.get()
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let decorators = decorators_from_reader(reader, state, options)?;
-		N::from_reader(reader, state, options).map(|on| Self::new(decorators, on))
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let decorators = decorators_from_reader(reader, state, options)?;
+		N::from_reader(reader, state, options).map(|on| Self::new(decorators, on))"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -177,11 +167,12 @@ pub(crate) fn decorators_from_reader(
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
 ) -> ParseResult<Vec<Decorator>> {
-	let mut decorators = Vec::new();
-	while let Some(Token(TSXToken::At, _)) = reader.peek() {
-		decorators.push(Decorator::from_reader(reader, state, options)?);
-	}
-	Ok(decorators)
+	todo!()
+	// let mut decorators = Vec::new();
+	// while let Some(Token(TSXToken::At, _)) = reader.peek() {
+	// 	decorators.push(Decorator::from_reader(reader, state, options)?);
+	// }
+	// Ok(decorators)
 }
 
 impl<T: Visitable> Visitable for Decorated<T> {

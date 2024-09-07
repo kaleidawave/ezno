@@ -24,12 +24,8 @@ impl ASTNode for ForLoopStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::For)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::For)?;
 		let is_await = reader
 			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Await)))
 			.is_some();
@@ -46,7 +42,8 @@ impl ASTNode for ForLoopStatement {
 		}
 		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
 		let position = start.union(inner.get_position());
-		Ok(ForLoopStatement { condition, inner, position })
+		Ok(ForLoopStatement { condition, inner, position })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -100,12 +97,8 @@ pub enum ForLoopCondition {
 }
 
 impl ASTNode for ForLoopCondition {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		reader.expect_next(TSXToken::OpenParentheses)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"reader.expect_next(TSXToken::OpenParentheses)?;
 		// Figure out if after variable declaration there exists a "=", "in" or a "of"
 		let mut destructuring_depth = 0;
 		let mut ate_variable_specifier = false;
@@ -209,7 +202,8 @@ impl ASTNode for ForLoopCondition {
 			}
 		};
 		reader.expect_next(TSXToken::CloseParentheses)?;
-		Ok(condition)
+		Ok(condition)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

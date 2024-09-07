@@ -144,12 +144,8 @@ impl ASTNode for AnnotationWithBinder {
 		}
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
 			let (name, pos) =
 				token_as_identifier(reader.next().unwrap(), "tuple literal named item")?;
 			reader.next();
@@ -157,7 +153,8 @@ impl ASTNode for AnnotationWithBinder {
 			Ok(AnnotationWithBinder::Annotated { position: pos.union(ty.get_position()), name, ty })
 		} else {
 			TypeAnnotation::from_reader(reader, state, options).map(Self::NoAnnotation)
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -238,12 +235,9 @@ pub enum IsItem {
 }
 
 impl ASTNode for TypeAnnotation {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		Self::from_reader_with_config(reader, state, options, None, None)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"Self::from_reader_with_config(reader, state, options, None, None)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -466,14 +460,8 @@ pub(crate) enum TypeOperatorKind {
 impl TypeAnnotation {
 	/// Also returns the local the generic arguments ran over
 	/// TODO refactor and tidy a lot of this, precedence rather than config
-	pub(crate) fn from_reader_with_config(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		parent_kind: Option<TypeOperatorKind>,
-		start: Option<TokenStart>,
-	) -> ParseResult<Self> {
-		if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
+	pub(crate) fn from_reader_with_config(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
 			let next_is_not_type_annotation_like = matches!(
 				peek,
 				TSXToken::CloseParentheses
@@ -1001,7 +989,8 @@ impl TypeAnnotation {
 				})
 			}
 			_ => Ok(reference),
-		}
+		}"#;
+		todo!();
 	}
 }
 
@@ -1014,44 +1003,45 @@ pub(crate) fn generic_arguments_from_reader_sub_open_angle(
 	options: &ParseOptions,
 	kind: Option<TypeOperatorKind>,
 ) -> ParseResult<(Vec<TypeAnnotation>, TokenEnd)> {
-	let mut generic_arguments = Vec::new();
+	todo!();
+	// let mut generic_arguments = Vec::new();
 
-	loop {
-		let argument = TypeAnnotation::from_reader_with_config(reader, state, options, kind, None)?;
+	// loop {
+	// 	let argument = TypeAnnotation::from_reader_with_config(reader, state, options, kind, None)?;
 
-		generic_arguments.push(argument);
+	// 	generic_arguments.push(argument);
 
-		// Handling for the fact that concessive chevrons are grouped into bitwise shifts
-		// One option is to keep track of local but as a simpler way mutate the upcoming token
-		// TODO spans
+	// 	// Handling for the fact that concessive chevrons are grouped into bitwise shifts
+	// 	// One option is to keep track of local but as a simpler way mutate the upcoming token
+	// 	// TODO spans
 
-		let peek_mut = reader.peek_mut();
+	// 	let peek_mut = reader.peek_mut();
 
-		if let Some(Token(t @ TSXToken::BitwiseShiftRight, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 1);
-			start.0 += 1;
-			*t = TSXToken::CloseChevron;
-			return Ok((generic_arguments, end));
-		}
+	// 	if let Some(Token(t @ TSXToken::BitwiseShiftRight, start)) = peek_mut {
+	// 		let end = TokenEnd::new(start.0 + 1);
+	// 		start.0 += 1;
+	// 		*t = TSXToken::CloseChevron;
+	// 		return Ok((generic_arguments, end));
+	// 	}
 
-		if let Some(Token(t @ TSXToken::BitwiseShiftRightUnsigned, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 2);
-			start.0 += 2;
-			*t = TSXToken::CloseChevron;
-			return Ok((generic_arguments, end));
-		}
+	// 	if let Some(Token(t @ TSXToken::BitwiseShiftRightUnsigned, start)) = peek_mut {
+	// 		let end = TokenEnd::new(start.0 + 2);
+	// 		start.0 += 2;
+	// 		*t = TSXToken::CloseChevron;
+	// 		return Ok((generic_arguments, end));
+	// 	}
 
-		match reader.next().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::Comma, _) => {}
-			t @ Token(TSXToken::CloseChevron, _) => return Ok((generic_arguments, t.get_end())),
-			token => {
-				return throw_unexpected_token_with_token(
-					token,
-					&[TSXToken::CloseChevron, TSXToken::Comma],
-				)
-			}
-		};
-	}
+	// 	match reader.next().ok_or_else(parse_lexing_error)? {
+	// 		Token(TSXToken::Comma, _) => {}
+	// 		t @ Token(TSXToken::CloseChevron, _) => return Ok((generic_arguments, t.get_end())),
+	// 		token => {
+	// 			return throw_unexpected_token_with_token(
+	// 				token,
+	// 				&[TSXToken::CloseChevron, TSXToken::Comma],
+	// 			)
+	// 		}
+	// 	};
+	// }
 }
 
 /// Mirrors [`crate::FunctionParameters`]
@@ -1068,13 +1058,10 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::OpenParentheses)?;
-		Self::from_reader_sub_open_parenthesis(reader, state, options, start)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = reader.expect_next(TSXToken::OpenParentheses)?;
+		Self::from_reader_sub_open_parenthesis(reader, state, options, start)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -1106,12 +1093,9 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 
 impl TypeAnnotationFunctionParameters {
 	pub(crate) fn from_reader_sub_open_parenthesis(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self> {
-		let mut parameters = Vec::new();
+		let _existing = r#"let mut parameters = Vec::new();
 		let mut rest_parameter = None;
 		while !matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
 			while reader.peek().map_or(false, |Token(ty, _)| ty.is_comment()) {
@@ -1192,7 +1176,8 @@ impl TypeAnnotationFunctionParameters {
 			position: start.union(end),
 			parameters,
 			rest_parameter,
-		})
+		})"#;
+		todo!();
 	}
 }
 
@@ -1225,12 +1210,8 @@ impl ASTNode for TupleLiteralElement {
 		self.2
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		let is_spread = reader.conditional_next(|token| matches!(token, TSXToken::Spread));
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let is_spread = reader.conditional_next(|token| matches!(token, TSXToken::Spread));
 
 		let annotation_with_binder = AnnotationWithBinder::from_reader(reader, state, options)?;
 
@@ -1247,7 +1228,8 @@ impl ASTNode for TupleLiteralElement {
 			(TupleElementKind::Standard, annotation_with_binder.get_position())
 		};
 
-		Ok(Self(kind, annotation_with_binder, position))
+		Ok(Self(kind, annotation_with_binder, position))"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

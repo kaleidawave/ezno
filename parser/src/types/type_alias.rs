@@ -17,12 +17,8 @@ pub struct TypeAlias {
 }
 
 impl ASTNode for TypeAlias {
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> crate::ParseResult<Self> {
-		let start = state.expect_keyword(reader, crate::TSXKeyword::Type)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+		let _existing = r#"let start = state.expect_keyword(reader, crate::TSXKeyword::Type)?;
 		let name = StatementPosition::from_reader(reader, state, options)?;
 		let parameters = reader
 			.conditional_next(|token| *token == TSXToken::OpenChevron)
@@ -37,7 +33,8 @@ impl ASTNode for TypeAlias {
 		let references = TypeAnnotation::from_reader(reader, state, options)?;
 		let position = start.union(references.get_position());
 
-		Ok(Self { name, parameters, references, position })
+		Ok(Self { name, parameters, references, position })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

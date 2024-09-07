@@ -34,13 +34,10 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> ASTNode
 	for ClassDeclaration<U>
 {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::Class)?;
-		Self::from_reader_sub_class_keyword(reader, state, options, start)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Class)?;
+		Self::from_reader_sub_class_keyword(reader, state, options, start)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -59,12 +56,9 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 
 impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 	pub(crate) fn from_reader_sub_class_keyword(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self> {
-		let name = U::from_reader(reader, state, options)?;
+		let _existing = r#"let name = U::from_reader(reader, state, options)?;
 
 		if let Some(VariableIdentifier::Standard(name, pos)) = name.as_option_variable_identifier()
 		{
@@ -134,7 +128,8 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 		}
 		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 
-		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })
+		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })"#;
+		todo!();
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(

@@ -127,12 +127,8 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		*self.get()
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		match reader.next().ok_or_else(parse_lexing_error)? {
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"match reader.next().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::StringLiteral(content, quoted), start) => {
 				let position = start.with_length(content.len() + 2);
 				Ok(Self::StringLiteral(content, quoted, position))
@@ -155,7 +151,8 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 					Ok(Self::Identifier(name, position, private))
 				}
 			}
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

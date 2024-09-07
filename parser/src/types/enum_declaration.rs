@@ -20,12 +20,8 @@ impl ASTNode for EnumDeclaration {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let const_pos = reader
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let _existing = r#"let const_pos = reader
 			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Const)))
 			.map(|Token(_, pos)| pos);
 
@@ -51,7 +47,8 @@ impl ASTNode for EnumDeclaration {
 			position: const_pos.unwrap_or(enum_pos).union(end),
 			name,
 			members,
-		})
+		})"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -99,12 +96,8 @@ impl ASTNode for EnumMember {
 		}
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let (name, start_pos) =
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let _existing = r#"let (name, start_pos) =
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum variant")?;
 		match reader.peek() {
 			Some(Token(TSXToken::Assign, _)) => {
@@ -117,7 +110,8 @@ impl ASTNode for EnumMember {
 				})
 			}
 			_ => Ok(EnumMember::Variant { name, value: None, position: start_pos }),
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

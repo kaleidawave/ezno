@@ -39,12 +39,8 @@ pub struct UnconditionalElseStatement {
 }
 
 impl ASTNode for IfStatement {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::If)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::If)?;
 
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
@@ -80,7 +76,8 @@ impl ASTNode for IfStatement {
 		} else {
 			inner.get_position()
 		});
-		Ok(IfStatement { condition, inner, else_conditions, trailing_else, position })
+		Ok(IfStatement { condition, inner, else_conditions, trailing_else, position })"#;
+		todo!();
 	}
 
 	fn get_position(&self) -> Span {
@@ -125,13 +122,10 @@ impl ASTNode for IfStatement {
 }
 
 impl ASTNode for ConditionalElseStatement {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let else_start = state.expect_keyword(reader, TSXKeyword::Else)?;
-		Self::from_reader_sub_without_else(reader, state, options, else_start)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let else_start = state.expect_keyword(reader, TSXKeyword::Else)?;
+		Self::from_reader_sub_without_else(reader, state, options, else_start)"#;
+		todo!();
 	}
 
 	fn get_position(&self) -> Span {
@@ -155,13 +149,8 @@ impl ASTNode for ConditionalElseStatement {
 }
 
 impl ConditionalElseStatement {
-	fn from_reader_sub_without_else(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		else_position: TokenStart,
-	) -> ParseResult<Self> {
-		let _ = state.expect_keyword(reader, TSXKeyword::If)?;
+	fn from_reader_sub_without_else(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let _ = state.expect_keyword(reader, TSXKeyword::If)?;
 		reader.expect_next(TSXToken::OpenParentheses)?;
 		let condition = MultipleExpression::from_reader(reader, state, options)?;
 		reader.expect_next(TSXToken::CloseParentheses)?;
@@ -170,18 +159,16 @@ impl ConditionalElseStatement {
 			condition,
 			position: else_position.union(statements.get_position()),
 			inner: statements,
-		})
+		})"#;
+		todo!();
 	}
 }
 
 impl ASTNode for UnconditionalElseStatement {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let else_position = state.expect_keyword(reader, TSXKeyword::Else)?;
-		Self::from_reader_sub_without_else(reader, state, options, else_position)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let else_position = state.expect_keyword(reader, TSXKeyword::Else)?;
+		Self::from_reader_sub_without_else(reader, state, options, else_position)"#;
+		todo!();
 	}
 
 	fn get_position(&self) -> Span {
@@ -204,13 +191,9 @@ impl ASTNode for UnconditionalElseStatement {
 }
 
 impl UnconditionalElseStatement {
-	fn from_reader_sub_without_else(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		else_position: TokenStart,
-	) -> ParseResult<Self> {
-		let statements = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		Ok(Self { position: else_position.union(statements.get_position()), inner: statements })
+	fn from_reader_sub_without_else(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let statements = BlockOrSingleStatement::from_reader(reader, state, options)?;
+		Ok(Self { position: else_position.union(statements.get_position()), inner: statements })"#;
+		todo!();
 	}
 }

@@ -84,12 +84,8 @@ impl ASTNode for Statement {
 		*get_field_by_type::GetFieldByType::get(self)
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		// Labeled statements
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"// Labeled statements
 		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
 			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
 			let _colon = reader.next().unwrap();
@@ -210,7 +206,8 @@ impl ASTNode for Statement {
 				let expr = MultipleExpression::from_reader(reader, state, options)?;
 				Ok(Statement::Expression(expr))
 			}
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -337,12 +334,8 @@ impl ASTNode for VarVariableStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let Token(_, start) = reader.next().unwrap();
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let Token(_, start) = reader.next().unwrap();
 		let mut declarations = Vec::new();
 		loop {
 			let value =
@@ -374,7 +367,8 @@ impl ASTNode for VarVariableStatement {
 			}
 		};
 
-		Ok(VarVariableStatement { declarations, position })
+		Ok(VarVariableStatement { declarations, position })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

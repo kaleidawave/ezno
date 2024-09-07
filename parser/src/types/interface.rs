@@ -36,12 +36,8 @@ pub enum Optionality {
 }
 
 impl ASTNode for InterfaceDeclaration {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::Interface)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Interface)?;
 
 		#[cfg(feature = "extras")]
 		let is_nominal = reader
@@ -98,7 +94,8 @@ impl ASTNode for InterfaceDeclaration {
 			extends,
 			members,
 			position,
-		})
+		})"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -219,12 +216,8 @@ pub enum InterfaceMember {
 
 #[allow(clippy::similar_names)]
 impl ASTNode for InterfaceMember {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
 
 		// This match will early return if not a method
 		let token = &reader.peek().ok_or_else(parse_lexing_error)?.0;
@@ -610,7 +603,8 @@ impl ASTNode for InterfaceMember {
 					),
 				}
 			}
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -754,24 +748,25 @@ pub(crate) fn parse_interface_members(
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
 ) -> ParseResult<Vec<WithComment<Decorated<InterfaceMember>>>> {
-	let mut members = Vec::new();
-	loop {
-		if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
-			break;
-		}
-		let decorated_member = WithComment::from_reader(reader, state, options)?;
-		// Semi colons and commas are optional here. Should expect_semi_colon
-		if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-			reader.next();
-		} else {
-			let _ = crate::expect_semi_colon(
-				reader,
-				&state.line_starts,
-				decorated_member.get_position().end,
-				options,
-			)?;
-		}
-		members.push(decorated_member);
-	}
-	Ok(members)
+	todo!()
+	// let mut members = Vec::new();
+	// loop {
+	// 	if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
+	// 		break;
+	// 	}
+	// 	let decorated_member = WithComment::from_reader(reader, state, options)?;
+	// 	// Semi colons and commas are optional here. Should expect_semi_colon
+	// 	if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
+	// 		reader.next();
+	// 	} else {
+	// 		let _ = crate::expect_semi_colon(
+	// 			reader,
+	// 			&state.line_starts,
+	// 			decorated_member.get_position().end,
+	// 			options,
+	// 		)?;
+	// 	}
+	// 	members.push(decorated_member);
+	// }
+	// Ok(members)
 }

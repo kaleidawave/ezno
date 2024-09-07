@@ -41,18 +41,19 @@ impl DeclarationExpression for Option<Expression> {
 		options: &ParseOptions,
 		// expect_value: bool,
 	) -> ParseResult<Self> {
-		if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
-			Expression::from_reader_with_precedence(
-				reader,
-				state,
-				options,
-				COMMA_PRECEDENCE,
-				Some(start),
-			)
-			.map(Some)
-		} else {
-			Ok(None)
-		}
+		todo!()
+		// if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
+		// 	Expression::from_reader_with_precedence(
+		// 		reader,
+		// 		state,
+		// 		options,
+		// 		COMMA_PRECEDENCE,
+		// 		Some(start),
+		// 	)
+		// 	.map(Some)
+		// } else {
+		// 	Ok(None)
+		// }
 	}
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
@@ -86,14 +87,15 @@ impl DeclarationExpression for crate::Expression {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Assign)?;
-		Expression::from_reader_with_precedence(
-			reader,
-			state,
-			options,
-			COMMA_PRECEDENCE,
-			Some(start),
-		)
+		todo!()
+		// let start = reader.expect_next(TSXToken::Assign)?;
+		// Expression::from_reader_with_precedence(
+		// 	reader,
+		// 	state,
+		// 	options,
+		// 	COMMA_PRECEDENCE,
+		// 	Some(start),
+		// )
 	}
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
@@ -132,12 +134,8 @@ pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 }
 
 impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem<TExpr> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
 		let type_annotation = if reader
 			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
 			.is_some()
@@ -155,7 +153,8 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 				.unwrap_or(name.get_position()),
 		);
 
-		Ok(Self { name, type_annotation, expression, position })
+		Ok(Self { name, type_annotation, expression, position })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -229,12 +228,8 @@ impl VariableDeclarationKeyword {
 }
 
 impl ASTNode for VariableDeclaration {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let token = reader.next().ok_or_else(parse_lexing_error)?;
 		let start = token.1;
 		let kind = VariableDeclarationKeyword::from_token(token)?;
 		Ok(match kind {
@@ -321,7 +316,8 @@ impl ASTNode for VariableDeclaration {
 
 				VariableDeclaration::ConstDeclaration { position, declarations }
 			}
-		})
+		})"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

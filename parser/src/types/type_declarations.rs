@@ -23,12 +23,8 @@ impl ListItem for TypeParameter {
 }
 
 impl ASTNode for TypeParameter {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		#[cfg(feature = "full-typescript")]
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"#[cfg(feature = "full-typescript")]
 		let is_constant = reader
 			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Const)))
 			.is_some();
@@ -62,7 +58,8 @@ impl ASTNode for TypeParameter {
 			position,
 			#[cfg(feature = "full-typescript")]
 			is_constant,
-		})
+		})"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

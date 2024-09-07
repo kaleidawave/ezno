@@ -222,7 +222,10 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
-	pub fn is_one_of_keyword_advance<'b>(&mut self, keywords: &'static [&'b str]) -> Option<&'b str> {
+	pub fn is_one_of_keyword_advance<'b>(
+		&mut self,
+		keywords: &'static [&'b str],
+	) -> Option<&'b str> {
 		let current = self.get_current();
 		for item in keywords {
 			if current.starts_with(item)
@@ -352,11 +355,16 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub fn starts_with_number(&self) -> bool {
-		self.get_current().as_bytes().first().is_some_and(|b| (b'0'..=b'9').contains(&b) || *b == b'.')
+		self.get_current()
+			.as_bytes()
+			.first()
+			.is_some_and(|b| (b'0'..=b'9').contains(&b) || *b == b'.')
 	}
 
 	// TODO errors + some parts are weird
-	pub fn parse_number_literal(&mut self) -> Result<(crate::number::NumberRepresentation, u32), ()> {
+	pub fn parse_number_literal(
+		&mut self,
+	) -> Result<(crate::number::NumberRepresentation, u32), ()> {
 		enum NumberLiteralType {
 			BinaryLiteral,
 			/// strict mode done at the parse level
@@ -370,7 +378,7 @@ impl<'a> Lexer<'a> {
 			BigInt,
 			Exponent,
 		}
-		
+
 		let current = self.get_current();
 		let mut chars = current.char_indices();
 
@@ -381,9 +389,7 @@ impl<'a> Lexer<'a> {
 			}
 			Some('0'..='9') => NumberLiteralType::Decimal { fractional: false },
 			Some('.') => NumberLiteralType::Decimal { fractional: true },
-			Some(_) | None => {
-				return Err(())
-			}
+			Some(_) | None => return Err(()),
 		};
 
 		for (idx, chr) in chars {
@@ -416,13 +422,13 @@ impl<'a> Lexer<'a> {
 					NumberLiteralType::BinaryLiteral => {
 						if !matches!(chr, '0' | '1') {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(())
+							return Err(());
 						}
 					}
 					NumberLiteralType::OctalLiteral => {
 						if !matches!(chr, '0'..='7') {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(())
+							return Err(());
 						}
 					}
 					// Handling for 'e' & 'E'
@@ -433,13 +439,13 @@ impl<'a> Lexer<'a> {
 							state = NumberLiteralType::Exponent;
 						} else if !chr.is_ascii_digit() {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(())
+							return Err(());
 						}
 					}
 					NumberLiteralType::Exponent => {
 						if !chr.is_ascii_digit() {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(())
+							return Err(());
 						}
 					}
 					// all above allowed
@@ -450,13 +456,13 @@ impl<'a> Lexer<'a> {
 					if let NumberLiteralType::Decimal { ref mut fractional } = state {
 						if current[..idx].ends_with(['_']) {
 							// (LexingErrors::InvalidUnderscore)
-							return Err(())
+							return Err(());
 						} else {
 							*fractional = true;
 						}
 					} else {
 						// (LexingErrors::NumberLiteralCannotHaveDecimalPoint);
-						return Err(())
+						return Err(());
 					}
 				}
 				'_' => {
@@ -478,13 +484,10 @@ impl<'a> Lexer<'a> {
 					};
 					if invalid {
 						// (LexingErrors::InvalidUnderscore);
-						return Err(())
+						return Err(());
 					}
 				}
-				'n' if matches!(
-					state,
-					NumberLiteralType::Decimal { fractional: false }
-				) => {
+				'n' if matches!(state, NumberLiteralType::Decimal { fractional: false }) => {
 					state = NumberLiteralType::BigInt;
 				}
 				// `10e-5` is a valid literal
@@ -500,7 +503,7 @@ impl<'a> Lexer<'a> {
 					return Ok((number, idx as u32));
 					// if is_number_delimiter(chr) {
 					// 	// Note not = as don't want to include chr
-					
+
 					// 	if num_slice.trim_end() == "."
 					// 		|| num_slice.ends_with(['x', 'X', 'o', 'O', '_', '-'])
 					// 		|| (!matches!(state, NumberLiteralType::HexadecimalLiteral)
@@ -549,7 +552,7 @@ impl<'a> Lexer<'a> {
 				if paren_count > 0 {
 					paren_count -= 1;
 				} else {
-					return &current[idx..]
+					return &current[idx..];
 				}
 			}
 		}

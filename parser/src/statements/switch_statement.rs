@@ -30,12 +30,8 @@ impl ASTNode for SwitchStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::Switch)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Switch)?;
 
 		reader.expect_next(crate::TSXToken::OpenParentheses)?;
 		let case = MultipleExpression::from_reader(reader, state, options)?;
@@ -104,7 +100,8 @@ impl ASTNode for SwitchStatement {
 				branches.push(SwitchBranch::Default(items));
 			}
 		}
-		Ok(Self { case, branches, position: start.union(close_brace_pos) })
+		Ok(Self { case, branches, position: start.union(close_brace_pos) })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

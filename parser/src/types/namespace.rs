@@ -15,19 +15,16 @@ pub struct Namespace {
 }
 
 impl crate::ASTNode for Namespace {
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> crate::ParseResult<Self> {
-		let start = reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Namespace))?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+		let _existing = r#"let start = reader.expect_next(crate::TSXToken::Keyword(crate::TSXKeyword::Namespace))?;
 		let (name, _) = crate::tokens::token_as_identifier(
 			reader.next().ok_or_else(crate::errors::parse_lexing_error)?,
 			"namespace name",
 		)?;
 		let inner = Block::from_reader(reader, state, options)?;
 		let position = start.union(inner.get_position());
-		Ok(Self { is_declare: false, name, inner, position })
+		Ok(Self { is_declare: false, name, inner, position })"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

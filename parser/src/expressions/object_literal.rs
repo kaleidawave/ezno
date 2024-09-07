@@ -101,12 +101,13 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		// TODO not great
-		let start = reader.peek().unwrap().1;
-		Ok((
-			(Some(start), MethodHeader::from_reader(reader)),
-			WithComment::from_reader(reader, state, options)?,
-		))
+		todo!()
+		// // TODO not great
+		// let start = reader.peek().unwrap().1;
+		// Ok((
+		// 	(Some(start), MethodHeader::from_reader(reader)),
+		// 	WithComment::from_reader(reader, state, options)?,
+		// ))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -156,13 +157,10 @@ impl ASTNode for ObjectLiteral {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::OpenBrace)?;
-		Self::from_reader_sub_open_curly(reader, state, options, start)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = reader.expect_next(TSXToken::OpenBrace)?;
+		Self::from_reader_sub_open_curly(reader, state, options, start)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -176,13 +174,8 @@ impl ASTNode for ObjectLiteral {
 }
 
 impl ObjectLiteral {
-	pub(crate) fn from_reader_sub_open_curly(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let mut members: Vec<ObjectLiteralMember> = Vec::new();
+	pub(crate) fn from_reader_sub_open_curly(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let mut members: Vec<ObjectLiteralMember> = Vec::new();
 		loop {
 			if matches!(reader.peek(), Some(Token(TSXToken::CloseBrace, _))) {
 				break;
@@ -197,18 +190,15 @@ impl ObjectLiteral {
 			}
 		}
 		let end = reader.expect_next_get_end(TSXToken::CloseBrace)?;
-		Ok(ObjectLiteral { members, position: start.union(end) })
+		Ok(ObjectLiteral { members, position: start.union(end) })"#;
+		todo!();
 	}
 }
 
 impl ASTNode for ObjectLiteralMember {
 	#[allow(clippy::similar_names)]
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if reader.peek().map_or(false, |t| t.0.is_comment()) {
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"if reader.peek().map_or(false, |t| t.0.is_comment()) {
 			let (comment, is_multiline, span) =
 				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
 			return Ok(Self::Comment(comment, is_multiline, span));
@@ -267,7 +257,8 @@ impl ASTNode for ObjectLiteralMember {
 					Ok(Self::Property { assignment, key, value, position })
 				}
 			}
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

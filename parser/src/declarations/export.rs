@@ -65,12 +65,8 @@ impl ASTNode for ExportDeclaration {
 		*self.get()
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::Export)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Export)?;
 
 		match reader.peek().ok_or_else(parse_lexing_error)? {
 			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
@@ -278,7 +274,8 @@ impl ASTNode for ExportDeclaration {
 					TSXToken::OpenBrace,
 				],
 			),
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

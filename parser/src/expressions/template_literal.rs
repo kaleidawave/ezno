@@ -21,13 +21,10 @@ impl ASTNode for TemplateLiteral {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::TemplateLiteralStart)?;
-		Self::from_reader_sub_start_with_tag(reader, state, options, None, start)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = reader.expect_next(TSXToken::TemplateLiteralStart)?;
+		Self::from_reader_sub_start_with_tag(reader, state, options, None, start)"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -54,13 +51,9 @@ impl ASTNode for TemplateLiteral {
 
 impl TemplateLiteral {
 	pub(crate) fn from_reader_sub_start_with_tag(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		tag: Option<Box<Expression>>,
-		start: TokenStart,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self> {
-		let mut parts = Vec::new();
+		let _existing = r#"let mut parts = Vec::new();
 		let mut last = String::new();
 		loop {
 			match reader.next().ok_or_else(parse_lexing_error)? {
@@ -78,6 +71,7 @@ impl TemplateLiteral {
 				Token(TSXToken::EOS, _) => return Err(parse_lexing_error()),
 				t => unreachable!("Token {:?}", t),
 			}
-		}
+		}"#;
+		todo!();
 	}
 }

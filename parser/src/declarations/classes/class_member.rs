@@ -69,12 +69,8 @@ impl ASTNode for ClassMember {
 	}
 
 	#[allow(clippy::similar_names)]
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if reader.peek().map_or(false, |t| t.0.is_comment()) {
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"if reader.peek().map_or(false, |t| t.0.is_comment()) {
 			let (comment, is_multiline, span) =
 				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
 			return Ok(Self::Comment(comment, is_multiline, span));
@@ -169,7 +165,8 @@ impl ASTNode for ClassMember {
 				))
 			}
 			None => Err(parse_lexing_error()),
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -249,20 +246,15 @@ impl ASTNode for ClassMember {
 }
 
 impl ClassFunction {
-	fn from_reader_with_config(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		get_set_generator: (Option<TokenStart>, MethodHeader),
-		key: WithComment<PropertyKey<PublicOrPrivate>>,
-	) -> ParseResult<Self> {
-		FunctionBase::from_reader_with_header_and_name(
+	fn from_reader_with_config(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"FunctionBase::from_reader_with_header_and_name(
 			reader,
 			state,
 			options,
 			get_set_generator,
 			key,
-		)
+		)"#;
+		todo!();
 	}
 }
 
@@ -283,11 +275,12 @@ impl FunctionBased for ClassFunctionBase {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		// TODO not great
-		let start = reader.peek().unwrap().1;
-		let header = MethodHeader::from_reader(reader);
-		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
-		Ok((((!header.is_no_modifiers()).then_some(start), header), name))
+		todo!()
+		// // TODO not great
+		// let start = reader.peek().unwrap().1;
+		// let header = MethodHeader::from_reader(reader);
+		// let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
+		// Ok((((!header.is_no_modifiers()).then_some(start), header), name))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(

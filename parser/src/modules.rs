@@ -39,12 +39,8 @@ impl ASTNode for Module {
 		self.span
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let span = Span { start: 0, source: (), end: state.length_of_source };
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let span = Span { start: 0, source: (), end: state.length_of_source };
 		let hashbang_comment = if let Some(crate::Token(TSXToken::HashBangComment(_), _)) =
 			reader.peek()
 		{
@@ -60,7 +56,8 @@ impl ASTNode for Module {
 			hashbang_comment,
 			items,
 			span,
-		})
+		})"#;
+		todo!();
 	}
 }
 

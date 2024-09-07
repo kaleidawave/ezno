@@ -22,13 +22,10 @@ impl ASTNode for DeclareVariableDeclaration {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::Declare)?;
-		Self::from_reader_sub_declare(reader, state, options, Some(start), Vec::new())
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Declare)?;
+		Self::from_reader_sub_declare(reader, state, options, Some(start), Vec::new())"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -52,14 +49,8 @@ impl ASTNode for DeclareVariableDeclaration {
 }
 
 impl DeclareVariableDeclaration {
-	pub fn from_reader_sub_declare(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: Option<TokenStart>,
-		decorators: Vec<Decorator>,
-	) -> ParseResult<Self> {
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
+	pub fn from_reader_sub_declare(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"let token = reader.next().ok_or_else(parse_lexing_error)?;
 		let start = start.unwrap_or(token.1);
 		let keyword = VariableKeyword::from_reader(token)?;
 		let mut declarations = Vec::new();
@@ -75,6 +66,7 @@ impl DeclareVariableDeclaration {
 
 		let position = start.union(declarations.last().unwrap().get_position());
 
-		Ok(DeclareVariableDeclaration { keyword, declarations, position, decorators })
+		Ok(DeclareVariableDeclaration { keyword, declarations, position, decorators })"#;
+		todo!();
 	}
 }

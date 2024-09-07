@@ -145,12 +145,9 @@ pub enum ImportLocation {
 
 impl ImportLocation {
 	pub(crate) fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-		start: Option<TokenStart>,
+		reader: &mut crate::new::Lexer,
 	) -> crate::ParseResult<(Self, source_map::End)> {
-		if let (true, Some(start), Some(Token(peek, at))) =
+		let _existing = r#"if let (true, Some(start), Some(Token(peek, at))) =
 			(options.partial_syntax, start, reader.peek())
 		{
 			let next_is_not_location_like = peek.is_statement_or_declaration_start()
@@ -179,7 +176,8 @@ impl ImportLocation {
 				ParseErrors::ExpectedStringLiteral { found: token.0 },
 				token.1.with_length(0),
 			))
-		}
+		}"#;
+		todo!();
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
@@ -205,12 +203,8 @@ impl ImportLocation {
 }
 
 impl crate::ASTNode for Declaration {
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> crate::ParseResult<Self> {
-		// TODO assert decorators are used. If they exist but item is not `Decorated`
+	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+		let _existing = r#"// TODO assert decorators are used. If they exist but item is not `Decorated`
 		// then need to throw a parse error
 		let decorators = decorators::decorators_from_reader(reader, state, options)?;
 
@@ -345,7 +339,8 @@ impl crate::ASTNode for Declaration {
 					TSXToken::Keyword(TSXKeyword::Generator),
 				],
 			),
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -415,12 +410,8 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 	}
 
 	// TODO also single line comments here
-	fn from_reader(
-		reader: &mut impl crate::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> crate::ParseResult<Self> {
-		let just_type =
+	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+		let _existing = r#"let just_type =
 			reader.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Type))).is_some();
 
 		if U::PREFIX {
@@ -456,7 +447,8 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 				None
 			};
 			Ok(Self { just_type, name, alias, position, _marker: Default::default() })
-		}
+		}"#;
+		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -543,12 +535,8 @@ pub enum ImportExportName {
 }
 
 impl ImportExportName {
-	pub(crate) fn from_reader(
-		reader: &mut impl crate::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> crate::ParseResult<(Self, Span)> {
-		if let Some(Token(TSXToken::Comma, pos)) = reader.peek() {
+	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<(Self, Span)> {
+		let _existing = r#"if let Some(Token(TSXToken::Comma, pos)) = reader.peek() {
 			let marker = state.new_partial_point_marker(*pos);
 			return Ok((ImportExportName::Marker(marker), pos.union(source_map::End(pos.0))));
 		}
@@ -564,7 +552,8 @@ impl ImportExportName {
 			} else {
 				Ok((ImportExportName::Reference(ident), pos))
 			}
-		}
+		}"#;
+		todo!();
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
