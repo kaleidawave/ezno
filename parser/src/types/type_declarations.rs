@@ -1,8 +1,4 @@
-use crate::{
-	derive_ASTNode, errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, ListItem,
-	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
-};
-use tokenizer_lib::TokenReader;
+use crate::{derive_ASTNode, ASTNode, ListItem, ParseOptions, ParseResult, Span, TypeAnnotation};
 
 /// Represents a generic parameter. Can have default or constraint to extend a type or a key of a type
 ///

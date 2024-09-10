@@ -13,12 +13,11 @@ pub use super::types::{
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use get_field_by_type::GetFieldByType;
 use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenStart, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, extensions::decorators, Decorated, Marker,
-	ParseError, ParseErrors, ParseOptions, Quoted, StatementPosition, TSXKeyword, TSXToken,
+	derive_ASTNode, extensions::decorators, Decorated, Marker, ParseError, ParseErrors,
+	ParseOptions, Quoted, StatementPosition,
 };
 
 pub use self::{

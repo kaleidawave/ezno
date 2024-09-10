@@ -3,20 +3,15 @@ use crate::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		FunctionArgument,
 	},
-	derive_ASTNode, ParseErrors, PropertyKey, PropertyReference, SpreadDestructuringField,
-	TSXToken,
+	derive_ASTNode, ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
+	ParseError, ParseErrors, ParseResult, PropertyKey, PropertyReference, SpreadDestructuringField,
+	WithComment,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
-
-use crate::{
-	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField, ParseError,
-	ParseResult, WithComment,
-};
 
 use super::MultipleExpression;
 

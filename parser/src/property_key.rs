@@ -1,24 +1,20 @@
 use crate::{
 	derive_ASTNode,
 	visiting::{Chain, VisitOptions, Visitable},
-	Quoted, TSXToken,
+	Quoted,
 };
 use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use std::fmt::Debug;
 use temporary_annex::Annex;
-use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 use crate::{
-	errors::parse_lexing_error, number::NumberRepresentation, tokens::token_as_identifier, ASTNode,
-	Expression, ParseOptions, ParseResult,
+	errors::parse_lexing_error, number::NumberRepresentation, ASTNode, Expression, ParseOptions,
+	ParseResult,
 };
 
 pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {
-	fn parse_identifier(
-		first: Token<TSXToken, crate::TokenStart>,
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> ParseResult<(String, Span, Self)>;
+	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)>;
 
 	fn is_private(&self) -> bool;
 
@@ -37,12 +33,10 @@ pub struct AlwaysPublic;
 // ";
 
 impl PropertyKeyKind for AlwaysPublic {
-	fn parse_identifier(
-		first: Token<TSXToken, crate::TokenStart>,
-		_reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> ParseResult<(String, Span, Self)> {
-		token_as_identifier(first, "property key")
-			.map(|(name, position)| (name, position, Self::new_public()))
+	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
+		let start = reader.get_start();
+		let name = reader.parse_identifier().expect("TODO");
+		Ok((name.to_owned(), start.with_length(name.len()), Self::new_public()))
 	}
 
 	fn is_private(&self) -> bool {
@@ -68,16 +62,14 @@ pub enum PublicOrPrivate {
 // ";
 
 impl PropertyKeyKind for PublicOrPrivate {
-	fn parse_identifier(
-		first: Token<TSXToken, crate::TokenStart>,
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	) -> ParseResult<(String, Span, Self)> {
-		if matches!(first.0, TSXToken::HashTag) {
-			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "property key")
-				.map(|(name, position)| (name, position, Self::Private))
+	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
+		let start = reader.get_start();
+		if reader.is_operator_advance("#") {
+			let name = reader.parse_identifier().expect("TODO");
+			Ok((name.to_owned(), start.with_length(name.len()), Self::Private))
 		} else {
-			token_as_identifier(first, "property key")
-				.map(|(name, position)| (name, position, Self::Public))
+			let name = reader.parse_identifier().expect("TODO");
+			Ok((name.to_owned(), start.with_length(name.len()), Self::Public))
 		}
 	}
 
@@ -128,31 +120,23 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"match reader.next().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::StringLiteral(content, quoted), start) => {
-				let position = start.with_length(content.len() + 2);
-				Ok(Self::StringLiteral(content, quoted, position))
-			}
-			Token(TSXToken::NumberLiteral(value), start) => {
-				let position = start.with_length(value.len());
-				Ok(Self::NumberLiteral(value.parse().unwrap(), position))
-			}
-			Token(TSXToken::OpenBracket, start) => {
-				let expression = Expression::from_reader(reader, state, options)?;
-				let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
-				Ok(Self::Computed(Box::new(expression), start.union(end)))
-			}
-			token => {
-				if token.0.is_comment() {
-					// TODO could add marker?
-					Self::from_reader(reader, state, options)
-				} else {
-					let (name, position, private) = U::parse_identifier(token, reader)?;
-					Ok(Self::Identifier(name, position, private))
-				}
-			}
-		}"#;
-		todo!();
+		let start = reader.get_start();
+		if reader.starts_with('"') || reader.starts_with('\'') {
+			let (content, quoted) = reader.parse_string_literal().expect("TODO");
+			let position = start.with_length(content.len() + 2);
+			Ok(Self::StringLiteral(content.to_owned(), quoted, position))
+		} else if reader.starts_with_number() {
+			let (value, length) = reader.parse_number_literal().expect("TODO");
+			let position = start.with_length(length as usize);
+			Ok(Self::NumberLiteral(value, position))
+		} else if reader.is_operator_advance("[") {
+			let expression = Expression::from_reader(reader)?;
+			let end = reader.expect(']')?;
+			Ok(Self::Computed(Box::new(expression), start.union(end)))
+		} else {
+			let (name, position, private) = U::parse_identifier(reader)?;
+			Ok(Self::Identifier(name, position, private))
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

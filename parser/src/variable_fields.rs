@@ -4,19 +4,16 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode,
-	errors::parse_lexing_error,
-	parse_bracketed,
+	derive_ASTNode, parse_bracketed,
 	property_key::PropertyKey,
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
 	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseOptions, ParseResult,
-	Span, TSXToken, Token, VisitOptions, Visitable, WithComment,
+	Span, VisitOptions, Visitable, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
-use tokenizer_lib::TokenReader;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, PartialEqExtras, Clone, GetFieldByType)]
@@ -100,22 +97,17 @@ pub enum VariableField {
 
 impl ASTNode for VariableField {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"match reader.peek().ok_or_else(parse_lexing_error)?.0 {
-			TSXToken::OpenBrace => {
-				let Token(_, start_pos) = reader.next().unwrap();
-				let (members, spread, last_pos) =
-					parse_bracketed(reader, state, options, None, TSXToken::CloseBrace)?;
-				Ok(Self::Object { members, spread, position: start_pos.union(last_pos) })
-			}
-			TSXToken::OpenBracket => {
-				let Token(_, start_pos) = reader.next().unwrap();
-				let (members, spread, end) =
-					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
-				Ok(Self::Array { members, spread, position: start_pos.union(end) })
-			}
-			_ => Ok(Self::Name(VariableIdentifier::from_reader(reader, state, options)?)),
-		}"#;
-		todo!();
+		if reader.is_operator_advance("{") {
+			let start = reader.get_start();
+			let (members, spread) = parse_bracketed(reader, "}")?;
+			Ok(Self::Object { members, spread, position: start.union(reader.get_end()) })
+		} else if reader.is_operator_advance("[") {
+			let start = reader.get_start();
+			let (members, spread) = parse_bracketed(reader, "]")?;
+			Ok(Self::Array { members, spread, position: start.union(reader.get_end()) })
+		} else {
+			Ok(Self::Name(VariableIdentifier::from_reader(reader)?))
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -238,7 +230,7 @@ pub struct SpreadDestructuringField<T: DestructuringFieldInto>(pub Box<T>, pub S
 impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField<T>> {
 	const EMPTY: Option<Self> = Some(WithComment::None(ArrayDestructuringField::None));
 
-	const LAST_PREFIX: Option<TSXToken> = Some(TSXToken::Spread);
+	const LAST_PREFIX: Option<&'static str> = Some("...");
 
 	type LAST = SpreadDestructuringField<T>;
 
@@ -334,7 +326,7 @@ pub enum ObjectDestructuringField<T: DestructuringFieldInto> {
 }
 
 impl<T: DestructuringFieldInto> ListItem for WithComment<ObjectDestructuringField<T>> {
-	const LAST_PREFIX: Option<TSXToken> = Some(TSXToken::Spread);
+	const LAST_PREFIX: Option<&'static str> = Some("...");
 
 	type LAST = SpreadDestructuringField<T>;
 
@@ -622,19 +614,19 @@ impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignm
 	}
 }
 
-#[cfg(not(feature = "extras"))]
-fn is_destructuring_into_marker(t: &TSXToken, _options: &ParseOptions) -> bool {
-	matches!(t, TSXToken::Colon)
-}
+// #[cfg(not(feature = "extras"))]
+// fn is_destructuring_into_marker(t: &TSXToken, _options: &ParseOptions) -> bool {
+// 	matches!(t, TSXToken::Colon)
+// }
 
-#[cfg(feature = "extras")]
-fn is_destructuring_into_marker(t: &TSXToken, options: &ParseOptions) -> bool {
-	if options.destructuring_type_annotation {
-		matches!(t, TSXToken::Keyword(crate::TSXKeyword::As))
-	} else {
-		matches!(t, TSXToken::Colon)
-	}
-}
+// #[cfg(feature = "extras")]
+// fn is_destructuring_into_marker(t: &TSXToken, options: &ParseOptions) -> bool {
+// 	if options.destructuring_type_annotation {
+// 		matches!(t, TSXToken::Keyword(crate::TSXKeyword::As))
+// 	} else {
+// 		matches!(t, TSXToken::Colon)
+// 	}
+// }
 
 #[cfg(test)]
 mod tests {

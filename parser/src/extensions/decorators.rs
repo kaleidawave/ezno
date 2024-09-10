@@ -1,16 +1,9 @@
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{
-	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
-	Token, TokenReader,
-};
 use visitable_derive::Visitable;
 
-use crate::{
-	derive_ASTNode, tokens::token_as_identifier, ASTNode, Expression, ParseOptions, ParseResult,
-	TSXToken, Visitable,
-};
+use crate::{derive_ASTNode, ASTNode, Expression, ParseOptions, ParseResult, Visitable};
 
 #[derive(Debug, PartialEq, Clone, Visitable)]
 #[apply(derive_ASTNode)]
@@ -29,7 +22,7 @@ impl ASTNode for Decorator {
 		let start = reader.get_start();
 		reader.expect('@')?;
 		let mut name = vec![reader.parse_identifier().unwrap().to_owned()];
-		while reader.is_and_advance('.') {
+		while reader.is_operator_advance(".") {
 			name.push(reader.parse_identifier().unwrap().to_owned());
 		}
 

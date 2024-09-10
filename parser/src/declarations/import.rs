@@ -1,13 +1,10 @@
-use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
-
+use super::{ImportExportPart, ImportLocation};
 use crate::{
 	ast::object_literal::ObjectLiteral, derive_ASTNode, parse_bracketed, ASTNode, ParseOptions,
-	ParseResult, ParsingState, TSXKeyword, TSXToken, VariableIdentifier,
+	ParseResult, ParsingState, VariableIdentifier,
 };
+use source_map::Span;
 use visitable_derive::Visitable;
-
-use super::{ImportExportPart, ImportLocation};
 
 /// Side effects is represented under the Parts variant where the vector is empty
 #[derive(Debug, Clone, PartialEq, Visitable)]
@@ -160,7 +157,7 @@ impl ImportDeclaration {
 }
 
 pub(crate) struct PartsResult {
-	pub start: TokenStart,
+	pub start: source_map::Start,
 	#[cfg(feature = "extras")]
 	pub is_deferred: bool,
 	pub is_type_annotation_import_only: bool,
@@ -170,11 +167,9 @@ pub(crate) struct PartsResult {
 }
 
 /// Covers import and exports
-pub(crate) fn parse_import_specifier_and_parts(
-	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-	state: &mut ParsingState,
-	options: &ParseOptions,
-) -> Result<PartsResult, crate::ParseError> {
+pub(crate) fn import_specifier_and_parts_from_reader(
+	reader: &mut crate::new::Lexer,
+) -> ParseResult<PartsResult> {
 	todo!()
 	// let start = state.expect_keyword(reader, TSXKeyword::Import)?;
 

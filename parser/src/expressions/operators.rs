@@ -5,7 +5,7 @@
 
 use std::convert::TryFrom;
 
-use crate::{derive_ASTNode, TSXKeyword, TSXToken};
+use crate::derive_ASTNode;
 
 /// Comma operator is on [`crate::MultipleExpression`]
 /// 
@@ -96,7 +96,7 @@ impl AssociativityDirection {
 	}
 }
 
-pub trait Operator: for<'a> TryFrom<&'a TSXToken> {
+pub trait Operator {
 	/// String representation of operator
 	fn to_str(&self) -> &'static str;
 
@@ -329,128 +329,128 @@ impl From<BinaryAssignmentOperator> for BinaryOperator {
 	}
 }
 
-impl TryFrom<&TSXToken> for BinaryAssignmentOperator {
-	type Error = ();
+// impl TryFrom<&TSXToken> for BinaryAssignmentOperator {
+// 	type Error = ();
 
-	fn try_from(expression: &TSXToken) -> Result<Self, Self::Error> {
-		match expression {
-			TSXToken::AddAssign => Ok(BinaryAssignmentOperator::AddAssign),
-			TSXToken::SubtractAssign => Ok(BinaryAssignmentOperator::SubtractAssign),
-			TSXToken::MultiplyAssign => Ok(BinaryAssignmentOperator::MultiplyAssign),
-			TSXToken::DivideAssign => Ok(BinaryAssignmentOperator::DivideAssign),
-			TSXToken::ExponentAssign => Ok(BinaryAssignmentOperator::ExponentAssign),
-			TSXToken::LogicalAndAssign => Ok(BinaryAssignmentOperator::LogicalAndAssign),
-			TSXToken::LogicalOrAssign => Ok(BinaryAssignmentOperator::LogicalOrAssign),
-			TSXToken::BitwiseAndAssign => Ok(BinaryAssignmentOperator::BitwiseAndAssign),
-			TSXToken::BitwiseOrAssign => Ok(BinaryAssignmentOperator::BitwiseOrAssign),
-			TSXToken::BitwiseXorAssign => Ok(BinaryAssignmentOperator::BitwiseXOrAssign),
-			TSXToken::BitwiseShiftLeftAssign => {
-				Ok(BinaryAssignmentOperator::BitwiseShiftLeftAssign)
-			}
-			TSXToken::BitwiseShiftRightAssign => {
-				Ok(BinaryAssignmentOperator::BitwiseShiftRightAssign)
-			}
-			TSXToken::BitwiseShiftRightUnsignedAssign => {
-				Ok(BinaryAssignmentOperator::BitwiseShiftRightUnsigned)
-			}
-			TSXToken::NullishCoalescingAssign => {
-				Ok(BinaryAssignmentOperator::LogicalNullishAssignment)
-			}
-			_ => Err(()),
-		}
-	}
-}
+// 	fn try_from(expression: &TSXToken) -> Result<Self, Self::Error> {
+// 		match expression {
+// 			TSXToken::AddAssign => Ok(BinaryAssignmentOperator::AddAssign),
+// 			TSXToken::SubtractAssign => Ok(BinaryAssignmentOperator::SubtractAssign),
+// 			TSXToken::MultiplyAssign => Ok(BinaryAssignmentOperator::MultiplyAssign),
+// 			TSXToken::DivideAssign => Ok(BinaryAssignmentOperator::DivideAssign),
+// 			TSXToken::ExponentAssign => Ok(BinaryAssignmentOperator::ExponentAssign),
+// 			TSXToken::LogicalAndAssign => Ok(BinaryAssignmentOperator::LogicalAndAssign),
+// 			TSXToken::LogicalOrAssign => Ok(BinaryAssignmentOperator::LogicalOrAssign),
+// 			TSXToken::BitwiseAndAssign => Ok(BinaryAssignmentOperator::BitwiseAndAssign),
+// 			TSXToken::BitwiseOrAssign => Ok(BinaryAssignmentOperator::BitwiseOrAssign),
+// 			TSXToken::BitwiseXorAssign => Ok(BinaryAssignmentOperator::BitwiseXOrAssign),
+// 			TSXToken::BitwiseShiftLeftAssign => {
+// 				Ok(BinaryAssignmentOperator::BitwiseShiftLeftAssign)
+// 			}
+// 			TSXToken::BitwiseShiftRightAssign => {
+// 				Ok(BinaryAssignmentOperator::BitwiseShiftRightAssign)
+// 			}
+// 			TSXToken::BitwiseShiftRightUnsignedAssign => {
+// 				Ok(BinaryAssignmentOperator::BitwiseShiftRightUnsigned)
+// 			}
+// 			TSXToken::NullishCoalescingAssign => {
+// 				Ok(BinaryAssignmentOperator::LogicalNullishAssignment)
+// 			}
+// 			_ => Err(()),
+// 		}
+// 	}
+// }
 
-impl TryFrom<&TSXToken> for BinaryOperator {
-	type Error = ();
+// impl TryFrom<&TSXToken> for BinaryOperator {
+// 	type Error = ();
 
-	fn try_from(expression: &TSXToken) -> Result<Self, Self::Error> {
-		match expression {
-			TSXToken::Add => Ok(BinaryOperator::Add),
-			TSXToken::Subtract => Ok(BinaryOperator::Subtract),
-			TSXToken::Multiply => Ok(BinaryOperator::Multiply),
-			TSXToken::Divide => Ok(BinaryOperator::Divide),
-			TSXToken::Exponent => Ok(BinaryOperator::Exponent),
-			TSXToken::Modulo => Ok(BinaryOperator::Modulo),
-			TSXToken::Equal => Ok(BinaryOperator::Equal),
-			TSXToken::NotEqual => Ok(BinaryOperator::NotEqual),
-			TSXToken::StrictEqual => Ok(BinaryOperator::StrictEqual),
-			TSXToken::StrictNotEqual => Ok(BinaryOperator::StrictNotEqual),
-			TSXToken::LogicalOr => Ok(BinaryOperator::LogicalOr),
-			TSXToken::LogicalAnd => Ok(BinaryOperator::LogicalAnd),
-			TSXToken::OpenChevron => Ok(BinaryOperator::LessThan),
-			TSXToken::LessThanEqual => Ok(BinaryOperator::LessThanEqual),
-			TSXToken::CloseChevron => Ok(BinaryOperator::GreaterThan),
-			TSXToken::GreaterThanEqual => Ok(BinaryOperator::GreaterThanEqual),
-			TSXToken::BitwiseAnd => Ok(BinaryOperator::BitwiseAnd),
-			TSXToken::BitwiseOr => Ok(BinaryOperator::BitwiseOr),
-			TSXToken::BitwiseXOr => Ok(BinaryOperator::BitwiseXOr),
-			TSXToken::BitwiseShiftLeft => Ok(BinaryOperator::BitwiseShiftLeft),
-			TSXToken::BitwiseShiftRight => Ok(BinaryOperator::BitwiseShiftRight),
-			TSXToken::BitwiseShiftRightUnsigned => Ok(BinaryOperator::BitwiseShiftRightUnsigned),
-			TSXToken::NullishCoalescing => Ok(BinaryOperator::NullCoalescing),
-			#[cfg(feature = "extras")]
-			TSXToken::ComposeOperator => Ok(BinaryOperator::Compose),
-			#[cfg(feature = "extras")]
-			TSXToken::PipeOperator => Ok(BinaryOperator::Pipe),
-			_ => Err(()),
-		}
-	}
-}
+// 	fn try_from(expression: &TSXToken) -> Result<Self, Self::Error> {
+// 		match expression {
+// 			TSXToken::Add => Ok(BinaryOperator::Add),
+// 			TSXToken::Subtract => Ok(BinaryOperator::Subtract),
+// 			TSXToken::Multiply => Ok(BinaryOperator::Multiply),
+// 			TSXToken::Divide => Ok(BinaryOperator::Divide),
+// 			TSXToken::Exponent => Ok(BinaryOperator::Exponent),
+// 			TSXToken::Modulo => Ok(BinaryOperator::Modulo),
+// 			TSXToken::Equal => Ok(BinaryOperator::Equal),
+// 			TSXToken::NotEqual => Ok(BinaryOperator::NotEqual),
+// 			TSXToken::StrictEqual => Ok(BinaryOperator::StrictEqual),
+// 			TSXToken::StrictNotEqual => Ok(BinaryOperator::StrictNotEqual),
+// 			TSXToken::LogicalOr => Ok(BinaryOperator::LogicalOr),
+// 			TSXToken::LogicalAnd => Ok(BinaryOperator::LogicalAnd),
+// 			TSXToken::OpenChevron => Ok(BinaryOperator::LessThan),
+// 			TSXToken::LessThanEqual => Ok(BinaryOperator::LessThanEqual),
+// 			TSXToken::CloseChevron => Ok(BinaryOperator::GreaterThan),
+// 			TSXToken::GreaterThanEqual => Ok(BinaryOperator::GreaterThanEqual),
+// 			TSXToken::BitwiseAnd => Ok(BinaryOperator::BitwiseAnd),
+// 			TSXToken::BitwiseOr => Ok(BinaryOperator::BitwiseOr),
+// 			TSXToken::BitwiseXOr => Ok(BinaryOperator::BitwiseXOr),
+// 			TSXToken::BitwiseShiftLeft => Ok(BinaryOperator::BitwiseShiftLeft),
+// 			TSXToken::BitwiseShiftRight => Ok(BinaryOperator::BitwiseShiftRight),
+// 			TSXToken::BitwiseShiftRightUnsigned => Ok(BinaryOperator::BitwiseShiftRightUnsigned),
+// 			TSXToken::NullishCoalescing => Ok(BinaryOperator::NullCoalescing),
+// 			#[cfg(feature = "extras")]
+// 			TSXToken::ComposeOperator => Ok(BinaryOperator::Compose),
+// 			#[cfg(feature = "extras")]
+// 			TSXToken::PipeOperator => Ok(BinaryOperator::Pipe),
+// 			_ => Err(()),
+// 		}
+// 	}
+// }
 
-// Note `yield` and `yield *` handled differently
-impl TryFrom<&TSXToken> for UnaryOperator {
-	type Error = ();
+// // Note `yield` and `yield *` handled differently
+// impl TryFrom<&TSXToken> for UnaryOperator {
+// 	type Error = ();
 
-	fn try_from(expression: &TSXToken) -> Result<Self, Self::Error> {
-		match expression {
-			TSXToken::Keyword(TSXKeyword::TypeOf) => Ok(UnaryOperator::TypeOf),
-			TSXToken::Keyword(TSXKeyword::Await) => Ok(UnaryOperator::Await),
-			TSXToken::Keyword(TSXKeyword::Void) => Ok(UnaryOperator::Void),
-			TSXToken::Keyword(TSXKeyword::Delete) => Ok(UnaryOperator::Delete),
-			TSXToken::LogicalNot => Ok(UnaryOperator::LogicalNot),
-			TSXToken::BitwiseNot => Ok(UnaryOperator::BitwiseNot),
-			TSXToken::Subtract => Ok(UnaryOperator::Negation),
-			TSXToken::Add => Ok(UnaryOperator::Plus),
-			_ => Err(()),
-		}
-	}
-}
+// 	fn try_from(expression: &TSXToken) -> Result<Self, Self::Error> {
+// 		match expression {
+// 			TSXToken::Keyword(TSXKeyword::TypeOf) => Ok(UnaryOperator::TypeOf),
+// 			TSXToken::Keyword(TSXKeyword::Await) => Ok(UnaryOperator::Await),
+// 			TSXToken::Keyword(TSXKeyword::Void) => Ok(UnaryOperator::Void),
+// 			TSXToken::Keyword(TSXKeyword::Delete) => Ok(UnaryOperator::Delete),
+// 			TSXToken::LogicalNot => Ok(UnaryOperator::LogicalNot),
+// 			TSXToken::BitwiseNot => Ok(UnaryOperator::BitwiseNot),
+// 			TSXToken::Subtract => Ok(UnaryOperator::Negation),
+// 			TSXToken::Add => Ok(UnaryOperator::Plus),
+// 			_ => Err(()),
+// 		}
+// 	}
+// }
 
-impl TryFrom<&TSXToken> for IncrementOrDecrement {
-	type Error = ();
+// impl TryFrom<&TSXToken> for IncrementOrDecrement {
+// 	type Error = ();
 
-	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
-		match token {
-			TSXToken::Increment => Ok(Self::Increment),
-			TSXToken::Decrement => Ok(Self::Decrement),
-			_ => Err(()),
-		}
-	}
-}
+// 	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
+// 		match token {
+// 			TSXToken::Increment => Ok(Self::Increment),
+// 			TSXToken::Decrement => Ok(Self::Decrement),
+// 			_ => Err(()),
+// 		}
+// 	}
+// }
 
-impl TryFrom<&TSXToken> for UnaryPostfixAssignmentOperator {
-	type Error = ();
+// impl TryFrom<&TSXToken> for UnaryPostfixAssignmentOperator {
+// 	type Error = ();
 
-	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
-		IncrementOrDecrement::try_from(token).map(Self)
-	}
-}
+// 	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
+// 		IncrementOrDecrement::try_from(token).map(Self)
+// 	}
+// }
 
-impl TryFrom<&TSXToken> for UnaryPrefixAssignmentOperator {
-	type Error = ();
+// impl TryFrom<&TSXToken> for UnaryPrefixAssignmentOperator {
+// 	type Error = ();
 
-	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
-		#[cfg(feature = "extras")]
-		if *token == TSXToken::InvertAssign {
-			Ok(Self::Invert)
-		} else {
-			IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
-		}
-		#[cfg(not(feature = "extras"))]
-		IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
-	}
-}
+// 	fn try_from(token: &TSXToken) -> Result<Self, Self::Error> {
+// 		#[cfg(feature = "extras")]
+// 		if *token == TSXToken::InvertAssign {
+// 			Ok(Self::Invert)
+// 		} else {
+// 			IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
+// 		}
+// 		#[cfg(not(feature = "extras"))]
+// 		IncrementOrDecrement::try_from(token).map(Self::IncrementOrDecrement)
+// 	}
+// }
 
 impl BinaryOperator {
 	/// Operators which return true may or may not evaluate RHS based on their own value

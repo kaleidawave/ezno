@@ -1,20 +1,14 @@
-//! Contains lexing logic for all the whole of JS + TypeScript type annotations + JSX + other syntax
-//!
-//! Uses [`TSXToken`]s for data, uses [Span] for location data. Uses [`tokenizer_lib`] for logic.
-
 #![allow(clippy::as_conversions, clippy::cast_possible_truncation)]
 #![allow(unused)]
 
-use super::{Span, TSXToken};
 use crate::{
 	errors::LexingErrors, html_tag_contains_literal_content, html_tag_is_self_closing, Comments,
-	Quoted,
+	Quoted, Span,
 };
-use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
 
-use derive_finite_automaton::{
-	FiniteAutomata, FiniteAutomataConstructor, GetAutomataStateForValue, GetNextResult,
-};
+// use derive_finite_automaton::{
+// 	FiniteAutomata, FiniteAutomataConstructor, GetAutomataStateForValue, GetNextResult,
+// };
 
 #[allow(clippy::struct_excessive_bools)]
 pub struct LexerOptions {
@@ -236,12 +230,12 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
-	pub fn expect(&mut self, chr: char) -> Result<(), crate::ParseError> {
+	pub fn expect(&mut self, chr: char) -> Result<source_map::End, crate::ParseError> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(chr) {
 			self.head += chr.len_utf8() as u32;
-			Ok(())
+			Ok(source_map::End(self.head))
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
 			let reason = crate::ParseErrors::UnexpectedCharacter {
@@ -285,43 +279,11 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub fn expect_and_get_after(
-		&mut self,
-		chr: char,
-	) -> Result<source_map::End, crate::ParseError> {
-		self.expect(chr).map(|()| source_map::End(self.head))
-	}
-
 	pub fn is_no_advance(&mut self, chr: char) -> Result<(), ()> {
 		if self.get_current().starts_with(chr) {
 			Ok(())
 		} else {
 			Err(())
-		}
-	}
-
-	pub fn starts_with(&mut self, chr: char) -> bool {
-		self.get_current().starts_with(chr)
-	}
-
-	pub fn starts_with_str(&mut self, str: &str) -> bool {
-		self.get_current().starts_with(str)
-	}
-
-	pub fn starts_with_str_advance(&mut self, str: &str) -> bool {
-		let result = self.get_current().starts_with(str);
-		if result {
-			self.head += str.len() as u32;
-		}
-		result
-	}
-
-	pub fn is_and_advance(&mut self, chr: char) -> bool {
-		if self.get_current().starts_with(chr) {
-			self.head += chr.len_utf8() as u32;
-			true
-		} else {
-			false
 		}
 	}
 
@@ -346,13 +308,29 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
-	pub fn is_operator_advance<'b>(&mut self, operator: &str) -> bool {
+	pub fn starts_with(&mut self, chr: char) -> bool {
+		self.get_current().starts_with(chr)
+	}
+
+	pub fn starts_with_str(&mut self, str: &str) -> bool {
+		self.get_current().starts_with(str)
+	}
+
+	pub fn is_operator(&mut self, operator: &str) -> bool {
+		self.starts_with_str(operator)
+	}
+
+	pub fn is_operator_advance(&mut self, operator: &str) -> bool {
 		let current = self.get_current();
 		let matches = current.starts_with(operator);
 		if matches {
 			self.head += operator.len() as u32;
 		}
 		matches
+	}
+
+	pub fn is_finished(&self) -> bool {
+		self.get_current().is_empty()
 	}
 
 	pub fn get_start(&self) -> source_map::Start {
@@ -384,8 +362,27 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
+	// For comments
+	// WIP
+	pub fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
+		let current = self.get_current();
+		for i in 0.. {
+			if current[i..].starts_with(until) {
+				self.head += (i + until.len()) as u32;
+				return Ok(&current[..i]);
+			}
+		}
+
+		if let "\n" = until {
+			self.head += current.len() as u32;
+			Ok(current)
+		} else {
+			Err(())
+		}
+	}
+
 	// TODO proper error type
-	pub fn parse_string_literal(&mut self) -> Result<(String, crate::Quoted), ()> {
+	pub fn parse_string_literal(&mut self) -> Result<(&'a str, crate::Quoted), ()> {
 		let current = self.get_current();
 		let mut chars = current.char_indices();
 		let quoted = match chars.next() {
@@ -405,7 +402,7 @@ impl<'a> Lexer<'a> {
 
 			if let (crate::Quoted::Double, '"') | (crate::Quoted::Single, '\'') = (quoted, chr) {
 				// TODO double check
-				let content = current[1..idx].to_owned();
+				let content = &current[1..idx];
 				self.head += idx as u32 + 1;
 				return Ok((content, quoted));
 			}

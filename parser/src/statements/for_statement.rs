@@ -1,14 +1,11 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
 	declarations::variable::VariableDeclaration, derive_ASTNode, ParseError, ParseErrors,
-	ParseOptions, TSXKeyword, VariableField, VariableKeyword, WithComment,
+	ParseOptions, VariableField, VariableKeyword, WithComment,
 };
-use tokenizer_lib::sized_tokens::TokenReaderWithTokenEnds;
 use visitable_derive::Visitable;
 
-use super::{
-	ASTNode, Expression, ParseResult, Span, TSXToken, Token, TokenReader, VarVariableStatement,
-};
+use super::{ASTNode, Expression, ParseResult, Span, VarVariableStatement};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]

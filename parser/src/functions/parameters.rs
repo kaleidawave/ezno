@@ -1,17 +1,13 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, TSXKeyword,
-	TSXToken, TypeAnnotation, VariableField, WithComment,
+	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, TypeAnnotation,
+	VariableField, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{
-	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
-	Token, TokenReader,
-};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -186,105 +182,6 @@ where
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let _existing = r#"let open_paren_span = reader.expect_next(TSXToken::OpenParentheses)?;
 		Self::from_reader_sub_open_parenthesis(reader, state, options, open_paren_span)"#;
-		todo!();
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		let FunctionParameters { parameters, rest_parameter, .. } = self;
-		let mut large = false;
-		if options.enforce_limit_length_limit() && local.should_try_pretty_print {
-			let room = options.max_line_length as usize;
-			let mut buf = source_map::StringWithOptionalSourceMap {
-				source: String::new(),
-				source_map: None,
-				quit_after: Some(room),
-				since_new_line: 0,
-			};
-			// Not particularly accurate but does sort of work
-			for parameter in parameters {
-				parameter.name.to_string_from_buffer(&mut buf, options, local);
-				let type_annotation = parameter.type_annotation.as_ref();
-				type_annotation.inspect(|v| v.to_string_from_buffer(&mut buf, options, local));
-				if let Some(ParameterData::WithDefaultValue(ref value)) = parameter.additionally {
-					value.to_string_from_buffer(&mut buf, options, local);
-				}
-				large = buf.source.len() > room;
-				if large {
-					break;
-				}
-			}
-			if let Some(rest_parameter) = rest_parameter {
-				rest_parameter.name.to_string_from_buffer(&mut buf, options, local);
-				let type_annotation = rest_parameter.type_annotation.as_ref();
-				type_annotation.inspect(|v| v.to_string_from_buffer(&mut buf, options, local));
-				large = buf.source.len() > room;
-			}
-		}
-
-		let inner_local = if large { local.next_level() } else { local };
-
-		buf.push('(');
-		// let local = if large { local.next_level() } else { local };
-		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
-			parameters.iter().endiate()
-		{
-			if large {
-				buf.push_new_line();
-				options.add_indent(inner_local.depth, buf);
-			}
-			// decorators_to_string_from_buffer(decorators, buf, options, inner_local);
-			name.to_string_from_buffer(buf, options, inner_local);
-			if let (true, Some(ref type_annotation)) =
-				(options.include_type_annotations, type_annotation)
-			{
-				if let Some(ParameterData::Optional) = additionally {
-					buf.push('?');
-				}
-				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, inner_local);
-			}
-			if let Some(ParameterData::WithDefaultValue(value)) = additionally {
-				buf.push_str(if options.pretty { " = " } else { "=" });
-				value.to_string_from_buffer(buf, options, inner_local);
-			}
-			if !at_end || rest_parameter.is_some() {
-				buf.push(',');
-				options.push_gap_optionally(buf);
-			}
-		}
-		if let Some(rest_parameter) = rest_parameter {
-			if large {
-				buf.push_new_line();
-				options.add_indent(inner_local.depth, buf);
-			}
-			buf.push_str("...");
-			rest_parameter.name.to_string_from_buffer(buf, options, inner_local);
-			if let Some(ref type_annotation) = rest_parameter.type_annotation {
-				buf.push_str(": ");
-				type_annotation.to_string_from_buffer(buf, options, inner_local);
-			}
-		}
-		if large {
-			buf.push_new_line();
-			options.add_indent(local.depth, buf);
-		}
-		buf.push(')');
-	}
-}
-
-impl<L, V> FunctionParameters<L, V>
-where
-	L: LeadingParameter,
-	V: ParameterVisibility,
-{
-	pub(crate) fn from_reader_sub_open_parenthesis(
-		reader: &mut crate::new::Lexer,
-	) -> ParseResult<Self> {
 		let _existing = r#"let mut parameters = Vec::new();
 
 		let mut this_type = None::<ThisParameter>;
@@ -411,5 +308,92 @@ where
 
 		Ok(FunctionParameters { position: start.union(close), parameters, rest_parameter, leading })"#;
 		todo!();
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		let FunctionParameters { parameters, rest_parameter, .. } = self;
+		let mut large = false;
+		if options.enforce_limit_length_limit() && local.should_try_pretty_print {
+			let room = options.max_line_length as usize;
+			let mut buf = source_map::StringWithOptionalSourceMap {
+				source: String::new(),
+				source_map: None,
+				quit_after: Some(room),
+				since_new_line: 0,
+			};
+			// Not particularly accurate but does sort of work
+			for parameter in parameters {
+				parameter.name.to_string_from_buffer(&mut buf, options, local);
+				let type_annotation = parameter.type_annotation.as_ref();
+				type_annotation.inspect(|v| v.to_string_from_buffer(&mut buf, options, local));
+				if let Some(ParameterData::WithDefaultValue(ref value)) = parameter.additionally {
+					value.to_string_from_buffer(&mut buf, options, local);
+				}
+				large = buf.source.len() > room;
+				if large {
+					break;
+				}
+			}
+			if let Some(rest_parameter) = rest_parameter {
+				rest_parameter.name.to_string_from_buffer(&mut buf, options, local);
+				let type_annotation = rest_parameter.type_annotation.as_ref();
+				type_annotation.inspect(|v| v.to_string_from_buffer(&mut buf, options, local));
+				large = buf.source.len() > room;
+			}
+		}
+
+		let inner_local = if large { local.next_level() } else { local };
+
+		buf.push('(');
+		// let local = if large { local.next_level() } else { local };
+		for (at_end, Parameter { name, type_annotation, additionally, .. }) in
+			parameters.iter().endiate()
+		{
+			if large {
+				buf.push_new_line();
+				options.add_indent(inner_local.depth, buf);
+			}
+			// decorators_to_string_from_buffer(decorators, buf, options, inner_local);
+			name.to_string_from_buffer(buf, options, inner_local);
+			if let (true, Some(ref type_annotation)) =
+				(options.include_type_annotations, type_annotation)
+			{
+				if let Some(ParameterData::Optional) = additionally {
+					buf.push('?');
+				}
+				buf.push_str(": ");
+				type_annotation.to_string_from_buffer(buf, options, inner_local);
+			}
+			if let Some(ParameterData::WithDefaultValue(value)) = additionally {
+				buf.push_str(if options.pretty { " = " } else { "=" });
+				value.to_string_from_buffer(buf, options, inner_local);
+			}
+			if !at_end || rest_parameter.is_some() {
+				buf.push(',');
+				options.push_gap_optionally(buf);
+			}
+		}
+		if let Some(rest_parameter) = rest_parameter {
+			if large {
+				buf.push_new_line();
+				options.add_indent(inner_local.depth, buf);
+			}
+			buf.push_str("...");
+			rest_parameter.name.to_string_from_buffer(buf, options, inner_local);
+			if let Some(ref type_annotation) = rest_parameter.type_annotation {
+				buf.push_str(": ");
+				type_annotation.to_string_from_buffer(buf, options, inner_local);
+			}
+		}
+		if large {
+			buf.push_new_line();
+			options.add_indent(local.depth, buf);
+		}
+		buf.push(')');
 	}
 }

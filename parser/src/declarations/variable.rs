@@ -4,8 +4,8 @@ use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE, ASTNode,
-	Expression, ParseError, ParseErrors, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
-	Token, TokenReader, TypeAnnotation, VariableField, WithComment,
+	Expression, ParseError, ParseErrors, ParseOptions, ParseResult, Span, TypeAnnotation,
+	VariableField, WithComment,
 };
 use visitable_derive::Visitable;
 

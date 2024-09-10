@@ -1,8 +1,6 @@
-use tokenizer_lib::{sized_tokens::TokenStart, Token};
-
 use crate::{
-	declarations::VariableDeclarationItem, derive_ASTNode, errors::parse_lexing_error, ASTNode,
-	Decorator, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TokenReader, VariableKeyword,
+	declarations::VariableDeclarationItem, derive_ASTNode, ASTNode, Decorator, ParseOptions,
+	ParseResult, Span, VariableKeyword,
 };
 
 /// A `declare var/let/const` thingy.

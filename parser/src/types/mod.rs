@@ -10,7 +10,7 @@ pub mod type_declarations;
 
 pub use interface::InterfaceDeclaration;
 
-use crate::{derive_ASTNode, TSXKeyword, TSXToken};
+use crate::derive_ASTNode;
 
 /// [See](https://www.typescriptlang.org/docs/handbook/2/classes.html#member-visibility)
 #[apply(derive_ASTNode)]
@@ -31,11 +31,11 @@ impl Visibility {
 		}
 	}
 
-	#[must_use]
-	pub fn token_is_visibility_specifier(t: &TSXToken) -> bool {
-		matches!(
-			t,
-			TSXToken::Keyword(TSXKeyword::Private | TSXKeyword::Public | TSXKeyword::Protected)
-		)
-	}
+	// #[must_use]
+	// pub fn token_is_visibility_specifier(t: &TSXToken) -> bool {
+	// matches!(
+	// 	t,
+	// 	TSXToken::Keyword(TSXKeyword::Private | TSXKeyword::Public | TSXKeyword::Protected)
+	// )
+	// }
 }

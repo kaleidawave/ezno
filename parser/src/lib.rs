@@ -18,7 +18,6 @@ pub mod number;
 pub mod options;
 pub mod property_key;
 pub mod statements;
-mod tokens;
 pub mod types;
 mod variable_fields;
 pub mod visiting;
@@ -49,7 +48,6 @@ pub use options::*;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
-pub use tokens::{TSXKeyword, TSXToken};
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
 	type_declarations::{self, TypeParameter},
@@ -58,15 +56,6 @@ pub use variable_fields::*;
 pub(crate) use visiting::{
 	Chain, ChainVariable, VisitOptions, Visitable, VisitorMutReceiver, VisitorReceiver,
 };
-
-use tokenizer_lib::{
-	sized_tokens::{SizedToken, TokenEnd},
-	Token, TokenReader,
-};
-
-pub(crate) use tokenizer_lib::sized_tokens::TokenStart;
-
-use crate::errors::parse_lexing_error;
 
 #[macro_use]
 extern crate macro_rules_attribute;
@@ -217,7 +206,7 @@ pub struct ParsingState {
 	/// TODO as multithreaded channel + record is dynamic exists
 	pub(crate) constant_imports: Vec<String>,
 	pub keyword_positions: Option<KeywordPositions>,
-	pub partial_points: Vec<TokenStart>,
+	pub partial_points: Vec<source_map::Start>,
 }
 
 // impl ParsingState {
@@ -268,6 +257,8 @@ pub struct ParsingState {
 // 2}
 
 /// As parsing is forwards, this is ordered
+type TSXKeyword = &'static str;
+
 #[derive(Debug)]
 pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
 
@@ -281,7 +272,7 @@ impl KeywordPositions {
 		while l <= r {
 			let m = (l + r) >> 1;
 			let (kw_pos, kw) = self.0[m as usize];
-			if kw_pos <= pos && pos < (kw_pos + kw.length()) {
+			if kw_pos <= pos && pos < (kw_pos + kw.len() as u32) {
 				return Some(kw);
 			} else if pos > kw_pos {
 				l = m + 1;
@@ -391,7 +382,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 pub trait ListItem: Sized {
 	type LAST;
-	const LAST_PREFIX: Option<TSXToken> = None;
+	const LAST_PREFIX: Option<&'static str> = None;
 	const EMPTY: Option<Self> = None;
 
 	#[allow(unused)]
@@ -405,9 +396,8 @@ pub trait ListItem: Sized {
 /// Supports trailing commas. But **does not create** *empty* like items afterwards
 pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
 	reader: &mut crate::new::Lexer,
-	start: Option<TSXToken>,
-	end: TSXToken,
-) -> ParseResult<(Vec<T>, Option<T::LAST>, TokenEnd)> {
+	end: &'static str,
+) -> ParseResult<(Vec<T>, Option<T::LAST>)> {
 	todo!()
 	// 	if let Some(start) = start {
 	// 		let _ = reader.expect_next(start)?;
@@ -560,12 +550,7 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 /// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
 ///
 /// Also returns the line difference
-pub(crate) fn expect_semi_colon(
-	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	line_starts: &source_map::LineStarts,
-	statement_end: u32,
-	options: &ParseOptions,
-) -> ParseResult<usize> {
+pub(crate) fn expect_semi_colon(reader: &mut crate::new::Lexer) -> ParseResult<usize> {
 	todo!();
 	// 	if let Some(token) = reader.peek() {
 	// 		let Token(kind, start) = token;
@@ -621,10 +606,10 @@ pub enum VariableKeyword {
 }
 
 impl VariableKeyword {
-	#[must_use]
-	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
-		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let | TSXKeyword::Var))
-	}
+	// #[must_use]
+	// pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
+	// 	matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let | TSXKeyword::Var))
+	// }
 
 	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let _existing = r#"match token {

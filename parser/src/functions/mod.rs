@@ -1,17 +1,16 @@
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::property_key::PropertyKeyKind;
-use crate::visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty};
 use crate::{
-	derive_ASTNode, parse_bracketed, to_string_bracketed, ASTNode, Block,
-	ExpressionOrStatementPosition, ExpressionPosition, ParseOptions, ParseResult, TSXToken,
+	derive_ASTNode, parse_bracketed,
+	property_key::{PropertyKey, PropertyKeyKind},
+	to_string_bracketed,
+	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
+	ASTNode, Block, ExpressionOrStatementPosition, ExpressionPosition, ParseOptions, ParseResult,
 	TypeAnnotation, TypeParameter, VisitOptions, Visitable, WithComment,
 };
-use crate::{PropertyKey, TSXKeyword};
+
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Nullable, Span, ToString};
-use tokenizer_lib::sized_tokens::TokenStart;
-use tokenizer_lib::{Token, TokenReader};
 
 mod parameters;
 pub use parameters::*;
@@ -29,7 +28,7 @@ pub mod bases {
 	};
 }
 
-pub type HeadingAndPosition<T> = (Option<TokenStart>, <T as FunctionBased>::Header);
+pub type HeadingAndPosition<T> = (Option<source_map::Start>, <T as FunctionBased>::Header);
 
 /// Specialization information for [`FunctionBase`]
 pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
@@ -62,9 +61,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 	fn get_name(name: &Self::Name) -> Option<&str>;
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)>;
 
 	fn header_and_name_to_string_from_buffer<T: ToString>(
@@ -77,7 +74,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 
 	/// For [`crate::ArrowFunction`]
 	#[must_use]
-	fn get_parameter_body_boundary_token() -> Option<TSXToken> {
+	fn get_parameter_body_boundary_token() -> Option<&'static str> {
 		None
 	}
 
@@ -88,10 +85,8 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 	}
 
 	/// For [`crate::ArrowFunction`]
-	fn parameters_from_reader<T: ToString>(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+	fn parameters_from_reader(
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<FunctionParameters<Self::LeadingParameter, Self::ParameterVisibility>> {
 		todo!()
 		// FunctionParameters::from_reader(reader, state, options)
@@ -310,9 +305,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	}
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		todo!()
 		// let header = FunctionHeader::from_reader(reader, state, options)?;

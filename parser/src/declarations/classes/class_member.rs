@@ -2,19 +2,16 @@ use std::fmt::Debug;
 
 use crate::{
 	derive_ASTNode,
-	errors::parse_lexing_error,
 	functions::{
 		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
 		ThisParameter,
 	},
 	property_key::PublicOrPrivate,
-	tokens::token_as_identifier,
 	visiting::Visitable,
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
-	TSXToken, TypeAnnotation, WithComment,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey,
+	TypeAnnotation, WithComment,
 };
 use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]
@@ -70,7 +67,7 @@ impl ASTNode for ClassMember {
 
 	#[allow(clippy::similar_names)]
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		if reader.starts_with_str_advance("//") || reader.starts_with_str_advance("/*") {
+		if reader.starts_with_str("//") || reader.starts_with_str("/*") {
 			todo!("comment; return Ok(Self::Comment(comment, is_multiline, span));");
 		}
 
@@ -260,9 +257,7 @@ impl FunctionBased for ClassFunctionBase {
 
 	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		todo!()
 		// // TODO not great
@@ -328,9 +323,7 @@ impl FunctionBased for ClassConstructorBase {
 	}
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		_options: &ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		todo!()
 		// let start = state.expect_keyword(reader, TSXKeyword::Constructor)?;

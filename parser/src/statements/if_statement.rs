@@ -1,13 +1,11 @@
 use crate::{
 	block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression, ParseOptions,
-	TSXKeyword,
 };
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
-use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
-use super::{ASTNode, ParseResult, Span, TSXToken, Token, TokenReader};
+use super::{ASTNode, ParseResult, Span};
 
 /// A [if...else statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/if...else)
 #[apply(derive_ASTNode)]

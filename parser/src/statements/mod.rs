@@ -6,9 +6,7 @@ mod while_statement;
 
 use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
-	derive_ASTNode,
-	tokens::token_as_identifier,
-	ParseError, ParseErrors,
+	derive_ASTNode, ParseError, ParseErrors,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -17,9 +15,7 @@ use std::fmt::Debug;
 
 use super::{
 	expressions::MultipleExpression, ASTNode, Block, Expression, ParseOptions, ParseResult, Span,
-	TSXKeyword, TSXToken, Token, TokenReader,
 };
-use crate::errors::parse_lexing_error;
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitialiser};
 pub use if_statement::*;
 pub use switch_statement::{SwitchBranch, SwitchStatement};
@@ -366,11 +362,11 @@ impl ASTNode for VarVariableStatement {
 	}
 }
 
-fn on_different_lines_or_line_end(
-	line_starts: &source_map::LineStarts,
-	keyword_position: crate::TokenStart,
-	Token(kind, next): &Token<TSXToken, crate::TokenStart>,
+fn on_different_lines_or_line_end(// line_starts: &source_map::LineStarts,
+	// keyword_position: crate::TokenStart,
+	// Token(kind, next): &Token<TSXToken, crate::TokenStart>,
 ) -> bool {
-	matches!(kind, TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS)
-		|| line_starts.byte_indexes_on_different_lines(keyword_position.0 as usize, next.0 as usize)
+	todo!()
+	// matches!(kind, TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS)
+	// 	|| line_starts.byte_indexes_on_different_lines(keyword_position.0 as usize, next.0 as usize)
 }

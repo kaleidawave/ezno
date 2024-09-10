@@ -1,8 +1,7 @@
 use crate::{
-	are_nodes_over_length, declarations::ClassDeclaration, derive_ASTNode,
-	errors::parse_lexing_error, functions, number::NumberRepresentation, parse_bracketed,
-	to_string_bracketed, ExpressionPosition, FunctionHeader, ListItem, Marker, ParseErrors,
-	ParseResult, Quoted, TSXKeyword,
+	are_nodes_over_length, declarations::ClassDeclaration, derive_ASTNode, functions,
+	number::NumberRepresentation, parse_bracketed, to_string_bracketed, ExpressionPosition,
+	FunctionHeader, ListItem, Marker, ParseErrors, ParseResult, Quoted,
 };
 
 // type_annotations::generic_arguments_from_reader
@@ -19,8 +18,7 @@ use self::{
 };
 
 use super::{
-	tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError, ParseOptions,
-	Span, TSXToken, Token, TokenReader, TypeAnnotation,
+	ASTNode, Block, FunctionBase, JSXRoot, ParseError, ParseOptions, Span, TypeAnnotation,
 };
 
 // is_expression_from_reader_sub_is_keyword
@@ -31,7 +29,6 @@ use crate::extensions::is_expression::IsExpression;
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use source_map::{Nullable, ToString};
-use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 pub mod arrow_function;
@@ -251,15 +248,15 @@ impl Expression {
 		let start = reader.get_start();
 		let first_expression = {
 			if reader.starts_with('"') || reader.starts_with('\'') {
-				let (content, quoted) = reader.parse_string_literal().unwrap();
+				let (content, quoted) = reader.parse_string_literal().expect("TODO");
 				let position = start.with_length(content.len() + 2);
-				Expression::StringLiteral(content, quoted, position)
+				Expression::StringLiteral(content.to_owned(), quoted, position)
 			} else if reader.starts_with_number() {
-				let (value, length) = reader.parse_number_literal().unwrap();
+				let (value, length) = reader.parse_number_literal().expect("TODO");
 				let position = start.with_length(length as usize);
 				Expression::NumberLiteral(value, position)
 			} else if reader.starts_with('/') {
-				let (pattern, flags, length) = reader.parse_regex_literal().unwrap();
+				let (pattern, flags, length) = reader.parse_regex_literal().expect("TODO");
 				let position = start.with_length(length as usize);
 				Expression::RegexLiteral { pattern, flags, position }
 			} else if reader.starts_with('(') {
@@ -268,7 +265,7 @@ impl Expression {
 				let parenthesize_expression = MultipleExpression::from_reader(reader)?;
 
 				reader.skip();
-				let end = reader.expect_and_get_after(')').unwrap();
+				let end = reader.expect(')')?;
 				Expression::ParenthesizedExpression(
 					Box::new(parenthesize_expression),
 					start.union(end),
@@ -623,7 +620,7 @@ impl Expression {
 			// 	operator,
 			// 	position,
 			// }
-			} else if reader.starts_with_str("async ") || reader.is_keyword("function") {
+			} else if reader.is_keyword("async") || reader.is_keyword("function") {
 				// TODO generator keyword as well
 				// TODO arrow functions
 				todo!()
@@ -654,7 +651,7 @@ impl Expression {
 			{
 				let operator = match keyword {
 					"yield" => {
-						let is_delegated = reader.is_and_advance('*');
+						let is_delegated = reader.is_operator_advance("*");
 						if is_delegated {
 							UnaryOperator::DelegatedYield
 						} else {
@@ -1766,17 +1763,17 @@ impl Expression {
 	}
 }
 
-fn function_header_ish(
-	kw: TSXKeyword,
-	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-) -> bool {
-	kw.is_in_function_header()
-		|| (kw.is_special_function_header()
-			&& reader.peek().map_or(
-				false,
-				|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
-			))
-}
+// fn function_header_ish(
+// 	kw: TSXKeyword,
+// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+// ) -> bool {
+// 	kw.is_in_function_header()
+// 		|| (kw.is_special_function_header()
+// 			&& reader.peek().map_or(
+// 				false,
+// 				|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
+// 			))
+// }
 
 #[derive(Clone, Copy)]
 pub(crate) struct ExpressionToStringArgument {
@@ -1841,7 +1838,7 @@ impl ASTNode for MultipleExpression {
 		reader.skip();
 		if reader.starts_with(',') {
 			let mut top: MultipleExpression = first.into();
-			while reader.is_and_advance(',') {
+			while reader.is_operator_advance(",") {
 				let rhs = Expression::from_reader(reader)?;
 				let position = top.get_position().union(rhs.get_position());
 				top = MultipleExpression::Multiple { lhs: Box::new(top), rhs, position };
@@ -1885,53 +1882,54 @@ impl From<Expression> for MultipleExpression {
 }
 
 /// Determines whether '<' is a comparison or start of generic arguments
-fn is_generic_arguments(reader: &mut impl TokenReader<TSXToken, crate::TokenStart>) -> bool {
-	if !matches!(reader.peek(), Some(Token(TSXToken::OpenChevron, _))) {
-		return false;
-	}
+fn is_generic_arguments(reader: &mut crate::new::Lexer) -> bool {
+	todo!();
+	// if !matches!(reader.peek(), Some(Token(TSXToken::OpenChevron, _))) {
+	// 	return false;
+	// }
 
-	// Keep a eye on brackets. e.g. for: `if (x<4) {}` should break after the 4
-	let (mut generic_depth, mut bracket_depth) = (0, 0);
-	let mut final_generic_position = None::<TokenEnd>;
+	// // Keep a eye on brackets. e.g. for: `if (x<4) {}` should break after the 4
+	// let (mut generic_depth, mut bracket_depth) = (0, 0);
+	// let mut final_generic_position = None::<TokenEnd>;
 
-	let next_token = reader.scan(|token, position| {
-		// Early break if logical operators
-		if matches!(
-			token,
-			TSXToken::StrictEqual
-				| TSXToken::StrictNotEqual
-				| TSXToken::LogicalAnd
-				| TSXToken::LogicalOr
-				| TSXToken::SemiColon
-		) {
-			true
-		} else {
-			match token {
-				TSXToken::OpenChevron => generic_depth += 1,
-				TSXToken::CloseChevron => generic_depth -= 1,
-				TSXToken::BitwiseShiftRight => generic_depth -= 2,
-				TSXToken::BitwiseShiftRightUnsigned => generic_depth -= 3,
-				TSXToken::OpenParentheses => bracket_depth += 1,
-				TSXToken::CloseParentheses => bracket_depth -= 1,
-				_ => {}
-			}
-			if generic_depth == 0 {
-				final_generic_position = Some(TokenEnd::new(
-					position.0 + tokenizer_lib::sized_tokens::SizedToken::length(token),
-				));
-				true
-			} else {
-				bracket_depth < 0
-			}
-		}
-	});
-	if let (Some(last_position), Some(Token(TSXToken::OpenParentheses, open_paren_start))) =
-		(final_generic_position, next_token)
-	{
-		last_position.is_adjacent_to(*open_paren_start)
-	} else {
-		false
-	}
+	// let next_token = reader.scan(|token, position| {
+	// 	// Early break if logical operators
+	// 	if matches!(
+	// 		token,
+	// 		TSXToken::StrictEqual
+	// 			| TSXToken::StrictNotEqual
+	// 			| TSXToken::LogicalAnd
+	// 			| TSXToken::LogicalOr
+	// 			| TSXToken::SemiColon
+	// 	) {
+	// 		true
+	// 	} else {
+	// 		match token {
+	// 			TSXToken::OpenChevron => generic_depth += 1,
+	// 			TSXToken::CloseChevron => generic_depth -= 1,
+	// 			TSXToken::BitwiseShiftRight => generic_depth -= 2,
+	// 			TSXToken::BitwiseShiftRightUnsigned => generic_depth -= 3,
+	// 			TSXToken::OpenParentheses => bracket_depth += 1,
+	// 			TSXToken::CloseParentheses => bracket_depth -= 1,
+	// 			_ => {}
+	// 		}
+	// 		if generic_depth == 0 {
+	// 			final_generic_position = Some(TokenEnd::new(
+	// 				position.0 + tokenizer_lib::sized_tokens::SizedToken::length(token),
+	// 			));
+	// 			true
+	// 		} else {
+	// 			bracket_depth < 0
+	// 		}
+	// 	}
+	// });
+	// if let (Some(last_position), Some(Token(TSXToken::OpenParentheses, open_paren_start))) =
+	// 	(final_generic_position, next_token)
+	// {
+	// 	last_position.is_adjacent_to(*open_paren_start)
+	// } else {
+	// 	false
+	// }
 }
 
 pub(crate) fn arguments_to_string<T: source_map::ToString>(

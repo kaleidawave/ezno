@@ -1,9 +1,6 @@
+use source_map::Span;
 /// Contains lexing and parser errors
 use std::fmt::{self, Display};
-
-use crate::TSXToken;
-use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
@@ -11,11 +8,11 @@ pub enum ParseErrors<'a> {
 	ExpectedKeyword { expected: &'static str, found: &'a str },
 	UnexpectedSymbol(derive_finite_automaton::InvalidCharacter),
 	ClosingTagDoesNotMatch { expected: &'a str, found: &'a str },
-	ExpectedStringLiteral { found: TSXToken },
+	ExpectedStringLiteral { found: &'a str },
 	TypeArgumentsNotValidOnReference,
 	UnmatchedBrackets,
 	FunctionParameterOptionalAndDefaultValue,
-	ExpectedIdent { found: TSXToken, at_location: &'a str },
+	ExpectedIdent { found: &'a str, at_location: &'a str },
 	ParameterCannotHaveDefaultValueHere,
 	InvalidLHSAssignment,
 	LexingFailed,

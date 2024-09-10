@@ -2,7 +2,7 @@ use source_map::Span;
 
 use crate::{
 	derive_ASTNode, to_string_bracketed, ASTNode, ExpressionOrStatementPosition, StatementPosition,
-	TSXToken, TypeAnnotation, TypeParameter,
+	TypeAnnotation, TypeParameter,
 };
 
 /// e.g. `type NumberArray = Array<number>`

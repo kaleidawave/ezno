@@ -1,10 +1,7 @@
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{
-	ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode, TSXKeyword,
-	TSXToken,
-};
+use crate::{ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -64,10 +61,9 @@ impl ASTNode for DoWhileStatement {
 		let start = reader.expect_keyword("do")?;
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
 		let _ = reader.expect_keyword("while")?;
-		reader.expect('(')?;
+		let _ = reader.expect('(')?;
 		let condition = MultipleExpression::from_reader(reader)?;
-		let end = reader.expect_and_get_after(')')?;
-		let position = start.union(end);
+		let position = start.union(reader.expect(')')?);
 		Ok(Self { condition, inner, position })
 	}
 

@@ -1,7 +1,7 @@
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, type_annotations::TypeAnnotationFunctionParameters,
-	ASTNode, Expression, ParseError, ParseOptions, ParseResult, Span, StatementPosition,
-	TSXKeyword, TSXToken, Token, TypeAnnotation, VariableIdentifier,
+	derive_ASTNode, type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
+	ParseError, ParseOptions, ParseResult, Span, StatementPosition, TypeAnnotation,
+	VariableIdentifier,
 };
 
 use super::{
@@ -10,7 +10,6 @@ use super::{
 };
 
 use get_field_by_type::GetFieldByType;
-use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
 
 /// [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)

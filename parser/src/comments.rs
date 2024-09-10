@@ -1,9 +1,7 @@
 //! Contains wrappers for AST with comments
 
-use super::{ASTNode, Span, TSXToken, TokenReader};
+use super::{ASTNode, Span};
 use crate::{ParseOptions, ParseResult};
-
-use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
@@ -92,31 +90,22 @@ impl<T> WithComment<T> {
 
 impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"if let Some(token) =
-			reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
-		{
-			let Token(TSXToken::MultiLineComment(comment), position) = token else {
-				unreachable!();
-			};
-			let item = T::from_reader(reader, state, options)?;
-			let position = position.union(item.get_position());
-			Ok(Self::PrefixComment(comment, item, position))
+		let start = reader.get_start();
+		if reader.is_operator_advance("/*") {
+			let comment = reader.parse_until("*/").expect("TODO");
+			let item = T::from_reader(reader)?;
+			let position = start.union(item.get_position());
+			Ok(Self::PrefixComment(comment.to_owned(), item, position))
 		} else {
-			let item = T::from_reader(reader, state, options)?;
-			if let Some(token) =
-				reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
-			{
-				let end = token.get_span();
-				let Token(TSXToken::MultiLineComment(comment), _) = token else {
-					unreachable!();
-				};
-				let position = item.get_position().union(end);
-				Ok(Self::PostfixComment(item, comment, position))
+			let item = T::from_reader(reader)?;
+			if reader.is_operator_advance("/*") {
+				let comment = reader.parse_until("*/").expect("TODO");
+				let position = start.union(reader.get_end());
+				Ok(Self::PostfixComment(item, comment.to_owned(), position))
 			} else {
 				Ok(Self::None(item))
 			}
-		}"#;
-		todo!();
+		}
 	}
 
 	fn get_position(&self) -> Span {

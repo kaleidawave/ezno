@@ -1,17 +1,17 @@
 use crate::{
-	block::{parse_statements_and_declarations, statements_and_declarations_to_string},
+	block::{statements_and_declarations_from_reader, statements_and_declarations_to_string},
 	derive_ASTNode, BlockLike, BlockLikeMut, LocalToStringInformation, ParseOptions, ParseResult,
 	StatementOrDeclaration, VisitOptions,
 };
 
-use super::{ASTNode, Span, TSXToken, TokenReader};
+use super::{ASTNode, Span};
 
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct Module {
 	pub hashbang_comment: Option<String>,
 	pub items: Vec<StatementOrDeclaration>,
-	pub span: Span,
+	pub position: Span,
 }
 
 impl PartialEq for Module {
@@ -36,28 +36,22 @@ impl ASTNode for Module {
 	}
 
 	fn get_position(&self) -> Span {
-		self.span
+		self.position
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let span = Span { start: 0, source: (), end: state.length_of_source };
-		let hashbang_comment = if let Some(crate::Token(TSXToken::HashBangComment(_), _)) =
-			reader.peek()
-		{
-			let Some(crate::Token(TSXToken::HashBangComment(hashbang_comment), _)) = reader.next()
-			else {
-				unreachable!()
-			};
-			Some(hashbang_comment)
+		let position = Span { start: 0, source: (), end: reader.get_current().len() as u32 };
+		let hashbang_comment = if reader.is_operator_advance("#") {
+			let hashbang_comment = reader.parse_until("\n").expect("TODO");
+			Some(hashbang_comment.to_owned())
 		} else {
 			None
 		};
-		parse_statements_and_declarations(reader, state, options).map(|items| Module {
+		Ok(Module {
+			items: statements_and_declarations_from_reader(reader)?,
 			hashbang_comment,
-			items,
-			span,
-		})"#;
-		todo!();
+			position,
+		})
 	}
 }
 

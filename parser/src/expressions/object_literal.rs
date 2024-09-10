@@ -1,16 +1,14 @@
 use crate::{
 	derive_ASTNode,
-	errors::parse_lexing_error,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
 	visiting::Visitable,
 	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, Span,
-	TSXToken, Token, TokenReader, WithComment,
+	WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
 use std::fmt::Debug;
-use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -96,9 +94,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	type ParameterVisibility = ();
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		todo!()
 		// // TODO not great

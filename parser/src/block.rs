@@ -1,9 +1,8 @@
+use super::{ASTNode, Span};
 use derive_enum_from_into::EnumFrom;
 use iterator_endiate::EndiateIteratorExt;
-use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token};
 use visitable_derive::Visitable;
 
-use super::{ASTNode, Span, TSXToken, TokenReader};
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
 	derive_ASTNode, // expect_semi_colon,
@@ -14,7 +13,6 @@ use crate::{
 	ParseOptions,
 	ParseResult,
 	Statement,
-	TSXKeyword,
 	VisitOptions,
 	Visitable,
 };
@@ -79,7 +77,7 @@ impl ASTNode for StatementOrDeclaration {
 		}
 
 		if Declaration::is_declaration_start(reader, options) {
-			let dec = Declaration::from_reader(reader, state, options)?;
+			let dec = Declaration::from_reader(reader)?;
 			// TODO nested blocks? Interfaces...?
 			Ok(StatementOrDeclaration::Declaration(dec))
 		} else {
@@ -88,12 +86,12 @@ impl ASTNode for StatementOrDeclaration {
 			{
 				if reader.peek_n(1).map_or(false, |t| !t.0.is_symbol()) {
 					return Ok(StatementOrDeclaration::Declaration(Declaration::from_reader(
-						reader, state, options,
+						reader,
 					)?));
 				}
 			}
 
-			let stmt = Statement::from_reader(reader, state, options)?;
+			let stmt = Statement::from_reader(reader)?;
 			Ok(StatementOrDeclaration::Statement(stmt))
 		}"#;
 		todo!();
@@ -159,7 +157,7 @@ impl<'a> From<&'a mut Block> for BlockLikeMut<'a> {
 impl ASTNode for Block {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let _existing = r#"let start = reader.expect_next(TSXToken::OpenBrace)?;
-		let items = parse_statements_and_declarations(reader, state, options)?;
+		let items = parse_statements_and_declarations(reader)?;
 		let end_span = reader.expect_next_get_end(TSXToken::CloseBrace)?;
 		Ok(Self(items, start.union(end_span)))"#;
 		todo!();
@@ -321,22 +319,21 @@ impl ASTNode for BlockOrSingleStatement {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let stmt = Statement::from_reader(reader, state, options)?;
+		let stmt = Statement::from_reader(reader)?;
 		Ok(match stmt {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
-				if stmt.requires_semi_colon() {
-					let _ = expect_semi_colon(
-						reader,
-						&state.line_starts,
-						stmt.get_position().end,
-						options,
-					)?;
-				}
+				// if stmt.requires_semi_colon() {
+				// 	let _ = expect_semi_colon(
+				// 		reader,
+				// 		&state.line_starts,
+				// 		stmt.get_position().end,
+				// 		options,
+				// 	)?;
+				// }
 				Box::new(stmt).into()
 			}
-		})"#;
-		todo!();
+		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -371,49 +368,49 @@ impl ASTNode for BlockOrSingleStatement {
 }
 
 /// Parse statements, regardless of bracing or not
-pub(crate) fn parse_statements_and_declarations(
-	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	state: &mut crate::ParsingState,
-	options: &ParseOptions,
+pub(crate) fn statements_and_declarations_from_reader(
+	reader: &mut crate::new::Lexer,
 ) -> ParseResult<Vec<StatementOrDeclaration>> {
-	todo!()
-	// let mut items = Vec::new();
-	// while let Some(Token(token_type, _)) = reader.peek() {
-	// 	if let TSXToken::EOS | TSXToken::CloseBrace = token_type {
-	// 		break;
-	// 	}
+	let mut items = Vec::new();
+	loop {
+		reader.skip();
+		if reader.is_finished() || reader.starts_with('}') {
+			break;
+		}
 
-	// 	let item = StatementOrDeclaration::from_reader(reader, state, options)?;
-	// 	let requires_semi_colon = item.requires_semi_colon();
-	// 	let end = item.get_position().end;
+		let item = StatementOrDeclaration::from_reader(reader)?;
+		// let end = reader.get_end();
 
-	// 	let blank_lines_after_statement = if requires_semi_colon {
-	// 		expect_semi_colon(reader, &state.line_starts, end, options)?
-	// 	} else if options.retain_blank_lines {
-	// 		let Token(kind, next) = reader.peek().unwrap();
-	// 		let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
-	// 		if let TSXToken::EOS = kind {
-	// 			lines
-	// 		} else {
-	// 			lines.saturating_sub(1)
-	// 		}
-	// 	} else {
-	// 		0
-	// 	};
+		// let requires_semi_colon = item.requires_semi_colon();
 
-	// 	if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
-	// 		(items.is_empty(), &item)
-	// 	{
-	// 		continue;
-	// 	}
-	// 	items.push(item);
-	// 	for _ in 0..blank_lines_after_statement {
-	// 		// TODO span
-	// 		let span = Span { start: end, end, source: () };
-	// 		items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
-	// 	}
-	// }
-	// Ok(items)
+		// let blank_lines_after_statement = if requires_semi_colon {
+		// 	expect_semi_colon(reader, &state.line_starts, end, options)?
+		// } else if options.retain_blank_lines {
+		// 	let Token(kind, next) = reader.peek().unwrap();
+		// 	let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
+		// 	if let TSXToken::EOS = kind {
+		// 		lines
+		// 	} else {
+		// 		lines.saturating_sub(1)
+		// 	}
+		// } else {
+		// 	0
+		// };
+
+		if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
+			(items.is_empty(), &item)
+		{
+			continue;
+		}
+
+		items.push(item);
+		// for _ in 0..blank_lines_after_statement {
+		// 	// TODO span
+		// 	let span = Span { start: end, end, source: () };
+		// 	items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
+		// }
+	}
+	Ok(items)
 }
 
 pub fn statements_and_declarations_to_string<T: source_map::ToString>(

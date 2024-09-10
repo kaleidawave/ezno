@@ -1,9 +1,8 @@
 use crate::{
-	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation,
-	VariableField, WithComment,
+	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField,
+	WithComment,
 };
 use source_map::Span;
-use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]

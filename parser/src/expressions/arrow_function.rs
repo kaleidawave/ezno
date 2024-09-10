@@ -1,13 +1,11 @@
-use crate::{derive_ASTNode, functions::HeadingAndPosition, VariableIdentifier};
-use tokenizer_lib::sized_tokens::TokenStart;
 use visitable_derive::Visitable;
 
 use crate::{
-	errors::parse_lexing_error,
+	derive_ASTNode,
+	functions::HeadingAndPosition,
 	functions::{FunctionBased, FunctionParameters, Parameter},
-	tokens::token_as_identifier,
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, Span, TSXToken, Token,
-	TokenReader, TypeAnnotation, VariableField,
+	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, Span, TypeAnnotation,
+	VariableField, VariableIdentifier,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -38,9 +36,7 @@ impl FunctionBased for ArrowFunctionBase {
 	// }
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		_options: &ParseOptions,
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		todo!()
 		// let async_pos = state.optionally_expect_keyword(reader, crate::TSXKeyword::Async);
@@ -59,10 +55,8 @@ impl FunctionBased for ArrowFunctionBase {
 		}
 	}
 
-	fn parameters_from_reader<T: source_map::ToString>(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+	fn parameters_from_reader(
+		reader: &mut crate::new::Lexer,
 	) -> ParseResult<FunctionParameters<(), ()>> {
 		todo!();
 		// match reader.next().ok_or_else(parse_lexing_error)? {

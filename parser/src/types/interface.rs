@@ -1,14 +1,13 @@
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, extensions::decorators::Decorated,
-	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate, to_string_bracketed,
-	tokens::token_as_identifier, types::type_annotations::TypeAnnotationFunctionParameters,
-	ASTNode, ExpressionOrStatementPosition, ParseErrors, ParseOptions, ParseResult, PropertyKey,
-	Span, StatementPosition, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter, WithComment,
+	derive_ASTNode, extensions::decorators::Decorated, functions::MethodHeader, parse_bracketed,
+	property_key::PublicOrPrivate, to_string_bracketed,
+	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode,
+	ExpressionOrStatementPosition, ParseErrors, ParseOptions, ParseResult, PropertyKey, Span,
+	StatementPosition, TypeAnnotation, TypeParameter, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
-use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token, TokenReader};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
@@ -742,10 +741,8 @@ impl ASTNode for InterfaceMember {
 	}
 }
 
-pub(crate) fn parse_interface_members(
-	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	state: &mut crate::ParsingState,
-	options: &ParseOptions,
+pub(crate) fn interface_members_from_reader(
+	reader: &mut crate::new::Lexer,
 ) -> ParseResult<Vec<WithComment<Decorated<InterfaceMember>>>> {
 	todo!()
 	// let mut members = Vec::new();

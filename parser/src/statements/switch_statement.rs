@@ -1,11 +1,10 @@
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenEnd, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	ast::MultipleExpression, derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression,
-	ParseOptions, StatementOrDeclaration, TSXKeyword, TSXToken,
+	ast::MultipleExpression, derive_ASTNode, ASTNode, Expression, ParseOptions,
+	StatementOrDeclaration,
 };
 
 #[apply(derive_ASTNode)]

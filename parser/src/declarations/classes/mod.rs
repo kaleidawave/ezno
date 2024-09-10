@@ -8,12 +8,7 @@ use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter,
-	VisitOptions,
-};
-use tokenizer_lib::{
-	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
-	Token, TokenReader,
+	ParseOptions, ParseResult, Span, TypeAnnotation, TypeParameter, VisitOptions,
 };
 
 #[apply(derive_ASTNode)]
@@ -89,10 +84,10 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 			members.push(value);
 
 			// TODO expect semi colon
-			reader.is_and_advance(';');
+			// reader.is_and_advance(';');
 		}
 
-		let end = reader.expect_and_get_after('}')?;
+		let end = reader.expect('}')?;
 		let position = start.union(end);
 
 		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })
