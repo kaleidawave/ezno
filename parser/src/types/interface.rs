@@ -1,10 +1,9 @@
 use crate::{
 	derive_ASTNode, errors::parse_lexing_error, extensions::decorators::Decorated,
-	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate,
-	throw_unexpected_token_with_token, to_string_bracketed, tokens::token_as_identifier,
-	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode,
-	ExpressionOrStatementPosition, ParseErrors, ParseOptions, ParseResult, PropertyKey, Span,
-	StatementPosition, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter, WithComment,
+	functions::MethodHeader, parse_bracketed, property_key::PublicOrPrivate, to_string_bracketed,
+	tokens::token_as_identifier, types::type_annotations::TypeAnnotationFunctionParameters,
+	ASTNode, ExpressionOrStatementPosition, ParseErrors, ParseOptions, ParseResult, PropertyKey,
+	Span, StatementPosition, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;

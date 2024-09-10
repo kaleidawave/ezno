@@ -42,8 +42,9 @@ impl FunctionBased for ArrowFunctionBase {
 		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		let async_pos = state.optionally_expect_keyword(reader, crate::TSXKeyword::Async);
-		Ok(((async_pos.map(|s| s.get_start()), async_pos.is_some()), ()))
+		todo!()
+		// let async_pos = state.optionally_expect_keyword(reader, crate::TSXKeyword::Async);
+		// Ok(((async_pos.map(|s| s.get_start()), async_pos.is_some()), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(

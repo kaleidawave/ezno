@@ -1,10 +1,11 @@
 use crate::{
 	are_nodes_over_length, declarations::ClassDeclaration, derive_ASTNode,
 	errors::parse_lexing_error, functions, number::NumberRepresentation, parse_bracketed,
-	throw_unexpected_token_with_token, to_string_bracketed,
-	type_annotations::generic_arguments_from_reader_sub_open_angle, ExpressionPosition,
-	FunctionHeader, ListItem, Marker, ParseErrors, ParseResult, Quoted, TSXKeyword,
+	to_string_bracketed, ExpressionPosition, FunctionHeader, ListItem, Marker, ParseErrors,
+	ParseResult, Quoted, TSXKeyword,
 };
+
+// type_annotations::generic_arguments_from_reader
 
 use self::{
 	assignments::{LHSOfAssignment, VariableOrPropertyAccess},
@@ -627,12 +628,7 @@ impl Expression {
 				// TODO arrow functions
 				todo!()
 			} else if reader.is_keyword("class") {
-				todo!()
-			// Token(TSXToken::Keyword(kw @ TSXKeyword::Class), start) => {
-			// 	state.append_keyword_at_pos(start.0, kw);
-			// 	ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)
-			// 		.map(Expression::ClassExpression)?
-			// }
+				ClassDeclaration::from_reader(reader).map(Expression::ClassExpression)?
 			} else if let Some(op) = reader.is_one_of_operators(&["+", "-", "~", "!"]) {
 				let operator = match op {
 					"+" => UnaryOperator::Plus,
@@ -658,7 +654,7 @@ impl Expression {
 			{
 				let operator = match keyword {
 					"yield" => {
-						let is_delegated = reader.is_and_move('*');
+						let is_delegated = reader.is_and_advance('*');
 						if is_delegated {
 							UnaryOperator::DelegatedYield
 						} else {
@@ -678,15 +674,15 @@ impl Expression {
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 			} else if let Some(keyword) = reader.is_one_of_keyword_advance(&["true", "false"]) {
 				Expression::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
-			} else if reader.is_keyword("this") {
+			} else if reader.is_keyword_advance("this") {
 				Expression::ThisReference(start.with_length(4))
-			} else if reader.is_keyword("null") {
+			} else if reader.is_keyword_advance("null") {
 				Expression::Null(start.with_length(4))
-			} else if reader.is_keyword("new") {
+			} else if reader.is_keyword_advance("new") {
 				todo!()
-			} else if reader.is_keyword("super") {
+			} else if reader.is_keyword_advance("super") {
 				todo!()
-			} else if reader.is_keyword("import") {
+			} else if reader.is_keyword_advance("import") {
 				todo!()
 			} else {
 				let name = reader.parse_identifier().unwrap();
@@ -1845,7 +1841,7 @@ impl ASTNode for MultipleExpression {
 		reader.skip();
 		if reader.starts_with(',') {
 			let mut top: MultipleExpression = first.into();
-			while reader.is_and_move(',') {
+			while reader.is_and_advance(',') {
 				let rhs = Expression::from_reader(reader)?;
 				let position = top.get_position().union(rhs.get_position());
 				top = MultipleExpression::Multiple { lhs: Box::new(top), rhs, position };

@@ -8,8 +8,6 @@ use crate::{
 	errors::parse_lexing_error,
 	parse_bracketed,
 	property_key::PropertyKey,
-	throw_unexpected_token_with_token,
-	tokens::token_as_identifier,
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
 	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseOptions, ParseResult,
 	Span, TSXToken, Token, VisitOptions, Visitable, WithComment,
@@ -36,16 +34,18 @@ pub enum VariableIdentifier {
 
 impl ASTNode for VariableIdentifier {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let (ident, span) = token_as_identifier(reader.next().unwrap(), "variable identifier")?;
-		if ident == "let" {
-			return Err(ParseError::new(ParseErrors::ReservedIdentifier, span));
-		}
-		Ok(if options.interpolation_points && ident == crate::marker::MARKER {
-			Self::Marker(state.new_partial_point_marker(span.get_start()), span)
-		} else {
-			Self::Standard(ident, span)
-		})"#;
-		todo!();
+		let start = reader.get_start();
+		let identifier = reader.parse_identifier().unwrap();
+		let position = start.with_length(identifier.len());
+		Ok(Self::Standard(identifier.to_owned(), position))
+		// TODO
+		// if ident == "let" {
+		// 	return Err(ParseError::new(ParseErrors::ReservedIdentifier, span));
+		// }
+		// Ok(if options.interpolation_points && ident == crate::marker::MARKER {
+		// 	Self::Marker(state.new_partial_point_marker(span.get_start()), span)
+		// } else {
+		// })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

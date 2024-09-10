@@ -1,8 +1,7 @@
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, throw_unexpected_token,
-	type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression, ParseError,
-	ParseOptions, ParseResult, Span, StatementPosition, TSXKeyword, TSXToken, Token,
-	TypeAnnotation, VariableIdentifier,
+	derive_ASTNode, errors::parse_lexing_error, type_annotations::TypeAnnotationFunctionParameters,
+	ASTNode, Expression, ParseError, ParseOptions, ParseResult, Span, StatementPosition,
+	TSXKeyword, TSXToken, Token, TypeAnnotation, VariableIdentifier,
 };
 
 use super::{
@@ -66,216 +65,197 @@ impl ASTNode for ExportDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Export)?;
+		let start = reader.expect_keyword("export")?;
+		reader.skip();
 
-		match reader.peek().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
-				reader.next();
-				if options.type_definition_module
-					&& reader.peek().map_or(
-						false,
-						|t| matches!(t.0, TSXToken::Keyword(kw) if kw.is_in_function_header()),
-					) {
-					let is_async = reader
-						.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Async)))
-						.is_some();
+		if reader.is_keyword_advance("default") {
+			// reader.peek().map_or(
+			// 	false,
+			// 	|t| matches!(t.0, TSXToken::Keyword(kw) if kw.is_in_function_header()),
+			// ) {
+			// let is_async = reader
+			// 	.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Async)))
+			// 	.is_some();
 
-					#[allow(unused)]
-					let token = reader.next();
-					debug_assert!(matches!(
-						token.unwrap().0,
-						TSXToken::Keyword(TSXKeyword::Function)
-					));
+			// #[allow(unused)]
+			// let token = reader.next();
+			// debug_assert!(matches!(
+			// 	token.unwrap().0,
+			// 	TSXToken::Keyword(TSXKeyword::Function)
+			// ));
 
-					let identifier =
-						if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-							None
-						} else {
-							Some(VariableIdentifier::from_reader(reader, state, options)?)
-						};
+			// let identifier =
+			// 	if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
+			// 		None
+			// 	} else {
+			// 		Some(VariableIdentifier::from_reader(reader)?)
+			// 	};
 
-					let parameters =
-						TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
+			// let parameters =
+			// 	TypeAnnotationFunctionParameters::from_reader(reader)?;
 
-					let return_type = reader
-						.conditional_next(|tok| matches!(tok, TSXToken::Colon))
-						.is_some()
-						.then(|| TypeAnnotation::from_reader(reader, state, options))
-						.transpose()?;
+			// let return_type = reader
+			// 	.conditional_next(|tok| matches!(tok, TSXToken::Colon))
+			// 	.is_some()
+			// 	.then(|| TypeAnnotation::from_reader(reader))
+			// 	.transpose()?;
 
-					let position = start.union(
-						return_type.as_ref().map_or(parameters.position, ASTNode::get_position),
-					);
+			// let position = start.union(
+			// 	return_type.as_ref().map_or(parameters.position, ASTNode::get_position),
+			// );
 
-					Ok(ExportDeclaration::DefaultFunction {
-						position,
-						is_async,
-						identifier,
-						parameters,
-						return_type,
-					})
-				} else {
-					let expression = Expression::from_reader(reader, state, options)?;
-					let position = start.union(expression.get_position());
-					Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
-				}
-			}
-			Token(TSXToken::Multiply, _) => {
-				reader.next();
-				let r#as = if let Some(Token(TSXToken::Keyword(TSXKeyword::As), _)) = reader.peek()
-				{
-					state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::As);
-					Some(VariableIdentifier::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
-				let start = state.expect_keyword(reader, TSXKeyword::From)?;
+			// Ok(ExportDeclaration::DefaultFunction {
+			// 	position,
+			// 	is_async,
+			// 	identifier,
+			// 	parameters,
+			// 	return_type,
+			// })
+			// }
+			let expression = Expression::from_reader(reader)?;
+			let position = start.union(expression.get_position());
+			Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
+		} else if reader.is_operator_advance("*") {
+			let r#as = if reader.is_keyword_advance("as") {
+				// TODO state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::As);
+				Some(VariableIdentifier::from_reader(reader)?)
+			} else {
+				None
+			};
 
-				let (from, end) = ImportLocation::from_reader(reader, state, options, Some(start))?;
+			let start = reader.expect_keyword("from")?;
+			// TODO temp
+			let (from, _) = ImportLocation::from_reader(reader)?;
+			let end = reader.get_end();
 
-				Ok(ExportDeclaration::Variable {
-					exported: Exportable::ImportAll { r#as, from },
-					position: start.union(end),
-				})
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Class), _) => {
-				let Token(_, start) = reader.next().unwrap();
-				state.append_keyword_at_pos(start.0, TSXKeyword::Class);
-				let class_declaration =
-					ClassDeclaration::from_reader_sub_class_keyword(reader, state, options, start)?;
-				let position = start.union(class_declaration.get_position());
-				Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let), _) => {
-				let variable_declaration =
-					VariableDeclaration::from_reader(reader, state, options)?;
-				let position = start.union(variable_declaration.get_position());
-				Ok(Self::Variable {
-					exported: Exportable::Variable(variable_declaration),
-					position,
-				})
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Interface), _) => {
-				let interface_declaration =
-					InterfaceDeclaration::from_reader(reader, state, options)?;
-				let position = start.union(interface_declaration.get_position());
-				Ok(Self::Variable {
-					exported: Exportable::Interface(interface_declaration),
-					position,
-				})
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Type), _) => {
-				if let Token(TSXToken::OpenBrace, _) =
-					reader.peek_n(1).ok_or_else(parse_lexing_error)?
-				{
-					state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
-					let Token(_, start) = reader.next().unwrap(); // OpenBrace
+			Ok(ExportDeclaration::Variable {
+				exported: Exportable::ImportAll { r#as, from },
+				position: start.union(end),
+			})
+		} else if reader.is_keyword("class") {
+			let class_declaration = ClassDeclaration::from_reader(reader)?;
+			let position = start.union(class_declaration.get_position());
+			Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
+		} else if reader.is_one_of(&["const", "let"]).is_some() {
+			let variable_declaration = VariableDeclaration::from_reader(reader)?;
+			let position = start.union(variable_declaration.get_position());
+			Ok(Self::Variable { exported: Exportable::Variable(variable_declaration), position })
+		} else if reader.is_keyword("interface") {
+			let interface_declaration = InterfaceDeclaration::from_reader(reader)?;
+			let position = start.union(interface_declaration.get_position());
+			Ok(Self::Variable { exported: Exportable::Interface(interface_declaration), position })
+		} else if reader.is_keyword("type") {
+			// if let Token(TSXToken::OpenBrace, _) =
+			// 	reader.peek_n(1).ok_or_else(parse_lexing_error)?
+			// {
+			// 	state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
+			// 	let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
-					let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
-						reader,
-						state,
-						options,
-						None,
-						TSXToken::CloseBrace,
-					)?;
+			// 	let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
+			// 		reader,
+			// 		state,
+			// 		options,
+			// 		None,
+			// 		TSXToken::CloseBrace,
+			// 	)?;
 
-					let from_pos = state.expect_keyword(reader, TSXKeyword::From)?;
+			// 	let from_pos = state.expect_keyword(reader, TSXKeyword::From)?;
 
-					let (from, end) =
-						ImportLocation::from_reader(reader, state, options, Some(from_pos))?;
+			// 	let (from, end) =
+			// 		ImportLocation::from_reader(reader, Some(from_pos))?;
 
-					Ok(Self::Variable {
-						exported: Exportable::ImportParts {
-							parts,
-							from,
-							type_definitions_only: true,
-						},
-						position: start.union(end),
-					})
-				} else {
-					let type_alias = TypeAlias::from_reader(reader, state, options)?;
-					let position = start.union(type_alias.get_position());
-					Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
-				}
-			}
-			Token(TSXToken::OpenBrace, _) => {
-				let Token(_, start) = reader.next().unwrap();
-				let mut bracket_depth = 1;
-				let after_bracket = reader.scan(|token, _| match token {
-					TSXToken::OpenBrace => {
-						bracket_depth += 1;
-						false
-					}
-					TSXToken::CloseBrace => {
-						bracket_depth -= 1;
-						bracket_depth == 0
-					}
-					_ => false,
-				});
-				if let Some(Token(token_type, _)) = after_bracket {
-					if let TSXToken::Keyword(TSXKeyword::From) = token_type {
-						let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
-							reader,
-							state,
-							options,
-							None,
-							TSXToken::CloseBrace,
-						)?;
-						let Token(_from_kw, start) = reader.next().unwrap();
-						state.append_keyword_at_pos(start.0, TSXKeyword::From);
+			// 	Ok(Self::Variable {
+			// 		exported: Exportable::ImportParts {
+			// 			parts,
+			// 			from,
+			// 			type_definitions_only: true,
+			// 		},
+			// 		position: start.union(end),
+			// 	})
+			// } else {
+			// 	let type_alias = TypeAlias::from_reader(reader)?;
+			// 	let position = start.union(type_alias.get_position());
+			// 	Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
+			todo!()
+		} else if reader.is_operator_advance("{") {
+			// let mut bracket_depth = 1;
+			// let after_bracket = reader.scan(|token, _| match token {
+			// 	TSXToken::OpenBrace => {
+			// 		bracket_depth += 1;
+			// 		false
+			// 	}
+			// 	TSXToken::CloseBrace => {
+			// 		bracket_depth -= 1;
+			// 		bracket_depth == 0
+			// 	}
+			// 	_ => false,
+			// });
+			// if let Some(Token(token_type, _)) = after_bracket {
+			// 	if let TSXToken::Keyword(TSXKeyword::From) = token_type {
+			// 		let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
+			// 			reader,
+			// 			state,
+			// 			options,
+			// 			None,
+			// 			TSXToken::CloseBrace,
+			// 		)?;
+			// 		let Token(_from_kw, start) = reader.next().unwrap();
+			// 		state.append_keyword_at_pos(start.0, TSXKeyword::From);
 
-						let (from, end) =
-							ImportLocation::from_reader(reader, state, options, Some(start))?;
-						Ok(Self::Variable {
-							exported: Exportable::ImportParts {
-								parts,
-								from,
-								type_definitions_only: false,
-							},
-							position: start.union(end),
-						})
-					} else {
-						let (parts, _, end) = crate::parse_bracketed::<ImportExportPart<_>>(
-							reader,
-							state,
-							options,
-							None,
-							TSXToken::CloseBrace,
-						)?;
-						Ok(Self::Variable {
-							exported: Exportable::Parts(parts),
-							position: start.union(end),
-						})
-					}
-				} else {
-					Err(ParseError::new(
-						crate::ParseErrors::UnmatchedBrackets,
-						start.with_length(1),
-					))
-				}
-			}
-			Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
-				let function_declaration = StatementFunction::from_reader(reader, state, options)?;
-				let position = start.union(function_declaration.get_position());
-				Ok(Self::Variable {
-					exported: Exportable::Function(function_declaration),
-					position,
-				})
-			}
-			_ => throw_unexpected_token(
-				reader,
-				&[
-					TSXToken::Keyword(TSXKeyword::Class),
-					TSXToken::Keyword(TSXKeyword::Function),
-					TSXToken::Keyword(TSXKeyword::Const),
-					TSXToken::Keyword(TSXKeyword::Let),
-					TSXToken::Keyword(TSXKeyword::Interface),
-					TSXToken::Keyword(TSXKeyword::Type),
-					TSXToken::OpenBrace,
-				],
-			),
-		}"#;
-		todo!();
+			// 		let (from, end) =
+			// 			ImportLocation::from_reader(reader, Some(start))?;
+			// 		Ok(Self::Variable {
+			// 			exported: Exportable::ImportParts {
+			// 				parts,
+			// 				from,
+			// 				type_definitions_only: false,
+			// 			},
+			// 			position: start.union(end),
+			// 		})
+			// 	} else {
+			// 		let (parts, _, end) = crate::parse_bracketed::<ImportExportPart<_>>(
+			// 			reader,
+			// 			state,
+			// 			options,
+			// 			None,
+			// 			TSXToken::CloseBrace,
+			// 		)?;
+			// 		Ok(Self::Variable {
+			// 			exported: Exportable::Parts(parts),
+			// 			position: start.union(end),
+			// 		})
+			// 	}
+			// } else {
+			// 	Err(ParseError::new(
+			// 		crate::ParseErrors::UnmatchedBrackets,
+			// 		start.with_length(1),
+			// 	))
+			// }
+			todo!()
+		} else {
+			todo!()
+			// }
+			// Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
+			// 	let function_declaration = StatementFunction::from_reader(reader)?;
+			// 	let position = start.union(function_declaration.get_position());
+			// 	Ok(Self::Variable {
+			// 		exported: Exportable::Function(function_declaration),
+			// 		position,
+			// 	})
+			// }
+			// _ => throw_unexpected_token(
+			// 	reader,
+			// 	&[
+			// 		TSXToken::Keyword(TSXKeyword::Class),
+			// 		TSXToken::Keyword(TSXKeyword::Function),
+			// 		TSXToken::Keyword(TSXKeyword::Const),
+			// 		TSXToken::Keyword(TSXKeyword::Let),
+			// 		TSXToken::Keyword(TSXKeyword::Interface),
+			// 		TSXToken::Keyword(TSXKeyword::Type),
+			// 		TSXToken::OpenBrace,
+			// 	],
+			// ),
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

@@ -2,10 +2,7 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{
-	derive_ASTNode, throw_unexpected_token_with_token, to_string_bracketed, Expression,
-	ParseErrors, VariableIdentifier,
-};
+use crate::{derive_ASTNode, to_string_bracketed, Expression, ParseErrors, VariableIdentifier};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
@@ -35,104 +32,73 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 	for ClassDeclaration<U>
 {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Class)?;
-		Self::from_reader_sub_class_keyword(reader, state, options, start)"#;
-		todo!();
-	}
+		reader.skip();
+		let start = reader.get_start();
+		reader.expect_keyword("class")?;
 
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		self.to_string_from_buffer(buf, options, local);
-	}
+		let name = U::from_reader(reader)?;
+		// TODO U::not_allowed_name && keyword "extends" => error
 
-	fn get_position(&self) -> Span {
-		self.position
-	}
-}
-
-impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
-	pub(crate) fn from_reader_sub_class_keyword(
-		reader: &mut crate::new::Lexer,
-	) -> ParseResult<Self> {
-		let _existing = r#"let name = U::from_reader(reader, state, options)?;
-
-		if let Some(VariableIdentifier::Standard(name, pos)) = name.as_option_variable_identifier()
-		{
-			if let "extends" = name.as_str() {
-				return Err(crate::ParseError::new(ParseErrors::ExpectedIdentifier, *pos));
-			}
-		}
-
-		let type_parameters = reader
-			.conditional_next(|token| *token == TSXToken::OpenChevron)
-			.is_some()
-			.then(|| {
-				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _, _)| params)
-			})
-			.transpose()?;
-
-		let extends = if reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
-			.is_some()
-		{
-			Some(Expression::from_reader(reader, state, options)?.into())
+		let type_parameters = if reader.is_operator_advance("<") {
+			todo!("crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron) .map(|(params, _, _)| params)");
 		} else {
 			None
 		};
 
-		let implements = if reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Implements)))
-			.is_some()
-		{
-			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+		let extends = if reader.is_keyword_advance("extends") {
+			Some(Expression::from_reader(reader)?.into())
+		} else {
+			None
+		};
+
+		let implements = if reader.is_keyword_advance("implements") {
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			let mut implements = vec![type_annotation];
-			if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
-				loop {
-					implements.push(TypeAnnotation::from_reader(reader, state, options)?);
-					match reader.peek() {
-						Some(Token(TSXToken::Comma, _)) => {
-							reader.next();
-						}
-						Some(Token(TSXToken::OpenBrace, _)) | None => break,
-						_ => {
-							return throw_unexpected_token_with_token(
-								reader.next().unwrap(),
-								&[TSXToken::Comma, TSXToken::OpenBrace],
-							)
-						}
-					}
-				}
-			}
+			// TODO
+			// if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
+			// 	loop {
+			// 		implements.push(TypeAnnotation::from_reader(reader, state, options)?);
+			// 		match reader.peek() {
+			// 			Some(Token(TSXToken::Comma, _)) => {
+			// 				reader.next();
+			// 			}
+			// 			Some(Token(TSXToken::OpenBrace, _)) | None => break,
+			// 			_ => {
+			// 				return throw_unexpected_token_with_token(
+			// 					reader.next().unwrap(),
+			// 					&[TSXToken::Comma, TSXToken::OpenBrace],
+			// 				)
+			// 			}
+			// 		}
+			// 	}
+			// }
 			Some(implements)
 		} else {
 			None
 		};
 
-		reader.expect_next(TSXToken::OpenBrace)?;
+		reader.expect('{')?;
+
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {
-			if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
+			reader.skip();
+			if reader.starts_with('}') {
 				break;
 			}
-			let value = Decorated::<ClassMember>::from_reader(reader, state, options)?;
+			let value = Decorated::<ClassMember>::from_reader(reader)?;
 			members.push(value);
 
-			if let Some(Token(TSXToken::SemiColon, _)) = reader.peek() {
-				reader.next();
-			}
+			// TODO expect semi colon
+			reader.is_and_advance(';');
 		}
-		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
 
-		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })"#;
-		todo!();
+		let end = reader.expect_and_get_after('}')?;
+		let position = start.union(end);
+
+		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })
 	}
 
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
+	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
@@ -149,6 +115,9 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			buf.push_str(" extends ");
 			extends.to_string_from_buffer(buf, options, local);
 		}
+
+		// TODO implements
+
 		options.push_gap_optionally(buf);
 		buf.push('{');
 		for (at_end, member) in self.members.iter().endiate() {
@@ -165,6 +134,10 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			buf.push_new_line();
 		}
 		buf.push('}');
+	}
+
+	fn get_position(&self) -> Span {
+		self.position
 	}
 }
 

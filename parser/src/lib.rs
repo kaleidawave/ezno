@@ -173,7 +173,6 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	}
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
 pub fn lex_and_parse_script<T: ASTNode>(
 	line_starts: source_map::LineStarts,
@@ -196,32 +195,20 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	T::from_reader(&mut lexer).map(|ok| (ok, state))
 }
 
-// WASM has no threads, so this is a sequential version
-#[cfg(target_arch = "wasm32")]
-#[doc(hidden)]
-pub fn lex_and_parse_script<T: ASTNode>(
-	line_starts: source_map::LineStarts,
-	options: ParseOptions,
-	script: &str,
-	offset: Option<u32>,
-) -> ParseResult<(T, ParsingState)> {
-	todo!()
-}
+// pub(crate) fn throw_unexpected_token<T>(
+// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+// 	expected: &[TSXToken],
+// ) -> ParseResult<T> {
+// 	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
+// }
 
-pub(crate) fn throw_unexpected_token<T>(
-	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-	expected: &[TSXToken],
-) -> ParseResult<T> {
-	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
-}
-
-pub(crate) fn throw_unexpected_token_with_token<T>(
-	token: Token<TSXToken, TokenStart>,
-	expected: &[TSXToken],
-) -> ParseResult<T> {
-	let position = token.get_span();
-	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
-}
+// pub(crate) fn throw_unexpected_token_with_token<T>(
+// 	token: Token<TSXToken, TokenStart>,
+// 	expected: &[TSXToken],
+// ) -> ParseResult<T> {
+// 	let position = token.get_span();
+// 	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
+// }
 
 #[derive(Debug)]
 pub struct ParsingState {
@@ -233,52 +220,52 @@ pub struct ParsingState {
 	pub partial_points: Vec<TokenStart>,
 }
 
-impl ParsingState {
-	pub(crate) fn expect_keyword(
-		&mut self,
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		kw: TSXKeyword,
-	) -> crate::ParseResult<TokenStart> {
-		let start = reader.expect_next(TSXToken::Keyword(kw))?;
-		self.append_keyword_at_pos(start.0, kw);
-		Ok(start)
-	}
+// impl ParsingState {
+// 	pub(crate) fn expect_keyword(
+// 		&mut self,
+// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+// 		kw: TSXKeyword,
+// 	) -> crate::ParseResult<TokenStart> {
+// 		let start = reader.expect_next(TSXToken::Keyword(kw))?;
+// 		self.append_keyword_at_pos(start.0, kw);
+// 		Ok(start)
+// 	}
 
-	pub(crate) fn optionally_expect_keyword(
-		&mut self,
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		kw: TSXKeyword,
-	) -> Option<Span> {
-		if let Some(Token(t, start)) = reader.conditional_next(|t| *t == TSXToken::Keyword(kw)) {
-			self.append_keyword_at_pos(start.0, kw);
-			Some(start.with_length(t.length() as usize))
-		} else {
-			None
-		}
-	}
+// 	pub(crate) fn optionally_expect_keyword(
+// 		&mut self,
+// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+// 		kw: TSXKeyword,
+// 	) -> Option<Span> {
+// 		if let Some(Token(t, start)) = reader.conditional_next(|t| *t == TSXToken::Keyword(kw)) {
+// 			self.append_keyword_at_pos(start.0, kw);
+// 			Some(start.with_length(t.length() as usize))
+// 		} else {
+// 			None
+// 		}
+// 	}
 
-	pub(crate) fn expect_keyword_get_full_span(
-		&mut self,
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		kw: TSXKeyword,
-	) -> crate::ParseResult<Span> {
-		let start = reader.expect_next(TSXToken::Keyword(kw))?;
-		self.append_keyword_at_pos(start.0, kw);
-		Ok(start.with_length(kw.length() as usize))
-	}
+// 	pub(crate) fn expect_keyword_get_full_span(
+// 		&mut self,
+// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
+// 		kw: TSXKeyword,
+// 	) -> crate::ParseResult<Span> {
+// 		let start = reader.expect_next(TSXToken::Keyword(kw))?;
+// 		self.append_keyword_at_pos(start.0, kw);
+// 		Ok(start.with_length(kw.length() as usize))
+// 	}
 
-	fn append_keyword_at_pos(&mut self, start: u32, kw: TSXKeyword) {
-		if let Some(ref mut keyword_positions) = self.keyword_positions {
-			keyword_positions.0.push((start, kw));
-		}
-	}
+// 	fn append_keyword_at_pos(&mut self, start: u32, kw: TSXKeyword) {
+// 		if let Some(ref mut keyword_positions) = self.keyword_positions {
+// 			keyword_positions.0.push((start, kw));
+// 		}
+// 	}
 
-	fn new_partial_point_marker<T>(&mut self, at: source_map::Start) -> Marker<T> {
-		let id = self.partial_points.len();
-		self.partial_points.push(at);
-		Marker(u8::try_from(id).expect("more than 256 markers"), Default::default())
-	}
-}
+// 	fn new_partial_point_marker<T>(&mut self, at: source_map::Start) -> Marker<T> {
+// 		let id = self.partial_points.len();
+// 		self.partial_points.push(at);
+// 		Marker(u8::try_from(id).expect("more than 256 markers"), Default::default())
+// 	}
+// 2}
 
 /// As parsing is forwards, this is ordered
 #[derive(Debug)]
@@ -377,19 +364,12 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	type FunctionBody = Block;
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"if let Some(Token(
-			TSXToken::OpenBrace
-			| TSXToken::OpenParentheses
-			| TSXToken::Keyword(TSXKeyword::Extends),
-			_,
-		))
-		| None = reader.peek()
-		{
-			Ok(Self(None))
-		} else {
-			Ok(Self(Some(VariableIdentifier::from_reader(reader, state, options)?)))
-		}"#;
-		todo!();
+		let current = reader.get_current();
+		let is_not_name = current.is_empty()
+			|| reader.is_keyword("extends")
+			|| reader.is_one_of(&["{", "["]).is_some();
+		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
+		Ok(Self(inner))
 	}
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {

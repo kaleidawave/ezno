@@ -70,103 +70,92 @@ impl ASTNode for ClassMember {
 
 	#[allow(clippy::similar_names)]
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"if reader.peek().map_or(false, |t| t.0.is_comment()) {
-			let (comment, is_multiline, span) =
-				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-			return Ok(Self::Comment(comment, is_multiline, span));
+		if reader.starts_with_str_advance("//") || reader.starts_with_str_advance("/*") {
+			todo!("comment; return Ok(Self::Comment(comment, is_multiline, span));");
 		}
 
-		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
-			let constructor = ClassConstructor::from_reader(reader, state, options)?;
+		if reader.is_keyword("constructor") {
+			let constructor = ClassConstructor::from_reader(reader)?;
 			return Ok(ClassMember::Constructor(constructor));
 		}
 
-		let is_static = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Static)))
-			.is_some();
+		let is_static = reader.is_keyword_advance("static");
 
-		if let Some(Token(TSXToken::OpenBrace, _)) = reader.peek() {
-			return Ok(ClassMember::StaticBlock(Block::from_reader(reader, state, options)?));
+		reader.skip();
+
+		if is_static && reader.starts_with('{') {
+			return Ok(ClassMember::StaticBlock(Block::from_reader(reader)?));
 		}
 
-		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
+		// Special index type annotation
+		// TODO ts
+		// if reader.starts_with('[')
+		// 	&& reader
+		// 		.get_current()
+		// 		.chars()
+		// 		.take_while(|c| c.is_whitespace() || c.is_alphabetic())
+		// 		.after(c == ':')
+		// {
+		// 	// let Token(_, start) = reader.next().unwrap();
+		// 	// let (name, _) = token_as_identifier(
+		// 	// 	reader.next().ok_or_else(parse_lexing_error)?,
+		// 	// 	"class indexer",
+		// 	// )?;
+		// 	// reader.expect_next(TSXToken::Colon)?;
+		// 	// let indexer_type = TypeAnnotation::from_reader(reader, state, options)?;
+		// 	// reader.expect_next(TSXToken::CloseBracket)?;
+		// 	// reader.expect_next(TSXToken::Colon)?;
+		// 	// let return_type = TypeAnnotation::from_reader(reader, state, options)?;
+		// 	// return Ok(ClassMember::Indexer {
+		// 	// 	name,
+		// 	// 	is_readonly: readonly_position.is_some(),
+		// 	// 	indexer_type,
+		// 	// 	position: start.union(return_type.get_position()),
+		// 	// 	return_type,
+		// 	// });
+		// 	todo!();
+		// }
 
-		if let Some(Token(TSXToken::OpenBracket, _)) = reader.peek() {
-			if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(2) {
-				let Token(_, start) = reader.next().unwrap();
-				let (name, _) = token_as_identifier(
-					reader.next().ok_or_else(parse_lexing_error)?,
-					"class indexer",
-				)?;
-				reader.expect_next(TSXToken::Colon)?;
-				let indexer_type = TypeAnnotation::from_reader(reader, state, options)?;
-				reader.expect_next(TSXToken::CloseBracket)?;
-				reader.expect_next(TSXToken::Colon)?;
-				let return_type = TypeAnnotation::from_reader(reader, state, options)?;
-				return Ok(ClassMember::Indexer {
-					name,
-					is_readonly: readonly_position.is_some(),
-					indexer_type,
-					position: start.union(return_type.get_position()),
-					return_type,
-				});
+		let is_readonly = reader.is_keyword_advance("readonly");
+		reader.skip();
+		let start = reader.get_start();
+
+		let (header, key) = crate::functions::get_method_name(reader)?;
+		reader.skip();
+
+		if reader.starts_with('(') || reader.starts_with('<') {
+			todo!()
+		// let function = ClassFunction::from_reader_with_config(reader, header, key)?;
+		// Ok(ClassMember::Method(is_static, function))
+		} else {
+			if !header.is_no_modifiers() {
+				todo!()
+				// return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
 			}
+			let is_optional = reader.is_operator_advance("?:");
+			let type_annotation = if is_optional || reader.is_operator_advance(":") {
+				// let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+				// (Some(type_annotation), is_optional)
+				todo!()
+			} else {
+				None
+			};
+
+			reader.skip();
+
+			let value: Option<Box<Expression>> = if reader.is_operator_advance("=") {
+				Some(Box::new(Expression::from_reader(reader)?))
+			} else {
+				None
+			};
+
+			let position = start.union(reader.get_end());
+
+			let property =
+				ClassProperty { is_readonly, is_optional, position, key, type_annotation, value };
+
+			Ok(Self::Property(is_static, property))
 		}
-
-		// TODO not great
-		let start = reader.peek().unwrap().1;
-
-		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
-
-		match reader.peek() {
-			Some(Token(TSXToken::OpenParentheses | TSXToken::OpenChevron, _))
-				if readonly_position.is_none() =>
-			{
-				let function = ClassFunction::from_reader_with_config(
-					reader,
-					state,
-					options,
-					(Some(start), header),
-					key,
-				)?;
-				Ok(ClassMember::Method(is_static, function))
-			}
-			Some(Token(token, _)) => {
-				if !header.is_no_modifiers() {
-					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
-				}
-				let (member_type, is_optional) =
-					if let TSXToken::Colon | TSXToken::OptionalMember = token {
-						let is_optional = matches!(token, TSXToken::OptionalMember);
-						reader.next();
-						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-						(Some(type_annotation), is_optional)
-					} else {
-						(None, false)
-					};
-				let member_expression: Option<Expression> =
-					if let Some(Token(TSXToken::Assign, _)) = reader.peek() {
-						reader.next();
-						let expression = Expression::from_reader(reader, state, options)?;
-						Some(expression)
-					} else {
-						None
-					};
-				Ok(Self::Property(
-					is_static,
-					ClassProperty {
-						is_readonly: readonly_position.is_some(),
-						is_optional,
-						position: key.get_position(),
-						key,
-						type_annotation: member_type,
-						value: member_expression.map(Box::new),
-					},
-				))
-			}
-			None => Err(parse_lexing_error()),
-		}"#;
-		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -343,8 +332,9 @@ impl FunctionBased for ClassConstructorBase {
 		state: &mut crate::ParsingState,
 		_options: &ParseOptions,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		let start = state.expect_keyword(reader, TSXKeyword::Constructor)?;
-		Ok(((Some(start), ()), ()))
+		todo!()
+		// let start = state.expect_keyword(reader, TSXKeyword::Constructor)?;
+		// Ok(((Some(start), ()), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(

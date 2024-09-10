@@ -7,7 +7,8 @@ use tokenizer_lib::{sized_tokens::TokenStart, Token};
 
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
-	UnexpectedToken { expected: &'a [TSXToken], found: TSXToken },
+	UnexpectedCharacter { expected: &'a [char], found: char },
+	ExpectedKeyword { expected: &'static str, found: &'a str },
 	UnexpectedSymbol(derive_finite_automaton::InvalidCharacter),
 	ClosingTagDoesNotMatch { expected: &'a str, found: &'a str },
 	ExpectedStringLiteral { found: TSXToken },
@@ -40,26 +41,29 @@ pub enum ParseErrors<'a> {
 impl<'a> Display for ParseErrors<'a> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			ParseErrors::UnexpectedToken { expected, found } => {
+			ParseErrors::UnexpectedCharacter { expected, found } => {
 				f.write_str("Expected ")?;
 				match expected {
-					[] => unreachable!("no expected tokens given"),
-					[a] => f.write_fmt(format_args!("{a:?}")),
-					[a, b] => f.write_fmt(format_args!("{a:?} or {b:?}")),
+					[] => unreachable!("no expected chars given"),
+					[a] => f.write_fmt(format_args!("{a}")),
+					[a, b] => f.write_fmt(format_args!("{a} or {b}")),
 					[head @ .., end] => {
 						let start = head
 							.iter()
-							.map(|token| format!("{token:?}"))
-							.reduce(|mut acc, token| {
+							.map(|char| format!("{char}"))
+							.reduce(|mut acc, char| {
 								acc.push_str(", ");
-								acc.push_str(&token);
+								acc.push_str(&char);
 								acc
 							})
 							.unwrap();
-						f.write_fmt(format_args!("{start} or {end:?}"))
+						f.write_fmt(format_args!("{start} or {end}"))
 					}
 				}?;
-				write!(f, " found {found:?}")
+				write!(f, " found {found}")
+			}
+			ParseErrors::ExpectedKeyword { expected, found } => {
+				write!(f, "Expected {expected:?}, found {found:?}")
 			}
 			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
@@ -217,22 +221,8 @@ impl Display for LexingErrors {
 				f.write_str("JSX comments must have two dashes after `<!` start")
 			}
 			LexingErrors::ExpectedOpenChevron => {
-				f.write_str("Unexpected token in HTML. Expected '<'")
+				f.write_str("Unexpected char in HTML. Expected '<'")
 			}
-		}
-	}
-}
-
-// For TokenReader::expect_next
-impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
-	fn from(opt: Option<(TSXToken, Token<TSXToken, TokenStart>)>) -> Self {
-		if let Some((expected_type, token)) = opt {
-			let position = token.get_span();
-			let reason =
-				ParseErrors::UnexpectedToken { expected: &[expected_type], found: token.0 };
-			Self::new(reason, position)
-		} else {
-			parse_lexing_error()
 		}
 	}
 }

@@ -1,10 +1,7 @@
 use std::ops::Neg;
 
 use crate::ast::VariableOrPropertyAccess;
-use crate::{
-	derive_ASTNode, parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
-	ListItem, ParseErrors, Quoted,
-};
+use crate::{derive_ASTNode, parse_bracketed, to_string_bracketed, ListItem, ParseErrors, Quoted};
 use crate::{
 	errors::parse_lexing_error, extensions::decorators::Decorated, Decorator, Marker, ParseResult,
 	VariableField, WithComment,

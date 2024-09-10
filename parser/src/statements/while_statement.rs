@@ -21,13 +21,12 @@ impl ASTNode for WhileStatement {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
-		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::While)?;
-		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = MultipleExpression::from_reader(reader, state, options)?;
-		reader.expect_next(TSXToken::CloseParentheses)?;
-		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		Ok(Self { position: start.union(inner.get_position()), condition, inner })"#;
-		todo!();
+		let start = reader.expect_keyword("while")?;
+		reader.expect('(')?;
+		let condition = MultipleExpression::from_reader(reader)?;
+		reader.expect(')')?;
+		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -62,15 +61,14 @@ impl ASTNode for DoWhileStatement {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
-		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Do)?;
-		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		let _ = state.expect_keyword(reader, TSXKeyword::While)?;
-		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = MultipleExpression::from_reader(reader, state, options)?;
-		let position =
-			start.union(reader.expect_next(TSXToken::CloseParentheses)?.get_end_after(1));
-		Ok(Self { condition, inner, position })"#;
-		todo!();
+		let start = reader.expect_keyword("do")?;
+		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		let _ = reader.expect_keyword("while")?;
+		reader.expect('(')?;
+		let condition = MultipleExpression::from_reader(reader)?;
+		let end = reader.expect_and_get_after(')')?;
+		let position = start.union(end);
+		Ok(Self { condition, inner, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

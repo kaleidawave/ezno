@@ -26,9 +26,35 @@ impl ASTNode for Decorator {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let at_pos = reader.expect_next(TSXToken::At)?;
-		Self::from_reader_sub_at_symbol(reader, state, options, at_pos)"#;
-		todo!();
+		let start = reader.get_start();
+		reader.expect('@')?;
+		let mut name = vec![reader.parse_identifier().unwrap().to_owned()];
+		while reader.is_and_advance('.') {
+			name.push(reader.parse_identifier().unwrap().to_owned());
+		}
+
+		let arguments = if reader.starts_with('(') {
+			// let mut arguments = Vec::<_>::new();
+			// loop {
+			// 	if let Some(Token(TSXToken::CloseParentheses, _)) = reader.peek() {
+			// 		break;
+			// 	}
+			// 	arguments.push(Expression::from_reader(reader, state, options)?);
+			// 	match reader.peek() {
+			// 		Some(Token(TSXToken::Comma, _)) => {
+			// 			reader.next();
+			// 		}
+			// 		_ => break,
+			// 	}
+			// }
+			// let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
+			// (Some(arguments), at_pos.union(end))
+			todo!()
+		} else {
+			None
+		};
+		let position = start.union(reader.get_end());
+		Ok(Self { name, arguments, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -60,45 +86,6 @@ impl ASTNode for Decorator {
 	}
 }
 
-impl Decorator {
-	pub(crate) fn from_reader_sub_at_symbol(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let (name, mut last_position) =
-			token_as_identifier(reader.next().unwrap(), "Decorator name")?;
-
-		let mut names = vec![name];
-		while matches!(reader.peek(), Some(Token(TSXToken::Dot, _))) {
-			let (name, pos) = token_as_identifier(reader.next().unwrap(), "Nested decorator name")?;
-			last_position = pos;
-			names.push(name);
-		}
-
-		let (arguments, position) = if reader
-			.conditional_next(|token| matches!(token, TSXToken::OpenParentheses))
-			.is_some()
-		{
-			let mut arguments = Vec::<_>::new();
-			loop {
-				if let Some(Token(TSXToken::CloseParentheses, _)) = reader.peek() {
-					break;
-				}
-				arguments.push(Expression::from_reader(reader, state, options)?);
-				match reader.peek() {
-					Some(Token(TSXToken::Comma, _)) => {
-						reader.next();
-					}
-					_ => break,
-				}
-			}
-			let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
-			(Some(arguments), at_pos.union(end))
-		} else {
-			(None, at_pos.union(last_position))
-		};
-		Ok(Self { name: names, arguments, position })"#;
-		todo!();
-	}
-}
-
 /// TODO under cfg if don't want this could just be `type Decorated<T> = T;`
 #[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Clone, get_field_by_type::GetFieldByType)]
@@ -116,9 +103,8 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let decorators = decorators_from_reader(reader, state, options)?;
-		N::from_reader(reader, state, options).map(|on| Self::new(decorators, on))"#;
-		todo!();
+		let decorators = decorators_from_reader(reader)?;
+		N::from_reader(reader).map(|on| Self::new(decorators, on))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -163,16 +149,13 @@ impl<U: ASTNode> Decorated<U> {
 }
 
 pub(crate) fn decorators_from_reader(
-	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	state: &mut crate::ParsingState,
-	options: &ParseOptions,
+	reader: &mut crate::new::Lexer,
 ) -> ParseResult<Vec<Decorator>> {
-	todo!()
-	// let mut decorators = Vec::new();
-	// while let Some(Token(TSXToken::At, _)) = reader.peek() {
-	// 	decorators.push(Decorator::from_reader(reader, state, options)?);
-	// }
-	// Ok(decorators)
+	let mut decorators = Vec::new();
+	while reader.starts_with('@') {
+		decorators.push(Decorator::from_reader(reader)?);
+	}
+	Ok(decorators)
 }
 
 impl<T: Visitable> Visitable for Decorated<T> {

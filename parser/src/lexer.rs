@@ -93,67 +93,58 @@ impl Default for NumberLiteralType {
 	}
 }
 
-/// Current parsing state of the lexer.
-pub(super) enum LexingState {
-	None,
-	Identifier,
-	Symbol(GetAutomataStateForValue<TSXToken>),
-	// Literals:
-	Number(NumberLiteralType),
-	String {
-		double_quoted: bool,
-		escaped: bool,
-	},
-	TemplateLiteral {
-		interpolation_depth: u16,
-		last_char_was_dollar: bool,
-		escaped: bool,
-	},
-	JSXLiteral {
-		state: JSXLexingState,
-		interpolation_depth: u16,
-		tag_depth: u16,
-		/// `true` for `script` and `style` tags
-		/// TODO currently isn't handled at all
-		no_inner_tags_or_expressions: bool,
-		is_self_closing_tag: bool,
-	},
-	SingleLineComment,
-	MultiLineComment {
-		last_char_was_star: bool,
-	},
-	RegexLiteral {
-		escaped: bool,
-		/// aka on flags
-		after_last_slash: bool,
-		/// Forward slash while in `[...]` is allowed
-		in_set: bool,
-	},
-}
+// /// Current parsing state of the lexer.
+// pub(super) enum LexingState {
+// 	String {
+// 		double_quoted: bool,
+// 		escaped: bool,
+// 	},
+// 	TemplateLiteral {
+// 		interpolation_depth: u16,
+// 		last_char_was_dollar: bool,
+// 		escaped: bool,
+// 	},
+// 	JSXLiteral {
+// 		state: JSXLexingState,
+// 		interpolation_depth: u16,
+// 		tag_depth: u16,
+// 		/// `true` for `script` and `style` tags
+// 		/// TODO currently isn't handled at all
+// 		no_inner_tags_or_expressions: bool,
+// 		is_self_closing_tag: bool,
+// 	},
+// 	RegexLiteral {
+// 		escaped: bool,
+// 		/// aka on flags
+// 		after_last_slash: bool,
+// 		/// Forward slash while in `[...]` is allowed
+// 		in_set: bool,
+// 	},
+// }
 
 // TODO WIP
-const DEFAULT_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
-	interpolation_depth: 0,
-	tag_depth: 0,
-	state: JSXLexingState::ExpectingOpenChevron,
-	no_inner_tags_or_expressions: false,
-	is_self_closing_tag: false,
-};
-const FIRST_CHEVRON_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
-	interpolation_depth: 0,
-	tag_depth: 0,
-	state: JSXLexingState::TagName { direction: JSXTagNameDirection::Opening, lexed_start: false },
-	no_inner_tags_or_expressions: false,
-	is_self_closing_tag: false,
-};
-// }
+// const DEFAULT_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
+// 	interpolation_depth: 0,
+// 	tag_depth: 0,
+// 	state: JSXLexingState::ExpectingOpenChevron,
+// 	no_inner_tags_or_expressions: false,
+// 	is_self_closing_tag: false,
+// };
+// const FIRST_CHEVRON_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
+// 	interpolation_depth: 0,
+// 	tag_depth: 0,
+// 	state: JSXLexingState::TagName { direction: JSXTagNameDirection::Opening, lexed_start: false },
+// 	no_inner_tags_or_expressions: false,
+// 	is_self_closing_tag: false,
+// };
+// // }
 
 // TODO state for "use strict" etc?
 // TODO hold Keywords map, markers, syntax errors etc
 pub struct Lexer<'a> {
 	options: LexerOptions,
 	// last: u32,
-	current: u32,
+	head: u32,
 	on: &'a str,
 	// state: LexingState,
 	// state_stack: Vec<LexingState>,
@@ -170,17 +161,17 @@ impl<'a> Lexer<'a> {
 		Lexer {
 			options,
 			// last: offset.unwrap_or_default(),
-			current: offset.unwrap_or_default(),
+			head: 0, // TODO offset.unwrap_or_default(),
 			on: script,
 		}
 	}
 
 	pub fn get_current(&self) -> &'a str {
-		&self.on[self.current as usize..]
+		&self.on[self.head as usize..]
 	}
 
 	pub fn skip(&mut self) {
-		self.current += self.get_current().chars().take_while(|c| c.is_whitespace()).count() as u32;
+		self.head += self.get_current().chars().take_while(|c| c.is_whitespace()).count() as u32;
 	}
 
 	pub fn skip_and_count_new_lines(&mut self) -> u32 {
@@ -189,7 +180,7 @@ impl<'a> Lexer<'a> {
 			if chr == '\n' {
 				count += 1;
 			} else if !chr.is_whitespace() {
-				self.current += idx as u32;
+				self.head += idx as u32;
 				return count;
 			}
 		}
@@ -199,10 +190,17 @@ impl<'a> Lexer<'a> {
 	pub fn is_keyword(&mut self, keyword: &str) -> bool {
 		let current = self.get_current();
 		let length = keyword.len();
+		current.starts_with(keyword)
+			&& current[length..].chars().next().map_or(true, |chr| !chr.is_alphanumeric())
+	}
+
+	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
+		let current = self.get_current();
+		let length = keyword.len();
 		if current.starts_with(keyword)
 			&& current[length..].chars().next().map_or(true, |chr| !chr.is_alphanumeric())
 		{
-			self.current += length as u32;
+			self.head += length as u32;
 			true
 		} else {
 			false
@@ -231,32 +229,70 @@ impl<'a> Lexer<'a> {
 			if current.starts_with(item)
 				&& current[item.len()..].chars().next().map_or(true, |chr| !chr.is_alphanumeric())
 			{
-				self.current += item.len() as u32;
+				self.head += item.len() as u32;
 				return Some(item);
 			}
 		}
 		None
 	}
 
-	pub fn expect(&mut self, chr: char) -> Result<(), ()> {
-		if self.get_current().starts_with(chr) {
-			self.current += chr.len_utf8() as u32;
+	pub fn expect(&mut self, chr: char) -> Result<(), crate::ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(chr) {
+			self.head += chr.len_utf8() as u32;
 			Ok(())
 		} else {
-			Err(())
+			let position = self.get_start().with_length(chr.len_utf8());
+			let reason = crate::ParseErrors::UnexpectedCharacter {
+				expected: &[chr],
+				found: current.chars().next().unwrap(),
+			};
+			Err(crate::ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect_and_get_after(&mut self, chr: char) -> Result<crate::TokenEnd, ()> {
-		if self.get_current().starts_with(chr) {
-			self.current += chr.len_utf8() as u32;
-			Ok(source_map::End(self.current))
+	pub fn expect_keyword(
+		&mut self,
+		str: &'static str,
+	) -> Result<source_map::Start, crate::ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(str) {
+			let start = source_map::Start(self.head);
+			self.head += str.len() as u32;
+			Ok(start)
 		} else {
-			Err(())
+			// TODO move
+			fn next_empty_occurance(str: &str) -> usize {
+				let mut chars = str.char_indices();
+				let is_text = chars.next().is_some_and(|(_, chr)| chr.is_alphabetic());
+				for (idx, chr) in chars {
+					let should_break = chr.is_whitespace()
+						|| (is_text && !chr.is_alphanumeric())
+						|| (!is_text && chr.is_alphabetic());
+					if should_break {
+						return idx;
+					}
+				}
+				0
+			}
+
+			let found = &current[..next_empty_occurance(current)];
+			let position = self.get_start().with_length(found.len());
+			let reason = crate::ParseErrors::ExpectedKeyword { expected: str, found };
+			Err(crate::ParseError::new(reason, position))
 		}
 	}
 
-	pub fn is_no_move(&mut self, chr: char) -> Result<(), ()> {
+	pub fn expect_and_get_after(
+		&mut self,
+		chr: char,
+	) -> Result<source_map::End, crate::ParseError> {
+		self.expect(chr).map(|()| source_map::End(self.head))
+	}
+
+	pub fn is_no_advance(&mut self, chr: char) -> Result<(), ()> {
 		if self.get_current().starts_with(chr) {
 			Ok(())
 		} else {
@@ -272,8 +308,21 @@ impl<'a> Lexer<'a> {
 		self.get_current().starts_with(str)
 	}
 
-	pub fn is_and_move(&mut self, chr: char) -> bool {
-		self.expect(chr).is_ok()
+	pub fn starts_with_str_advance(&mut self, str: &str) -> bool {
+		let result = self.get_current().starts_with(str);
+		if result {
+			self.head += str.len() as u32;
+		}
+		result
+	}
+
+	pub fn is_and_advance(&mut self, chr: char) -> bool {
+		if self.get_current().starts_with(chr) {
+			self.head += chr.len_utf8() as u32;
+			true
+		} else {
+			false
+		}
 	}
 
 	pub fn is_one_of<'b>(&self, items: &[&'b str]) -> Option<&'b str> {
@@ -297,15 +346,29 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
-	pub fn get_start(&self) -> crate::TokenStart {
-		source_map::Start(self.current)
+	pub fn is_operator_advance<'b>(&mut self, operator: &str) -> bool {
+		let current = self.get_current();
+		let matches = current.starts_with(operator);
+		if matches {
+			self.head += operator.len() as u32;
+		}
+		matches
+	}
+
+	pub fn get_start(&self) -> source_map::Start {
+		source_map::Start(self.head)
+	}
+
+	pub fn get_end(&self) -> source_map::End {
+		source_map::End(self.head)
 	}
 
 	pub fn advance(&mut self, count: u32) {
-		self.current += count;
+		self.head += count;
 	}
 
 	pub fn parse_identifier(&mut self) -> Result<&'a str, ()> {
+		self.skip();
 		let current = self.get_current();
 		let mut iter = current.char_indices();
 		if iter.next().is_some_and(|(_, chr)| ('0'..='9').contains(&chr)) {
@@ -314,7 +377,7 @@ impl<'a> Lexer<'a> {
 		for (idx, chr) in iter {
 			if !chr.is_alphanumeric() {
 				let value = &current[..idx];
-				self.current += idx as u32;
+				self.head += idx as u32;
 				return Ok(value);
 			}
 		}
@@ -343,7 +406,7 @@ impl<'a> Lexer<'a> {
 			if let (crate::Quoted::Double, '"') | (crate::Quoted::Single, '\'') = (quoted, chr) {
 				// TODO double check
 				let content = current[1..idx].to_owned();
-				self.current += idx as u32 + 1;
+				self.head += idx as u32 + 1;
 				return Ok((content, quoted));
 			}
 
@@ -499,7 +562,7 @@ impl<'a> Lexer<'a> {
 					let num_slice = &current[..idx];
 					let number = crate::number::NumberRepresentation::from_str(num_slice);
 					let number = number.unwrap();
-					self.current += idx as u32;
+					self.head += idx as u32;
 					return Ok((number, idx as u32));
 					// if is_number_delimiter(chr) {
 					// 	// Note not = as don't want to include chr

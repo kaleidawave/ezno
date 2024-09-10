@@ -3,7 +3,6 @@ use crate::{
 	errors::parse_lexing_error,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
-	throw_unexpected_token_with_token,
 	visiting::Visitable,
 	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, Span,
 	TSXToken, Token, TokenReader, WithComment,

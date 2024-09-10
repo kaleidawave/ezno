@@ -3,10 +3,9 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE,
-	throw_unexpected_token_with_token, ASTNode, Expression, ParseError, ParseErrors, ParseOptions,
-	ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
-	WithComment,
+	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE, ASTNode,
+	Expression, ParseError, ParseErrors, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken,
+	Token, TokenReader, TypeAnnotation, VariableField, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -14,11 +13,7 @@ use visitable_derive::Visitable;
 pub trait DeclarationExpression:
 	PartialEq + Clone + std::fmt::Debug + Send + std::marker::Sync + crate::Visitable
 {
-	fn expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self>;
+	fn expression_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self>;
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
@@ -35,12 +30,7 @@ pub trait DeclarationExpression:
 }
 
 impl DeclarationExpression for Option<Expression> {
-	fn expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		// expect_value: bool,
-	) -> ParseResult<Self> {
+	fn expression_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		todo!()
 		// if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
 		// 	Expression::from_reader_with_precedence(
@@ -82,20 +72,9 @@ impl DeclarationExpression for Option<Expression> {
 }
 
 impl DeclarationExpression for crate::Expression {
-	fn expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		todo!()
-		// let start = reader.expect_next(TSXToken::Assign)?;
-		// Expression::from_reader_with_precedence(
-		// 	reader,
-		// 	state,
-		// 	options,
-		// 	COMMA_PRECEDENCE,
-		// 	Some(start),
-		// )
+	fn expression_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _start = reader.expect('=')?;
+		Expression::from_reader(reader)
 	}
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
@@ -135,17 +114,17 @@ pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 
 impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem<TExpr> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
+		let _existing = r#"let name = WithComment::<VariableField>::from_reader(reader)?;
 		let type_annotation = if reader
 			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
 			.is_some()
 		{
-			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			Some(type_annotation)
 		} else {
 			None
 		};
-		let expression = TExpr::expression_from_reader(reader, state, options)?;
+		let expression = TExpr::expression_from_reader(reader)?;
 		let position = name.get_position().union(
 			expression
 				.get_declaration_position()
@@ -202,21 +181,21 @@ pub enum VariableDeclarationKeyword {
 }
 
 impl VariableDeclarationKeyword {
-	#[must_use]
-	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
-		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
-	}
+	// #[must_use]
+	// pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
+	// 	matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
+	// }
 
-	pub(crate) fn from_token(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
-		match token {
-			Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
-			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
-			token => throw_unexpected_token_with_token(
-				token,
-				&[TSXToken::Keyword(TSXKeyword::Const), TSXToken::Keyword(TSXKeyword::Let)],
-			),
-		}
-	}
+	// pub(crate) fn from_token(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
+	// 	match token {
+	// 		Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
+	// 		Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
+	// 		token => throw_unexpected_token_with_token(
+	// 			token,
+	// 			&[TSXToken::Keyword(TSXKeyword::Const), TSXToken::Keyword(TSXKeyword::Let)],
+	// 		),
+	// 	}
+	// }
 
 	#[must_use]
 	pub fn as_str(&self) -> &str {
@@ -229,95 +208,82 @@ impl VariableDeclarationKeyword {
 
 impl ASTNode for VariableDeclaration {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let token = reader.next().ok_or_else(parse_lexing_error)?;
-		let start = token.1;
-		let kind = VariableDeclarationKeyword::from_token(token)?;
-		Ok(match kind {
-			VariableDeclarationKeyword::Let => {
-				state.append_keyword_at_pos(start.0, TSXKeyword::Let);
-				let mut declarations = Vec::new();
-				loop {
-					// Some people like to have trailing comments in declarations ?
-					if reader.peek().is_some_and(|t| t.0.is_comment()) {
-						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
-							break;
-						}
-						continue;
-					}
+		let start = reader.get_start();
+		if reader.is_keyword_advance("let") {
+			// state.append_keyword_at_pos(start.0, TSXKeyword::Let);
+			let mut declarations = Vec::new();
+			loop {
+				// Some people like to have trailing comments in declarations ?
+				// if reader.peek().is_some_and(|t| t.0.is_comment()) {
+				// 	let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+				// 	if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
+				// 		break;
+				// 	}
+				// 	continue;
+				// }
 
-					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
-						reader, state, options,
-					)?;
+				let value = VariableDeclarationItem::<Option<Expression>>::from_reader(reader)?;
 
-					if value.expression.is_none()
-						&& !matches!(value.name.get_ast_ref(), VariableField::Name(_))
-					{
-						return Err(crate::ParseError::new(
-							crate::ParseErrors::DestructuringRequiresValue,
-							value.name.get_ast_ref().get_position(),
-						));
-					}
-
-					declarations.push(value);
-					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-						reader.next();
-					} else {
-						break;
-					}
+				if value.expression.is_none()
+					&& !matches!(value.name.get_ast_ref(), VariableField::Name(_))
+				{
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::DestructuringRequiresValue,
+						value.name.get_ast_ref().get_position(),
+					));
 				}
 
-				let position = if let Some(last) = declarations.last() {
-					start.union(last.get_position())
-				} else {
-					let position = start.with_length(3);
-					if options.partial_syntax {
-						position
-					} else {
-						return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
-					}
-				};
-
-				VariableDeclaration::LetDeclaration { position, declarations }
-			}
-			VariableDeclarationKeyword::Const => {
-				state.append_keyword_at_pos(start.0, TSXKeyword::Const);
-				let mut declarations = Vec::new();
-				loop {
-					// Some people like to have trailing comments in declarations ?
-					if reader.peek().is_some_and(|t| t.0.is_comment()) {
-						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
-							break;
-						}
-						continue;
-					}
-
-					let value =
-						VariableDeclarationItem::<Expression>::from_reader(reader, state, options)?;
-					declarations.push(value);
-					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-						reader.next();
-					} else {
-						break;
-					}
+				declarations.push(value);
+				if !reader.is_operator_advance(",") {
+					break;
 				}
-
-				let position = if let Some(last) = declarations.last() {
-					start.union(last.get_position())
-				} else {
-					let position = start.with_length(3);
-					if options.partial_syntax {
-						position
-					} else {
-						return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
-					}
-				};
-
-				VariableDeclaration::ConstDeclaration { position, declarations }
 			}
-		})"#;
-		todo!();
+
+			let position = if let Some(last) = declarations.last() {
+				start.union(last.get_position())
+			} else {
+				let position = start.with_length(3);
+				// if options.partial_syntax {
+				// 	position
+				// } else {
+				// }
+				return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+			};
+
+			Ok(VariableDeclaration::LetDeclaration { position, declarations })
+		} else if reader.is_keyword_advance("const") {
+			// state.append_keyword_at_pos(start.0, TSXKeyword::Const);
+			let mut declarations = Vec::new();
+			loop {
+				// Some people like to have trailing comments in declarations ?
+				// if reader.peek().is_some_and(|t| t.0.is_comment()) {
+				// 	let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+				// 	if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
+				// 		break;
+				// 	}
+				// 	continue;
+				// }
+				declarations.push(VariableDeclarationItem::<Expression>::from_reader(reader)?);
+				if !reader.is_operator_advance(",") {
+					break;
+				}
+			}
+
+			let position = if let Some(last) = declarations.last() {
+				start.union(last.get_position())
+			} else {
+				let position = start.with_length(3);
+				// if options.partial_syntax {
+				// 	position
+				// } else {
+				// }
+				return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+			};
+
+			Ok(VariableDeclaration::ConstDeclaration { position, declarations })
+		} else {
+			todo!("token error")
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

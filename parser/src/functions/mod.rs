@@ -427,86 +427,86 @@ impl ASTNode for FunctionHeader {
 	}
 }
 
-pub(crate) fn parse_special_then_regular_header(
-	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-	state: &mut crate::ParsingState,
-	async_kw_pos: Option<TokenStart>,
-) -> Result<FunctionHeader, crate::ParseError> {
-	#[cfg(feature = "extras")]
-	{
-		let next_generator = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(crate::TSXKeyword::Generator)));
+// pub(crate) fn parse_special_then_regular_header(
+// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+// 	state: &mut crate::ParsingState,
+// 	async_kw_pos: Option<TokenStart>,
+// ) -> Result<FunctionHeader, crate::ParseError> {
+// 	#[cfg(feature = "extras")]
+// 	{
+// 		let next_generator = reader
+// 			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(crate::TSXKeyword::Generator)));
 
-		if let Some(token) = next_generator {
-			let span = token.get_span();
-			let location = parse_function_location(reader);
+// 		if let Some(token) = next_generator {
+// 			let span = token.get_span();
+// 			let location = parse_function_location(reader);
 
-			let pos = state.expect_keyword_get_full_span(reader, TSXKeyword::Function)?;
-			let position = span.union(pos);
+// 			let pos = state.expect_keyword_get_full_span(reader, TSXKeyword::Function)?;
+// 			let position = span.union(pos);
 
-			Ok(FunctionHeader::ChadFunctionHeader {
-				is_async: async_kw_pos.is_some(),
-				location,
-				is_generator: true,
-				position,
-			})
-		} else {
-			parse_regular_header(reader, state, async_kw_pos)
-		}
-	}
+// 			Ok(FunctionHeader::ChadFunctionHeader {
+// 				is_async: async_kw_pos.is_some(),
+// 				location,
+// 				is_generator: true,
+// 				position,
+// 			})
+// 		} else {
+// 			parse_regular_header(reader, state, async_kw_pos)
+// 		}
+// 	}
 
-	#[cfg(not(feature = "extras"))]
-	parse_regular_header(reader, state, async_kw_pos)
-}
+// 	#[cfg(not(feature = "extras"))]
+// 	parse_regular_header(reader, state, async_kw_pos)
+// }
 
-#[cfg(feature = "extras")]
-pub(crate) fn parse_function_location(
-	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-) -> Option<FunctionLocationModifier> {
-	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Worker), _)) =
-		reader.peek()
-	{
-		Some(match reader.next().unwrap() {
-			Token(TSXToken::Keyword(TSXKeyword::Server), _) => FunctionLocationModifier::Server,
-			Token(TSXToken::Keyword(TSXKeyword::Worker), _) => FunctionLocationModifier::Worker,
-			_ => unreachable!(),
-		})
-	} else {
-		None
-	}
-}
+// #[cfg(feature = "extras")]
+// pub(crate) fn parse_function_location(
+// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+// ) -> Option<FunctionLocationModifier> {
+// 	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Worker), _)) =
+// 		reader.peek()
+// 	{
+// 		Some(match reader.next().unwrap() {
+// 			Token(TSXToken::Keyword(TSXKeyword::Server), _) => FunctionLocationModifier::Server,
+// 			Token(TSXToken::Keyword(TSXKeyword::Worker), _) => FunctionLocationModifier::Worker,
+// 			_ => unreachable!(),
+// 		})
+// 	} else {
+// 		None
+// 	}
+// }
 
-fn parse_regular_header(
-	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-	state: &mut crate::ParsingState,
-	async_kw_pos: Option<TokenStart>,
-) -> Result<FunctionHeader, crate::ParseError> {
-	#[cfg(feature = "extras")]
-	let location = parse_function_location(reader);
+// fn parse_regular_header(
+// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
+// 	state: &mut crate::ParsingState,
+// 	async_kw_pos: Option<TokenStart>,
+// ) -> Result<FunctionHeader, crate::ParseError> {
+// 	#[cfg(feature = "extras")]
+// 	let location = parse_function_location(reader);
 
-	let function_start = state.expect_keyword(reader, TSXKeyword::Function)?;
-	let is_async = async_kw_pos.is_some();
+// 	let function_start = state.expect_keyword(reader, TSXKeyword::Function)?;
+// 	let is_async = async_kw_pos.is_some();
 
-	let generator_star_token_position = reader
-		.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-		.map(|token| token.get_span());
+// 	let generator_star_token_position = reader
+// 		.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+// 		.map(|token| token.get_span());
 
-	let start = async_kw_pos.unwrap_or(function_start);
+// 	let start = async_kw_pos.unwrap_or(function_start);
 
-	let position = if let Some(ref generator_star_token_position) = generator_star_token_position {
-		start.union(generator_star_token_position)
-	} else {
-		function_start.with_length(TSXKeyword::Function.length() as usize)
-	};
+// 	let position = if let Some(ref generator_star_token_position) = generator_star_token_position {
+// 		start.union(generator_star_token_position)
+// 	} else {
+// 		function_start.with_length(TSXKeyword::Function.length() as usize)
+// 	};
 
-	Ok(FunctionHeader::VirginFunctionHeader {
-		is_async,
-		generator_star_token_position,
-		position,
-		#[cfg(feature = "extras")]
-		location,
-	})
-}
+// 	Ok(FunctionHeader::VirginFunctionHeader {
+// 		is_async,
+// 		generator_star_token_position,
+// 		position,
+// 		#[cfg(feature = "extras")]
+// 		location,
+// 	})
+// }
 
 impl FunctionHeader {
 	#[must_use]
@@ -632,50 +632,49 @@ impl GeneratorSpecifier {
 }
 
 /// Accounts for methods named `get` and `set` etc
-// pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
-// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-// 	state: &mut crate::ParsingState,
-// 	options: &ParseOptions,
-// ) -> Result<(MethodHeader, WithComment<PropertyKey<T>>), crate::ParseError> {
-// 	let is_named_get_set_or_async =
-// 		matches!(
-// 			reader.peek(),
-// 			Some(Token(TSXToken::Keyword(kw), _))
-// 			if kw.is_in_method_header()
-// 		) && matches!(
-// 			reader.peek_n(1),
-// 			Some(Token(
-// 				TSXToken::OpenParentheses
-// 					| TSXToken::Colon | TSXToken::OpenChevron
-// 					| TSXToken::CloseBrace
-// 					| TSXToken::Comma | TSXToken::QuestionMark
-// 					| TSXToken::OptionalMember,
-// 				_
-// 			))
-// 		);
+pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
+	reader: &mut crate::new::Lexer,
+) -> Result<(MethodHeader, WithComment<PropertyKey<T>>), crate::ParseError> {
+	todo!()
+	// let is_named_get_set_or_async =
+	// 	matches!(
+	// 		reader.peek(),
+	// 		Some(Token(TSXToken::Keyword(kw), _))
+	// 		if kw.is_in_method_header()
+	// 	) && matches!(
+	// 		reader.peek_n(1),
+	// 		Some(Token(
+	// 			TSXToken::OpenParentheses
+	// 				| TSXToken::Colon | TSXToken::OpenChevron
+	// 				| TSXToken::CloseBrace
+	// 				| TSXToken::Comma | TSXToken::QuestionMark
+	// 				| TSXToken::OptionalMember,
+	// 			_
+	// 		))
+	// 	);
 
-// 	let (function_header, key) = if is_named_get_set_or_async {
-// 		let token = reader.next().unwrap();
-// 		let position = token.get_span();
-// 		let name = match token.0 {
-// 			TSXToken::Keyword(TSXKeyword::Get) => "get",
-// 			TSXToken::Keyword(TSXKeyword::Set) => "set",
-// 			TSXToken::Keyword(TSXKeyword::Async) => "async",
-// 			#[cfg(feature = "extras")]
-// 			TSXToken::Keyword(TSXKeyword::Generator) => "generator",
-// 			_ => unreachable!(),
-// 		};
-// 		// TODO
-// 		let new_public = T::new_public();
-// 		(
-// 			MethodHeader::default(),
-// 			WithComment::None(PropertyKey::Identifier(name.to_owned(), position, new_public)),
-// 		)
-// 	} else {
-// 		(MethodHeader::from_reader(reader), WithComment::from_reader(reader, state, options)?)
-// 	};
-// 	Ok((function_header, key))
-// }
+	// let (function_header, key) = if is_named_get_set_or_async {
+	// 	let token = reader.next().unwrap();
+	// 	let position = token.get_span();
+	// 	let name = match token.0 {
+	// 		TSXToken::Keyword(TSXKeyword::Get) => "get",
+	// 		TSXToken::Keyword(TSXKeyword::Set) => "set",
+	// 		TSXToken::Keyword(TSXKeyword::Async) => "async",
+	// 		#[cfg(feature = "extras")]
+	// 		TSXToken::Keyword(TSXKeyword::Generator) => "generator",
+	// 		_ => unreachable!(),
+	// 	};
+	// 	// TODO
+	// 	let new_public = T::new_public();
+	// 	(
+	// 		MethodHeader::default(),
+	// 		WithComment::None(PropertyKey::Identifier(name.to_owned(), position, new_public)),
+	// 	)
+	// } else {
+	// (MethodHeader::from_reader(reader), WithComment::from_reader(reader)?)
+	// };
+	// Ok((function_header, key))
+}
 
 // #[cfg(feature = "full-typescript")]
 /// None if overloaded (declaration only)

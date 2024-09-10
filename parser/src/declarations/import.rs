@@ -2,8 +2,8 @@ use source_map::Span;
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 
 use crate::{
-	ast::object_literal::ObjectLiteral, derive_ASTNode, parse_bracketed, throw_unexpected_token,
-	ASTNode, ParseOptions, ParseResult, ParsingState, TSXKeyword, TSXToken, VariableIdentifier,
+	ast::object_literal::ObjectLiteral, derive_ASTNode, parse_bracketed, ASTNode, ParseOptions,
+	ParseResult, ParsingState, TSXKeyword, TSXToken, VariableIdentifier,
 };
 use visitable_derive::Visitable;
 

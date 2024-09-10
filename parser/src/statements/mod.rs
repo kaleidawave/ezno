@@ -85,129 +85,113 @@ impl ASTNode for Statement {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"// Labeled statements
-		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
-			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
-			let _colon = reader.next().unwrap();
-			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
-			if statement.requires_semi_colon() {
-				let _ = crate::expect_semi_colon(
-					reader,
-					&state.line_starts,
-					statement.get_position().start,
-					options,
-				)?;
-			}
-			// TODO statement.can_be_labelled()
-			let position = label_name_pos.union(statement.get_position());
-			return Ok(Statement::Labelled { name, statement, position });
+		// TODO Labeled statements
+		// if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
+		// 	let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
+		// 	let _colon = reader.next().unwrap();
+		// 	let statement = Statement::from_reader(reader).map(Box::new)?;
+		// 	if statement.requires_semi_colon() {
+		// 		let _ = crate::expect_semi_colon(
+		// 			reader,
+		// 			&state.line_starts,
+		// 			statement.get_position().start,
+		// 			options,
+		// 		)?;
+		// 	}
+		// 	// TODO statement.can_be_labelled()
+		// 	let position = label_name_pos.union(statement.get_position());
+		// 	return Ok(Statement::Labelled { name, statement, position });
+		// }
+
+		let start = reader.get_start();
+
+		if reader.is_keyword("var") {
+			VarVariableStatement::from_reader(reader).map(Statement::VarVariable)
+		} else if reader.is_keyword("if") {
+			IfStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("for") {
+			ForLoopStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("switch") {
+			SwitchStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("while") {
+			WhileStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("do") {
+			DoWhileStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("try") {
+			TryCatchStatement::from_reader(reader).map(Into::into)
+		} else if reader.starts_with('{') {
+			Block::from_reader(reader).map(Statement::Block)
+		} else if reader.is_keyword_advance("debugger") {
+			todo!()
+		// Ok(Statement::Debugger(reader.next().unwrap().get_span()))
+		} else if reader.is_keyword_advance("return") {
+			// TODO
+			// state.append_keyword_at_pos(start.0, TSXKeyword::Return);
+			// let next = reader.peek().ok_or_else(parse_lexing_error)?;
+			// if on_different_lines_or_line_end(&state.line_starts, start, next) {
+			// 	let position = start.with_length(TSXKeyword::Return.length() as usize);
+			// 	Statement::Return(ReturnStatement(None, position))
+			// } else {
+			let multiple_expression = MultipleExpression::from_reader(reader)?;
+			let position = start.union(multiple_expression.get_position());
+			Ok(Statement::Return(ReturnStatement(Some(multiple_expression), position)))
+		} else if reader.is_keyword_advance("break") {
+			// state.append_keyword_at_pos(start.0, TSXKeyword::Break);
+			// let next = reader.peek().ok_or_else(parse_lexing_error)?;
+			// if on_different_lines_or_line_end(&state.line_starts, start, next) {
+			// 	Ok(Statement::Break(
+			// 		None,
+			// 		start.with_length(TSXKeyword::Break.length() as usize),
+			// 	))
+			// } else {
+			// 	let (label, position) =
+			// 		token_as_identifier(reader.next().unwrap(), "break label")?;
+			// 	Ok(Statement::Break(Some(label), start.union(position)))
+			// }
+			let start = reader.get_start();
+			let label = reader.parse_identifier().expect("TODO");
+			Ok(Statement::Break(Some(label.to_owned()), start.with_length(label.len())))
+		} else if reader.is_keyword_advance("continue") {
+			// let Token(_continue_token, start) = reader.next().unwrap();
+			// state.append_keyword_at_pos(start.0, TSXKeyword::Continue);
+			// let next = reader.peek().ok_or_else(parse_lexing_error)?;
+			// if on_different_lines_or_line_end(&state.line_starts, start, next) {
+			// 	Ok(Statement::Continue(
+			// 		None,
+			// 		start.with_length(TSXKeyword::Continue.length() as usize),
+			// 	))
+			// } else {
+			// token_as_identifier(reader.next().unwrap(), "continue label")?;
+			// TODO non labeled
+			let start = reader.get_start();
+			let label = reader.parse_identifier().expect("TODO");
+			Ok(Statement::Continue(Some(label.to_owned()), start.with_length(label.len())))
+		} else if reader.is_keyword_advance("throw") {
+			let expression = MultipleExpression::from_reader(reader)?;
+			let position = start.union(expression.get_position());
+			Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
+		} else if reader.is_operator_advance(";") {
+			todo!()
+		// Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
+		} else {
+			// TSXToken::Comment(_) => {
+			// 	if let Token(TSXToken::Comment(comment), start) = reader.next().unwrap() {
+			// 		let position = start.with_length(comment.len() + 2);
+			// 		Ok(Statement::Comment(comment, position))
+			// 	} else {
+			// 		unreachable!()
+			// 	}
+			// }
+			// TSXToken::MultiLineComment(_) => {
+			// 	if let Token(TSXToken::MultiLineComment(comment), start) = reader.next().unwrap() {
+			// 		let position = start.with_length(comment.len() + 2);
+			// 		Ok(Statement::MultiLineComment(comment, position))
+			// 	} else {
+			// 		unreachable!()
+			// 	}
+			// }
+			MultipleExpression::from_reader(reader).map(Statement::Expression)
 		}
-
-		let Token(token, _s) = &reader.peek().ok_or_else(parse_lexing_error)?;
-
-		match token {
-			TSXToken::Keyword(TSXKeyword::Var) => {
-				let stmt = VarVariableStatement::from_reader(reader, state, options)?;
-				Ok(Statement::VarVariable(stmt))
-			}
-			TSXToken::Keyword(TSXKeyword::Throw) => {
-				let Token(_, start) = reader.next().unwrap();
-				let expression = MultipleExpression::from_reader(reader, state, options)?;
-				let position = start.union(expression.get_position());
-				Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
-			}
-			TSXToken::Keyword(TSXKeyword::If) => {
-				IfStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::For) => {
-				ForLoopStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::Switch) => {
-				SwitchStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::While) => {
-				WhileStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::Do) => {
-				DoWhileStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::Try) => {
-				TryCatchStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::OpenBrace => Block::from_reader(reader, state, options).map(Statement::Block),
-			TSXToken::Keyword(TSXKeyword::Debugger) => {
-				Ok(Statement::Debugger(reader.next().unwrap().get_span()))
-			}
-			TSXToken::Keyword(TSXKeyword::Return) => Ok({
-				let Token(_, start) = reader.next().unwrap();
-				state.append_keyword_at_pos(start.0, TSXKeyword::Return);
-				let next = reader.peek().ok_or_else(parse_lexing_error)?;
-				if on_different_lines_or_line_end(&state.line_starts, start, next) {
-					let position = start.with_length(TSXKeyword::Return.length() as usize);
-					Statement::Return(ReturnStatement(None, position))
-				} else {
-					let multiple_expression =
-						MultipleExpression::from_reader(reader, state, options)?;
-					let position = start.union(multiple_expression.get_position());
-					Statement::Return(ReturnStatement(Some(multiple_expression), position))
-				}
-			}),
-			TSXToken::Keyword(TSXKeyword::Break) => {
-				let Token(_break_token, start) = reader.next().unwrap();
-				state.append_keyword_at_pos(start.0, TSXKeyword::Break);
-				let next = reader.peek().ok_or_else(parse_lexing_error)?;
-				if on_different_lines_or_line_end(&state.line_starts, start, next) {
-					Ok(Statement::Break(
-						None,
-						start.with_length(TSXKeyword::Break.length() as usize),
-					))
-				} else {
-					let (label, position) =
-						token_as_identifier(reader.next().unwrap(), "break label")?;
-					Ok(Statement::Break(Some(label), start.union(position)))
-				}
-			}
-			TSXToken::Keyword(TSXKeyword::Continue) => {
-				let Token(_continue_token, start) = reader.next().unwrap();
-				state.append_keyword_at_pos(start.0, TSXKeyword::Continue);
-				let next = reader.peek().ok_or_else(parse_lexing_error)?;
-				if on_different_lines_or_line_end(&state.line_starts, start, next) {
-					Ok(Statement::Continue(
-						None,
-						start.with_length(TSXKeyword::Continue.length() as usize),
-					))
-				} else {
-					let (label, position) =
-						token_as_identifier(reader.next().unwrap(), "continue label")?;
-					Ok(Statement::Continue(Some(label), start.union(position)))
-				}
-			}
-			TSXToken::Comment(_) => {
-				if let Token(TSXToken::Comment(comment), start) = reader.next().unwrap() {
-					let position = start.with_length(comment.len() + 2);
-					Ok(Statement::Comment(comment, position))
-				} else {
-					unreachable!()
-				}
-			}
-			TSXToken::MultiLineComment(_) => {
-				if let Token(TSXToken::MultiLineComment(comment), start) = reader.next().unwrap() {
-					let position = start.with_length(comment.len() + 2);
-					Ok(Statement::MultiLineComment(comment, position))
-				} else {
-					unreachable!()
-				}
-			}
-			TSXToken::SemiColon => {
-				Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
-			}
-			// Finally ...!
-			_ => {
-				let expr = MultipleExpression::from_reader(reader, state, options)?;
-				Ok(Statement::Expression(expr))
-			}
-		}"#;
-		todo!();
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -339,7 +323,7 @@ impl ASTNode for VarVariableStatement {
 		let mut declarations = Vec::new();
 		loop {
 			let value =
-				VariableDeclarationItem::<Option<Expression>>::from_reader(reader, state, options)?;
+				VariableDeclarationItem::<Option<Expression>>::from_reader(reader)?;
 			if value.expression.is_none()
 				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
 			{
