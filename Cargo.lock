@@ -348,9 +348,6 @@ dependencies = [
  "serde",
  "source-map",
  "temporary-annex",
- "tokenizer-lib",
- "tsify",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1005,15 +1002,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "tokenizer-lib"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54d3d4f6575cd226038dbe804ec4b0e142e1cfe5db49c526c0147d71aea3467f"
-dependencies = [
- "source-map",
 ]
 
 [[package]]
