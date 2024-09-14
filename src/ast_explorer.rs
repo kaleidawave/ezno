@@ -3,14 +3,10 @@
 use std::{fs, path::PathBuf};
 
 use argh::FromArgs;
-use console::style;
 use enum_variants_strings::EnumVariantsStrings;
 use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOptions};
 
-use crate::{
-	reporting::report_diagnostics_to_cli,
-	utilities::{print_to_cli, print_to_cli_without_newline},
-};
+use crate::{reporting::report_diagnostics_to_cli, utilities::print_to_cli};
 
 /// REPL for printing out AST from user input
 #[derive(FromArgs, Debug)]

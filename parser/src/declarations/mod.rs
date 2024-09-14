@@ -64,8 +64,7 @@ pub enum Declaration {
 }
 
 impl Declaration {
-	// 	// TODO strict mode can affect result
-	// 	/// Takes `reader` as sometimes needs to `peek_n`
+	// TODO strict mode can affect result
 	pub(crate) fn is_declaration_start(reader: &crate::new::Lexer) -> bool {
 		let declaration_keyword = reader.is_one_of_keyword(&[
 			"let",
@@ -83,7 +82,7 @@ impl Declaration {
 
 		if let Some("import") = declaration_keyword {
 			let is_import_meta =
-				reader.get_current()[.."import".len()].trim_start().starts_with('.');
+				reader.get_current()["import".len()..].trim_start().starts_with('.');
 			!is_import_meta
 		} else {
 			declaration_keyword.is_some()
@@ -168,6 +167,8 @@ impl ImportLocation {
 		// 		));
 		// 	}
 		// }
+
+		reader.skip();
 
 		if reader.starts_with_string_delimeter() {
 			let start = reader.get_start();

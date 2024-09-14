@@ -663,7 +663,33 @@ impl Expression {
 				};
 				Expression::SuperExpression(inner, start.union(reader.get_end()))
 			} else if reader.is_keyword_advance("import") {
-				todo!()
+				if reader.is_operator_advance(".") {
+					let _ = reader.expect_keyword("meta")?;
+					Expression::ImportMeta(start.union(reader.get_end()))
+				} else if reader.is_operator_advance("(") {
+					let path = Expression::from_reader(reader)?;
+					// if let Expression::StringLiteral(path, ..) = &path {
+					//     state.constant_imports.push(path.clone());
+					// }
+
+					let options = if reader.is_operator_advance(",") {
+						Some(Box::new(Expression::from_reader(reader)?))
+					} else {
+						None
+					};
+					let end = reader.expect(')')?;
+					Expression::DynamicImport {
+						path: Box::new(path),
+						options,
+						position: start.union(end),
+					}
+				} else {
+					todo!()
+					// return throw_unexpected_token_with_token(
+					//     token,
+					//     &[TSXToken::Dot, TSXToken::OpenParentheses],
+					// );
+				}
 			} else {
 				let name = reader.parse_identifier();
 				// .expect("TODO");

@@ -136,7 +136,7 @@ impl ASTNode for ExportDeclaration {
 			let class_declaration = ClassDeclaration::from_reader(reader)?;
 			let position = start.union(class_declaration.get_position());
 			Ok(ExportDeclaration::Item { exported: Exportable::Class(class_declaration), position })
-		} else if reader.is_one_of(&["const", "let"]).is_some() {
+		} else if reader.is_one_of_keyword(&["const", "let"]).is_some() {
 			let variable_declaration = VariableDeclaration::from_reader(reader)?;
 			let position = start.union(variable_declaration.get_position());
 			Ok(ExportDeclaration::Item {
@@ -151,38 +151,31 @@ impl ASTNode for ExportDeclaration {
 				position,
 			})
 		} else if reader.is_keyword("type") {
-			// if let Token(TSXToken::OpenBrace, _) =
-			// 	reader.peek_n(1).ok_or_else(parse_lexing_error)?
-			// {
-			// 	state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
-			// 	let Token(_, start) = reader.next().unwrap(); // OpenBrace
+			if reader.get_current()["type".len()..].trim_start().starts_with("{") {
+				reader.advance("type".len() as u32);
+				let (parts, _) =
+					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
 
-			// 	let (parts, _, _end) = crate::bracketed_items_from_reader::<ImportExportPart<_>>(
-			// 		reader,
-			// 		state,
-			// 		options,
-			// 		None,
-			// 		TSXToken::CloseBrace,
-			// 	)?;
+				let _ = reader.expect_keyword("from")?;
 
-			// 	let from_pos = reader.expect_keyword("TSXKeyword::From")?;
+				let from = ImportLocation::from_reader(reader)?;
 
-			// 	let (from, end) =
-			// 		ImportLocation::from_reader(reader, Some(from_pos))?;
+				let end = reader.get_end();
 
-			// 	Ok(Self::Variable {
-			// 		exported: Exportable::ImportParts {
-			// 			parts,
-			// 			from,
-			// 			type_definitions_only: true,
-			// 		},
-			// 		position: start.union(end),
-			// 	})
-			// } else {
-			// 	let type_alias = TypeAlias::from_reader(reader)?;
-			// 	let position = start.union(type_alias.get_position());
-			// 	Ok(Self::Variable { exported: Exportable::TypeAlias(type_alias), position })
-			todo!()
+				Ok(Self::Item {
+					exported: Exportable::ImportParts {
+						parts,
+						from,
+						// Important
+						type_definitions_only: true,
+					},
+					position: start.union(end),
+				})
+			} else {
+				let type_alias = TypeAlias::from_reader(reader)?;
+				let position = start.union(type_alias.get_position());
+				Ok(Self::Item { exported: Exportable::TypeAlias(type_alias), position })
+			}
 		} else if reader.is_operator_advance("{") {
 			// let mut bracket_depth = 1;
 			// let after_bracket = reader.scan(|token, _| match token {
@@ -238,8 +231,10 @@ impl ASTNode for ExportDeclaration {
 			// 	))
 			// }
 			todo!()
-		} else {
+		} else if reader.is_keyword("var") {
 			todo!()
+		} else {
+			todo!("{:?}", reader.get_current())
 			// }
 			// Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
 			// 	let function_declaration = StatementFunction::from_reader(reader)?;

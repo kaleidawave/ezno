@@ -11,7 +11,7 @@ use super::{ASTNode, Span};
 pub struct Module {
 	pub hashbang_comment: Option<String>,
 	pub items: Vec<StatementOrDeclaration>,
-	pub position: Span,
+	pub span: Span,
 }
 
 impl PartialEq for Module {
@@ -36,11 +36,11 @@ impl ASTNode for Module {
 	}
 
 	fn get_position(&self) -> Span {
-		self.position
+		self.span
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let position = Span { start: 0, source: (), end: reader.get_current().len() as u32 };
+		let span = Span { start: 0, source: (), end: reader.get_current().len() as u32 };
 		let hashbang_comment = if reader.is_operator_advance("#") {
 			let hashbang_comment = reader.parse_until("\n").expect("TODO");
 			Some(hashbang_comment.to_owned())
@@ -50,7 +50,7 @@ impl ASTNode for Module {
 		Ok(Module {
 			items: statements_and_declarations_from_reader(reader)?,
 			hashbang_comment,
-			position,
+			span,
 		})
 	}
 }

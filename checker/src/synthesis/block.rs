@@ -42,7 +42,10 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 		!matches!(
 			e,
 			StatementOrDeclaration::Statement(
-				Statement::Comment(..) | Statement::MultiLineComment(..) | Statement::Empty(..)
+				Statement::Comment(..)
+					| Statement::MultiLineComment(..)
+					| Statement::Empty(..)
+					| Statement::AestheticSemiColon(..)
 			) | StatementOrDeclaration::Declaration(Declaration::Function(..))
 		)
 	}) {

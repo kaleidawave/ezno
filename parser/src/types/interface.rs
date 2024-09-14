@@ -347,7 +347,7 @@ impl ASTNode for InterfaceMember {
 						// For mapped types
 						let matching_type = TypeAnnotation::from_reader(reader)?;
 
-						let as_type = if reader.is_keyword_advance("is") {
+						let as_type = if reader.is_keyword_advance("as") {
 							Some(Box::new(TypeAnnotation::from_reader(reader)?))
 						} else {
 							None

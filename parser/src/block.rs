@@ -399,6 +399,19 @@ pub(crate) fn statements_and_declarations_from_reader(
 			continue;
 		}
 
+		// TODO temp
+		let retain_blank_lines = false;
+
+		if let (
+			false,
+			StatementOrDeclaration::Statement(
+				Statement::AestheticSemiColon(..) | Statement::Empty(..),
+			),
+		) = (retain_blank_lines, &item)
+		{
+			continue;
+		}
+
 		items.push(item);
 		// for _ in 0..blank_lines_after_statement {
 		// 	// TODO span
