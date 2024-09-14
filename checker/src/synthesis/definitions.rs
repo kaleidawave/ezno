@@ -27,7 +27,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 		if let StatementOrDeclaration::Declaration(
 			Declaration::Class(Decorated { on: class, .. })
 			| Declaration::Export(Decorated {
-				on: ExportDeclaration::Variable { exported: Exportable::Class(class), position: _ },
+				on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
 				..
 			}),
 		) = item

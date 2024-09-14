@@ -32,12 +32,12 @@ declare function context_id(): void
 @Constant
 declare function context_id_chain(): void
 
+@Constant
+declare function debug_state(): void
+
 // A function, as it should be!
 @Constant
-declare function satisfies<T>(t: T): T
-
-@Constant
-declare function compile_type_to_object<T>(): any
+declare function satisfies<YE>(t: YE): YE
 
 interface ImportEnv {
     [key: string]: string;
@@ -75,8 +75,8 @@ declare class Array<T> {
     map<U>(cb: (t: T, i?: number) => U): Array<U> {
         const { length } = this, mapped: Array<U> = [];
         let i: number = 0;
-        while (i < length) {
-            const value = this?.[i];
+        while (i < (length as number)) {
+            const value = this[i];
             const newValue = cb(value, i++);
             mapped.push(newValue)
         }
@@ -176,6 +176,11 @@ declare class Array<T> {
     //         return this[index]
     //     }
     // }
+
+    /// TODO incorrect definition, doesn't account for realms
+    static isArray(item: any) {
+        return item instanceof Array;
+    }
 }
 
 declare class Map<K, V> {
@@ -206,6 +211,10 @@ declare class Map<K, V> {
 
 type Record<K extends string, T> = { [P in K]: T }
 
+type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
+type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+type Integer = MultipleOf<1>;
+
 /**
  * Exclude from T those types that are assignable to U
  */
@@ -218,9 +227,9 @@ type Extract<T, U> = T extends U ? T : never;
 
 declare class Math {
     @Constant
-    static sin(x: number): number;
+    static sin(x: number): InclusiveRange<-1, 1>;
     @Constant
-    static cos(x: number): number;
+    static cos(x: number): InclusiveRange<-1, 1>;
     @Constant
     static tan(x: number): number;
     @Constant
@@ -232,15 +241,18 @@ declare class Math {
     @Constant
     static log(x: number): number;
 
-    // TODO newer method
+    // TODO newer methods
     @Constant
     static trunc(x: number): number;
+
+    @Constant
+    static imul(x: number, y: number): number;
 
     static PI: 3.141592653589793
     static E: 2.718281828459045
 
     @InputOutput
-    static random(): number;
+    static random(): 0 | InclusiveRange<0, 1>;
 }
 
 @Primitive("string")
@@ -259,6 +271,20 @@ declare class String {
 
     // TODO
     split(splitter: string): Array<string>;
+}
+
+@Primitive("number")
+declare class Number {
+    static NEGATIVE_INFINITY: NegativeInfinity;
+    static POSITIVE_INFINITY: Infinity;
+
+    // static isFinite(item: any) {
+    //     return !(item === Number.NEGATIVE_INFINITY || item === Number.POSITIVE_INFINITY || Number.isNaN(item))
+    // }
+
+    static isNaN(item: any) {
+        return item !== item;
+    }
 }
 
 declare class Promise<T> { }
@@ -361,6 +387,38 @@ declare class Object {
     //     Object.setProtoTypeOf(n, prototype);
     //     return n
     // }
+
+    static keys(on: { [s: string]: any }): Array<string> {
+        const keys: Array<string> = [];
+        for (const key in on) {
+            keys.push(key);
+        }
+        return keys
+    }
+
+    static values(on: { [s: string]: any }): Array<any> {
+        const values: Array<any> = [];
+        for (const key in on) {
+            values.push(on[key]);
+        }
+        return values
+    }
+
+    static entries(on: { [s: string]: any }): Array<[string, any]> {
+        const entries: Array<[string, any]> = [];
+        for (const key in on) {
+            entries.push([key, on[key]]);
+        }
+        return entries
+    }
+
+    // TODO multiple arguments
+    static assign(target: object, source: object): object {
+        for (const key in source) {
+            target[key] = source[key]
+        }
+        return target
+    }
 }
 
 declare class RegExp {

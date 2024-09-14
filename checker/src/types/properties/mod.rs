@@ -10,10 +10,15 @@ use super::{Type, TypeStore};
 use crate::{
 	context::InformationChain,
 	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
-	types::{calling::Callable, generics::contributions::Contributions, GenericChain, PolyNature},
+	types::{
+		calling::Callable, generics::contributions::Contributions, logical, GenericChain,
+		PolyNature,
+	},
 	Constant, Environment, TypeId,
 };
 use std::borrow::Cow;
+
+pub type Properties = Vec<(Publicity, PropertyKey<'static>, PropertyValue)>;
 
 #[derive(PartialEq)]
 pub enum PropertyKind {
@@ -45,6 +50,12 @@ pub enum PropertyKey<'a> {
 impl From<&'static str> for PropertyKey<'static> {
 	fn from(value: &'static str) -> Self {
 		Self::String(Cow::Borrowed(value))
+	}
+}
+
+impl From<String> for PropertyKey<'static> {
+	fn from(value: String) -> Self {
+		Self::String(Cow::Owned(value))
 	}
 }
 
@@ -89,12 +100,15 @@ impl<'a> PropertyKey<'a> {
 					PropertyKey::from_usize(n.into_inner() as usize)
 				}
 				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
-				Constant::Boolean(_) => todo!(),
+				Constant::Boolean(b) => {
+					PropertyKey::String(Cow::Borrowed(if *b { "true" } else { "false" }))
+				}
 				Constant::Symbol { .. } => {
 					// Okay I think?
 					PropertyKey::Type(ty)
 				}
-				Constant::NaN => todo!(),
+				Constant::NaN => PropertyKey::String(Cow::Borrowed("NaN")),
+				Constant::Undefined => PropertyKey::String(Cow::Borrowed("undefined")),
 			}
 		} else {
 			PropertyKey::Type(ty)
@@ -168,6 +182,32 @@ impl<'a> PropertyKey<'a> {
 			}
 			under @ PropertyKey::String(_) => under.clone(),
 		}
+	}
+}
+
+/// For getting `length` and stuff
+pub(crate) fn get_simple_value(
+	ctx: &impl InformationChain,
+	on: TypeId,
+	property: &PropertyKey,
+	types: &TypeStore,
+) -> Option<TypeId> {
+	fn get_logical(v: logical::Logical<PropertyValue>) -> Option<TypeId> {
+		match v {
+			logical::Logical::Pure(PropertyValue::Value(t)) => Some(t),
+			logical::Logical::Implies { on, antecedent: _ } => get_logical(*on),
+			_ => None,
+		}
+	}
+
+	let value =
+		get_property_unbound((on, None), (Publicity::Public, property, None), false, ctx, types)
+			.ok()?;
+
+	if let logical::LogicalOrValid::Logical(value) = value {
+		get_logical(value)
+	} else {
+		None
 	}
 }
 
@@ -273,6 +313,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn inner_simple(&self) -> &Self {
 		if let PropertyValue::ConditionallyExists { truthy: on, .. }
 		| PropertyValue::Configured { on, descriptor: _ } = self
@@ -284,6 +325,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn is_optional_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition, truthy: _ } = self {
 			// crate::utilities::notify!("condition={:?}", *condition);
@@ -294,6 +336,7 @@ impl PropertyValue {
 	}
 
 	// For printing and debugging
+	#[must_use]
 	pub fn is_writable_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
 			truthy.is_writable_simple()
@@ -304,6 +347,7 @@ impl PropertyValue {
 		}
 	}
 
+	#[must_use]
 	pub fn is_configuable_simple(&self) -> bool {
 		if let PropertyValue::ConditionallyExists { condition: _, truthy } = self {
 			truthy.is_configuable_simple()
@@ -474,6 +518,7 @@ pub(crate) fn key_matches(
 	}
 }
 
+#[must_use]
 pub fn get_property_as_string(
 	property: &PropertyKey,
 	types: &TypeStore,

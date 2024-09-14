@@ -1,7 +1,7 @@
 [package]
 name = "ezno-checker"
 description = "A type checker for JavaScript"
-version = "0.0.16"
+version = "0.0.17"
 license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno"
@@ -26,7 +26,7 @@ source-map = { version = "0.15", features = [
   "self-rust-tokenize",
 ] }
 
-binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.1" }
+binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.2" }
 
 temporary-annex = "0.1"
 derive-enum-from-into = "0.2"
@@ -39,6 +39,7 @@ path-absolutize = { version = "3.0", features = ["use_unix_paths_on_wasm"] }
 either = "1.6"
 levenshtein = "1"
 ordered-float = "4.2"
+regress = { version = "0.10.0", features = [] }
 
 serde = { version = "1.0", features = ["derive"], optional = true }
 simple-json-parser = "0.0.2"
@@ -51,7 +52,7 @@ wasm-bindgen = "=0.2.89"
 [dependencies.parser]
 path = "../parser"
 optional = true
-version = "0.1.5"
+version = "0.1.6"
 features = ["extras"]
 package = "ezno-parser"
 

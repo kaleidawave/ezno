@@ -11,8 +11,7 @@ use crate::{
 		generics::generic_type_arguments::GenericArguments,
 		get_array_length, get_constraint, get_simple_value,
 		properties::{get_properties_on_single_type, AccessMode, PropertyKey, Publicity},
-		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
-		TypeRelationOperator,
+		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, TypeExtends,
 	},
 	PropertyValue,
 };
@@ -88,6 +87,14 @@ pub fn print_type_into_buf<C: InformationChain>(
 			buf.push_str(" | ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
+		Type::Narrowed { narrowed_to, from } => {
+			if debug {
+				buf.push_str("(narrowed from ");
+				print_type_into_buf(*from, buf, cycles, args, types, info, debug);
+				buf.push_str(") ");
+			}
+			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
+		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::MappedGeneric { name, extends } => {
 				if debug {
@@ -141,6 +148,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 			}
 			PolyNature::InferGeneric { name, extends } => {
+				if debug {
+					write!(buf, "[IG {}] @ ", ty.0).unwrap();
+				}
 				buf.push_str("infer ");
 				buf.push_str(name);
 				if *extends != TypeId::ANY_TYPE {
@@ -169,9 +179,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::Error(to) => {
 				if debug {
-					write!(buf, "[error {}] ", ty.0).unwrap();
+					buf.push_str("(error) ");
 				}
-				buf.push_str("(error) ");
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
 			PolyNature::RecursiveFunction(..) => {
@@ -191,6 +200,26 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 		},
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
+			// TypeId::INCLUSIVE_RANGE |
+			if let TypeId::EXCLUSIVE_RANGE = *on {
+				// let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+				let floor =
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
+				let ceiling =
+					arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap();
+				if let TypeId::NEG_INFINITY = floor {
+					buf.push_str("LessThan<");
+					print_type_into_buf(ceiling, buf, cycles, args, types, info, debug);
+					buf.push('>');
+					return;
+				} else if let TypeId::INFINITY = ceiling {
+					buf.push_str("GreaterThan<");
+					print_type_into_buf(floor, buf, cycles, args, types, info, debug);
+					buf.push('>');
+					return;
+				}
+			}
+
 			if debug {
 				write!(buf, "SG({:?})(", ty.0).unwrap();
 				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
@@ -257,6 +286,16 @@ pub fn print_type_into_buf<C: InformationChain>(
 				otherwise_result,
 				result_union: _,
 			} => {
+				if let (TypeId::NEVER_TYPE, Ok(crate::types::TypeExtends { item, extends })) =
+					(*otherwise_result, crate::types::TypeExtends::from_type(*condition, types))
+				{
+					buf.push_str("asserts ");
+					print_type_into_buf(item, buf, cycles, args, types, info, debug);
+					buf.push_str(" is ");
+					print_type_into_buf(extends, buf, cycles, args, types, info, debug);
+					return;
+				}
+
 				// TODO nested on constructor
 				let is_standard_generic = matches!(
 					types.get_type_by_id(*condition),
@@ -267,6 +306,19 @@ pub fn print_type_into_buf<C: InformationChain>(
 							| PolyNature::StructureGeneric { .. }
 					)
 				);
+
+				// WIP!
+				{
+					if let Some(narrowed_value) = info.get_narrowed(*condition) {
+						if let crate::Decidable::Known(condition) =
+							crate::types::is_type_truthy_falsy(narrowed_value, types)
+						{
+							let value = if condition { truthy_result } else { otherwise_result };
+							print_type_into_buf(*value, buf, cycles, args, types, info, debug);
+							return;
+						}
+					}
+				}
 
 				if debug || is_standard_generic {
 					if debug {
@@ -359,7 +411,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 			}
 			constructor if debug => match constructor {
-				Constructor::BinaryOperator { lhs, operator, rhs } => {
+				Constructor::BinaryOperator { lhs, operator, rhs, result: _ } => {
 					print_type_into_buf(*lhs, buf, cycles, args, types, info, debug);
 					write!(buf, " {operator:?} ").unwrap();
 					print_type_into_buf(*rhs, buf, cycles, args, types, info, debug);
@@ -376,17 +428,10 @@ pub fn print_type_into_buf<C: InformationChain>(
 						}
 					print_type_into_buf(*rhs, buf, cycles, args, types, info, debug);
 				}
-				Constructor::UnaryOperator { operator, operand } => {
-					write!(buf, "{operator:?} ").unwrap();
-					print_type_into_buf(*operand, buf, cycles, args, types, info, debug);
-				}
 				Constructor::TypeOperator(to) => {
 					write!(buf, "TypeOperator.{to:?}").unwrap();
 				}
-				Constructor::TypeRelationOperator(TypeRelationOperator::Extends {
-					item,
-					extends,
-				}) => {
+				Constructor::TypeExtends(TypeExtends { item, extends }) => {
 					print_type_into_buf(*item, buf, cycles, args, types, info, debug);
 					buf.push_str(" extends ");
 					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
@@ -608,7 +653,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 				}
 			} else {
-				if let Some(prototype) = prototype {
+				if let Some(prototype) =
+					prototype.filter(|prototype| !matches!(*prototype, TypeId::NULL_TYPE))
+				{
 					// crate::utilities::notify!("P during print {:?}", prototype);
 					buf.push('[');
 					print_type_into_buf(prototype, buf, cycles, args, types, info, debug);
@@ -775,15 +822,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				buf.push_str(" }");
 			}
-			SpecialObject::RegularExpression { content, .. } => {
-				// TODO flags
-				if let Type::Constant(crate::Constant::String(name)) =
-					types.get_type_by_id(*content)
-				{
-					write!(buf, "/{name}/").unwrap();
-				} else {
-					buf.push_str("RegExp");
-				}
+			SpecialObject::RegularExpression(exp) => {
+				buf.push_str(exp.source());
 			}
 			SpecialObject::Function(..) => unreachable!(),
 		},

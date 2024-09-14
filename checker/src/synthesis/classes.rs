@@ -8,13 +8,14 @@ use crate::{
 	context::{Environment, InformationChain, LocalInformation},
 	diagnostics::TypeCheckError,
 	features::functions::{
-		function_to_property, synthesise_function, ClassPropertiesToRegister,
-		FunctionRegisterBehavior, GetterSetter, SynthesisableFunction,
+		class_generics_to_function_generics, function_to_property, synthesise_function,
+		ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter, ReturnType,
+		SynthesisableFunction,
 	},
 	types::{
 		classes::ClassValue,
 		properties::{PropertyKey, Publicity},
-		FunctionType, PolyNature,
+		FunctionType, PolyNature, SynthesisedParameters,
 	},
 	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 };
@@ -191,6 +192,8 @@ fn synthesise_class_declaration_extends_and_members<
 					}
 				};
 
+				crate::utilities::notify!("{:?}", (getter_setter, is_async, is_generator));
+
 				let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
 					(is_declare, method.name.get_ast_ref())
 				{
@@ -360,6 +363,10 @@ fn synthesise_class_declaration_extends_and_members<
 	// Adds event
 	environment.register_constructable_function(class_variable_type, function_id);
 
+	if let Some(variable) = class.name.get_variable_id(environment.get_source()) {
+		environment.info.variable_current_value.insert(variable, class_variable_type);
+	}
+
 	crate::utilities::notify!("At end {:?}", environment.context_type.free_variables);
 
 	{
@@ -451,7 +458,7 @@ fn synthesise_class_declaration_extends_and_members<
 							synthesise_type_annotation(type_annotation, environment, checking_data)
 						} else {
 							crate::utilities::notify!("Declare without type annotation");
-							TypeId::ERROR_TYPE
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
 						}
 					} else {
 						TypeId::UNDEFINED_TYPE
@@ -480,22 +487,19 @@ fn synthesise_class_declaration_extends_and_members<
 		}
 	}
 
-	if let Some(variable) = class.name.get_variable_id(environment.get_source()) {
-		environment.info.variable_current_value.insert(variable, class_variable_type);
-	}
-
 	class_variable_type
 }
 
 /// Also sets variable for hoisting
 ///
 /// Builds the type of the class
+#[must_use]
 pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 	class_type: TypeId,
 	class: &ClassDeclaration<StatementPosition>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) {
+) -> TypeId {
 	let class_type2 = checking_data.types.get_type_by_id(class_type);
 
 	let Type::Class { name: _, type_parameters } = class_type2 else {
@@ -514,15 +518,18 @@ pub(super) fn register_statement_class_with_members<T: crate::ReadFromFS>(
 
 			sub_environment.named_types.insert(name.clone(), *parameter);
 		}
-		register_extends_and_member(class, class_type, &mut sub_environment, checking_data);
+
+		let result =
+			register_extends_and_member(class, class_type, &mut sub_environment, checking_data);
 		{
 			let crate::context::LocalInformation { current_properties, prototypes, .. } =
 				sub_environment.info;
 			environment.info.current_properties.extend(current_properties);
 			environment.info.prototypes.extend(prototypes);
 		}
+		result
 	} else {
-		register_extends_and_member(class, class_type, environment, checking_data);
+		register_extends_and_member(class, class_type, environment, checking_data)
 	}
 }
 
@@ -531,7 +538,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 	class_type: TypeId,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
-) {
+) -> TypeId {
 	if let Some(ref extends) = class.extends {
 		let extends = get_extends_as_simple_type(extends, environment, checking_data);
 
@@ -545,6 +552,9 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 	// checking_data.local_type_mappings.types_to_types.push(class.position, class_type);
 
 	let mut members_iter = class.members.iter().peekable();
+
+	let mut found_constructor = None::<TypeId>;
+
 	while let Some(member) = members_iter.next() {
 		match &member.on {
 			ClassMember::Method(initial_is_static, method) => {
@@ -589,7 +599,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 									.with_source(environment.get_source()),
 							},
 						);
-						return;
+						continue;
 					}
 				} else {
 					let actual = synthesise_shape(method, environment, checking_data);
@@ -609,12 +619,20 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					environment,
 				);
 
+				let (getter_setter, is_async, is_generator) = match &method.header {
+					MethodHeader::Get => (Some(GetterSetter::Getter), false, false),
+					MethodHeader::Set => (Some(GetterSetter::Setter), false, false),
+					MethodHeader::Regular { is_async, generator } => {
+						(None, *is_async, generator.is_some())
+					}
+				};
+
 				let value = build_overloaded_function(
 					FunctionId(environment.get_source(), method.position.start),
 					crate::types::functions::FunctionBehavior::Method {
 						free_this_id: TypeId::ANY_TYPE,
-						is_async: method.header.is_async(),
-						is_generator: method.header.is_generator(),
+						is_async,
+						is_generator,
 						// TODO
 						name: TypeId::ANY_TYPE,
 					},
@@ -640,12 +658,17 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				if *initial_is_static {
 					crate::utilities::notify!("TODO static item?");
 				} else {
-					environment.info.register_property_on_type(
-						class_type,
-						publicity,
-						under,
-						PropertyValue::Value(value),
-					);
+					use crate::types::calling::Callable;
+					let value = match getter_setter {
+						Some(GetterSetter::Getter) => {
+							PropertyValue::Getter(Callable::from_type(value, &checking_data.types))
+						}
+						Some(GetterSetter::Setter) => {
+							PropertyValue::Setter(Callable::from_type(value, &checking_data.types))
+						}
+						None => PropertyValue::Value(value),
+					};
+					environment.info.register_property_on_type(class_type, publicity, under, value);
 				}
 			}
 			ClassMember::Property(is_static, property) => {
@@ -701,13 +724,68 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					value,
 				);
 			}
-			ClassMember::Constructor(c) => {
-				if !c.has_body() {
-					crate::utilities::notify!("TODO possible constructor overloading");
-				}
+			ClassMember::Constructor(constructor) => {
+				let internal_effect = get_internal_function_effect_from_decorators(
+					&member.decorators,
+					"",
+					environment,
+				);
+
+				let mut actual = synthesise_shape(constructor, environment, checking_data);
+				actual.0 = class_generics_to_function_generics(class_type, &checking_data.types);
+
+				let constructor = build_overloaded_function(
+					FunctionId(environment.get_source(), constructor.position.start),
+					crate::types::functions::FunctionBehavior::Constructor {
+						// The prototype of the base object
+						prototype: class_type,
+						// The id of the generic that needs to be pulled out
+						this_object_type: TypeId::ERROR_TYPE,
+						name: TypeId::ANY_TYPE,
+					},
+					Vec::new(),
+					actual,
+					environment,
+					&mut checking_data.types,
+					&mut checking_data.diagnostics_container,
+					if let Some(ie) = internal_effect {
+						ie.into()
+					} else {
+						crate::types::functions::FunctionEffect::Unknown
+					},
+				);
+
+				found_constructor = Some(constructor);
 			}
 			ClassMember::StaticBlock(_) | ClassMember::Comment(_, _, _) => {}
 		}
+	}
+
+	if let Some(constructor) = found_constructor {
+		constructor
+	} else {
+		let return_type =
+			ReturnType(class_type, class.position.with_source(environment.get_source()));
+		build_overloaded_function(
+			FunctionId(environment.get_source(), class.position.start),
+			crate::types::functions::FunctionBehavior::Constructor {
+				// The prototype of the base object
+				prototype: class_type,
+				// The id of the generic that needs to be pulled out
+				this_object_type: TypeId::ERROR_TYPE,
+				name: TypeId::ANY_TYPE,
+			},
+			Vec::new(),
+			crate::features::functions::PartialFunction(
+				class_generics_to_function_generics(class_type, &checking_data.types),
+				SynthesisedParameters::default(),
+				Some(return_type),
+			),
+			environment,
+			&mut checking_data.types,
+			&mut checking_data.diagnostics_container,
+			crate::types::functions::FunctionEffect::Unknown,
+		)
 	}
 }
 

@@ -2,9 +2,7 @@
 use crate::{
 	context::{environment::Label, AssignmentError, InformationChain},
 	diagnostics,
-	features::{
-		modules::CouldNotOpenFile, operations::MathematicalAndBitwise, CannotDeleteFromError,
-	},
+	features::{modules::CouldNotOpenFile, CannotDeleteFromError},
 	types::{
 		calling::FunctionCallingError,
 		printing::print_type_with_type_arguments,
@@ -53,8 +51,13 @@ pub enum Diagnostic {
 
 /// Temporary dead zone. Between the variable identifier being hoisted and the value being assigned
 #[allow(clippy::upper_case_acronyms)]
-pub struct TDZ {
+pub struct VariableUsedInTDZ {
 	pub variable_name: String,
+	pub position: SpanWithSource,
+}
+
+pub struct InvalidRegExp {
+	pub error: String,
 	pub position: SpanWithSource,
 }
 
@@ -157,6 +160,7 @@ impl DiagnosticsContainer {
 		}
 	}
 
+	#[must_use]
 	pub fn count(&self) -> usize {
 		self.diagnostics.len()
 	}
@@ -236,9 +240,9 @@ impl TypeStringRepresentation {
 						print_type_with_type_arguments(*v, generics, types, ctx, debug_mode);
 					Self(value)
 				}
-				crate::PropertyValue::GetterAndSetter { .. } => todo!(),
-				crate::PropertyValue::Getter(_) => todo!(),
-				crate::PropertyValue::Setter(_) => todo!(),
+				crate::PropertyValue::GetterAndSetter { .. }
+				| crate::PropertyValue::Getter(_)
+				| crate::PropertyValue::Setter(_) => Self("getter/setter".to_owned()),
 				crate::PropertyValue::Deleted => Self("never".to_owned()),
 				crate::PropertyValue::ConditionallyExists { .. }
 				| crate::PropertyValue::Configured { .. } => unreachable!(),
@@ -256,12 +260,12 @@ impl TypeStringRepresentation {
 				// 	Self(left.0)
 				// } else {
 				crate::utilities::notify!("Printing {:?} base on {:?}", left_right, condition);
-				Self("TODO".to_owned())
+				Self("TODO or".to_owned())
 				// }
 			}
 			crate::types::logical::Logical::Implies { on, antecedent } => {
 				if generics.is_some() {
-					todo!("chaining")
+					crate::utilities::notify!("TODO chaining");
 				}
 				let generics = Some(GenericChainLink::PartiallyAppliedGenericArgumentsLink {
 					parent_link: None,
@@ -270,7 +274,9 @@ impl TypeStringRepresentation {
 				});
 				Self::from_property_constraint(*on, generics, ctx, types, debug_mode)
 			}
-			crate::types::logical::Logical::BasedOnKey { .. } => todo!(),
+			crate::types::logical::Logical::BasedOnKey { .. } => {
+				Self("TODO based on key?".to_owned())
+			}
 		}
 	}
 }
@@ -320,15 +326,8 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CouldNotFindType(&'a str, Vec<&'a str>, SpanWithSource),
-	TypeHasNoGenericParameters(String, SpanWithSource),
 	/// For all `=`, including from declarations
 	AssignmentError(AssignmentError),
-	#[allow(dead_code)]
-	InvalidComparison(TypeStringRepresentation, TypeStringRepresentation),
-	#[allow(dead_code)]
-	InvalidAddition(TypeStringRepresentation, TypeStringRepresentation),
-	#[allow(dead_code)]
-	InvalidUnaryOperation(crate::features::operations::PureUnary, TypeStringRepresentation),
 	SetPropertyError(SetPropertyError),
 	ReturnedTypeDoesNotMatch {
 		expected_return_type: TypeStringRepresentation,
@@ -378,17 +377,30 @@ pub(crate) enum TypeCheckError<'a> {
 		name: String,
 		position: SpanWithSource,
 	},
-	/// This is for structure generics
-	#[allow(dead_code)]
+	/// This is for structure generics (type annotations)
 	GenericArgumentDoesNotMeetRestriction {
 		parameter_restriction: TypeStringRepresentation,
 		argument: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
+	/// This is for structure generics (type annotations)
+	GenericArgumentCountMismatch {
+		expected_count: usize,
+		count: usize,
+		position: SpanWithSource,
+	},
 	#[allow(dead_code)]
 	NotTopLevelImport(SpanWithSource),
+	DuplicateImportName {
+		import_position: SpanWithSource,
+		existing_position: SpanWithSource,
+	},
 	#[allow(dead_code)]
 	DoubleDefaultExport(SpanWithSource),
+	NoDefaultExport {
+		position: SpanWithSource,
+		partial_import_path: &'a str,
+	},
 	CannotOpenFile {
 		file: CouldNotOpenFile,
 		import_position: Option<SpanWithSource>,
@@ -409,12 +421,23 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	#[allow(clippy::upper_case_acronyms)]
-	TDZ(TDZ),
-	#[allow(dead_code)]
+	VariableUsedInTDZ(VariableUsedInTDZ),
 	InvalidMathematicalOrBitwiseOperation {
-		operator: MathematicalAndBitwise,
+		operator: crate::features::operations::MathematicalAndBitwise,
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	// Only for `<` `>` etc
+	InvalidEqualityOperation {
+		operator: crate::features::operations::EqualityAndInequality,
+		lhs: TypeStringRepresentation,
+		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	InvalidUnaryOperation {
+		operator: crate::features::operations::UnaryOperation,
+		operand: TypeStringRepresentation,
 		position: SpanWithSource,
 	},
 	#[allow(dead_code)]
@@ -443,9 +466,11 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 	},
 	CannotDeleteProperty(CannotDeleteFromError),
+	InvalidRegExp(InvalidRegExp),
 }
 
 #[allow(clippy::useless_format)]
+#[must_use]
 pub fn get_possibles_message(possibles: &[&str]) -> String {
 	match possibles {
 		[] => format!(""),
@@ -555,7 +580,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 						kind,
 					}
 				}
-				AssignmentError::TDZ(TDZ { variable_name, position }) => {
+				AssignmentError::VariableUsedInTDZ(VariableUsedInTDZ { variable_name, position }) => {
 					Diagnostic::Position {
 						reason: format!("Cannot assign to '{variable_name}' before declaration"),
 						position,
@@ -597,16 +622,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position: at,
 				kind,
 			},
-			TypeCheckError::TypeHasNoGenericParameters(name, position) => {
-				Diagnostic::Position {
-					reason: format!("Type '{name}' has no generic parameters"),
-					position,
-					kind,
-				}
-			}
-			TypeCheckError::InvalidComparison(_, _) => todo!(),
-			TypeCheckError::InvalidAddition(_, _) => todo!(),
-			TypeCheckError::InvalidUnaryOperation(_, _) => todo!(),
 			TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
 				reason: "Cannot export at not top level".to_owned(),
 				position,
@@ -669,12 +684,45 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
+			TypeCheckError::GenericArgumentCountMismatch {
+				count,
+				expected_count,
+				position,
+			} => {
+				let reason = if expected_count == 0 {
+					"Cannot pass a type argument to a non-generic type".to_owned()
+				} else if expected_count == 1 {
+					format!("Expected 1 type argument, but got {count}")
+				} else {
+					format!("Expected {expected_count} type arguments, but got {count}")
+				};
+				Diagnostic::Position {
+					position,
+					kind,
+					reason
+				}
+			},
 			TypeCheckError::NotTopLevelImport(position) => Diagnostic::Position {
 				reason: "Import must be in the top of the scope".to_owned(),
 				position,
 				kind,
 			},
-			TypeCheckError::DoubleDefaultExport(_) => todo!(),
+			TypeCheckError::DoubleDefaultExport(position) => Diagnostic::Position {
+				reason: "Cannot have more than one default export".to_owned(),
+				position,
+				kind,
+			},
+			TypeCheckError::DuplicateImportName { import_position: position, existing_position, ..} => Diagnostic::PositionWithAdditionalLabels {
+				reason: "Cannot import using conflicting name".to_string(),
+				position,
+				kind,
+				labels: vec![("Existing import with same name".to_string(), existing_position)],
+			},
+			TypeCheckError::NoDefaultExport { partial_import_path, position, ..} => Diagnostic::Position {
+				reason: format!("Cannot find default export from module '{partial_import_path}'"),
+				position,
+				kind
+			},
 			TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
 				Diagnostic::PositionWithAdditionalLabels {
 					reason: format!("Cannot find {partial_import_path}"),
@@ -708,7 +756,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
-			TypeCheckError::TDZ(TDZ { position, variable_name }) => Diagnostic::Position {
+			TypeCheckError::VariableUsedInTDZ(VariableUsedInTDZ { position, variable_name }) => Diagnostic::Position {
 				reason: format!("Variable '{variable_name}' used before declaration"),
 				position,
 				kind,
@@ -719,7 +767,35 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
-			TypeCheckError::NotInLoopOrCouldNotFindLabel(_) => todo!(),
+			TypeCheckError::InvalidUnaryOperation {
+				operator,
+				operand,
+				position,
+			} => {
+				Diagnostic::Position {
+					// TODO temp
+					reason: format!("Cannot {operator:?} {operand}"),
+					position,
+					kind,
+				}
+			},
+			TypeCheckError::InvalidEqualityOperation { operator, lhs, rhs, position } => Diagnostic::Position {
+				// TODO temp
+				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
+				position,
+				kind,
+			},
+			TypeCheckError::NotInLoopOrCouldNotFindLabel(NotInLoopOrCouldNotFindLabel {
+				label: _,
+				position,
+			}) => {
+				Diagnostic::Position {
+					// TODO temp
+					reason: "Cannot use `break` or `continue` here or could not find label".to_owned(),
+					position,
+					kind,
+				}
+			}
 			TypeCheckError::InvalidCast { position, from, to } => {
 				Diagnostic::Position {
 					reason: format!("Cannot cast {from} to {to}"),
@@ -793,7 +869,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				} => Diagnostic::Position {
 					reason: match property {
 						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to property of type {ty}"),
-						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}'") 
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}'")
 					},
 					position,
 					kind,
@@ -816,7 +892,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				} => Diagnostic::Position {
 					reason: match property {
 						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to property of type {ty} as it is a getter"),
-						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}' as it is a getter") 
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to property '{property}' as it is a getter")
 					},
 					position,
 					kind,
@@ -827,12 +903,17 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				} => Diagnostic::Position {
 					reason: match property {
 						PropertyKeyRepresentation::Type(ty) => format!("Cannot write to non-existent property of type {ty}"),
-						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to non-existent property '{property}'") 
+						PropertyKeyRepresentation::StringKey(property) => format!("Cannot write to non-existent property '{property}'")
 					},
 					position,
 					kind,
 				}
-			}
+			},
+			TypeCheckError::InvalidRegExp(InvalidRegExp { error, position }) => Diagnostic::Position {
+				reason: format!("Invalid regular expression: {error}"),
+				position,
+				kind,
+			},
 		}
 	}
 }
@@ -851,8 +932,8 @@ pub enum TypeCheckWarning {
 	},
 	IgnoringAsExpression(SpanWithSource),
 	Unimplemented {
-		thing: &'static str,
-		at: SpanWithSource,
+		item: &'static str,
+		position: SpanWithSource,
 	},
 	UselessExpression {
 		expression_span: SpanWithSource,
@@ -874,6 +955,15 @@ pub enum TypeCheckWarning {
 		call_site: SpanWithSource,
 	},
 	Unreachable(SpanWithSource),
+	DisjointEquality {
+		lhs: TypeStringRepresentation,
+		rhs: TypeStringRepresentation,
+		position: SpanWithSource,
+	},
+	ItemMustBeUsedWithFlag {
+		item: &'static str,
+		position: SpanWithSource,
+	},
 }
 
 impl From<TypeCheckWarning> for Diagnostic {
@@ -907,9 +997,14 @@ impl From<TypeCheckWarning> for Diagnostic {
 				position,
 				kind,
 			},
-			TypeCheckWarning::Unimplemented { thing, at } => {
-				Diagnostic::Position { reason: format!("Unsupported: {thing}"), position: at, kind }
+			TypeCheckWarning::Unimplemented { item, position } => {
+				Diagnostic::Position { reason: format!("Unsupported: {item}"), position, kind }
 			}
+			TypeCheckWarning::ItemMustBeUsedWithFlag { item, position } => Diagnostic::Position {
+				reason: format!("{item} must be used with 'extras' option"),
+				position,
+				kind,
+			},
 			TypeCheckWarning::UselessExpression { expression_span } => Diagnostic::Position {
 				reason: "Expression is always true".to_owned(),
 				position: expression_span,
@@ -944,6 +1039,11 @@ impl From<TypeCheckWarning> for Diagnostic {
 					kind,
 				}
 			}
+			TypeCheckWarning::DisjointEquality { lhs, rhs, position } => Diagnostic::Position {
+				reason: format!("This equality is always false as {lhs} and {rhs} have no overlap"),
+				position,
+				kind,
+			},
 		}
 	}
 }
@@ -1086,7 +1186,7 @@ fn function_calling_error_diagnostic(
 			kind,
 			position,
 		},
-		FunctionCallingError::TDZ { error: TDZ { position, variable_name }, call_site } => {
+		FunctionCallingError::VariableUsedInTDZ { error: VariableUsedInTDZ { position, variable_name }, call_site } => {
 			Diagnostic::PositionWithAdditionalLabels {
 				reason: format!("Variable '{variable_name}' used before declaration{context}"),
 				position: call_site,
@@ -1129,7 +1229,7 @@ fn function_calling_error_diagnostic(
 				kind,
 			}
 		}
-		FunctionCallingError::NotConfiguarable {
+		FunctionCallingError::NotConfigurable {
 			property,
 			call_site,
 		} => {
@@ -1141,6 +1241,11 @@ fn function_calling_error_diagnostic(
 				position: call_site,
 				kind,
 			}
+		}
+		FunctionCallingError::InvalidRegExp(InvalidRegExp { error, position }) => Diagnostic::Position {
+			reason: format!("Invalid regular expression: {error}"),
+			position,
+			kind,
 		}
 	}
 }

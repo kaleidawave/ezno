@@ -50,7 +50,8 @@ impl ParseOptions {
 			comments: self.comments,
 			lex_jsx: self.jsx,
 			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
-			allow_expressions_in_jsx: !self.top_level_html,
+			allow_expressions_in_jsx: true,
+			// allow_expressions_in_jsx: !self.top_level_html,
 			top_level_html: self.top_level_html,
 		}
 	}

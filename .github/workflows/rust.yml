@@ -24,6 +24,8 @@ env:
     ~/.cargo/registry/cache/
     ~/.cargo/git/db/
     target/
+    checker/fuzz/target
+    parser/fuzz/target
 
 jobs:
   validity:
@@ -169,7 +171,6 @@ jobs:
 
       - name: Build and test WASM
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
-        # TODO want `continue-on-error: true` but doesn't report error
         run: |
           # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
 
@@ -192,6 +193,13 @@ jobs:
           fi
         working-directory: src/js-cli-and-library
         shell: bash
+
+      - uses: actions/upload-artifact@v4
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        with:
+          name: wasm-build
+          path: src/js-cli-and-library/dist
+          retention-days: 3
 
   fuzzing_parser:
     needs: validity
@@ -298,6 +306,9 @@ jobs:
             #   find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
             # fi
           fi
+
+          ls .
+          ls target
         working-directory: checker/fuzz
   
   clippy:

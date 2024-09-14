@@ -86,3 +86,16 @@ function y(c: ) {
 
 	assert_eq!(output, input);
 }
+
+#[test]
+fn invalid_syntax() {
+	let sources = [("", true), ("][", false), ("{}}", false)];
+
+	for (source, is_okay) in sources.into_iter() {
+		let result = Module::from_string(
+			source.to_owned(),
+			ParseOptions { partial_syntax: true, ..Default::default() },
+		);
+		assert_eq!(result.is_ok(), is_okay, "Source = {:?} (parsed {:?})", source, result);
+	}
+}

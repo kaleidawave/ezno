@@ -17,7 +17,7 @@ use visitable_derive::Visitable;
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ExportDeclaration {
-	Variable {
+	Item {
 		exported: Exportable,
 		position: Span,
 	},
@@ -45,6 +45,7 @@ pub enum Exportable {
 	Variable(VariableDeclaration),
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
+	EnumDeclaration(EnumDeclaration),
 	Parts(Vec<ImportExportPart<ExportDeclaration>>),
 	ImportAll {
 		r#as: Option<VariableIdentifier>,
@@ -264,7 +265,7 @@ impl ASTNode for ExportDeclaration {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			ExportDeclaration::Variable { exported, .. } => {
+			ExportDeclaration::Item { exported, .. } => {
 				buf.push_str("export ");
 				match exported {
 					Exportable::Class(class_declaration) => {
@@ -281,6 +282,9 @@ impl ASTNode for ExportDeclaration {
 					}
 					Exportable::TypeAlias(type_alias) => {
 						type_alias.to_string_from_buffer(buf, options, local);
+					}
+					Exportable::EnumDeclaration(enum_declaration) => {
+						enum_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Parts(parts) => {
 						super::import_export_parts_to_string_from_buffer(

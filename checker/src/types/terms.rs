@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use super::TypeId;
 
-/// Terms
+/// Terms. `null` is a special object
 /// TODO:
 /// - `BigInt` (<https://github.com/rust-num/num-bigint>)
 #[derive(Eq, PartialEq, Hash, Debug, Clone, binary_serialize_derive::BinarySerializable)]
@@ -12,6 +12,7 @@ pub enum Constant {
 	Boolean(bool),
 	Symbol { key: String },
 	NaN,
+	Undefined,
 }
 
 impl Constant {
@@ -24,6 +25,7 @@ impl Constant {
 			Constant::Boolean(value) => Cow::Borrowed(if *value { "true" } else { "false" }),
 			Constant::Symbol { key } => Cow::Owned(format!("Symbol({key})")),
 			Constant::NaN => Cow::Borrowed("NaN"),
+			Constant::Undefined => Cow::Borrowed("undefined"),
 		}
 	}
 
@@ -37,16 +39,19 @@ impl Constant {
 			Constant::Boolean(value) => if *value { "true" } else { "false" }.to_owned(),
 			Constant::Symbol { key } => format!("Symbol({key})"),
 			Constant::NaN => "NaN".to_owned(),
+			Constant::Undefined => "undefined".to_owned(),
 		}
 	}
 
 	#[must_use]
-	pub fn get_backing_type_id(&self) -> TypeId {
+	pub fn get_backing_type(&self) -> TypeId {
 		match self {
 			Constant::Number(_) | Constant::NaN => TypeId::NUMBER_TYPE,
 			Constant::String(_) => TypeId::STRING_TYPE,
 			Constant::Boolean(_) => TypeId::BOOLEAN_TYPE,
 			Constant::Symbol { .. } => TypeId::SYMBOL_TYPE,
+			// TODO ...
+			Constant::Undefined => TypeId::NEVER_TYPE,
 		}
 	}
 }

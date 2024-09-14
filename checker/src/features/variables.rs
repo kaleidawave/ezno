@@ -157,7 +157,7 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 					Logical::BasedOnKey { .. } => todo!(),
 				}
 			} else {
-				TypeId::ERROR_TYPE
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
 			}
 		} else {
 			let keys;

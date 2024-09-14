@@ -94,7 +94,7 @@ impl FunctionType {
 			extends: false,
 			type_of_super: None,
 			// Set later
-			this_object_type: TypeId::ERROR_TYPE,
+			this_object_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 		});
 
 		let (on, env_data, _) = environment.new_lexical_environment_fold_into_parent(

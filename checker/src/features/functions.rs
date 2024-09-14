@@ -118,7 +118,7 @@ pub fn synthesise_hoisted_statement_function<T: crate::ReadFromFS, A: crate::AST
 		crate::utilities::notify!("TODO check that the result is the same");
 	}
 
-	crate::utilities::notify!("function.effect={:?}", function.effect);
+	// crate::utilities::notify!("function.effect={:?}", function.effect);
 
 	let v = checking_data.types.new_function_type(function);
 	environment.info.variable_current_value.insert(variable_id, v);
@@ -224,12 +224,10 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 	}
 
 	// Abstraction of `typeof parameter === "undefined"` to generate less types.
-	let is_undefined_condition = checking_data.types.register_type(Type::Constructor(
-		Constructor::TypeRelationOperator(types::TypeRelationOperator::Extends {
-			item: parameter_ty,
-			extends: TypeId::UNDEFINED_TYPE,
-		}),
-	));
+	let is_undefined_condition =
+		checking_data.types.register_type(Type::Constructor(Constructor::TypeExtends(
+			types::TypeExtends { item: parameter_ty, extends: TypeId::UNDEFINED_TYPE },
+		)));
 
 	// TODO is this needed
 	// let union = checking_data.types.new_or_type(parameter_ty, value);
@@ -457,13 +455,13 @@ where
 			FunctionKind {
 				behavior: FunctionBehavior::Constructor {
 					prototype,
-					this_object_type: TypeId::ERROR_TYPE,
+					this_object_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					name,
 				},
 				scope: FunctionScope::Constructor {
 					extends: super_type.is_some(),
 					type_of_super: super_type,
-					this_object_type: TypeId::ERROR_TYPE,
+					this_object_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 				},
 				internal: internal_marker,
 				constructor: Some((prototype, properties)),
@@ -473,21 +471,11 @@ where
 			}
 		}
 		FunctionRegisterBehavior::ArrowFunction { expecting, is_async } => {
-			// crate::utilities::notify!(
-			// 	"expecting {}",
-			// 	types::printing::print_type(
-			// 		expecting,
-			// 		&checking_data.types,
-			// 		base_environment,
-			// 		false
-			// 	)
-			// );
 			let (expected_parameters, expected_return) = get_expected_parameters_from_type(
 				expecting,
 				&mut checking_data.types,
 				base_environment,
 			);
-			crate::utilities::notify!("expected {:?}", expecting);
 
 			if let Some((or, _)) =
 				expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))
@@ -501,7 +489,7 @@ where
 			FunctionKind {
 				behavior: FunctionBehavior::ArrowFunction { is_async },
 				scope: FunctionScope::ArrowFunction {
-					free_this_type: TypeId::ERROR_TYPE,
+					free_this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					is_async,
 					expected_return: expected_return.map(ExpectedReturnType::Inferred),
 				},
@@ -532,7 +520,7 @@ where
 				behavior: FunctionBehavior::Function {
 					is_async,
 					is_generator,
-					this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
 					prototype,
 					name,
 				},
@@ -540,7 +528,7 @@ where
 					is_generator,
 					is_async,
 					// to set
-					this_type: TypeId::ERROR_TYPE,
+					this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					type_of_super: TypeId::ANY_TYPE,
 					expected_return: expected_return.map(ExpectedReturnType::Inferred),
 					location,
@@ -568,14 +556,14 @@ where
 					is_async,
 					is_generator,
 					prototype,
-					this_id: TypeId::ERROR_TYPE,
+					this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
 					name,
 				},
 				scope: FunctionScope::Function {
 					is_generator,
 					is_async,
-					this_type: TypeId::ERROR_TYPE,
-					type_of_super: TypeId::ERROR_TYPE,
+					this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
+					type_of_super: TypeId::IS_ASSIGNED_VALUE_LATER,
 					expected_return: None,
 					location,
 				},
@@ -630,11 +618,11 @@ where
 				behavior: FunctionBehavior::Method {
 					is_async,
 					is_generator,
-					free_this_id: TypeId::ERROR_TYPE,
+					free_this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
 					name,
 				},
 				scope: FunctionScope::MethodFunction {
-					free_this_type: TypeId::ERROR_TYPE,
+					free_this_type: TypeId::IS_ASSIGNED_VALUE_LATER,
 					is_async,
 					is_generator,
 					expected_return: expected_return.map(ExpectedReturnType::Inferred),
@@ -661,7 +649,12 @@ where
 	let mut function_environment = base_environment.new_lexical_environment(Scope::Function(scope));
 
 	if function.has_body() {
-		let type_parameters = function.type_parameters(&mut function_environment, checking_data);
+		let type_parameters = if let Some((ref prototype, _)) = constructor {
+			// Class generics here
+			class_generics_to_function_generics(*prototype, &checking_data.types)
+		} else {
+			function.type_parameters(&mut function_environment, checking_data)
+		};
 
 		// TODO should be in function, but then requires mutable environment :(
 		let this_constraint =
@@ -849,7 +842,54 @@ where
 		let variable_names = function_environment.variable_names;
 
 		let returned = if function.has_body() {
-			info.state.get_returned(&mut checking_data.types)
+			let returned = info.state.get_returned(&mut checking_data.types);
+
+			// TODO temp fix for predicates. This should be really be done in `environment.throw` ()?
+			if let Some(ReturnType(expected, _)) = return_type_annotation {
+				if crate::types::type_is_assert_is_type(expected, &checking_data.types).is_ok() {
+					let mut state = crate::subtyping::State {
+						already_checked: Default::default(),
+						mode: Default::default(),
+						contributions: Default::default(),
+						others: crate::subtyping::SubTypingOptions::default(),
+						// TODO don't think there is much case in constraining it here
+						object_constraints: None,
+					};
+
+					let result = crate::subtyping::type_is_subtype(
+						expected,
+						returned,
+						&mut state,
+						base_environment,
+						&checking_data.types,
+					);
+
+					if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::ReturnedTypeDoesNotMatch {
+								expected_return_type: TypeStringRepresentation::from_type_id(
+									expected,
+									base_environment,
+									&checking_data.types,
+									checking_data.options.debug_types,
+								),
+								returned_type: TypeStringRepresentation::from_type_id(
+									returned,
+									base_environment,
+									&checking_data.types,
+									checking_data.options.debug_types,
+								),
+								annotation_position: position,
+								returned_position: function
+									.get_position()
+									.with_source(base_environment.get_source()),
+							},
+						);
+					}
+				}
+			}
+
+			returned
 		} else if let Some(ReturnType(ty, _)) = return_type_annotation {
 			ty
 		} else {
@@ -1076,6 +1116,7 @@ pub fn new_name_expected_object(
 }
 
 /// Reverse of the above
+#[must_use]
 pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environment) -> TypeId {
 	if let Type::And(_, rhs) = types.get_type_by_id(expecting) {
 		if let Ok(LogicalOrValid::Logical(Logical::Pure(PropertyValue::Value(ty)))) =
@@ -1094,4 +1135,28 @@ pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environm
 	} else {
 		TypeId::EMPTY_STRING
 	}
+}
+
+pub fn class_generics_to_function_generics(
+	prototype: TypeId,
+	types: &TypeStore,
+) -> Option<GenericTypeParameters> {
+	types.get_type_by_id(prototype).get_parameters().map(|parameters| {
+		parameters
+			.into_iter()
+			.map(|ty| {
+				let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
+					types.get_type_by_id(ty)
+				else {
+					unreachable!()
+				};
+				crate::types::generics::GenericTypeParameter {
+					name: name.clone(),
+					// Using its associated [`Type`], its restriction can be found
+					type_id: ty,
+					default: None,
+				}
+			})
+			.collect()
+	})
 }

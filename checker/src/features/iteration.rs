@@ -72,6 +72,17 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						checking_data,
 					);
 
+					let values = super::narrowing::narrow_based_on_expression_into_vec(
+						condition,
+						false,
+						environment,
+						&mut checking_data.types,
+					);
+
+					crate::utilities::notify!("{:?}", values);
+
+					environment.info.narrowed_values = values;
+
 					// TODO not always needed
 					add_loop_described_break_event(
 						condition,
@@ -79,9 +90,8 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						&mut environment.info.events,
 					);
 
+					// TODO narrowing
 					loop_body(environment, checking_data);
-
-					// crate::utilities::notify!("Loop does {:#?}", environment.info.events);
 
 					condition
 				},
@@ -279,6 +289,15 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 							);
 
 						// TODO copy value of variables between things, or however it works
+
+						let values = super::narrowing::narrow_based_on_expression_into_vec(
+							condition,
+							false,
+							environment,
+							&mut checking_data.types,
+						);
+
+						environment.info.narrowed_values = values;
 
 						(condition, events, dependent_variables)
 					},
@@ -748,6 +767,14 @@ impl LoopStructure {
 	}
 
 	pub fn calculate_iterations(self, types: &TypeStore) -> Result<usize, Self> {
+		self.calculate_iterations_f64(types).map(|result| result as usize)
+	}
+
+	pub fn known_to_never_exist(self, types: &TypeStore) -> bool {
+		self.calculate_iterations_f64(types).map_or(false, f64::is_infinite)
+	}
+
+	fn calculate_iterations_f64(self, types: &TypeStore) -> Result<f64, Self> {
 		let values = (
 			types.get_type_by_id(self.start),
 			types.get_type_by_id(self.increment_by),
@@ -768,7 +795,7 @@ impl LoopStructure {
 			// 	increment,
 			// 	iterations
 			// );
-			Ok(iterations.ceil() as usize)
+			Ok(iterations.ceil())
 		} else {
 			// crate::utilities::notify!("Iterations was {:?}", values);
 			Err(self)
@@ -879,6 +906,7 @@ fn calculate_result_of_loop(
 					lhs: assignment,
 					operator: _,
 					rhs: increments_by,
+					result: _,
 				}) = value_after_running_expressions_in_loop
 				{
 					debug_assert!(

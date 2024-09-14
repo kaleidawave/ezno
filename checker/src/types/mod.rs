@@ -12,33 +12,35 @@ pub mod store;
 pub mod subtyping;
 mod terms;
 
-use derive_debug_extras::DebugExtras;
+pub(crate) use self::{
+	casts::*,
+	generics::contributions::CovariantContribution,
+	generics::{
+		chain::{GenericChain, GenericChainLink},
+		substitution::*,
+	},
+	properties::AccessMode,
+	properties::*,
+};
 
-use derive_enum_from_into::EnumFrom;
-pub(crate) use generics::{
-	chain::{GenericChain, GenericChainLink},
-	substitution::*,
+pub use self::{
+	functions::*, generics::generic_type_arguments::GenericArguments, store::TypeStore,
+	terms::Constant,
 };
 
 pub use crate::features::objects::SpecialObject;
-pub(crate) use casts::*;
-pub use logical::*;
-use source_map::SpanWithSource;
-pub use store::TypeStore;
-pub use terms::Constant;
 
 use crate::{
 	context::InformationChain,
 	events::RootReference,
-	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise, PureUnary},
+	features::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise},
 	subtyping::SliceArguments,
-	types::{generics::contributions::CovariantContribution, properties::AccessMode},
 	Decidable, FunctionId,
 };
 
-pub use self::functions::*;
-
-use self::{generics::generic_type_arguments::GenericArguments, properties::PropertyKey};
+use derive_debug_extras::DebugExtras;
+use derive_enum_from_into::EnumFrom;
+use source_map::SpanWithSource;
 
 pub type ExplicitTypeArgument = (TypeId, SpanWithSource);
 
@@ -59,6 +61,7 @@ impl TypeId {
 	/// Not to be confused with [`TypeId::NEVER_TYPE`]
 	pub const ERROR_TYPE: Self = Self(0);
 	pub const UNIMPLEMENTED_ERROR_TYPE: Self = Self::ERROR_TYPE;
+	pub const IS_ASSIGNED_VALUE_LATER: Self = Self::ERROR_TYPE;
 
 	pub const NEVER_TYPE: Self = Self(1);
 
@@ -88,76 +91,103 @@ impl TypeId {
 	/// This points to the ???
 	pub const SYMBOL_TYPE: Self = Self(15);
 
-	/// For more direct stuff and the rules
+	/// For direct constant and the rules
 	pub const TRUE: Self = Self(16);
 	pub const FALSE: Self = Self(17);
 	pub const ZERO: Self = Self(18);
 	pub const ONE: Self = Self(19);
 	pub const NAN: Self = Self(20);
-	pub const EMPTY_STRING: Self = Self(21);
+	pub const NEG_INFINITY: Self = Self(21);
+	pub const INFINITY: Self = Self(22);
+	pub const FLOAT_MIN: Self = Self(23);
+	pub const FLOAT_MAX: Self = Self(24);
+	pub const FLOAT_EPSILON: Self = Self(25);
+	/// For bitwise negation
+	pub const MAX_U32: Self = Self(26);
+	/// ""
+	pub const EMPTY_STRING: Self = Self(27);
 
 	/// Shortcut for inferred this
 	/// TODO remove
-	pub const ANY_INFERRED_FREE_THIS: Self = Self(22);
+	pub const ANY_INFERRED_FREE_THIS: Self = Self(28);
 
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
-	pub const NEW_TARGET_ARG: Self = Self(23);
+	pub const NEW_TARGET_ARG: Self = Self(29);
 
-	pub const IMPORT_META: Self = Self(24);
+	pub const IMPORT_META: Self = Self(30);
 
 	// known symbols
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator>
-	pub const SYMBOL_ITERATOR: Self = Self(25);
+	pub const SYMBOL_ITERATOR: Self = Self(31);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/asyncIterator>
-	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(26);
+	pub const SYMBOL_ASYNC_ITERATOR: Self = Self(32);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/hasInstance>
-	pub const SYMBOL_HAS_INSTANCE: Self = Self(27);
+	pub const SYMBOL_HAS_INSTANCE: Self = Self(33);
 	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive>
-	pub const SYMBOL_TO_PRIMITIVE: Self = Self(28);
+	pub const SYMBOL_TO_PRIMITIVE: Self = Self(34);
 
 	// TSC intrinsics
-	pub const STRING_GENERIC: Self = Self(29);
-	pub const STRING_UPPERCASE: Self = Self(30);
-	pub const STRING_LOWERCASE: Self = Self(31);
-	pub const STRING_CAPITALIZE: Self = Self(32);
-	pub const STRING_UNCAPITALIZE: Self = Self(33);
-	pub const NO_INFER: Self = Self(34);
+	pub const STRING_GENERIC: Self = Self(35);
+	pub const STRING_UPPERCASE: Self = Self(36);
+	pub const STRING_LOWERCASE: Self = Self(37);
+	pub const STRING_CAPITALIZE: Self = Self(38);
+	pub const STRING_UNCAPITALIZE: Self = Self(39);
+	pub const NO_INFER: Self = Self(40);
 
 	/// Might be a special type in TSC
-	pub const READONLY_RESTRICTION: Self = Self(35);
+	pub const READONLY_RESTRICTION: Self = Self(41);
 
 	/// For mapped types
-	pub const NON_OPTIONAL_KEY_ARGUMENT: Self = Self(36);
+	pub const NON_OPTIONAL_KEY_ARGUMENT: Self = Self(42);
 	/// For mapped types
-	pub const WRITABLE_KEY_ARGUMENT: Self = Self(37);
+	pub const WRITABLE_KEY_ARGUMENT: Self = Self(43);
 
 	// Ezno intrinsics
 
-	/// Used in [`Self::LESS_THAN`], [`Self::LESS_THAN`] and [`Self::MULTIPLE_OF`]
-	pub const NUMBER_GENERIC: Self = Self(38);
-	pub const LESS_THAN: Self = Self(39);
-	pub const GREATER_THAN: Self = Self(40);
-	pub const MULTIPLE_OF: Self = Self(41);
-	pub const NOT_NOT_A_NUMBER: Self = Self(42);
-	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(43);
+	/// Used in [`Self::INCLUSIVE_RANGE`], [`Self::EXCLUSIVE_RANGE`] and [`Self::MULTIPLE_OF`]
+	pub const NUMBER_FLOOR_GENERIC: Self = Self(44);
+	pub const NUMBER_CEILING_GENERIC: Self = Self(45);
+	pub const INCLUSIVE_RANGE: Self = Self(46);
+	pub const EXCLUSIVE_RANGE: Self = Self(47);
+	pub const MULTIPLE_OF: Self = Self(48);
+	pub const NOT_NOT_A_NUMBER: Self = Self(49);
+	pub const NUMBER_BUT_NOT_NOT_A_NUMBER: Self = Self(50);
 
-	pub const LITERAL_RESTRICTION: Self = Self(44);
-	pub const EXCLUSIVE_RESTRICTION: Self = Self(45);
-	pub const NOT_RESTRICTION: Self = Self(46);
+	pub const LITERAL_RESTRICTION: Self = Self(51);
+	pub const EXCLUSIVE_RESTRICTION: Self = Self(52);
+	pub const NOT_RESTRICTION: Self = Self(53);
 
 	/// This is needed for the TSC string intrinsics
-	pub const CASE_INSENSITIVE: Self = Self(47);
+	pub const CASE_INSENSITIVE: Self = Self(54);
 
 	/// WIP
-	pub const OPEN_BOOLEAN_TYPE: Self = Self::BOOLEAN_TYPE;
-	pub const OPEN_NUMBER_TYPE: Self = Self::NUMBER_TYPE;
+	pub const OPEN_BOOLEAN_TYPE: Self = Self(55);
+	pub const OPEN_NUMBER_TYPE: Self = Self(56);
+
+	/// For `+` operator
+	pub const STRING_OR_NUMBER: Self = Self(57);
 
 	/// Above add one (because [`TypeId`] starts at zero). Used to assert that the above is all correct
-	pub(crate) const INTERNAL_TYPE_COUNT: usize = 48;
+	pub(crate) const INTERNAL_TYPE_COUNT: usize = 58;
 }
 
 #[derive(Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Type {
+	/// *Dependent equality types*
+	Constant(crate::Constant),
+	/// Technically could be just a function but...
+	Object(ObjectNature),
+	SpecialObject(SpecialObject),
+
+	/// From a parameter, introduces a set of types > 1
+	RootPolyType(PolyNature),
+	/// Also a "Substituted constructor type"
+	Constructor(Constructor),
+	Narrowed {
+		/// Either `RootPolyType` or `Constructor`
+		from: TypeId,
+		narrowed_to: TypeId,
+	},
 	/// For
 	/// - `extends` interface part (for multiple it to is a `Type::And`)
 	/// - Can be used for subtypes (aka N aliases number then more types on top)
@@ -167,15 +197,6 @@ pub enum Type {
 		name: String,
 		parameters: Option<Vec<TypeId>>,
 	},
-	And(TypeId, TypeId),
-	Or(TypeId, TypeId),
-	RootPolyType(PolyNature),
-	/// Also a "Substituted constructor type"
-	Constructor(Constructor),
-
-	/// **e.g `Array<string>`
-	PartiallyAppliedGenerics(PartiallyAppliedGenerics),
-
 	/// For number and other rooted types
 	///
 	/// Although they all alias Object
@@ -189,15 +210,16 @@ pub enum Type {
 		name: String,
 		type_parameters: Option<Vec<TypeId>>,
 	},
-	/// *Dependent equality types*
-	Constant(crate::Constant),
-
 	/// From a type annotation or .d.ts WITHOUT body. e.g. don't know effects TODO...
 	FunctionReference(FunctionId),
 
-	/// Technically could be just a function but...
-	Object(ObjectNature),
-	SpecialObject(SpecialObject),
+	/// **e.g `Array<string>`
+	PartiallyAppliedGenerics(PartiallyAppliedGenerics),
+
+	/// Has properties of both sides
+	And(TypeId, TypeId),
+	/// Has properties of either of sides
+	Or(TypeId, TypeId),
 }
 
 /// TODO difference between untyped and typed parameters and what about parameter based for any
@@ -281,12 +303,12 @@ impl PolyNature {
 }
 
 /// TODO split
-#[derive(Copy, Clone, Debug, binary_serialize_derive::BinarySerializable)]
+#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum ObjectNature {
 	/// Actual allocated object
 	RealDeal,
 	/// From `x: { a: number }` etc
-	AnonymousTypeAnnotation,
+	AnonymousTypeAnnotation(Properties),
 }
 
 impl Type {
@@ -310,7 +332,7 @@ impl Type {
 			// TODO
 			Type::PartiallyAppliedGenerics(..) => false,
 			// Fine
-			Type::Constructor(_) | Type::RootPolyType(_) => true,
+			Type::Narrowed { .. } | Type::Constructor(_) | Type::RootPolyType(_) => true,
 			// TODO what about if left or right
 			Type::And(_, _) | Type::Or(_, _) => false,
 			// TODO what about if it aliases dependent?
@@ -347,25 +369,25 @@ impl Type {
 
 /// - Some of these can be specialised, others are only created via event specialisation
 /// - Note that no || and && etc. This is handled using [`Constructor::ConditionalResult`]
+/// - Unary operations are encoded via [`Constructor::BinaryOperator`] equivalents
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum Constructor {
-	// TODO separate add?
 	BinaryOperator {
 		lhs: TypeId,
 		operator: MathematicalAndBitwise,
 		rhs: TypeId,
+		/// for add + number intrinsics
+		result: TypeId,
 	},
 	CanonicalRelationOperator {
 		lhs: TypeId,
 		operator: CanonicalEqualityAndInequality,
 		rhs: TypeId,
 	},
-	UnaryOperator {
-		operator: PureUnary,
-		operand: TypeId,
-	},
+	/// JS type based operations
 	TypeOperator(TypeOperator),
-	TypeRelationOperator(TypeRelationOperator),
+	/// TS operation
+	TypeExtends(TypeExtends),
 	/// TODO constraint is res
 	ConditionalResult {
 		/// TODO this can only be poly types
@@ -374,7 +396,7 @@ pub enum Constructor {
 		otherwise_result: TypeId,
 		result_union: TypeId,
 	},
-	/// output of a function where on is dependent (or sometimes for const functions one of `with` is dependent)
+	/// Output of a function where on is dependent (or sometimes for const functions one of `with` is dependent)
 	Image {
 		on: TypeId,
 		// TODO I don't think this is necessary, maybe for debugging. In such case should be an Rc to share with events
@@ -384,7 +406,7 @@ pub enum Constructor {
 	/// Access
 	Property {
 		on: TypeId,
-		under: PropertyKey<'static>,
+		under: properties::PropertyKey<'static>,
 		result: TypeId,
 		mode: AccessMode,
 	},
@@ -406,12 +428,68 @@ impl Constructor {
 			| Constructor::Image { result, .. } => Some(*result),
 			Constructor::BinaryOperator { .. }
 			| Constructor::CanonicalRelationOperator { .. }
-			| Constructor::UnaryOperator { .. }
-			| Constructor::TypeRelationOperator(_)
+			| Constructor::TypeExtends(_)
 			| Constructor::TypeOperator(_) => None,
 			// TODO or symbol
 			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
 		}
+	}
+}
+
+#[must_use]
+pub fn as_logical_not(constructor: &Constructor, types: &TypeStore) -> Option<TypeId> {
+	// TODO technically any falsy, truthy reverse pair is okay
+	if let Constructor::ConditionalResult {
+		condition,
+		truthy_result: TypeId::FALSE,
+		otherwise_result: TypeId::TRUE,
+		result_union: _,
+	} = constructor
+	{
+		Some(helpers::get_origin(*condition, types))
+	} else {
+		None
+	}
+}
+
+#[must_use]
+pub fn as_logical_and(constructor: &Constructor, types: &TypeStore) -> Option<(TypeId, TypeId)> {
+	if let Constructor::ConditionalResult {
+		condition,
+		truthy_result,
+		otherwise_result,
+		result_union: _,
+	} = constructor
+	{
+		let (condition, truthy_result, otherwise_result) = (
+			helpers::get_origin(*condition, types),
+			helpers::get_origin(*truthy_result, types),
+			helpers::get_origin(*otherwise_result, types),
+		);
+		(condition == otherwise_result).then_some((truthy_result, otherwise_result))
+	} else {
+		None
+	}
+}
+
+#[must_use]
+pub fn as_logical_or(constructor: &Constructor, types: &TypeStore) -> Option<(TypeId, TypeId)> {
+	if let Constructor::ConditionalResult {
+		condition,
+		truthy_result,
+		otherwise_result,
+		result_union: _,
+	} = constructor
+	{
+		let (condition, truthy_result, otherwise_result) = (
+			helpers::get_origin(*condition, types),
+			helpers::get_origin(*truthy_result, types),
+			helpers::get_origin(*otherwise_result, types),
+		);
+		(condition == truthy_result || truthy_result == TypeId::TRUE)
+			.then_some((condition, otherwise_result))
+	} else {
+		None
 	}
 }
 
@@ -424,21 +502,90 @@ pub struct PartiallyAppliedGenerics {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeOperator {
-	/// Gets the prototype
-	PrototypeOf(TypeId),
+	IsPrototype {
+		lhs: TypeId,
+		rhs_prototype: TypeId,
+	},
 	/// The `typeof` unary operator
 	TypeOf(TypeId),
 	HasProperty(TypeId, properties::PropertyKey<'static>),
 }
 
-/// TODO instance of?
-#[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
-pub enum TypeRelationOperator {
-	Extends { item: TypeId, extends: TypeId },
+/// This if from the type annotation `is`
+#[derive(Clone, Copy, Debug, binary_serialize_derive::BinarySerializable)]
+pub struct TypeExtends {
+	pub item: TypeId,
+	pub extends: TypeId,
 }
 
-pub(crate) fn new_logical_or_type(lhs: TypeId, rhs: TypeId, types: &mut TypeStore) -> TypeId {
-	types.new_conditional_type(lhs, lhs, rhs)
+impl TypeExtends {
+	/// This does `typeof`, `===` and `instanceof`
+	///
+	/// Because of type representation and the fact this cannot generate types the following are not covered
+	/// - negation. Cannot create `Not`
+	/// - number intrinsincs. Cannot create `LessThan`, `GreaterThan`, etc
+	/// - has property. Cannot create new object
+	pub fn from_type(rhs: TypeId, types: &TypeStore) -> Result<Self, ()> {
+		let rhs_ty = types.get_type_by_id(rhs);
+		if let Type::Constructor(Constructor::CanonicalRelationOperator {
+			lhs,
+			operator: CanonicalEqualityAndInequality::StrictEqual,
+			rhs,
+		}) = rhs_ty
+		{
+			if let (
+				Type::Constructor(Constructor::TypeOperator(TypeOperator::TypeOf(on))),
+				Type::Constant(Constant::String(s)),
+			) = (types.get_type_by_id(*lhs), types.get_type_by_id(*rhs))
+			{
+				if let Some(extends_ty_name) = crate::features::string_name_to_type(s) {
+					Ok(Self { item: *on, extends: extends_ty_name })
+				} else {
+					Err(())
+				}
+			} else {
+				// === rhs
+				Ok(Self { item: *lhs, extends: *rhs })
+			}
+		} else if let Type::Constructor(Constructor::TypeOperator(TypeOperator::IsPrototype {
+			lhs,
+			rhs_prototype,
+		})) = rhs_ty
+		{
+			// TODO this loses generics etc
+			Ok(Self { item: *lhs, extends: *rhs_prototype })
+		} else if let Type::Constructor(Constructor::TypeExtends(extends)) = rhs_ty {
+			Ok(*extends)
+		} else {
+			Err(())
+		}
+	}
+
+	#[must_use]
+	pub fn equal_to_rhs(&self, rhs: TypeId, types: &TypeStore) -> bool {
+		if let Ok(TypeExtends { item, extends }) = Self::from_type(rhs, types) {
+			// TODO get origin on item
+			item == self.item && extends == self.extends
+		} else {
+			// crate::utilities::notify!("Here {:?}", rhs_ty);
+			false
+		}
+	}
+}
+
+/// If `assert x is y` annotation
+pub fn type_is_assert_is_type(ty: TypeId, types: &TypeStore) -> Result<TypeExtends, ()> {
+	if let Type::Constructor(Constructor::ConditionalResult {
+		condition,
+		truthy_result: _,
+		otherwise_result: TypeId::NEVER_TYPE,
+		result_union: _,
+	}) = types.get_type_by_id(ty)
+	{
+		TypeExtends::from_type(*condition, types)
+	} else {
+		Err(())
+	}
 }
 
 #[must_use]
@@ -458,6 +605,7 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 			| Type::Constructor(_)
 			| Type::Interface { .. }
 			| Type::PartiallyAppliedGenerics(..)
+			| Type::Narrowed { .. }
 			| Type::Class { .. } => {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
@@ -485,7 +633,7 @@ pub enum ArgumentOrLookup {
 pub enum NonEqualityReason {
 	Mismatch,
 	PropertiesInvalid {
-		errors: Vec<(PropertyKey<'static>, PropertyError)>,
+		errors: Vec<(properties::PropertyKey<'static>, PropertyError)>,
 	},
 	TooStrict,
 	/// TODO more information
@@ -511,7 +659,7 @@ pub(crate) fn is_explicit_generic(on: TypeId, types: &TypeStore) -> bool {
 		types.get_type_by_id(on)
 	{
 		is_explicit_generic(*on, types)
-			|| matches!(under, PropertyKey::Type(under) if is_explicit_generic(*under, types))
+			|| matches!(under, properties::PropertyKey::Type(under) if is_explicit_generic(*under, types))
 	} else {
 		false
 	}
@@ -524,45 +672,8 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
 		Type::RootPolyType(nature) => Some(nature.get_constraint()),
 		Type::Constructor(constructor) => match constructor.clone() {
-			Constructor::BinaryOperator { lhs, operator, rhs } => {
-				if let MathematicalAndBitwise::Add = operator {
-					let lhs = get_larger_type(lhs, types);
-					let rhs = get_larger_type(rhs, types);
-					// TODO these need to be generated
-					if let (TypeId::NUMBER_TYPE, TypeId::NUMBER_TYPE) = (lhs, rhs) {
-						Some(TypeId::NUMBER_TYPE)
-					} else if let (TypeId::STRING_TYPE, _) | (_, TypeId::STRING_TYPE) = (lhs, rhs) {
-						Some(TypeId::STRING_TYPE)
-					} else {
-						crate::utilities::notify!("lhs = {:?}", types.get_type_by_id(lhs));
-						crate::utilities::notify!("TODO use existing conditional");
-						Some(TypeId::NUMBER_TYPE)
-					}
-				} else {
-					Some(TypeId::NUMBER_TYPE)
-				}
-			}
-			Constructor::UnaryOperator { operand: _, operator } => {
-				Some(match operator {
-					PureUnary::LogicalNot => TypeId::BOOLEAN_TYPE,
-					PureUnary::Negation | PureUnary::BitwiseNot => TypeId::NUMBER_TYPE,
-				})
-				// if *constraint == TypeId::ANY_TYPE && mutable_context {
-				// 	let (operand, operator) = (operand.clone(), operator.clone());
-				// 	let constraint = to(self, data);
-				// 	self.modify_type(
-				// 		on,
-				// 		Some(Type::Constructor(Constructor::UnaryOperator {
-				// 			operator,
-				// 			operand,
-				// 								// 		})),
-				// 	);
-				// 	Some(constraint)
-				// } else {
-				// 	Some(*constraint)
-				// }
-			}
-			Constructor::Awaited { on: _, result }
+			Constructor::BinaryOperator { result, .. }
+			| Constructor::Awaited { on: _, result }
 			| Constructor::Image { on: _, with: _, result } => Some(result),
 			Constructor::Property { on: _, under: _, result, mode: _ } => {
 				// crate::utilities::notify!("Here, result of a property get");
@@ -572,15 +683,21 @@ pub(crate) fn get_constraint(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 				// TODO dynamic and open poly
 				Some(result_union)
 			}
-			Constructor::TypeOperator(_) | Constructor::CanonicalRelationOperator { .. } => {
-				// TODO open poly
+			Constructor::TypeOperator(op) => match op {
+				// TODO union of names
+				TypeOperator::TypeOf(_) => Some(TypeId::STRING_TYPE),
+				TypeOperator::IsPrototype { .. } | TypeOperator::HasProperty(..) => {
+					Some(TypeId::BOOLEAN_TYPE)
+				}
+			},
+			Constructor::CanonicalRelationOperator { .. } => Some(TypeId::BOOLEAN_TYPE),
+			Constructor::TypeExtends(op) => {
+				let crate::types::TypeExtends { .. } = op;
 				Some(TypeId::BOOLEAN_TYPE)
 			}
-			Constructor::TypeRelationOperator(op) => match op {
-				crate::types::TypeRelationOperator::Extends { .. } => Some(TypeId::BOOLEAN_TYPE),
-			},
 			Constructor::KeyOf(_) => Some(TypeId::STRING_TYPE),
 		},
+		Type::Narrowed { from: _, narrowed_to } => Some(*narrowed_to),
 		Type::Object(ObjectNature::RealDeal) => {
 			// crate::utilities::notify!("Might be missing some mutations that are possible here");
 			None
@@ -595,7 +712,7 @@ pub fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 	if let Some(poly_base) = get_constraint(on, types) {
 		poly_base
 	} else if let Type::Constant(cst) = types.get_type_by_id(on) {
-		cst.get_backing_type_id()
+		cst.get_backing_type()
 	} else {
 		on
 	}
@@ -622,7 +739,7 @@ impl LookUpGeneric {
 					.flatten()
 					.filter_map(|(_publicity, key, value)| {
 						// TODO filter more
-						if matches!(key, PropertyKey::String(s) if s == "length") {
+						if matches!(key, properties::PropertyKey::String(s) if s == "length") {
 							None
 						} else {
 							Some(value.as_get_type(types))
@@ -725,43 +842,12 @@ pub(crate) fn _assign_to_tuple(_ty: TypeId) -> TypeId {
 	// if let PropertyKey::Type(slice) =
 }
 
-/// For getting `length` and stuff
-fn get_simple_value(
-	ctx: &impl InformationChain,
-	on: TypeId,
-	property: &PropertyKey,
-	types: &TypeStore,
-) -> Option<TypeId> {
-	fn get_logical(v: Logical<crate::PropertyValue>) -> Option<TypeId> {
-		match v {
-			Logical::Pure(crate::PropertyValue::Value(t)) => Some(t),
-			Logical::Implies { on, antecedent: _ } => get_logical(*on),
-			_ => None,
-		}
-	}
-
-	let value = properties::get_property_unbound(
-		(on, None),
-		(properties::Publicity::Public, property, None),
-		false,
-		ctx,
-		types,
-	)
-	.ok()?;
-
-	if let LogicalOrValid::Logical(value) = value {
-		get_logical(value)
-	} else {
-		None
-	}
-}
-
 fn get_array_length(
 	ctx: &impl InformationChain,
 	on: TypeId,
 	types: &TypeStore,
 ) -> Result<ordered_float::NotNan<f64>, Option<TypeId>> {
-	let length_property = PropertyKey::String(std::borrow::Cow::Borrowed("length"));
+	let length_property = properties::PropertyKey::String(std::borrow::Cow::Borrowed("length"));
 	let id = get_simple_value(ctx, on, &length_property, types).ok_or(None)?;
 	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
 		Ok(*n)
@@ -835,6 +921,8 @@ impl Counter {
 					lhs: *value,
 					operator: MathematicalAndBitwise::Add,
 					rhs: TypeId::ONE,
+					// TODO could be greater than
+					result: TypeId::NUMBER_TYPE,
 				}));
 			}
 		}
@@ -846,14 +934,16 @@ impl Counter {
 			lhs: ty,
 			operator: MathematicalAndBitwise::Add,
 			rhs: current,
+			// TODO could be greater than
+			result: TypeId::NUMBER_TYPE,
 		}));
 		*self = Counter::AddTo(new);
 	}
 
-	pub(crate) fn into_property_key(self) -> PropertyKey<'static> {
+	pub(crate) fn into_property_key(self) -> properties::PropertyKey<'static> {
 		match self {
-			Counter::On(value) => PropertyKey::from_usize(value),
-			Counter::AddTo(ty) => PropertyKey::Type(ty),
+			Counter::On(value) => properties::PropertyKey::from_usize(value),
+			Counter::AddTo(ty) => properties::PropertyKey::Type(ty),
 		}
 	}
 
@@ -867,95 +957,151 @@ impl Counter {
 	}
 }
 
-/// To fill in for TSC behavior for mapped types
-pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
-	match types.get_type_by_id(id) {
-		Type::AliasTo { to, .. } => references_key_of(*to, types),
-		Type::Or(lhs, rhs) | Type::And(lhs, rhs) => {
-			references_key_of(*lhs, types) || references_key_of(*rhs, types)
-		}
-		Type::RootPolyType(c) => references_key_of(c.get_constraint(), types),
-		Type::Constructor(c) => {
-			if let Constructor::KeyOf(..) = c {
-				true
-			} else if let Constructor::BinaryOperator { lhs, rhs, operator: _ } = c {
+pub(crate) mod helpers {
+	use super::{
+		get_constraint, subtyping, Constructor, GenericArguments, GenericChain, InformationChain,
+		PartiallyAppliedGenerics, PolyNature, Type, TypeId, TypeStore,
+	};
+
+	/// To fill in for TSC behavior for mapped types
+	#[must_use]
+	pub fn references_key_of(id: TypeId, types: &TypeStore) -> bool {
+		match types.get_type_by_id(id) {
+			Type::AliasTo { to, .. } => references_key_of(*to, types),
+			Type::Or(lhs, rhs) | Type::And(lhs, rhs) => {
 				references_key_of(*lhs, types) || references_key_of(*rhs, types)
-			} else {
-				// TODO might have missed something here
-				false
 			}
-		}
-		Type::PartiallyAppliedGenerics(a) => {
-			if let GenericArguments::ExplicitRestrictions(ref e) = a.arguments {
-				e.0.iter().any(|(_, (lhs, _))| references_key_of(*lhs, types))
-			} else {
-				false
+			Type::RootPolyType(c) => references_key_of(c.get_constraint(), types),
+			Type::Constructor(c) => {
+				if let Constructor::KeyOf(..) = c {
+					true
+				} else if let Constructor::BinaryOperator { lhs, rhs, operator: _, result: _ } = c {
+					references_key_of(*lhs, types) || references_key_of(*rhs, types)
+				} else {
+					crate::utilities::notify!("TODO might have missed keyof {:?}", c);
+					false
+				}
 			}
-		}
-		Type::Interface { .. }
-		| Type::Class { .. }
-		| Type::Constant(_)
-		| Type::FunctionReference(_)
-		| Type::Object(_)
-		| Type::SpecialObject(_) => false,
-	}
-}
-
-#[allow(clippy::match_like_matches_macro)]
-pub fn type_is_error(ty: TypeId, types: &TypeStore) -> bool {
-	if ty == TypeId::ERROR_TYPE {
-		true
-	} else if let Type::RootPolyType(PolyNature::Error(_)) = types.get_type_by_id(ty) {
-		true
-	} else {
-		false
-	}
-}
-
-/// TODO want to skip mapped generics because that would break subtyping
-pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
-	match types.get_type_by_id(ty) {
-		Type::Constructor(crate::types::Constructor::ConditionalResult {
-			condition,
-			truthy_result,
-			otherwise_result,
-			result_union: _,
-		}) => Some((*condition, *truthy_result, *otherwise_result)),
-		Type::Or(left, right) => Some((TypeId::OPEN_BOOLEAN_TYPE, *left, *right)),
-		// For reasons !
-		Type::RootPolyType(PolyNature::MappedGeneric { .. }) => None,
-		_ => {
-			if let Some(constraint) = get_constraint(ty, types) {
-				get_conditional(constraint, types)
-			} else {
-				None
+			Type::PartiallyAppliedGenerics(a) => {
+				if let GenericArguments::ExplicitRestrictions(ref e) = a.arguments {
+					e.0.iter().any(|(_, (lhs, _))| references_key_of(*lhs, types))
+				} else {
+					false
+				}
 			}
+			Type::Interface { .. }
+			| Type::Class { .. }
+			| Type::Constant(_)
+			| Type::Narrowed { .. }
+			| Type::FunctionReference(_)
+			| Type::Object(_)
+			| Type::SpecialObject(_) => false,
 		}
 	}
-}
 
-/// TODO wip
-pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeStore) -> bool {
-	if let TypeId::NUMBER_TYPE | TypeId::STRING_TYPE = ty {
-		true
-	} else if let Some(arg) = generics.as_ref().and_then(|args| args.get_single_argument(ty)) {
-		is_pseudo_continous((arg, generics), types)
-	} else {
-		let ty = types.get_type_by_id(ty);
-		if let Type::Or(left, right) = ty {
-			is_pseudo_continous((*left, generics), types)
-				|| is_pseudo_continous((*right, generics), types)
-		} else if let Type::And(left, right) = ty {
-			is_pseudo_continous((*left, generics), types)
-				&& is_pseudo_continous((*right, generics), types)
-		} else if let Type::RootPolyType(PolyNature::MappedGeneric { extends, .. }) = ty {
-			is_pseudo_continous((*extends, generics), types)
+	#[allow(clippy::match_like_matches_macro)]
+	#[must_use]
+	pub fn _type_is_error(ty: TypeId, types: &TypeStore) -> bool {
+		if ty == TypeId::UNIMPLEMENTED_ERROR_TYPE {
+			true
+		} else if let Type::RootPolyType(PolyNature::Error(_)) = types.get_type_by_id(ty) {
+			true
 		} else {
 			false
 		}
 	}
-}
 
-pub fn is_inferrable_type(ty: TypeId) -> bool {
-	matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
+	/// TODO want to skip mapped generics because that would break subtyping
+	#[must_use]
+	pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
+		match types.get_type_by_id(ty) {
+			Type::Constructor(crate::types::Constructor::ConditionalResult {
+				condition,
+				truthy_result,
+				otherwise_result,
+				result_union: _,
+			}) => Some((*condition, *truthy_result, *otherwise_result)),
+			Type::Or(left, right) => Some((TypeId::OPEN_BOOLEAN_TYPE, *left, *right)),
+			// For reasons !
+			Type::RootPolyType(PolyNature::MappedGeneric { .. }) => None,
+			_ => {
+				if let Some(constraint) = get_constraint(ty, types) {
+					get_conditional(constraint, types)
+				} else {
+					None
+				}
+			}
+		}
+	}
+
+	/// TODO wip
+	#[must_use]
+	pub fn is_pseudo_continous((ty, generics): (TypeId, GenericChain), types: &TypeStore) -> bool {
+		if let TypeId::NUMBER_TYPE | TypeId::STRING_TYPE = ty {
+			true
+		} else if let Some(arg) = generics.as_ref().and_then(|args| args.get_single_argument(ty)) {
+			is_pseudo_continous((arg, generics), types)
+		} else {
+			let ty = types.get_type_by_id(ty);
+			if let Type::Or(left, right) = ty {
+				is_pseudo_continous((*left, generics), types)
+					|| is_pseudo_continous((*right, generics), types)
+			} else if let Type::And(left, right) = ty {
+				is_pseudo_continous((*left, generics), types)
+					&& is_pseudo_continous((*right, generics), types)
+			} else if let Type::RootPolyType(PolyNature::MappedGeneric { extends, .. }) = ty {
+				is_pseudo_continous((*extends, generics), types)
+			} else {
+				false
+			}
+		}
+	}
+
+	#[must_use]
+	pub fn is_inferrable_type(ty: TypeId) -> bool {
+		matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
+	}
+
+	/// For quick checking
+	#[must_use]
+	pub fn simple_subtype(
+		expr_ty: TypeId,
+		to_satisfy: TypeId,
+		information: &impl InformationChain,
+		types: &TypeStore,
+	) -> bool {
+		let mut state = subtyping::State {
+			already_checked: Default::default(),
+			mode: Default::default(),
+			contributions: Default::default(),
+			others: subtyping::SubTypingOptions { allow_errors: true },
+			object_constraints: None,
+		};
+
+		subtyping::type_is_subtype(to_satisfy, expr_ty, &mut state, information, types).is_subtype()
+	}
+
+	// unfolds narrowing
+	pub fn get_origin(ty: TypeId, types: &TypeStore) -> TypeId {
+		if let Type::Narrowed { from, .. } = types.get_type_by_id(ty) {
+			// Hopefully don't have a nested from
+			*from
+		} else {
+			ty
+		}
+	}
+
+	/// Temp fix for equality of narrowing stuff
+	pub fn is_not_of_constant(ty: TypeId, types: &TypeStore) -> bool {
+		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::NOT_RESTRICTION,
+			arguments,
+		}) = types.get_type_by_id(ty)
+		{
+			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			types.get_type_by_id(inner).is_constant()
+		} else {
+			false
+		}
+	}
 }

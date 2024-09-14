@@ -46,7 +46,7 @@ impl StatementOrDeclaration {
 				Declaration::Variable(..)
 					| Declaration::Export(Decorated {
 						on: ExportDeclaration::Default { .. }
-							| ExportDeclaration::Variable {
+							| ExportDeclaration::Item {
 								exported: Exportable::ImportAll { .. }
 									| Exportable::ImportParts { .. } | Exportable::Parts { .. },
 								..
@@ -415,6 +415,7 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
+	let mut last_was_empty = false;
 	for (at_end, item) in items.iter().endiate() {
 		if !options.pretty {
 			if let StatementOrDeclaration::Statement(Statement::Expression(
@@ -422,6 +423,21 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			)) = item
 			{
 				continue;
+			}
+		}
+
+		if options.pretty {
+			// Don't print more than two lines in a row
+			if let StatementOrDeclaration::Statement(
+				Statement::AestheticSemiColon(_) | Statement::Empty(_),
+			) = item
+			{
+				if last_was_empty {
+					continue;
+				}
+				last_was_empty = true;
+			} else {
+				last_was_empty = false;
 			}
 		}
 
