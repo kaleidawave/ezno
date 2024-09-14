@@ -31,19 +31,11 @@ pub trait DeclarationExpression:
 
 impl DeclarationExpression for Option<Expression> {
 	fn expression_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		todo!()
-		// if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
-		// 	Expression::from_reader_with_precedence(
-		// 		reader,
-		// 		state,
-		// 		options,
-		// 		COMMA_PRECEDENCE,
-		// 		Some(start),
-		// 	)
-		// 	.map(Some)
-		// } else {
-		// 	Ok(None)
-		// }
+		if reader.is_operator_advance("=") {
+			Expression::from_reader(reader).map(Some)
+		} else {
+			Ok(None)
+		}
 	}
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
@@ -114,13 +106,9 @@ pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 
 impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem<TExpr> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let name = WithComment::<VariableField>::from_reader(reader)?;
-		let type_annotation = if reader
-			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
-			.is_some()
-		{
-			let type_annotation = TypeAnnotation::from_reader(reader)?;
-			Some(type_annotation)
+		let name = WithComment::<VariableField>::from_reader(reader)?;
+		let type_annotation = if reader.is_operator_advance(":") {
+			Some(TypeAnnotation::from_reader(reader)?)
 		} else {
 			None
 		};
@@ -132,8 +120,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 				.unwrap_or(name.get_position()),
 		);
 
-		Ok(Self { name, type_annotation, expression, position })"#;
-		todo!();
+		Ok(Self { name, type_annotation, expression, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -181,22 +168,6 @@ pub enum VariableDeclarationKeyword {
 }
 
 impl VariableDeclarationKeyword {
-	// #[must_use]
-	// pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
-	// 	matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
-	// }
-
-	// pub(crate) fn from_token(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
-	// 	match token {
-	// 		Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
-	// 		Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
-	// 		token => throw_unexpected_token_with_token(
-	// 			token,
-	// 			&[TSXToken::Keyword(TSXKeyword::Const), TSXToken::Keyword(TSXKeyword::Let)],
-	// 		),
-	// 	}
-	// }
-
 	#[must_use]
 	pub fn as_str(&self) -> &str {
 		match self {

@@ -1,6 +1,6 @@
 use crate::{
-	derive_ASTNode, extensions::decorators::Decorated, functions::MethodHeader, parse_bracketed,
-	property_key::PublicOrPrivate, to_string_bracketed,
+	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
+	extensions::decorators::Decorated, functions::MethodHeader, property_key::PublicOrPrivate,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode,
 	ExpressionOrStatementPosition, ParseErrors, ParseOptions, ParseResult, PropertyKey, Span,
 	StatementPosition, TypeAnnotation, TypeParameter, WithComment,
@@ -15,8 +15,8 @@ use iterator_endiate::EndiateIteratorExt;
 pub struct InterfaceDeclaration {
 	pub is_is_declare: bool,
 	pub name: StatementPosition,
-	#[cfg(feature = "extras")]
-	pub is_nominal: bool,
+	// #[cfg(feature = "extras")]
+	// pub is_nominal: bool,
 	pub type_parameters: Option<Vec<TypeParameter>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
@@ -35,65 +35,45 @@ pub enum Optionality {
 
 impl ASTNode for InterfaceDeclaration {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let start = state.expect_keyword(reader, TSXKeyword::Interface)?;
+		let start = reader.expect_keyword("interface")?;
 
-		#[cfg(feature = "extras")]
-		let is_nominal = reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
-			.is_some();
+		// #[cfg(feature = "extras")]
+		// let is_nominal = reader
+		// 	.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
+		// 	.is_some();
 
-		let name = StatementPosition::from_reader(reader, state, options)?;
-		let type_parameters = reader
-			.conditional_next(|token| *token == TSXToken::OpenChevron)
-			.is_some()
-			.then(|| {
-				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _, _)| params)
-			})
-			.transpose()?;
+		let name = StatementPosition::from_reader(reader)?;
+		let type_parameters = if reader.is_operator_advance("<") {
+			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
+			Some(params)
+		} else {
+			None
+		};
 
-		let extends = if reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
-			.is_some()
-		{
-			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+		let extends = if reader.is_keyword_advance("extends") {
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			let mut extends = vec![type_annotation];
-			if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
-				loop {
-					extends.push(TypeAnnotation::from_reader(reader, state, options)?);
-					match reader.peek() {
-						Some(Token(TSXToken::Comma, _)) => {
-							reader.next();
-						}
-						Some(Token(TSXToken::OpenBrace, _)) | None => break,
-						_ => {
-							return throw_unexpected_token_with_token(
-								reader.next().unwrap(),
-								&[TSXToken::Comma, TSXToken::OpenBrace],
-							)
-						}
-					}
-				}
+			while reader.is_operator_advance(",") {
+				extends.push(TypeAnnotation::from_reader(reader)?);
 			}
 			Some(extends)
 		} else {
 			None
 		};
 
-		reader.expect_next(TSXToken::OpenBrace)?;
-		let members = parse_interface_members(reader, state, options)?;
-		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
+		let _ = reader.expect('{')?;
+		let members = interface_members_from_reader(reader)?;
+		let position = start.union(reader.expect('}')?);
 		Ok(InterfaceDeclaration {
 			name,
 			is_is_declare: false,
-			#[cfg(feature = "extras")]
-			is_nominal,
+			// #[cfg(feature = "extras")]
+			// is_nominal,
 			type_parameters,
 			extends,
 			members,
 			position,
-		})"#;
-		todo!();
+		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -109,7 +89,7 @@ impl ASTNode for InterfaceDeclaration {
 			buf.push_str("interface ");
 			self.name.identifier.to_string_from_buffer(buf, options, local);
 			if let Some(type_parameters) = &self.type_parameters {
-				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				options.push_gap_optionally(buf);
 			}
 			if let Some(extends) = &self.extends {
@@ -134,6 +114,7 @@ impl ASTNode for InterfaceDeclaration {
 					buf.push_new_line();
 				}
 			}
+			options.add_indent(local.depth, buf);
 			buf.push('}');
 		}
 	}
@@ -215,394 +196,264 @@ pub enum InterfaceMember {
 #[allow(clippy::similar_names)]
 impl ASTNode for InterfaceMember {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
+		let start = reader.get_start();
+		let is_readonly = reader.is_keyword_advance("readonly");
 
 		// This match will early return if not a method
-		let token = &reader.peek().ok_or_else(parse_lexing_error)?.0;
-		match token {
+		if reader.is_operator("(") {
 			// Calling self
-			TSXToken::OpenParentheses => {
-				let parameters =
-					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-				// let parameters = function_parameters_from_reader(reader, state, options)?;
-				let return_type =
-					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
-						Some(TypeAnnotation::from_reader(reader, state, options)?)
-					} else {
-						None
-					};
-				// TODO parameter.pos can be union'ed with itself
-				let position = readonly_position
-					.as_ref()
-					.unwrap_or(&parameters.position)
-					.union(return_type.as_ref().map_or(parameters.position, ASTNode::get_position));
-				Ok(InterfaceMember::Caller {
-					is_readonly: readonly_position.is_some(),
-					position,
-					parameters,
-					return_type,
-					type_parameters: None,
-				})
-			}
+			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+			// let parameters = function_parameters_from_reader(reader)?;
+			let return_type = if reader.is_operator_advance(":") {
+				Some(TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
+			// TODO parameter.pos can be union'ed with itself
+			let position = start
+				.union(return_type.as_ref().map_or(parameters.position, ASTNode::get_position));
+			Ok(InterfaceMember::Caller {
+				is_readonly,
+				position,
+				parameters,
+				return_type,
+				type_parameters: None,
+			})
+		} else if reader.is_operator("<") {
 			// Caller self with generic parameters
-			TSXToken::OpenChevron => {
-				let _ = reader.next();
-				let (type_parameters, _, _start_pos) =
-					parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
-				let parameters =
-					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-				let return_type =
-					if reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some() {
-						Some(TypeAnnotation::from_reader(reader, state, options)?)
-					} else {
-						None
-					};
-				let position =
-					return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
+			let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
+			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+			let return_type = if reader.is_operator_advance(":") {
+				Some(TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
+			// TODO union start
+			let position = return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
 
-				Ok(InterfaceMember::Caller {
-					is_readonly: readonly_position.is_some(),
-					position,
-					parameters,
-					type_parameters: Some(type_parameters),
-					return_type,
-				})
-			}
+			Ok(InterfaceMember::Caller {
+				is_readonly,
+				position,
+				parameters,
+				type_parameters: Some(type_parameters),
+				return_type,
+			})
+		} else if reader.is_keyword_advance("new") {
 			// Constructor
-			TSXToken::Keyword(TSXKeyword::New) => {
-				let new_span = reader.next().unwrap().get_span();
-				let type_parameters = reader
-					.conditional_next(|token| *token == TSXToken::OpenChevron)
-					.is_some()
-					.then(|| parse_bracketed(reader, state, options, None, TSXToken::CloseChevron))
-					.transpose()?
-					.map(|(tp, _, _)| tp);
+			let type_parameters = reader
+				.is_operator_advance("<")
+				.then(|| bracketed_items_from_reader(reader, ">"))
+				.transpose()?
+				.map(|(tp, _)| tp);
 
-				let parameters =
-					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
+			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
 
-				let return_type = if reader
-					.conditional_next(|tok| {
-						options.type_annotations && matches!(tok, TSXToken::Colon)
-					})
-					.is_some()
-				{
-					Some(TypeAnnotation::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
+			let return_type = if reader.is_operator_advance(":") {
+				Some(TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
 
-				let end = return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
+			let end = return_type.as_ref().map_or(parameters.position, ASTNode::get_position);
 
-				let position = readonly_position.as_ref().unwrap_or(&new_span).union(end);
+			let position = start.union(end);
 
-				Ok(InterfaceMember::Constructor {
-					is_readonly: readonly_position.is_some(),
-					position,
-					parameters,
-					type_parameters,
-					return_type,
-				})
-			}
-			TSXToken::Subtract => {
-				// Little bit weird, but prevents a lot of duplication
-				let subtract_pos = reader.next().unwrap().get_span();
-				let inner = Self::from_reader(reader, state, options)?;
-				if let Self::Rule {
+			Ok(InterfaceMember::Constructor {
+				is_readonly,
+				position,
+				parameters,
+				type_parameters,
+				return_type,
+			})
+		} else if reader.is_operator_advance("-") {
+			// Little bit weird, but prevents a lot of duplication
+			let inner = Self::from_reader(reader)?;
+			if let Self::Rule {
+				parameter,
+				matching_type,
+				as_type,
+				optionality,
+				is_readonly: MappedReadonlyKind::Always,
+				output_type,
+				position,
+			} = inner
+			{
+				Ok(Self::Rule {
 					parameter,
 					matching_type,
 					as_type,
 					optionality,
-					is_readonly: MappedReadonlyKind::Always,
+					is_readonly: MappedReadonlyKind::Negated,
 					output_type,
 					position,
-				} = inner
-				{
-					Ok(Self::Rule {
-						parameter,
-						matching_type,
-						as_type,
-						optionality,
-						is_readonly: MappedReadonlyKind::Negated,
-						output_type,
-						position,
-					})
-				} else {
-					Err(crate::ParseError::new(ParseErrors::ExpectRule, subtract_pos))
-				}
+				})
+			} else {
+				// todo!()
+				Err(crate::ParseError::new(ParseErrors::ExpectRule, start.with_length(1)))
 			}
-			token if token.is_comment() => {
-				let token = reader.next().unwrap();
-				if let Ok((comment, is_multiline, span)) = TSXToken::try_into_comment(token) {
-					Ok(InterfaceMember::Comment(comment, is_multiline, span))
-				} else {
-					unreachable!()
-				}
-			}
-			_ => {
-				let first = reader
-					.conditional_next(|t| matches!(t, TSXToken::OpenBracket))
-					.map(|res| (None, res))
-					.or_else(|| {
-						let is_get_set_async_index_type =
-							matches!(
-								reader.peek(),
-								Some(Token(
-									TSXToken::Keyword(
-										TSXKeyword::Get | TSXKeyword::Set | TSXKeyword::Async
-									),
-									_
-								))
-							) && matches!(reader.peek_n(1), Some(Token(TSXToken::OpenBracket, _)));
+		} else {
+			// token if token.is_comment() => {
+			// 	let token = reader.next().unwrap();
+			// 	if let Ok((comment, is_multiline, span)) = TSXToken::try_into_comment(token) {
+			// 		Ok(InterfaceMember::Comment(comment, is_multiline, span))
+			// 	} else {
+			// 		unreachable!()
+			// 	}
+			// }
 
-						if is_get_set_async_index_type {
-							let token = reader.next().unwrap();
-							let header = match token.0 {
-								TSXToken::Keyword(TSXKeyword::Get) => MethodHeader::Get,
-								TSXToken::Keyword(TSXKeyword::Set) => MethodHeader::Set,
-								TSXToken::Keyword(TSXKeyword::Async) => {
-									MethodHeader::Regular { is_async: true, generator: None }
-								}
-								_ => unreachable!(),
-							};
-							let open_bracket_token = reader.next().unwrap();
-							Some((Some(header), open_bracket_token))
+			// TODO
+			let header = Some(MethodHeader::default());
+
+			let name = if reader.is_operator_advance("[") {
+				if reader.starts_with_string_delimeter() {
+					let (content, quoted) = reader.parse_string_literal().expect("TODO");
+					let position = start.with_length(content.len() + 2);
+					PropertyKey::StringLiteral(content.to_owned(), quoted, position)
+				} else if reader.starts_with_number() {
+					let (value, length) = reader.parse_number_literal().expect("TODO");
+					let position = start.with_length(length as usize);
+					PropertyKey::NumberLiteral(value, position)
+				} else {
+					use crate::Expression;
+					// "name" is the name of the parameter name for indexing
+					// "interface parameter"
+					let start = reader.get_start();
+					let name = reader.parse_identifier().expect("TODO");
+
+					// Catch for computed symbol: e.g. `[Symbol.instanceOf()]`, rather than indexer
+					if reader.is_operator(".") {
+						let top = Expression::VariableReference(
+							name.into(),
+							start.with_length(name.len()),
+						);
+						let expression =
+							Expression::from_reader_after_first_expression(reader, 0, top)?;
+						let end = reader.expect(']')?;
+						PropertyKey::Computed(Box::new(expression), start.union(end))
+					} else if reader.is_operator_advance(":") {
+						// Indexed type
+						let indexer_type = TypeAnnotation::from_reader(reader)?;
+						reader.expect(']')?;
+						reader.expect(':')?;
+						let return_type = TypeAnnotation::from_reader(reader)?;
+						return Ok(InterfaceMember::Indexer {
+							name: name.to_owned(),
+							is_readonly,
+							indexer_type,
+							position: start.union(return_type.get_position()),
+							return_type,
+						});
+					} else if reader.is_keyword_advance("in") {
+						// For mapped types
+						let matching_type = TypeAnnotation::from_reader(reader)?;
+
+						let as_type = if reader.is_keyword_advance("is") {
+							Some(Box::new(TypeAnnotation::from_reader(reader)?))
 						} else {
 							None
-						}
-					});
+						};
 
-				// Non literal property names and index type
-				let (header, name, type_parameters) = if let Some((header, Token(_, start))) = first
-				{
-					let name = match reader.next().ok_or_else(parse_lexing_error)? {
-						Token(TSXToken::StringLiteral(name, quoted), start) => {
-							let position = start.with_length(name.len() + 2);
-							let _end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
-							PropertyKey::StringLiteral(name, quoted, position)
-						}
-						Token(TSXToken::NumberLiteral(value), start) => {
-							let position = start.with_length(value.len());
-							let _end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
-							PropertyKey::NumberLiteral(
-								value.parse::<crate::number::NumberRepresentation>().unwrap(),
-								position,
-							)
-						}
-						token => {
-							use crate::Expression;
-							// "name" is the name of the parameter name for indexing
-							let (name, name_span) =
-								token_as_identifier(token, "interface parameter")?;
+						reader.expect(']')?;
+						let optionality = if reader.is_operator_advance("?:") {
+							Optionality::Optional
+						} else if reader.is_operator_advance("-?:") {
+							Optionality::Required
+						} else if reader.is_operator_advance(":") {
+							Optionality::Default
+						} else {
+							todo!("error {:?}", reader.get_current());
+						};
 
-							// Catch for computed symbol: e.g. `[Symbol.instanceOf()]`, rather than indexer
-							if let Some(Token(TSXToken::Dot, _)) = reader.peek() {
-								let top = Expression::VariableReference(name, name_span);
-								let expression = Expression::from_reader_sub_first_expression(
-									reader, state, options, 0, top,
-								)?;
-								let end = reader.expect_next_get_end(TSXToken::CloseBracket)?;
-								PropertyKey::Computed(Box::new(expression), start.union(end))
-							} else {
-								let start_span = readonly_position.as_ref().unwrap_or(&name_span);
-								match reader.next().ok_or_else(parse_lexing_error)? {
-									// Indexed type
-									Token(TSXToken::Colon, _start) => {
-										let indexer_type =
-											TypeAnnotation::from_reader(reader, state, options)?;
-										reader.expect_next(TSXToken::CloseBracket)?;
-										reader.expect_next(TSXToken::Colon)?;
-										let return_type =
-											TypeAnnotation::from_reader(reader, state, options)?;
-										return Ok(InterfaceMember::Indexer {
-											name,
-											is_readonly: readonly_position.is_some(),
-											indexer_type,
-											position: start_span.union(return_type.get_position()),
-											return_type,
-										});
-									}
-									// For mapped types
-									Token(TSXToken::Keyword(TSXKeyword::In), _) => {
-										let matching_type =
-											TypeAnnotation::from_reader(reader, state, options)?;
+						let output_type = TypeAnnotation::from_reader(reader)?;
 
-										let next_is_as = reader.conditional_next(|t| {
-											matches!(t, TSXToken::Keyword(TSXKeyword::As))
-										});
+						let position = start.union(output_type.get_position());
 
-										let as_type = if next_is_as.is_some() {
-											Some(Box::new(TypeAnnotation::from_reader(
-												reader, state, options,
-											)?))
-										} else {
-											None
-										};
+						let is_readonly = if is_readonly {
+							MappedReadonlyKind::Always
+						} else {
+							MappedReadonlyKind::False
+						};
 
-										reader.expect_next(TSXToken::CloseBracket)?;
-										let token = reader.next().ok_or_else(parse_lexing_error)?;
-										let optionality = match token {
-											Token(TSXToken::Colon, _) => Optionality::Default,
-											Token(TSXToken::OptionalMember, _) => {
-												Optionality::Optional
-											}
-											Token(TSXToken::NonOptionalMember, _) => {
-												Optionality::Required
-											}
-											token => {
-												return throw_unexpected_token_with_token(
-													token,
-													&[
-														TSXToken::Colon,
-														TSXToken::OptionalMember,
-														TSXToken::NonOptionalMember,
-													],
-												);
-											}
-										};
+						return Ok(InterfaceMember::Rule {
+							parameter: name.to_owned(),
+							optionality,
+							is_readonly,
+							matching_type: Box::new(matching_type),
+							output_type: Box::new(output_type),
+							position,
+							as_type,
+						});
+					} else {
+						todo!("error")
+					}
+				}
+			} else {
+				let start = reader.get_start();
+				let name = reader.parse_identifier().expect("TODO");
+				// TODO...?
+				let privacy = PublicOrPrivate::Public;
+				PropertyKey::Identifier(name.to_owned(), start.with_length(name.len()), privacy)
+			};
 
-										let output_type =
-											TypeAnnotation::from_reader(reader, state, options)?;
+			let type_parameters = reader
+				.is_operator_advance("<")
+				.then(|| bracketed_items_from_reader(reader, ">"))
+				.transpose()?
+				.map(|(tp, _)| tp);
 
-										let position = start_span.union(output_type.get_position());
-
-										return Ok(InterfaceMember::Rule {
-											parameter: name,
-											optionality,
-											is_readonly: if readonly_position.is_some() {
-												MappedReadonlyKind::Always
-											} else {
-												MappedReadonlyKind::False
-											},
-											matching_type: Box::new(matching_type),
-											output_type: Box::new(output_type),
-											position,
-											as_type,
-										});
-									}
-									token => {
-										return throw_unexpected_token_with_token(
-											token,
-											&[TSXToken::Colon, TSXToken::Keyword(TSXKeyword::In)],
-										);
-									}
-								}
-							}
-						}
-					};
-					(header, name, None)
+			if let Some(seperator) = reader.is_one_of_operators(&["?:", ":"]) {
+				let is_optional = "?:" == seperator;
+				reader.advance(if is_optional { 2 } else { 1 });
+				let type_annotation = TypeAnnotation::from_reader(reader)?;
+				let position = start.union(type_annotation.get_position());
+				Ok(InterfaceMember::Property {
+					position,
+					name,
+					type_annotation,
+					is_optional,
+					is_readonly,
+				})
+			// if header.is_none() {
+			// } else {
+			// 	todo!()
+			// 	// throw_unexpected_token_with_token(t, &[TSXToken::OpenParentheses])
+			// }
+			} else if reader.is_operator("(") || reader.is_operator("?") {
+				let is_optional = reader.is_operator_advance("?");
+				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+				let mut position = start.union(parameters.position);
+				let return_type = if reader.is_operator_advance(":") {
+					let type_annotation = TypeAnnotation::from_reader(reader)?;
+					position = position.union(type_annotation.get_position());
+					Some(type_annotation)
 				} else {
-					let (header, name) = crate::functions::get_method_name(reader, state, options)?;
-					let type_parameters = reader
-						.conditional_next(|token| *token == TSXToken::OpenChevron)
-						.is_some()
-						.then(|| {
-							parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-						})
-						.transpose()?
-						.map(|(tp, _, _)| tp);
-
-					let name = name.get_ast();
-
-					let header = if header.is_no_modifiers() { None } else { Some(header) };
-
-					(header, name, type_parameters)
+					None
 				};
 
-				let start = readonly_position.unwrap_or_else(|| name.get_position());
-
-				// TODO a little weird as only functions can have type parameters:
-				match reader.next().ok_or_else(parse_lexing_error)? {
-					Token(TSXToken::OpenParentheses, _start_pos) => {
-						let parameters =
-							TypeAnnotationFunctionParameters::from_reader_sub_open_parenthesis(
-								reader,
-								state,
-								options,
-								start.get_start(),
-							)?;
-						let mut position = start.union(parameters.position);
-						let return_type = if reader
-							.conditional_next(|tok| matches!(tok, TSXToken::Colon))
-							.is_some()
-						{
-							let type_annotation =
-								TypeAnnotation::from_reader(reader, state, options)?;
-							position = position.union(type_annotation.get_position());
-							Some(type_annotation)
-						} else {
-							None
-						};
-
-						Ok(InterfaceMember::Method {
-							header: header.unwrap_or_default(),
-							name,
-							parameters,
-							type_parameters,
-							return_type,
-							is_optional: false,
-							position,
-						})
-					}
-					Token(TSXToken::QuestionMark, _) => {
-						// This is a function. If it was a property it would be the `?:` token
-						let parameters =
-							TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-
-						let mut position = start.union(parameters.position);
-
-						let return_type = if reader
-							.conditional_next(|tok| matches!(tok, TSXToken::Colon))
-							.is_some()
-						{
-							let type_annotation =
-								TypeAnnotation::from_reader(reader, state, options)?;
-							position = position.union(type_annotation.get_position());
-							Some(type_annotation)
-						} else {
-							None
-						};
-
-						Ok(InterfaceMember::Method {
-							header: header.unwrap_or_default(),
-							name,
-							parameters,
-							type_parameters,
-							is_optional: true,
-							position,
-							return_type,
-						})
-					}
-					t @ Token(TSXToken::Colon | TSXToken::OptionalMember, _) => {
-						if header.is_none() {
-							let type_annotation =
-								TypeAnnotation::from_reader(reader, state, options)?;
-							let position = start.union(type_annotation.get_position());
-							let is_optional = matches!(t, Token(TSXToken::OptionalMember, _));
-							Ok(InterfaceMember::Property {
-								position,
-								name,
-								type_annotation,
-								is_optional,
-								is_readonly: readonly_position.is_some(),
-							})
-						} else {
-							throw_unexpected_token_with_token(t, &[TSXToken::OpenParentheses])
-						}
-					}
-					token => throw_unexpected_token_with_token(
-						token,
-						&[
-							TSXToken::OpenParentheses,
-							TSXToken::QuestionMark,
-							TSXToken::Colon,
-							TSXToken::OptionalMember,
-						],
-					),
-				}
+				Ok(InterfaceMember::Method {
+					header: header.unwrap_or_default(),
+					name,
+					parameters,
+					type_parameters,
+					return_type,
+					is_optional,
+					position,
+				})
+			} else {
+				todo!()
+				// 	}
+				// 	token => throw_unexpected_token_with_token(
+				// 		token,
+				// 		&[
+				// 			TSXToken::OpenParentheses,
+				// 			TSXToken::QuestionMark,
+				// 			TSXToken::Colon,
+				// 			TSXToken::OptionalMember,
+				// 		],
+				// 	),
+				// }
 			}
-		}"#;
-		todo!();
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -634,7 +485,7 @@ impl ASTNode for InterfaceMember {
 					buf.push('?');
 				}
 				if let Some(type_parameters) = &type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(return_type) = return_type {
@@ -665,7 +516,7 @@ impl ASTNode for InterfaceMember {
 				}
 				buf.push_str("new ");
 				if let Some(ref type_parameters) = type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(ref return_type) = return_type {
@@ -684,7 +535,7 @@ impl ASTNode for InterfaceMember {
 					buf.push_str("readonly ");
 				}
 				if let Some(ref type_parameters) = type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
 				if let Some(ref return_type) = return_type {
@@ -744,25 +595,27 @@ impl ASTNode for InterfaceMember {
 pub(crate) fn interface_members_from_reader(
 	reader: &mut crate::new::Lexer,
 ) -> ParseResult<Vec<WithComment<Decorated<InterfaceMember>>>> {
-	todo!()
-	// let mut members = Vec::new();
-	// loop {
-	// 	if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
-	// 		break;
-	// 	}
-	// 	let decorated_member = WithComment::from_reader(reader, state, options)?;
-	// 	// Semi colons and commas are optional here. Should expect_semi_colon
-	// 	if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-	// 		reader.next();
-	// 	} else {
-	// 		let _ = crate::expect_semi_colon(
-	// 			reader,
-	// 			&state.line_starts,
-	// 			decorated_member.get_position().end,
-	// 			options,
-	// 		)?;
-	// 	}
-	// 	members.push(decorated_member);
-	// }
-	// Ok(members)
+	let mut members = Vec::new();
+	loop {
+		reader.skip();
+		if reader.is_operator("}") {
+			break;
+		}
+		let decorated_member = WithComment::from_reader(reader)?;
+		members.push(decorated_member);
+
+		if reader.is_operator("}") {
+			break;
+		} else {
+			let comma = reader.is_keyword_advance(",");
+			let semi_colon_like = comma
+				|| reader.last_was_from_new_line() > 0
+				|| reader.is_operator("}")
+				|| reader.is_operator_advance(";");
+			if !semi_colon_like {
+				todo!("error {:?}", &reader.get_current()[..10]);
+			}
+		}
+	}
+	Ok(members)
 }

@@ -124,7 +124,7 @@ impl ASTNode for ExportDeclaration {
 
 			let start = reader.expect_keyword("from")?;
 			// TODO temp
-			let (from, _) = ImportLocation::from_reader(reader)?;
+			let from = ImportLocation::from_reader(reader)?;
 			let end = reader.get_end();
 
 			Ok(ExportDeclaration::Variable {
@@ -150,7 +150,7 @@ impl ASTNode for ExportDeclaration {
 			// 	state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Type);
 			// 	let Token(_, start) = reader.next().unwrap(); // OpenBrace
 
-			// 	let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
+			// 	let (parts, _, _end) = crate::bracketed_items_from_reader::<ImportExportPart<_>>(
 			// 		reader,
 			// 		state,
 			// 		options,
@@ -158,7 +158,7 @@ impl ASTNode for ExportDeclaration {
 			// 		TSXToken::CloseBrace,
 			// 	)?;
 
-			// 	let from_pos = state.expect_keyword(reader, TSXKeyword::From)?;
+			// 	let from_pos = reader.expect_keyword("TSXKeyword::From")?;
 
 			// 	let (from, end) =
 			// 		ImportLocation::from_reader(reader, Some(from_pos))?;
@@ -191,7 +191,7 @@ impl ASTNode for ExportDeclaration {
 			// });
 			// if let Some(Token(token_type, _)) = after_bracket {
 			// 	if let TSXToken::Keyword(TSXKeyword::From) = token_type {
-			// 		let (parts, _, _end) = crate::parse_bracketed::<ImportExportPart<_>>(
+			// 		let (parts, _, _end) = crate::bracketed_items_from_reader::<ImportExportPart<_>>(
 			// 			reader,
 			// 			state,
 			// 			options,
@@ -212,7 +212,7 @@ impl ASTNode for ExportDeclaration {
 			// 			position: start.union(end),
 			// 		})
 			// 	} else {
-			// 		let (parts, _, end) = crate::parse_bracketed::<ImportExportPart<_>>(
+			// 		let (parts, _, end) = crate::bracketed_items_from_reader::<ImportExportPart<_>>(
 			// 			reader,
 			// 			state,
 			// 			options,

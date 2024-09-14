@@ -19,8 +19,8 @@ pub struct IsExpression {
 
 impl ASTNode for IsExpression {
 	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
-		let _existing = r#"let start = state.expect_keyword(reader, crate::TSXKeyword::Is)?;
-		is_expression_from_reader_sub_is_keyword(reader, state, options, start)"#;
+		let _existing = r#"let start = reader.expect_keyword("crate::TSXKeyword::Is")?;
+		is_expression_from_reader_sub_is_keyword(reader, start)"#;
 		todo!();
 	}
 
@@ -55,10 +55,10 @@ impl ASTNode for IsExpression {
 // 	options: &crate::ParseOptions,
 // 	start: TokenStart,
 // ) -> Result<IsExpression, crate::ParseError> {
-// 	reader.expect_next(TSXToken::OpenParentheses)?;
-// 	let matcher = MultipleExpression::from_reader(reader, state, options)?;
-// 	reader.expect_next(TSXToken::CloseParentheses)?;
-// 	reader.expect_next(TSXToken::OpenBrace)?;
+// 	reader.expect(TSXToken::OpenParentheses)?;
+// 	let matcher = MultipleExpression::from_reader(reader)?;
+// 	reader.expect(TSXToken::CloseParentheses)?;
+// 	reader.expect(TSXToken::OpenBrace)?;
 // 	let mut branches = Vec::new();
 // 	loop {
 // 		// Function important here for
@@ -69,8 +69,8 @@ impl ASTNode for IsExpression {
 // 			Some(crate::type_annotations::TypeOperatorKind::Function),
 // 			None,
 // 		)?;
-// 		reader.expect_next(TSXToken::Arrow)?;
-// 		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
+// 		reader.expect(TSXToken::Arrow)?;
+// 		let body = ExpressionOrBlock::from_reader(reader)?;
 // 		if let Some(token) = reader.conditional_next(|t| matches!(t, TSXToken::CloseBrace)) {
 // 			branches.push((type_annotation, body));
 // 			return Ok(IsExpression {
@@ -80,7 +80,7 @@ impl ASTNode for IsExpression {
 // 			});
 // 		}
 // 		if matches!(body, ExpressionOrBlock::Expression(..)) {
-// 			reader.expect_next(TSXToken::Comma)?;
+// 			reader.expect(TSXToken::Comma)?;
 // 		}
 // 		branches.push((type_annotation, body));
 // 	}

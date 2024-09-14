@@ -48,7 +48,7 @@ impl ASTNode for TryCatchStatement {
 				};
 				exception_var = Some((variable_field, exception_var_type));
 
-				reader.expect('}')?;
+				reader.expect(')')?;
 			}
 
 			catch_inner = Some(Block::from_reader(reader)?);

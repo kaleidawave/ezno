@@ -39,86 +39,75 @@ impl From<JSXElement> for JSXNode {
 
 impl ASTNode for JSXElement {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let start = reader.expect('<')?;
-		let _existing = r#"let Some(Token(TSXToken::JSXTagName(tag_name), _)) = reader.next() else {
-			return Err(parse_lexing_error());
-		};
+		let start = reader.expect_start('<')?;
+		let tag_name = reader.parse_identifier().unwrap().to_owned();
 		let mut attributes = Vec::new();
 		// TODO spread attributes
 		// Kind of weird / not clear conditions for breaking out of while loop
-		while let Some(token) = reader.next() {
-			let (span, key) = match token {
-				// Break here
-				Token(TSXToken::JSXOpeningTagEnd, _) => break,
-				t @ Token(TSXToken::JSXSelfClosingTag, _) => {
-					// Early return if self closing
-					return Ok(JSXElement {
-						tag_name,
-						attributes,
-						children: JSXElementChildren::SelfClosing,
-						position: start.union(t.get_end()),
-					});
-				}
-				Token(TSXToken::JSXExpressionStart, _pos) => {
-					let attribute = if let Some(Token(TSXToken::Spread, _)) = reader.peek() {
-						let spread_token = reader.next().unwrap();
-						let expr = Expression::from_reader(reader, state, options)?;
-						reader.expect_next(TSXToken::CloseBrace)?;
-						JSXAttribute::Spread(expr, spread_token.get_span())
-					} else {
-						let expr = Expression::from_reader(reader, state, options)?;
-						JSXAttribute::Shorthand(expr)
-					};
-					attributes.push(attribute);
-					continue;
-				}
-				Token(TSXToken::JSXAttributeKey(key), start) => (start.with_length(key.len()), key),
-				_ => return Err(parse_lexing_error()),
-			};
-
-			if let Some(Token(TSXToken::JSXAttributeAssign, _)) = reader.peek() {
-				reader.next();
-				let attribute = match reader.next().unwrap() {
-					Token(TSXToken::JSXAttributeValue(expression), start) => {
-						let position = start.with_length(expression.len());
-						JSXAttribute::Static(key, expression, position)
-					}
-					Token(TSXToken::JSXExpressionStart, _) => {
-						let expression = Expression::from_reader(reader, state, options)?;
-						let close = reader.expect_next_get_end(TSXToken::JSXExpressionEnd)?;
-						JSXAttribute::Dynamic(key, Box::new(expression), span.union(close))
-					}
-					_ => return Err(parse_lexing_error()),
+		loop {
+			if reader.is_operator_advance(">") {
+				break;
+			} else if reader.is_operator_advance("/>") {
+				// TODO check set closing
+				// Early return if self closing
+				let end = reader.get_end();
+				return Ok(JSXElement {
+					tag_name,
+					attributes,
+					children: JSXElementChildren::SelfClosing,
+					position: start.union(end),
+				});
+			} else if reader.is_operator_advance("{") {
+				let start = reader.get_start();
+				let attribute = if reader.is_operator_advance("...") {
+					let expression = Expression::from_reader(reader)?;
+					let end = reader.expect('}')?;
+					JSXAttribute::Spread(expression, start.union(end))
+				} else {
+					let expression = Expression::from_reader(reader)?;
+					JSXAttribute::Shorthand(expression)
 				};
 				attributes.push(attribute);
 			} else {
-				// Boolean attributes
-				attributes.push(JSXAttribute::BooleanAttribute(key, span));
+				// TODO extras here @ etc
+				let start = reader.get_start();
+				let key = reader.parse_identifier().unwrap().to_owned();
+				if reader.is_operator_advance("=") {
+					let start = reader.get_start();
+					let attribute = if reader.is_operator_advance("{") {
+						let expression = Expression::from_reader(reader)?;
+						let end = reader.expect('}')?;
+						JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
+					} else if reader.starts_with_string_delimeter() {
+						let (content, quoted) = reader.parse_string_literal().expect("TODO");
+						let position = start.with_length(content.len() + 2);
+						JSXAttribute::Static(key, content.to_owned(), position)
+					} else {
+						todo!()
+					};
+					attributes.push(attribute);
+				} else {
+					// Boolean attributes
+					let position = start.with_length(key.len());
+					attributes.push(JSXAttribute::BooleanAttribute(key, position));
+				}
 			}
 		}
 
-		let children = parse_jsx_children(reader, state, options)?;
-		if let Token(TSXToken::JSXClosingTagStart, _) =
-			reader.next().ok_or_else(parse_lexing_error)?
-		{
-			let end = if let Token(TSXToken::JSXClosingTagName(closing_tag_name), start) =
-				reader.next().ok_or_else(parse_lexing_error)?
-			{
-				let end =
-					start.0 + u32::try_from(closing_tag_name.len()).expect("4GB tag name") + 2;
-				if closing_tag_name != tag_name {
-					return Err(ParseError::new(
-						crate::ParseErrors::ClosingTagDoesNotMatch {
-							expected: &tag_name,
-							found: &closing_tag_name,
-						},
-						start.with_length(closing_tag_name.len() + 2),
-					));
-				}
-				TokenEnd::new(end)
-			} else {
-				return Err(parse_lexing_error());
-			};
+		let children = jsx_children_from_reader(reader)?;
+		if reader.is_operator_advance("</") {
+			let closing_tag_name = reader.parse_identifier().expect("TODO");
+			let end = reader.expect('>')?;
+			if closing_tag_name != tag_name {
+				todo!()
+				// return Err(ParseError::new(
+				// 	crate::ParseErrors::ClosingTagDoesNotMatch {
+				// 		expected: &tag_name,
+				// 		found: &closing_tag_name,
+				// 	},
+				// 	start.with_length(closing_tag_name.len() + 2),
+				// ));
+			}
 			Ok(JSXElement {
 				tag_name,
 				attributes,
@@ -126,9 +115,9 @@ impl ASTNode for JSXElement {
 				position: start.union(end),
 			})
 		} else {
-			Err(parse_lexing_error())
-		}"#;
-		todo!();
+			todo!()
+			// Err(parse_lexing_error())
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -177,9 +166,12 @@ impl ASTNode for JSXFragment {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let start = reader.expect_next(TSXToken::JSXFragmentStart)?;
-		Self::from_reader_sub_start(reader, state, options, start)"#;
-		todo!();
+		let start = reader.get_start();
+		reader.expect_operator("<>")?;
+		let children = jsx_children_from_reader(reader)?;
+		reader.expect_operator("</>")?;
+		let end = reader.get_end();
+		Ok(Self { children, position: start.union(end) })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -194,24 +186,13 @@ impl ASTNode for JSXFragment {
 	}
 }
 
-impl JSXFragment {
-	fn from_reader_sub_start(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let children = parse_jsx_children(reader, state, options)?;
-		let end = reader.expect_next_get_end(TSXToken::JSXFragmentEnd)?;
-		Ok(Self { children, position: start.union(end) })"#;
-		todo!();
-	}
-}
-
 impl ASTNode for JSXRoot {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let (is_fragment, span) = match reader.next().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::JSXOpeningTagStart, span) => (false, span),
-			Token(TSXToken::JSXFragmentStart, span) => (true, span),
-			_ => panic!(),
-		};
-		Self::from_reader_sub_start(reader, state, options, is_fragment, span)"#;
-		todo!();
+		if reader.starts_with_str("<>") {
+			JSXFragment::from_reader(reader).map(JSXRoot::Fragment)
+		} else {
+			JSXElement::from_reader(reader).map(JSXRoot::Element)
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -234,18 +215,17 @@ impl ASTNode for JSXRoot {
 	}
 }
 
-fn parse_jsx_children(reader: &mut crate::new::Lexer) -> ParseResult<Vec<JSXNode>> {
-	todo!()
-	// let mut children = Vec::new();
-	// loop {
-	// 	if matches!(
-	// 		reader.peek(),
-	// 		Some(Token(TSXToken::JSXFragmentEnd | TSXToken::JSXClosingTagStart, _))
-	// 	) {
-	// 		return Ok(children);
-	// 	}
-	// 	children.push(JSXNode::from_reader(reader, state, options)?);
-	// }
+fn jsx_children_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Vec<JSXNode>> {
+	let mut children = Vec::new();
+	// TODO count new lines etc
+	loop {
+		reader.skip();
+		if reader.starts_with_str("</") {
+			return Ok(children);
+		}
+		children.push(JSXNode::from_reader(reader)?);
+	}
+	Ok(children)
 }
 
 fn jsx_children_to_string<T: source_map::ToString>(
@@ -275,17 +255,6 @@ fn jsx_children_to_string<T: source_map::ToString>(
 	}
 }
 
-impl JSXRoot {
-	// pub(crate) fn from_reader_sub_start(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-	// 	let _existing = r#"if is_fragment {
-	// 		Ok(Self::Fragment(JSXFragment::from_reader_sub_start(reader, state, options, start)?))
-	// 	} else {
-	// 		Ok(Self::Element(JSXElement::from_reader_sub_start(reader, state, options, start)?))
-	// 	}"#;
-	// 	todo!();
-	// }
-}
-
 // TODO can `JSXFragment` appear here?
 #[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
@@ -309,29 +278,24 @@ impl ASTNode for JSXNode {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let token = reader.next().ok_or_else(parse_lexing_error)?;
-		match token {
-			Token(TSXToken::JSXContent(content), start) => {
-				let position = start.with_length(content.len());
-				// TODO `trim` debatable
-				Ok(JSXNode::TextNode(content.trim_start().into(), position))
-			}
-			Token(TSXToken::JSXExpressionStart, pos) => {
-				let expression = FunctionArgument::from_reader(reader, state, options)?;
-				let end_pos = reader.expect_next_get_end(TSXToken::JSXExpressionEnd)?;
-				Ok(JSXNode::InterpolatedExpression(Box::new(expression), pos.union(end_pos)))
-			}
-			Token(TSXToken::JSXOpeningTagStart, pos) => {
-				JSXElement::from_reader_sub_start(reader, state, options, pos).map(JSXNode::Element)
-			}
-			Token(TSXToken::JSXContentLineBreak, _) => Ok(JSXNode::LineBreak),
-			Token(TSXToken::JSXComment(comment), start) => {
-				let pos = start.with_length(comment.len() + 7);
-				Ok(JSXNode::Comment(comment, pos))
-			}
-			_token => Err(parse_lexing_error()),
-		}"#;
-		todo!();
+		reader.skip();
+		let start = reader.get_start();
+		if reader.is_operator_advance("{") {
+			let expression = FunctionArgument::from_reader(reader)?;
+			let end = reader.expect('}')?;
+			Ok(JSXNode::InterpolatedExpression(Box::new(expression), start.union(end)))
+		} else if reader.starts_with_str("<!--") {
+			let content = reader.parse_until("-->");
+			todo!("comment")
+		} else if reader.starts_with_str("<") {
+			dbg!();
+			let element = JSXElement::from_reader(reader)?;
+			Ok(JSXNode::Element(element))
+		} else {
+			let content = reader.parse_until_no_advance("<").expect("TODO");
+			let position = start.with_length(content.len());
+			Ok(JSXNode::TextNode(content.trim_start().into(), position))
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

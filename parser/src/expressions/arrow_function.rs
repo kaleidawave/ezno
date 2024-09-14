@@ -38,9 +38,7 @@ impl FunctionBased for ArrowFunctionBase {
 	fn header_and_name_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		todo!()
-		// let async_pos = state.optionally_expect_keyword(reader, crate::TSXKeyword::Async);
-		// Ok(((async_pos.map(|s| s.get_start()), async_pos.is_some()), ()))
+		Ok(((None, reader.is_operator_advance("async")), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -58,26 +56,23 @@ impl FunctionBased for ArrowFunctionBase {
 	fn parameters_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<FunctionParameters<(), ()>> {
-		todo!();
-		// match reader.next().ok_or_else(parse_lexing_error)? {
-		// 	Token(TSXToken::OpenParentheses, open_paren) => {
-		// 		FunctionParameters::from_reader_sub_open_parenthesis(
-		// 			reader, state, options, open_paren,
-		// 		)
-		// 	}
-		// 	// `x` => ...
-		// 	token => {
-		// 		let (name, position) = token_as_identifier(token, "arrow function parameter")?;
-		// 		let parameters = vec![Parameter {
-		// 			visibility: (),
-		// 			name: VariableField::Name(VariableIdentifier::Standard(name, position)).into(),
-		// 			type_annotation: None,
-		// 			additionally: None,
-		// 			position,
-		// 		}];
-		// 		Ok(FunctionParameters { leading: (), parameters, rest_parameter: None, position })
-		// 	}
-		// }
+		if reader.is_operator("(") {
+			FunctionParameters::from_reader(reader)
+		} else {
+			// "arrow function parameter"
+			let start = reader.get_start();
+			let name = reader.parse_identifier().unwrap();
+			let position = start.with_length(name.len());
+			let parameters = vec![Parameter {
+				visibility: (),
+				name: VariableField::Name(VariableIdentifier::Standard(name.to_owned(), position))
+					.into(),
+				type_annotation: None,
+				additionally: None,
+				position,
+			}];
+			Ok(FunctionParameters { leading: (), parameters, rest_parameter: None, position })
+		}
 	}
 
 	fn parameters_to_string_from_buffer<T: source_map::ToString>(
@@ -128,69 +123,70 @@ impl FunctionBased for ArrowFunctionBase {
 	fn get_name((): &Self::Name) -> Option<&str> {
 		None
 	}
+
+	fn get_parameter_body_boundary_slice() -> Option<&'static str> {
+		Some("=>")
+	}
 }
 
 impl ArrowFunction {
 	pub(crate) fn from_reader_with_first_parameter(
 		reader: &mut crate::new::Lexer,
+		is_async: bool,
+		identifier: VariableIdentifier,
 	) -> ParseResult<Self> {
-		let _existing = r#"let (first_parameter_name, first_parameter_position) = first_parameter;
-		let name = VariableField::Name(VariableIdentifier::Standard(
-			first_parameter_name,
-			first_parameter_position,
-		));
+		let position = identifier.get_position();
 		let parameters = vec![Parameter {
+			name: VariableField::Name(identifier).into(),
+			position,
 			visibility: (),
-			name: name.into(),
 			type_annotation: None,
 			additionally: None,
-			position: first_parameter.1,
 		}];
-		reader.expect_next(TSXToken::Arrow)?;
-		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
+		reader.expect_operator("=>")?;
+		let body = ExpressionOrBlock::from_reader(reader)?;
 		let arrow_function = FunctionBase {
 			header: is_async,
-			position: first_parameter.1.union(body.get_position()),
+			position: position.union(body.get_position()),
 			name: (),
 			parameters: FunctionParameters {
 				parameters,
 				rest_parameter: None,
-				position: first_parameter.1,
+				position,
 				leading: (),
 			},
 			return_type: None,
 			type_parameters: None,
 			body,
 		};
-		Ok(arrow_function)"#;
-		todo!();
+		Ok(arrow_function)
 	}
 
-	pub(crate) fn from_reader_sub_open_paren(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let parameters =
-			FunctionParameters::from_reader_sub_open_parenthesis(reader, state, options, start)?;
+	// pub(crate) fn from_reader_sub_open_paren(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	// 	let _existing = r#"let parameters =
+	// 		FunctionParameters::from_reader_sub_open_parenthesis(reader, start)?;
 
-		let return_type = if reader
-			.conditional_next(|token| options.type_annotations && matches!(token, TSXToken::Colon))
-			.is_some()
-		{
-			Some(TypeAnnotation::from_reader(reader, state, options)?)
-		} else {
-			None
-		};
-		reader.expect_next(TSXToken::Arrow)?;
-		let body = ExpressionOrBlock::from_reader(reader, state, options)?;
-		Ok(FunctionBase {
-			header: is_async,
-			name: (),
-			parameters,
-			return_type,
-			type_parameters: None,
-			position: start.union(body.get_position()),
-			body,
-		})"#;
-		todo!();
-	}
+	// 	let return_type = if reader
+	// 		.conditional_next(|token| options.type_annotations && matches!(token, TSXToken::Colon))
+	// 		.is_some()
+	// 	{
+	// 		Some(TypeAnnotation::from_reader(reader)?)
+	// 	} else {
+	// 		None
+	// 	};
+	// 	reader.expect(TSXToken::Arrow)?;
+	// 	let body = ExpressionOrBlock::from_reader(reader)?;
+	// 	Ok(FunctionBase {
+	// 		header: is_async,
+	// 		name: (),
+	// 		parameters,
+	// 		return_type,
+	// 		type_parameters: None,
+	// 		position: start.union(body.get_position()),
+	// 		body,
+	// 	})"#;
+	// 	todo!();
+	// }
 }
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
@@ -210,13 +206,11 @@ impl ASTNode for ExpressionOrBlock {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"if let Some(Token(TSXToken::OpenBrace, _)) = reader.peek() {
-			Ok(Self::Block(Block::from_reader(reader, state, options)?))
+		if reader.is_operator("{") {
+			Block::from_reader(reader).map(Self::Block)
 		} else {
-			let expression = Expression::from_reader(reader, state, options)?;
-			Ok(Self::Expression(Box::new(expression)))
-		}"#;
-		todo!();
+			Expression::from_reader(reader).map(Box::new).map(Self::Expression)
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

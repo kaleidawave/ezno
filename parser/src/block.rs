@@ -67,34 +67,21 @@ impl ASTNode for StatementOrDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"// Exclusively for generator
-		if options.interpolation_points
-			&& matches!(reader.peek(), Some(Token(TSXToken::Identifier(i), _)) if i == MARKER)
-		{
-			let Token(_, position) = reader.next().unwrap();
-			let marker_id = state.new_partial_point_marker(position);
-			return Ok(Self::Marker(marker_id, position.with_length(0)));
-		}
+		// if options.interpolation_points
+		// 	&& matches!(reader.peek(), Some(Token(TSXToken::Identifier(i), _)) if i == MARKER)
+		// {
+		// 	let Token(_, position) = reader.next().unwrap();
+		// 	let marker_id = state.new_partial_point_marker(position);
+		// 	return Ok(Self::Marker(marker_id, position.with_length(0)));
+		// }
 
-		if Declaration::is_declaration_start(reader, options) {
+		if Declaration::is_declaration_start(reader) {
 			let dec = Declaration::from_reader(reader)?;
-			// TODO nested blocks? Interfaces...?
 			Ok(StatementOrDeclaration::Declaration(dec))
 		} else {
-			if let Some(Token(TSXToken::Keyword(TSXKeyword::Enum | TSXKeyword::Type), _)) =
-				reader.peek()
-			{
-				if reader.peek_n(1).map_or(false, |t| !t.0.is_symbol()) {
-					return Ok(StatementOrDeclaration::Declaration(Declaration::from_reader(
-						reader,
-					)?));
-				}
-			}
-
 			let stmt = Statement::from_reader(reader)?;
 			Ok(StatementOrDeclaration::Statement(stmt))
-		}"#;
-		todo!();
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -156,11 +143,10 @@ impl<'a> From<&'a mut Block> for BlockLikeMut<'a> {
 
 impl ASTNode for Block {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let start = reader.expect_next(TSXToken::OpenBrace)?;
-		let items = parse_statements_and_declarations(reader)?;
-		let end_span = reader.expect_next_get_end(TSXToken::CloseBrace)?;
-		Ok(Self(items, start.union(end_span)))"#;
-		todo!();
+		let start = reader.expect_start('{')?;
+		let items = statements_and_declarations_from_reader(reader)?;
+		let position = start.union(reader.expect('}')?);
+		Ok(Block(items, position))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -381,7 +367,16 @@ pub(crate) fn statements_and_declarations_from_reader(
 		let item = StatementOrDeclaration::from_reader(reader)?;
 		// let end = reader.get_end();
 
-		// let requires_semi_colon = item.requires_semi_colon();
+		if item.requires_semi_colon() {
+			// TODO abstract
+			let semi_colon_like = reader.starts_with_str("//")
+				|| reader.last_was_from_new_line() > 0
+				|| reader.is_operator("}")
+				|| reader.is_operator_advance(";");
+			if !semi_colon_like {
+				todo!("error {:?}", &reader.get_current()[..20]);
+			}
+		}
 
 		// let blank_lines_after_statement = if requires_semi_colon {
 		// 	expect_semi_colon(reader, &state.line_starts, end, options)?
@@ -397,6 +392,7 @@ pub(crate) fn statements_and_declarations_from_reader(
 		// 	0
 		// };
 
+		// Skip emptyies at the start
 		if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
 			(items.is_empty(), &item)
 		{

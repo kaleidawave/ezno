@@ -40,8 +40,7 @@ impl ASTNode for VariableOrPropertyAccess {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"Expression::from_reader(reader, state, options)?.try_into()"#;
-		todo!();
+		Expression::from_reader(reader)?.try_into()
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -82,14 +81,6 @@ impl ASTNode for VariableOrPropertyAccess {
 				buf.push(']');
 			}
 		}
-	}
-}
-
-impl VariableOrPropertyAccess {
-	pub(crate) fn from_reader_with_precedence(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"Expression::from_reader_with_precedence(reader, state, options, return_precedence, None)?
-			.try_into()"#;
-		todo!();
 	}
 }
 
@@ -198,9 +189,7 @@ impl ASTNode for LHSOfAssignment {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing =
-			r#"Expression::from_reader(reader, state, options).and_then(TryInto::try_into)"#;
-		todo!();
+		Expression::from_reader(reader).and_then(TryInto::try_into)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

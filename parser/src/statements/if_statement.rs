@@ -48,28 +48,26 @@ impl ASTNode for IfStatement {
 		let (mut else_conditions, mut trailing_else) =
 			(Vec::<ConditionalElseStatement>::new(), None::<UnconditionalElseStatement>);
 
-		// TODO
-		// while let Some(else_start) = reader.is_keyword_start("else") {
-		// 	if reader.is_keyword("if") {
-		// 		let value = ConditionalElseStatement::from_reader(
-		// 			reader,
-		// 			state,
-		// 			options,
-		// 			else_position,
-		// 		)?;
-		// 		else_conditions.push(value);
-		// 	} else {
-		// 		let unconditional_else_statement =
-		// 			UnconditionalElseStatement::from_reader(
-		// 				reader,
-		// 				state,
-		// 				options,
-		// 				else_position,
-		// 			)?;
-		// 		trailing_else = Some(unconditional_else_statement);
-		// 		break;
-		// 	}
-		// }
+		// Doesn't use their own `ASTNode::from_reader` implementation but should be fine wrt `_advance` & peeking
+		while reader.is_keyword_advance("else") {
+			if reader.is_keyword_advance("if") {
+				let value = reader.expect('(')?;
+				let condition = MultipleExpression::from_reader(reader)?;
+				reader.expect(')')?;
+				let inner = BlockOrSingleStatement::from_reader(reader)?;
+				let value = ConditionalElseStatement {
+					condition,
+					position: start.union(inner.get_position()),
+					inner: inner,
+				};
+				else_conditions.push(value);
+			} else {
+				let inner = BlockOrSingleStatement::from_reader(reader)?;
+				let position = start.union(inner.get_position());
+				trailing_else = Some(UnconditionalElseStatement { inner, position });
+				break;
+			}
+		}
 
 		let position = start.union(if let Some(ref t) = trailing_else {
 			t.get_position()

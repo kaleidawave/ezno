@@ -2,7 +2,9 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{derive_ASTNode, to_string_bracketed, Expression, ParseErrors, VariableIdentifier};
+use crate::{
+	bracketed_items_to_string, derive_ASTNode, Expression, ParseErrors, VariableIdentifier,
+};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
@@ -35,7 +37,8 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 		// TODO U::not_allowed_name && keyword "extends" => error
 
 		let type_parameters = if reader.is_operator_advance("<") {
-			todo!("crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron) .map(|(params, _, _)| params)");
+			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
+			Some(params)
 		} else {
 			None
 		};
@@ -49,24 +52,9 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 		let implements = if reader.is_keyword_advance("implements") {
 			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			let mut implements = vec![type_annotation];
-			// TODO
-			// if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
-			// 	loop {
-			// 		implements.push(TypeAnnotation::from_reader(reader, state, options)?);
-			// 		match reader.peek() {
-			// 			Some(Token(TSXToken::Comma, _)) => {
-			// 				reader.next();
-			// 			}
-			// 			Some(Token(TSXToken::OpenBrace, _)) | None => break,
-			// 			_ => {
-			// 				return throw_unexpected_token_with_token(
-			// 					reader.next().unwrap(),
-			// 					&[TSXToken::Comma, TSXToken::OpenBrace],
-			// 				)
-			// 			}
-			// 		}
-			// 	}
-			// }
+			while reader.is_operator_advance(",") {
+				implements.push(TypeAnnotation::from_reader(reader)?);
+			}
 			Some(implements)
 		} else {
 			None
@@ -83,8 +71,12 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 			let value = Decorated::<ClassMember>::from_reader(reader)?;
 			members.push(value);
 
-			// TODO expect semi colon
-			// reader.is_and_advance(';');
+			let semi_colon_like = reader.last_was_from_new_line() > 0
+				|| reader.is_operator("}")
+				|| reader.is_operator_advance(";");
+			if !semi_colon_like {
+				todo!("error {:?}", &reader.get_current()[..20]);
+			}
 		}
 
 		let end = reader.expect('}')?;
@@ -104,7 +96,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 			buf.push_str(name);
 		}
 		if let Some(type_parameters) = &self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+			bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 		}
 		if let Some(extends) = &self.extends {
 			buf.push_str(" extends ");
@@ -128,6 +120,7 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 		if options.pretty && !self.members.is_empty() {
 			buf.push_new_line();
 		}
+		options.add_indent(local.depth, buf);
 		buf.push('}');
 	}
 

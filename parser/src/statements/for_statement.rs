@@ -93,112 +93,81 @@ pub enum ForLoopCondition {
 impl ASTNode for ForLoopCondition {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		reader.expect('(')?;
-		// Figure out if after variable declaration there exists a "=", "in" or a "of"
-		let mut destructuring_depth = 0;
-		let mut ate_variable_specifier = false;
 
-		todo!();
-		// let next = reader.scan(|token, _| {
-		// 	if ate_variable_specifier {
-		// 		match token {
-		// 			TSXToken::OpenBrace | TSXToken::OpenBracket => destructuring_depth += 1,
-		// 			TSXToken::CloseBrace | TSXToken::CloseBracket => destructuring_depth -= 1,
-		// 			_ => {}
-		// 		}
-		// 		destructuring_depth == 0
-		// 	} else {
-		// 		ate_variable_specifier = true;
-		// 		!VariableKeyword::is_token_variable_keyword(token)
-		// 	}
-		// });
+		reader.skip();
 
-		// let condition = match next {
-		// 	Some(Token(TSXToken::Keyword(TSXKeyword::Of), _)) => {
-		// 		let (start, keyword) = reader
-		// 			.conditional_next(VariableKeyword::is_token_variable_keyword)
-		// 			.map(|token| (token.1, VariableKeyword::from_reader(token).unwrap()))
-		// 			.unzip();
+		let start = reader.get_start();
 
-		// 		let variable = WithComment::<VariableField>::from_reader(reader)?;
+		// Figure out if after variable declaration there exists "in" or "of", or something assignment like
+		// TODO temp `after_variable_start` implementation
+		let after_stuff = reader.after_variable_start();
 
-		// 		let _ = state.expect_keyword(reader, TSXKeyword::Of)?;
+		let condition = if after_stuff.starts_with("in") {
+			let keyword = if reader.is_keyword_advance("const") {
+				Some(VariableKeyword::Const)
+			} else if reader.is_keyword_advance("let") {
+				Some(VariableKeyword::Let)
+			} else {
+				None
+			};
 
-		// 		let of = Expression::from_reader(reader)?;
-		// 		let position = start
-		// 			.unwrap_or_else(|| variable.get_position().get_start())
-		// 			.union(of.get_position());
+			let variable = WithComment::<VariableField>::from_reader(reader)?;
 
-		// 		// Not great, set from above
-		// 		Self::ForOf { variable, keyword, of, position, is_await: false }
-		// 	}
-		// 	Some(Token(TSXToken::Keyword(TSXKeyword::In), _)) => {
-		// 		let (start, keyword) = reader
-		// 			.conditional_next(VariableKeyword::is_token_variable_keyword)
-		// 			.map(|token| (token.1, VariableKeyword::from_reader(token).unwrap()))
-		// 			.unzip();
+			let _ = reader.expect_keyword("in")?;
 
-		// 		let variable = WithComment::<VariableField>::from_reader(reader)?;
+			let r#in = MultipleExpression::from_reader(reader)?;
+			let position = start.union(r#in.get_position());
+			Self::ForIn { variable, keyword, r#in, position }
+		} else if after_stuff.starts_with("of") {
+			let keyword = if reader.is_keyword_advance("const") {
+				Some(VariableKeyword::Const)
+			} else if reader.is_keyword_advance("let") {
+				Some(VariableKeyword::Let)
+			} else {
+				None
+			};
 
-		// 		let _ = state.expect_keyword(reader, TSXKeyword::In)?;
+			let variable = WithComment::<VariableField>::from_reader(reader)?;
 
-		// 		let r#in = MultipleExpression::from_reader(reader)?;
-		// 		let position = start
-		// 			.unwrap_or_else(|| variable.get_position().get_start())
-		// 			.union(r#in.get_position());
-		// 		Self::ForIn { variable, keyword, r#in, position }
-		// 	}
-		// 	_ => {
-		// 		let peek = reader.peek();
-		// 		let initialiser =
-		// 			if let Some(Token(TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let), _)) =
-		// 				peek
-		// 			{
-		// 				let declaration = VariableDeclaration::from_reader(reader)?;
-		// 				Some(ForLoopStatementInitialiser::VariableDeclaration(declaration))
-		// 			} else if let Some(Token(TSXToken::Keyword(TSXKeyword::Var), _)) = peek {
-		// 				let stmt = VarVariableStatement::from_reader(reader)?;
-		// 				Some(ForLoopStatementInitialiser::VarStatement(stmt))
-		// 			} else if let Some(Token(TSXToken::SemiColon, _)) = peek {
-		// 				None
-		// 			} else {
-		// 				let expr = MultipleExpression::from_reader(reader)?;
-		// 				Some(ForLoopStatementInitialiser::Expression(expr))
-		// 			};
+			let _ = reader.expect_keyword("of")?;
 
-		// 		let semi_colon_one = reader.expect_next(TSXToken::SemiColon)?;
-		// 		let start = initialiser.as_ref().map_or(semi_colon_one, |init| match init {
-		// 			ForLoopStatementInitialiser::VariableDeclaration(item) => {
-		// 				item.get_position().get_start()
-		// 			}
-		// 			ForLoopStatementInitialiser::VarStatement(item) => {
-		// 				item.get_position().get_start()
-		// 			}
-		// 			ForLoopStatementInitialiser::Expression(item) => {
-		// 				item.get_position().get_start()
-		// 			}
-		// 		});
+			let of = Expression::from_reader(reader)?;
+			let position = start.union(of.get_position());
 
-		// 		let condition = if matches!(reader.peek(), Some(Token(TSXToken::SemiColon, _))) {
-		// 			None
-		// 		} else {
-		// 			Some(MultipleExpression::from_reader(reader)?)
-		// 		};
-		// 		let semi_colon_two = reader.expect_next_get_end(TSXToken::SemiColon)?;
-		// 		let afterthought =
-		// 			if matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
-		// 				None
-		// 			} else {
-		// 				Some(MultipleExpression::from_reader(reader)?)
-		// 			};
-		// 		let end = afterthought
-		// 			.as_ref()
-		// 			.map_or(semi_colon_two, |expr| expr.get_position().get_end());
-		// 		let position = start.union(end);
-		// 		Self::Statements { initialiser, condition, afterthought, position }
-		// 	}
-		// };
-		// reader.expect_next(TSXToken::CloseParentheses)?;
-		// Ok(condition)"#;
+			// Not great `is_await`, set from above
+			Self::ForOf { variable, keyword, of, position, is_await: false }
+		} else {
+			let initialiser = if reader.is_one_of_keyword(&["const", "let"]).is_some() {
+				let declaration = VariableDeclaration::from_reader(reader)?;
+				Some(ForLoopStatementInitialiser::VariableDeclaration(declaration))
+			} else if reader.is_keyword("var") {
+				let stmt = VarVariableStatement::from_reader(reader)?;
+				Some(ForLoopStatementInitialiser::VarStatement(stmt))
+			} else if reader.is_operator(";") {
+				None
+			} else {
+				let expr = MultipleExpression::from_reader(reader)?;
+				Some(ForLoopStatementInitialiser::Expression(expr))
+			};
+
+			let _semi_colon_one = reader.expect(';')?;
+			let condition = if !reader.is_operator(";") {
+				Some(MultipleExpression::from_reader(reader)?)
+			} else {
+				None
+			};
+			let semi_colon_two = reader.expect(';')?;
+			let afterthought = if !reader.is_operator(")") {
+				Some(MultipleExpression::from_reader(reader)?)
+			} else {
+				None
+			};
+
+			let position = start.union(reader.get_end());
+			Self::Statements { initialiser, condition, afterthought, position }
+		};
+		reader.expect(')')?;
+		Ok(condition)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

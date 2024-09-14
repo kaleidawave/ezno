@@ -140,6 +140,8 @@ pub struct Lexer<'a> {
 	// last: u32,
 	head: u32,
 	on: &'a str,
+
+	last_new_lines: u32,
 	// state: LexingState,
 	// state_stack: Vec<LexingState>,
 }
@@ -157,6 +159,7 @@ impl<'a> Lexer<'a> {
 			// last: offset.unwrap_or_default(),
 			head: 0, // TODO offset.unwrap_or_default(),
 			on: script,
+			last_new_lines: 0,
 		}
 	}
 
@@ -164,21 +167,26 @@ impl<'a> Lexer<'a> {
 		&self.on[self.head as usize..]
 	}
 
-	pub fn skip(&mut self) {
-		self.head += self.get_current().chars().take_while(|c| c.is_whitespace()).count() as u32;
+	pub fn last_was_from_new_line(&self) -> u32 {
+		self.last_new_lines
 	}
 
-	pub fn skip_and_count_new_lines(&mut self) -> u32 {
+	pub fn skip(&mut self) {
 		let mut count = 0;
+		let mut new_lines = 0;
 		for (idx, chr) in self.get_current().char_indices() {
-			if chr == '\n' {
-				count += 1;
-			} else if !chr.is_whitespace() {
-				self.head += idx as u32;
-				return count;
+			if !chr.is_whitespace() {
+				break;
 			}
+			if let '\n' = chr {
+				new_lines += 1;
+			}
+			count += 1;
 		}
-		count
+		if count > 0 {
+			self.last_new_lines = new_lines;
+			self.head += count;
+		}
 	}
 
 	pub fn is_keyword(&mut self, keyword: &str) -> bool {
@@ -189,6 +197,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
+		self.skip();
 		let current = self.get_current();
 		let length = keyword.len();
 		if current.starts_with(keyword)
@@ -230,6 +239,23 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
+	pub fn expect_start(&mut self, chr: char) -> Result<source_map::Start, crate::ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(chr) {
+			let start = source_map::Start(self.head);
+			self.head += chr.len_utf8() as u32;
+			Ok(start)
+		} else {
+			let position = self.get_start().with_length(chr.len_utf8());
+			let reason = crate::ParseErrors::UnexpectedCharacter {
+				expected: &[chr],
+				found: current.chars().next().unwrap(),
+			};
+			Err(crate::ParseError::new(reason, position))
+		}
+	}
+
 	pub fn expect(&mut self, chr: char) -> Result<source_map::End, crate::ParseError> {
 		self.skip();
 		let current = self.get_current();
@@ -243,6 +269,23 @@ impl<'a> Lexer<'a> {
 				found: current.chars().next().unwrap(),
 			};
 			Err(crate::ParseError::new(reason, position))
+		}
+	}
+
+	pub fn expect_operator(&mut self, str: &'static str) -> Result<(), crate::ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(str) {
+			self.head += str.len() as u32;
+			Ok(())
+		} else {
+			todo!("error {:?} {:?}", str, &current[..20]);
+			// let position = self.get_start().with_length(chr.len_utf8());
+			// let reason = crate::ParseErrors::UnexpectedCharacter {
+			// 	expected: &[chr],
+			// 	found: current.chars().next().unwrap(),
+			// };
+			// Err(crate::ParseError::new(reason, position))
 		}
 	}
 
@@ -308,19 +351,21 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
-	pub fn starts_with(&mut self, chr: char) -> bool {
+	pub fn starts_with(&self, chr: char) -> bool {
 		self.get_current().starts_with(chr)
 	}
 
-	pub fn starts_with_str(&mut self, str: &str) -> bool {
+	pub fn starts_with_str(&self, str: &str) -> bool {
 		self.get_current().starts_with(str)
 	}
 
 	pub fn is_operator(&mut self, operator: &str) -> bool {
+		self.skip();
 		self.starts_with_str(operator)
 	}
 
 	pub fn is_operator_advance(&mut self, operator: &str) -> bool {
+		self.skip();
 		let current = self.get_current();
 		let matches = current.starts_with(operator);
 		if matches {
@@ -349,11 +394,18 @@ impl<'a> Lexer<'a> {
 		self.skip();
 		let current = self.get_current();
 		let mut iter = current.char_indices();
-		if iter.next().is_some_and(|(_, chr)| ('0'..='9').contains(&chr)) {
+		if iter.next().is_some_and(|(_, chr)| {
+			let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
+			!first_is_valid
+		}) {
+			dbg!(&self.get_current()[..20]);
 			return Err(());
 		}
+
 		for (idx, chr) in iter {
-			if !chr.is_alphanumeric() {
+			// Note `is_alphanumeric` here
+			let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
+			if !is_valid {
 				let value = &current[..idx];
 				self.head += idx as u32;
 				return Ok(value);
@@ -366,19 +418,46 @@ impl<'a> Lexer<'a> {
 	// WIP
 	pub fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
 		let current = self.get_current();
-		for i in 0.. {
-			if current[i..].starts_with(until) {
-				self.head += (i + until.len()) as u32;
-				return Ok(&current[..i]);
+		for (idx, _) in current.char_indices() {
+			if current[idx..].starts_with(until) {
+				self.head += (idx + until.len()) as u32;
+				return Ok(&current[..idx]);
 			}
 		}
 
+		// Fix for at the end stuff
 		if let "\n" = until {
 			self.head += current.len() as u32;
 			Ok(current)
 		} else {
 			Err(())
 		}
+	}
+
+	// For JSX
+	pub fn parse_until_no_advance(&mut self, until: &str) -> Result<&'a str, ()> {
+		let current = self.get_current();
+		for (idx, _) in current.char_indices() {
+			if current[idx..].starts_with(until) {
+				self.head += idx as u32;
+				return Ok(&current[..idx]);
+			}
+		}
+		Err(())
+	}
+
+	pub fn parse_until_one_of(
+		&mut self,
+		possibles: &[&'static str],
+	) -> Result<(&'a str, &'static str), ()> {
+		let current = self.get_current();
+		for i in 0.. {
+			if let Some(until) = possibles.into_iter().find(|s| current[i..].starts_with(**s)) {
+				self.head += (i + until.len()) as u32;
+				return Ok((&current[..i], until));
+			}
+		}
+		Err(())
 	}
 
 	// TODO proper error type
@@ -421,10 +500,16 @@ impl<'a> Lexer<'a> {
 			.is_some_and(|b| (b'0'..=b'9').contains(&b) || *b == b'.')
 	}
 
+	pub fn starts_with_string_delimeter(&self) -> bool {
+		self.starts_with('"') || self.starts_with('\'')
+	}
+
 	// TODO errors + some parts are weird
 	pub fn parse_number_literal(
 		&mut self,
 	) -> Result<(crate::number::NumberRepresentation, u32), ()> {
+		use std::str::FromStr;
+
 		enum NumberLiteralType {
 			BinaryLiteral,
 			/// strict mode done at the parse level
@@ -554,13 +639,12 @@ impl<'a> Lexer<'a> {
 				'-' if matches!(state, NumberLiteralType::Exponent if current[..idx].ends_with(['e', 'E'])) =>
 					{}
 				chr => {
-					use std::str::FromStr;
-
 					let num_slice = &current[..idx];
 					let number = crate::number::NumberRepresentation::from_str(num_slice);
 					let number = number.unwrap();
-					self.head += idx as u32;
-					return Ok((number, idx as u32));
+					let length = idx as u32;
+					self.head += length;
+					return Ok((number, length));
 					// if is_number_delimiter(chr) {
 					// 	// Note not = as don't want to include chr
 
@@ -579,44 +663,144 @@ impl<'a> Lexer<'a> {
 				}
 			}
 		}
-		Err(())
+
+		let number = crate::number::NumberRepresentation::from_str(current).expect("TODO");
+		let length = current.len() as u32;
+		self.head += length;
+		return Ok((number, length));
 	}
 
-	pub fn parse_regex_literal(&mut self) -> Result<(String, Option<String>, usize), ()> {
-		todo!();
-		// let flags = if let Some(Token(TSXToken::RegexFlagLiteral(flags), start)) =
-		// 	flag_token
-		// {
-		// 	if flags.contains(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'))
-		// 	{
-		// 		return Err(ParseError::new(
-		// 			ParseErrors::InvalidRegexFlag,
-		// 			start.with_length(flags.len()),
-		// 		));
-		// 	}
-		// 	position = position.union(start.get_end_after(flags.len()));
-		// 	Some(flags)
-		// } else {
-		// 	None
-		// };
+	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, Option<&'a str>, usize), ()> {
+		let mut escaped = false;
+		let mut after_last_slash = false;
+		let mut in_set = false;
+		let current = self.get_current();
+		let mut chars = current.char_indices();
+
+		assert!(chars.next().is_some_and(|(idx, chr)| chr == '/'));
+
+		let mut regex_content = 1;
+
+		for (idx, chr) in chars.by_ref() {
+			match chr {
+				'/' if !escaped && !in_set => {
+					regex_content = idx;
+					break;
+				}
+				'\\' if !escaped => {
+					escaped = true;
+				}
+				'[' => {
+					in_set = true;
+				}
+				']' if in_set => {
+					in_set = false;
+				}
+				'\n' => {
+					todo!("new line in regex")
+				}
+				_ => {
+					escaped = false;
+				}
+			}
+		}
+
+		let regex = &current[1..regex_content];
+		let regex_end = regex_content + '/'.len_utf8();
+
+		let mut flag_content = regex_end;
+
+		for (idx, chr) in chars {
+			// TODO if flags.contains(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'))
+			if !chr.is_alphabetic() {
+				flag_content = idx;
+				break;
+			}
+		}
+
+		let regex_flag = &current[regex_end..flag_content];
+
+		self.head += flag_content as u32;
+
+		Ok((regex, (!regex_flag.is_empty()).then_some(regex_flag), flag_content))
 	}
 
 	// TODO also can exit if there is `=` or `:` and = 0 in some examples
 	pub fn after_brackets(&self) -> &'a str {
 		let current = self.get_current();
-		let mut paren_count = 0;
+		let mut paren_count: u32 = 0;
+		// TODO account for string literals and comments
 		for (idx, chr) in current.as_bytes().into_iter().enumerate() {
-			if let b'(' | b'{' | b'[' = chr {
+			if let b'(' | b'{' | b'[' | b'<' = chr {
 				paren_count += 1;
-			} else if let b')' | b'}' | b']' = chr {
-				if paren_count > 0 {
-					paren_count -= 1;
-				} else {
-					return &current[idx..];
+			} else if let b')' | b'}' | b']' | b'>' = chr {
+				paren_count = paren_count.saturating_sub(1);
+				if paren_count == 0 {
+					return &current[(idx + 1)..].trim_start();
 				}
 			}
 		}
 
+		// Return empty slice
+		Default::default()
+	}
+
+	pub fn after_identifier(&self) -> &'a str {
+		let current = self.get_current();
+		let mut paren_count: u32 = 0;
+
+		let mut chars = current.as_bytes().into_iter().enumerate();
+		for (_, chr) in chars.by_ref() {
+			if !chr.is_ascii_whitespace() {
+				break;
+			}
+		}
+		for (idx, chr) in chars {
+			if !chr.is_ascii_alphanumeric() {
+				return &current[idx..].trim_start();
+			}
+		}
+
+		// Return empty slice
+		Default::default()
+	}
+
+	// TODO WIP
+	pub fn after_variable_start(&self) -> &'a str {
+		let mut current = self.get_current().trim_start();
+		if current.starts_with("const") {
+			current = &current["const".len()..].trim_start();
+		} else if current.starts_with("let") {
+			current = &current["let".len()..].trim_start();
+		}
+
+		if current.starts_with("{") || current.starts_with("[") {
+			let mut paren_count: u32 = 0;
+			// TODO account for string literals and comments
+			for (idx, chr) in current.as_bytes().into_iter().enumerate() {
+				if let b'(' | b'{' | b'[' | b'<' = chr {
+					paren_count += 1;
+				} else if let b')' | b'}' | b']' | b'>' = chr {
+					paren_count = paren_count.saturating_sub(1);
+					if paren_count == 0 {
+						return &current[(idx + 1)..].trim_start();
+					}
+				}
+			}
+		} else {
+			let mut paren_count: u32 = 0;
+			let mut chars = current.as_bytes().into_iter().enumerate();
+			for (_, chr) in chars.by_ref() {
+				if !chr.is_ascii_whitespace() {
+					break;
+				}
+			}
+			for (idx, chr) in chars {
+				if !chr.is_ascii_alphanumeric() {
+					return &current[idx..].trim_start();
+				}
+			}
+		}
 		// Return empty slice
 		Default::default()
 	}

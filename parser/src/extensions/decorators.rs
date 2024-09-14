@@ -32,7 +32,7 @@ impl ASTNode for Decorator {
 			// 	if let Some(Token(TSXToken::CloseParentheses, _)) = reader.peek() {
 			// 		break;
 			// 	}
-			// 	arguments.push(Expression::from_reader(reader, state, options)?);
+			// 	arguments.push(Expression::from_reader(reader)?);
 			// 	match reader.peek() {
 			// 		Some(Token(TSXToken::Comma, _)) => {
 			// 			reader.next();
@@ -40,7 +40,7 @@ impl ASTNode for Decorator {
 			// 		_ => break,
 			// 	}
 			// }
-			// let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
+			// let end = reader.expect_get_end(TSXToken::CloseParentheses)?;
 			// (Some(arguments), at_pos.union(end))
 			todo!()
 		} else {

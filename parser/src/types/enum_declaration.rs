@@ -23,22 +23,22 @@ impl ASTNode for EnumDeclaration {
 			.map(|Token(_, pos)| pos);
 
 		let is_constant = const_pos.is_some();
-		let enum_pos = state.expect_keyword(reader, TSXKeyword::Enum)?;
+		let enum_pos = reader.expect_keyword("TSXKeyword::Enum")?;
 		let (name, _) =
 			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum name")?;
-		reader.expect_next(TSXToken::OpenBrace)?;
+		reader.expect(TSXToken::OpenBrace)?;
 		let mut members = Vec::new();
 		loop {
 			if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
 				break;
 			}
-			members.push(EnumMember::from_reader(reader, state, options)?);
+			members.push(EnumMember::from_reader(reader)?);
 			// Commas are optional
 			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
 				reader.next();
 			}
 		}
-		let end = reader.expect_next_get_end(TSXToken::CloseBrace)?;
+		let end = reader.expect_get_end(TSXToken::CloseBrace)?;
 		Ok(EnumDeclaration {
 			is_constant,
 			position: const_pos.unwrap_or(enum_pos).union(end),
@@ -99,7 +99,7 @@ impl ASTNode for EnumMember {
 		match reader.peek() {
 			Some(Token(TSXToken::Assign, _)) => {
 				reader.next();
-				let expression = Expression::from_reader(reader, state, options)?;
+				let expression = Expression::from_reader(reader)?;
 				Ok(EnumMember::Variant {
 					name,
 					position: start_pos.union(expression.get_position()),

@@ -98,11 +98,11 @@ impl ASTNode for ClassMember {
 		// 	// 	reader.next().ok_or_else(parse_lexing_error)?,
 		// 	// 	"class indexer",
 		// 	// )?;
-		// 	// reader.expect_next(TSXToken::Colon)?;
-		// 	// let indexer_type = TypeAnnotation::from_reader(reader, state, options)?;
-		// 	// reader.expect_next(TSXToken::CloseBracket)?;
-		// 	// reader.expect_next(TSXToken::Colon)?;
-		// 	// let return_type = TypeAnnotation::from_reader(reader, state, options)?;
+		// 	// reader.expect(TSXToken::Colon)?;
+		// 	// let indexer_type = TypeAnnotation::from_reader(reader)?;
+		// 	// reader.expect(TSXToken::CloseBracket)?;
+		// 	// reader.expect(TSXToken::Colon)?;
+		// 	// let return_type = TypeAnnotation::from_reader(reader)?;
 		// 	// return Ok(ClassMember::Indexer {
 		// 	// 	name,
 		// 	// 	is_readonly: readonly_position.is_some(),
@@ -121,9 +121,9 @@ impl ASTNode for ClassMember {
 		reader.skip();
 
 		if reader.starts_with('(') || reader.starts_with('<') {
-			todo!()
-		// let function = ClassFunction::from_reader_with_config(reader, header, key)?;
-		// Ok(ClassMember::Method(is_static, function))
+			let function =
+				ClassFunction::from_reader_with_config(reader, (Some(start), header), key)?;
+			Ok(ClassMember::Method(is_static, function))
 		} else {
 			if !header.is_no_modifiers() {
 				todo!()
@@ -131,9 +131,7 @@ impl ASTNode for ClassMember {
 			}
 			let is_optional = reader.is_operator_advance("?:");
 			let type_annotation = if is_optional || reader.is_operator_advance(":") {
-				// let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-				// (Some(type_annotation), is_optional)
-				todo!()
+				Some(TypeAnnotation::from_reader(reader)?)
 			} else {
 				None
 			};
@@ -232,15 +230,12 @@ impl ASTNode for ClassMember {
 }
 
 impl ClassFunction {
-	fn from_reader_with_config(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"FunctionBase::from_reader_with_header_and_name(
-			reader,
-			state,
-			options,
-			get_set_generator,
-			key,
-		)"#;
-		todo!();
+	fn from_reader_with_config(
+		reader: &mut crate::new::Lexer,
+		header: (Option<source_map::Start>, MethodHeader),
+		key: WithComment<PropertyKey<PublicOrPrivate>>,
+	) -> ParseResult<Self> {
+		FunctionBase::from_reader_with_header_and_name(reader, header, key)
 	}
 }
 
@@ -259,12 +254,12 @@ impl FunctionBased for ClassFunctionBase {
 	fn header_and_name_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		todo!()
-		// // TODO not great
-		// let start = reader.peek().unwrap().1;
-		// let header = MethodHeader::from_reader(reader);
-		// let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
-		// Ok((((!header.is_no_modifiers()).then_some(start), header), name))
+		// TODO not great
+		let start = reader.get_start();
+		let header = MethodHeader::from_reader(reader);
+		let name = WithComment::<PropertyKey<_>>::from_reader(reader)?;
+		let start = (!header.is_no_modifiers()).then_some(start);
+		Ok(((start, header), name))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -325,9 +320,8 @@ impl FunctionBased for ClassConstructorBase {
 	fn header_and_name_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		todo!()
-		// let start = state.expect_keyword(reader, TSXKeyword::Constructor)?;
-		// Ok(((Some(start), ()), ()))
+		let start = reader.expect_keyword("constructor")?;
+		Ok(((Some(start), ()), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(

@@ -74,7 +74,7 @@ impl ASTNode for DoWhileStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("do ");
-		self.inner.to_string_from_buffer(buf, options, local);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 		buf.push_str(" while");
 		options.push_gap_optionally(buf);
 		buf.push('(');

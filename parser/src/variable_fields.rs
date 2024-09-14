@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode, parse_bracketed,
+	bracketed_items_from_reader, derive_ASTNode,
 	property_key::PropertyKey,
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
 	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseOptions, ParseResult,
@@ -99,11 +99,11 @@ impl ASTNode for VariableField {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.is_operator_advance("{") {
 			let start = reader.get_start();
-			let (members, spread) = parse_bracketed(reader, "}")?;
+			let (members, spread) = bracketed_items_from_reader(reader, "}")?;
 			Ok(Self::Object { members, spread, position: start.union(reader.get_end()) })
 		} else if reader.is_operator_advance("[") {
 			let start = reader.get_start();
-			let (members, spread) = parse_bracketed(reader, "]")?;
+			let (members, spread) = bracketed_items_from_reader(reader, "]")?;
 			Ok(Self::Array { members, spread, position: start.union(reader.get_end()) })
 		} else {
 			Ok(Self::Name(VariableIdentifier::from_reader(reader)?))
@@ -189,14 +189,15 @@ impl DestructuringFieldInto for VariableField {
 	fn type_annotation_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self::TypeAnnotation> {
-		todo!()
+		Ok(None)
+
+		// todo!()
 		// if let (true, Some(Token(TSXToken::Colon, _))) =
 		// 	(options.destructuring_type_annotation, reader.peek())
 		// {
 		// 	reader.next();
-		// 	crate::TypeAnnotation::from_reader(reader, state, options).map(Some)
+		// 	crate::TypeAnnotation::from_reader(reader).map(Some)
 		// } else {
-		// 	Ok(None)
 		// }
 	}
 }
@@ -235,28 +236,26 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 	type LAST = SpreadDestructuringField<T>;
 
 	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
-		todo!()
-		// let start = reader.expect_next(TSXToken::Spread)?;
-		// let node = T::from_reader(reader, state, options)?;
-		// let position = start.union(node.get_position());
-		// Ok(SpreadDestructuringField(Box::new(node), position))
+		let start = reader.get_start();
+		reader.expect_operator("...")?;
+		let node = T::from_reader(reader)?;
+		let position = start.union(node.get_position());
+		Ok(SpreadDestructuringField(Box::new(node), position))
 	}
 }
 
 impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let Token(token, _start) = reader.peek().ok_or_else(parse_lexing_error)?;
-		if matches!(token, TSXToken::Comma | TSXToken::CloseBracket) {
+		if reader.is_operator(",") || reader.is_operator("}") {
 			Ok(Self::None)
 		} else {
-			let name = T::from_reader(reader, state, options)?;
-			let annotation = T::type_annotation_from_reader(reader, state, options)?;
-			let default_value = reader
-				.conditional_next(|t| matches!(t, TSXToken::Assign))
-				.is_some()
-				.then(|| ASTNode::from_reader(reader, state, options).map(Box::new))
-				.transpose()?;
-
+			let name = T::from_reader(reader)?;
+			let annotation = T::type_annotation_from_reader(reader)?;
+			let default_value = if reader.is_operator_advance("=") {
+				Some(ASTNode::from_reader(reader).map(Box::new)?)
+			} else {
+				None
+			};
 			// let position =
 			// 	if let Some(ref pos) = default_value {
 			// 		key.get_position().union(pos)
@@ -264,8 +263,7 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 			// 		*key.get_position()
 			// 	};
 			Ok(Self::Name(name, annotation, default_value))
-		}"#;
-		todo!();
+		}
 	}
 
 	fn to_string_from_buffer<U: source_map::ToString>(
@@ -331,26 +329,38 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ObjectDestructuringFiel
 	type LAST = SpreadDestructuringField<T>;
 
 	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
-		todo!()
-		// let start = reader.expect_next(TSXToken::Spread)?;
-		// let node = T::from_reader(reader, state, options)?;
-		// let position = start.union(node.get_position());
-		// Ok(SpreadDestructuringField(Box::new(node), position))
+		let start = reader.get_start();
+		reader.expect_operator("...")?;
+		let node = T::from_reader(reader)?;
+		let position = start.union(node.get_position());
+		Ok(SpreadDestructuringField(Box::new(node), position))
 	}
 }
 
 impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"let key = PropertyKey::from_reader(reader, state, options)?;
-		if reader.peek().is_some_and(|Token(t, _)| is_destructuring_into_marker(t, options)) {
-			reader.next();
-			let name = WithComment::<T>::from_reader(reader, state, options)?;
-			let annotation = T::type_annotation_from_reader(reader, state, options)?;
+		// #[cfg(not(feature = "extras"))]
+		// fn is_destructuring_into_marker(t: &TSXToken, _options: &ParseOptions) -> bool {
+		// 	matches!(t, TSXToken::Colon)
+		// }
+
+		// #[cfg(feature = "extras")]
+		// fn is_destructuring_into_marker(t: &TSXToken, options: &ParseOptions) -> bool {
+		// 	if options.destructuring_type_annotation {
+		// 		matches!(t, TSXToken::Keyword(crate::TSXKeyword::As))
+		// 	} else {
+		// 		matches!(t, TSXToken::Colon)
+		// 	}
+		// }
+
+		let key = PropertyKey::from_reader(reader)?;
+		if reader.is_operator_advance(":") {
+			let name = WithComment::<T>::from_reader(reader)?;
+			let annotation = T::type_annotation_from_reader(reader)?;
 
 			let default_value = reader
-				.conditional_next(|t| matches!(t, TSXToken::Assign))
-				.is_some()
-				.then(|| Expression::from_reader(reader, state, options).map(Box::new))
+				.is_operator_advance("=")
+				.then(|| Expression::from_reader(reader).map(Box::new))
 				.transpose()?;
 
 			let position = if let Some(ref dv) = default_value {
@@ -362,13 +372,12 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 			Ok(Self::Map { from: key, annotation, name, default_value, position })
 		} else if let PropertyKey::Identifier(name, key_pos, _) = key {
 			let default_value = reader
-				.conditional_next(|t| matches!(t, TSXToken::Assign))
-				.is_some()
-				.then(|| Expression::from_reader(reader, state, options).map(Box::new))
+				.is_operator_advance("=")
+				.then(|| Expression::from_reader(reader).map(Box::new))
 				.transpose()?;
 
 			let standard = VariableIdentifier::Standard(name, key_pos);
-			let annotation = T::type_annotation_from_reader(reader, state, options)?;
+			let annotation = T::type_annotation_from_reader(reader)?;
 			let position = if let Some(ref dv) = default_value {
 				key_pos.union(dv.get_position())
 			} else {
@@ -377,10 +386,10 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 
 			Ok(Self::Name(standard, annotation, default_value, position))
 		} else {
-			let token = reader.next().ok_or_else(parse_lexing_error)?;
-			throw_unexpected_token_with_token(token, &[TSXToken::Colon])
-		}"#;
-		todo!();
+			todo!("expect colon")
+			// let token = reader.next().ok_or_else(parse_lexing_error)?;
+			// throw_unexpected_token_with_token(token, &[TSXToken::Colon])
+		}
 	}
 
 	fn to_string_from_buffer<U: source_map::ToString>(
@@ -613,20 +622,6 @@ impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignm
 		todo!()
 	}
 }
-
-// #[cfg(not(feature = "extras"))]
-// fn is_destructuring_into_marker(t: &TSXToken, _options: &ParseOptions) -> bool {
-// 	matches!(t, TSXToken::Colon)
-// }
-
-// #[cfg(feature = "extras")]
-// fn is_destructuring_into_marker(t: &TSXToken, options: &ParseOptions) -> bool {
-// 	if options.destructuring_type_annotation {
-// 		matches!(t, TSXToken::Keyword(crate::TSXKeyword::As))
-// 	} else {
-// 		matches!(t, TSXToken::Colon)
-// 	}
-// }
 
 #[cfg(test)]
 mod tests {

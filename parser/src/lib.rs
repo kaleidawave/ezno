@@ -215,7 +215,7 @@ pub struct ParsingState {
 // 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 // 		kw: TSXKeyword,
 // 	) -> crate::ParseResult<TokenStart> {
-// 		let start = reader.expect_next(TSXToken::Keyword(kw))?;
+// 		let start = reader.expect(TSXToken::Keyword(kw))?;
 // 		self.append_keyword_at_pos(start.0, kw);
 // 		Ok(start)
 // 	}
@@ -238,7 +238,7 @@ pub struct ParsingState {
 // 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
 // 		kw: TSXKeyword,
 // 	) -> crate::ParseResult<Span> {
-// 		let start = reader.expect_next(TSXToken::Keyword(kw))?;
+// 		let start = reader.expect(TSXToken::Keyword(kw))?;
 // 		self.append_keyword_at_pos(start.0, kw);
 // 		Ok(start.with_length(kw.length() as usize))
 // 	}
@@ -325,9 +325,8 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	type FunctionBody = FunctionBody;
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"VariableIdentifier::from_reader(reader, state, options)
-			.map(|identifier| Self { identifier, is_declare: false })"#;
-		todo!();
+		VariableIdentifier::from_reader(reader)
+			.map(|identifier| Self { identifier, is_declare: false })
 	}
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
@@ -355,10 +354,10 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	type FunctionBody = Block;
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let current = reader.get_current();
-		let is_not_name = current.is_empty()
+		reader.skip();
+		let is_not_name = reader.is_finished()
 			|| reader.is_keyword("extends")
-			|| reader.is_one_of(&["{", "["]).is_some();
+			|| reader.is_one_of(&["(", "{", "["]).is_some();
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
 	}
@@ -394,120 +393,64 @@ pub trait ListItem: Sized {
 /// Parses items surrounded in `{`, `[`, `(`, etc.
 ///
 /// Supports trailing commas. But **does not create** *empty* like items afterwards
-pub(crate) fn parse_bracketed<T: ASTNode + ListItem>(
+pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 	reader: &mut crate::new::Lexer,
 	end: &'static str,
 ) -> ParseResult<(Vec<T>, Option<T::LAST>)> {
-	todo!()
 	// 	if let Some(start) = start {
-	// 		let _ = reader.expect_next(start)?;
+	// 		let _ = reader.expect(start)?;
 	// 	}
-	// 	let mut nodes: Vec<T> = Vec::new();
-	// 	loop {
-	// 		if let Some(empty) = T::EMPTY {
-	// 			let Token(next, _) = reader.peek().ok_or_else(parse_lexing_error)?;
-	// 			if matches!(next, TSXToken::Comma) || *next == end {
-	// 				if matches!(next, TSXToken::Comma) || (*next == end && !nodes.is_empty()) {
-	// 					nodes.push(empty);
-	// 				}
-	// 				let Token(token, s) = reader.next().unwrap();
-	// 				if token == end {
-	// 					return Ok((nodes, None, s.get_end_after(token.length() as usize)));
-	// 				}
-	// 				continue;
-	// 			}
-	// 		} else if let Some(token) = reader.conditional_next(|token| *token == end) {
-	// 			return Ok((nodes, None, token.get_end()));
-	// 		}
+	let mut nodes: Vec<T> = Vec::new();
+	loop {
+		if let Some(empty) = T::EMPTY {
+			// let Token(next, _) = reader.peek().ok_or_else(parse_lexing_error)?;
+			// if matches!(next, TSXToken::Comma) || *next == end {
+			// 	if matches!(next, TSXToken::Comma) || (*next == end && !nodes.is_empty()) {
+			// 		nodes.push(empty);
+			// 	}
+			// 	let Token(token, s) = reader.next().unwrap();
+			// 	if token == end {
+			// 		return Ok((nodes, None, s.get_end_after(token.length() as usize)));
+			// 	}
+			// 	continue;
+			// }
+		}
 
-	// 		if T::LAST_PREFIX.is_some_and(|l| reader.peek().is_some_and(|Token(token, _)| *token == l))
-	// 		{
-	// 			let last = T::parse_last_item(reader, state, options)?;
-	// 			let len = end.length() as usize;
-	// 			let end = reader.expect_next(end)?.get_end_after(len);
-	// 			return Ok((nodes, Some(last), end));
-	// 		}
+		if reader.is_operator_advance(end) {
+			return Ok((nodes, None));
+		}
 
-	// 		let node = T::from_reader(reader, state, options)?;
-	// 		nodes.push(node);
+		if T::LAST_PREFIX.is_some_and(|l| reader.starts_with_str(l)) {
+			let last = T::parse_last_item(reader)?;
+			reader.expect_operator(end)?;
+			return Ok((nodes, Some(last)));
+		}
 
-	// 		match reader.next().ok_or_else(errors::parse_lexing_error)? {
-	// 			Token(TSXToken::Comma, _) => {}
-	// 			token => {
-	// 				if token.0 == end {
-	// 					let get_end = token.get_end();
-	// 					return Ok((nodes, None, get_end));
-	// 				}
-	// 				let position = token.get_span();
-	// 				return Err(ParseError::new(
-	// 					crate::ParseErrors::UnexpectedToken {
-	// 						expected: &[end, TSXToken::Comma],
-	// 						found: token.0,
-	// 					},
-	// 					position,
-	// 				));
-	// 			}
-	// 		}
-	// 	}
+		let node = T::from_reader(reader)?;
+		nodes.push(node);
+
+		if reader.is_operator_advance(",") {
+			continue;
+		}
+
+		if reader.is_operator_advance(end) {
+			return Ok((nodes, None));
+		} else {
+			todo!();
+			// let position = token.get_span();
+			// return Err(ParseError::new(
+			// 	crate::ParseErrors::UnexpectedToken {
+			// 		expected: &[end, TSXToken::Comma],
+			// 		found: token.0,
+			// 	},
+			// 	position,
+			// ));
+		}
+	}
 }
 
-// #[cfg(not(target_arch = "wasm32"))]
-// /// For demos and testing
-// pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> + 'static {
-// 	let (mut sender, reader) = tokenizer_lib::ParallelTokenQueue::new();
-// 	// TODO clone ...
-// 	let input = source.clone();
-// 	let _lexing_thread = std::thread::spawn(move || {
-// 		let _lex_script = lexer::lex_script(&input, &mut sender, &Default::default(), None);
-// 		drop(sender);
-// 	});
-
-// 	receiver_to_tokens(reader, source)
-// }
-
-// #[cfg(target_arch = "wasm32")]
-// /// For demos and testing
-// pub fn script_to_tokens(source: String) -> impl Iterator<Item = (String, bool)> + 'static {
-// 	let mut queue = tokenizer_lib::BufferedTokenQueue::new();
-
-// 	let _lex_script = lexer::lex_script(&source, &mut queue, &Default::default(), None);
-
-// 	receiver_to_tokens(queue, source)
-// }
-
-// /// For testing and other features
-// fn receiver_to_tokens(
-// 	mut receiver: impl TokenReader<TSXToken, TokenStart> + 'static,
-// 	input: String,
-// ) -> impl Iterator<Item = (String, bool)> + 'static {
-// 	let mut last = 0u32;
-// 	let mut last_section = None;
-// 	std::iter::from_fn(move || {
-// 		if last_section.is_some() {
-// 			return last_section.take();
-// 		}
-
-// 		let token = receiver.next()?;
-// 		if matches!(token.0, TSXToken::EOS) {
-// 			return None;
-// 		}
-// 		let span = token.get_span();
-// 		let start = span.start;
-// 		let section = (input.get(std::ops::Range::from(span)).unwrap_or("?").to_owned(), true);
-// 		if last == start {
-// 			last = span.end;
-// 			Some(section)
-// 		} else {
-// 			last_section = Some(section);
-// 			let token = input.get((last as usize)..(start as usize)).unwrap_or("?").to_owned();
-// 			last = span.end;
-// 			Some((token, false))
-// 		}
-// 	})
-// }
-
 /// *`to_strings`* items surrounded in `{`, `[`, `(`, etc. Defaults to `,` as delimiter
-pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
+pub(crate) fn bracketed_items_to_string<T: source_map::ToString, U: ASTNode>(
 	nodes: &[U],
 	(left_bracket, right_bracket): (char, char),
 	buf: &mut T,
@@ -551,50 +494,50 @@ pub(crate) fn to_string_bracketed<T: source_map::ToString, U: ASTNode>(
 ///
 /// Also returns the line difference
 pub(crate) fn expect_semi_colon(reader: &mut crate::new::Lexer) -> ParseResult<usize> {
-	todo!();
-	// 	if let Some(token) = reader.peek() {
-	// 		let Token(kind, start) = token;
+	if reader.is_finished() {
+		Ok(0)
+	} else {
+		todo!("Skip spaces and tabs")
+		// let Token(kind, start) = token;
 
-	// 		if let TSXToken::CloseBrace
-	// 		| TSXToken::EOS
-	// 		| TSXToken::Comment(..)
-	// 		| TSXToken::MultiLineComment(..) = kind
-	// 		{
-	// 			Ok(line_starts
-	// 				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1)
-	// 				.saturating_sub(1))
-	// 		} else if let TSXToken::SemiColon = kind {
-	// 			let Token(_, semicolon_end) = reader.next().unwrap();
-	// 			let Token(kind, next) = reader.peek().unwrap();
-	// 			if options.retain_blank_lines {
-	// 				let byte_indexes_crosses_lines = line_starts
-	// 					.byte_indexes_crosses_lines(semicolon_end.0 as usize, next.0 as usize + 1);
+		// if let TSXToken::CloseBrace
+		// | TSXToken::EOS
+		// | TSXToken::Comment(..)
+		// | TSXToken::MultiLineComment(..) = kind
+		// {
+		// 	Ok(line_starts
+		// 		.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1)
+		// 		.saturating_sub(1))
+		// } else if let TSXToken::SemiColon = kind {
+		// 	let Token(_, semicolon_end) = reader.next().unwrap();
+		// 	let Token(kind, next) = reader.peek().unwrap();
+		// 	if options.retain_blank_lines {
+		// 		let byte_indexes_crosses_lines = line_starts
+		// 			.byte_indexes_crosses_lines(semicolon_end.0 as usize, next.0 as usize + 1);
 
-	// 				// TODO WIP
-	// 				if let TSXToken::EOS = kind {
-	// 					Ok(byte_indexes_crosses_lines)
-	// 				} else {
-	// 					Ok(byte_indexes_crosses_lines.saturating_sub(1))
-	// 				}
-	// 			} else {
-	// 				Ok(0)
-	// 			}
-	// 		} else {
-	// 			let line_difference = line_starts
-	// 				.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1);
-	// 			if line_difference == 0 {
-	// 				if options.partial_syntax {
-	// 					Ok(0)
-	// 				} else {
-	// 					throw_unexpected_token(reader, &[TSXToken::SemiColon])
-	// 				}
-	// 			} else {
-	// 				Ok(line_difference - 1)
-	// 			}
-	// 		}
-	// 	} else {
-	// 		Ok(0)
-	// 	}
+		// 		// TODO WIP
+		// 		if let TSXToken::EOS = kind {
+		// 			Ok(byte_indexes_crosses_lines)
+		// 		} else {
+		// 			Ok(byte_indexes_crosses_lines.saturating_sub(1))
+		// 		}
+		// 	} else {
+		// 		Ok(0)
+		// 	}
+		// } else {
+		// 	let line_difference = line_starts
+		// 		.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1);
+		// 	if line_difference == 0 {
+		// 		if options.partial_syntax {
+		// 			Ok(0)
+		// 		} else {
+		// 			throw_unexpected_token(reader, &[TSXToken::SemiColon])
+		// 		}
+		// 	} else {
+		// 		Ok(line_difference - 1)
+		// 	}
+		// }
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -612,20 +555,15 @@ impl VariableKeyword {
 	// }
 
 	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"match token {
-			Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
-			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
-			Token(TSXToken::Keyword(TSXKeyword::Var), _) => Ok(Self::Var),
-			token => crate::throw_unexpected_token_with_token(
-				token,
-				&[
-					TSXToken::Keyword(TSXKeyword::Const),
-					TSXToken::Keyword(TSXKeyword::Let),
-					TSXToken::Keyword(TSXKeyword::Var),
-				],
-			),
-		}"#;
-		todo!();
+		if reader.is_keyword_advance("const") {
+			Ok(Self::Const)
+		} else if reader.is_keyword_advance("let") {
+			Ok(Self::Let)
+		} else if reader.is_keyword_advance("var") {
+			Ok(Self::Var)
+		} else {
+			todo!("error here {:?}", reader.get_current())
+		}
 	}
 
 	#[must_use]
