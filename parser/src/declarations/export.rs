@@ -1,7 +1,7 @@
 use crate::{
 	derive_ASTNode, type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
 	ParseError, ParseOptions, ParseResult, Span, StatementPosition, TypeAnnotation,
-	VariableIdentifier,
+	VariableIdentifier, types::enum_declaration::EnumDeclaration
 };
 
 use super::{
@@ -128,22 +128,22 @@ impl ASTNode for ExportDeclaration {
 			let from = ImportLocation::from_reader(reader)?;
 			let end = reader.get_end();
 
-			Ok(ExportDeclaration::Variable {
+			Ok(ExportDeclaration::Item {
 				exported: Exportable::ImportAll { r#as, from },
 				position: start.union(end),
 			})
 		} else if reader.is_keyword("class") {
 			let class_declaration = ClassDeclaration::from_reader(reader)?;
 			let position = start.union(class_declaration.get_position());
-			Ok(Self::Variable { exported: Exportable::Class(class_declaration), position })
+			Ok(ExportDeclaration::Item { exported: Exportable::Class(class_declaration), position })
 		} else if reader.is_one_of(&["const", "let"]).is_some() {
 			let variable_declaration = VariableDeclaration::from_reader(reader)?;
 			let position = start.union(variable_declaration.get_position());
-			Ok(Self::Variable { exported: Exportable::Variable(variable_declaration), position })
+			Ok(ExportDeclaration::Item { exported: Exportable::Variable(variable_declaration), position })
 		} else if reader.is_keyword("interface") {
 			let interface_declaration = InterfaceDeclaration::from_reader(reader)?;
 			let position = start.union(interface_declaration.get_position());
-			Ok(Self::Variable { exported: Exportable::Interface(interface_declaration), position })
+			Ok(ExportDeclaration::Item { exported: Exportable::Interface(interface_declaration), position })
 		} else if reader.is_keyword("type") {
 			// if let Token(TSXToken::OpenBrace, _) =
 			// 	reader.peek_n(1).ok_or_else(parse_lexing_error)?

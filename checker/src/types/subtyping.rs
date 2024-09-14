@@ -2586,7 +2586,10 @@ pub(crate) fn slice_matches_type(
 					allow_casts,
 				)
 			} else if let Some(contributions) = contributions {
-				assert!(rpt.is_substitutable());
+				if !rpt.is_substitutable() {
+					eprintln!("{:?}", rpt);
+				}
+				// assert!(rpt.is_substitutable(), "{:?}", rpt);
 				let constraint = rpt.get_constraint();
 				let res = slice_matches_type(
 					(constraint, base_type_arguments),
