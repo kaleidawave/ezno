@@ -86,6 +86,65 @@ impl Exported {
 	pub fn keys(&self) -> impl Iterator<Item = &str> {
 		self.named.keys().chain(self.named_types.keys()).map(AsRef::as_ref)
 	}
+
+	/// For tree shaking
+	pub(crate) fn evaluate_generally(
+		&self,
+		root: &crate::RootContext,
+		types: &mut crate::types::TypeStore,
+	) {
+		use crate::context::invocation::InvocationContext;
+		use crate::source_map::{Nullable, SpanWithSource};
+		use crate::types::{
+			calling::{CallingInput, SynthesisedArgument},
+			SpecialObject, Type,
+		};
+
+		// TODO might need special
+		let mut environment = root.new_lexical_environment(Scope::Block {});
+
+		if let Some(default) = &self.default {
+			match types.get_type_by_id(*default) {
+				Type::SpecialObject(SpecialObject::Function(func, this_value)) => {
+					let func = types.get_function_from_id(*func);
+					let mut arguments = Vec::new();
+					for parameter in &func.parameters.parameters {
+						arguments.push(SynthesisedArgument {
+							// TODO get_constraint + open
+							value: parameter.ty,
+							spread: false,
+							position: SpanWithSource::NULL,
+						});
+					}
+					let input = CallingInput {
+						called_with_new: crate::types::calling::CalledWithNew::None,
+						call_site: SpanWithSource::NULL,
+						max_inline: 0,
+					};
+
+					let this_value = *this_value;
+					let _result = func.clone().call(
+						(this_value, &arguments, None, None),
+						input,
+						&mut environment,
+						(&mut InvocationContext::new_empty(), &mut Default::default()),
+						types,
+					);
+
+					crate::utilities::notify!("Call result as well");
+				}
+				Type::Object(_d) => {
+					todo!()
+				}
+				ty => {
+					crate::utilities::notify!("Cannot call {:?}", ty);
+				}
+			}
+		}
+		for (_name, (_variable_id, _)) in self.named.iter() {
+			todo!("call like type")
+		}
+	}
 }
 
 /// After a syntax error
@@ -387,9 +446,11 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				match module {
 					Ok(module) => {
 						let root = &environment.get_root();
-						let new_module_context =
-							root.new_module_context(source, module, checking_data);
-						Some(Ok(new_module_context))
+						root.synthesise_module(source, module, checking_data);
+
+						let module =
+							checking_data.modules.synthesised_modules.get(&source).unwrap();
+						Some(Ok(module))
 					}
 					Err(err) => Some(Err(err)),
 				}
