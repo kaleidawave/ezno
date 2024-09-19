@@ -527,6 +527,7 @@ pub(crate) fn substitute(
 					contributions: None,
 					object_constraints: None,
 					others: Default::default(),
+					constraint_inference_requests: None,
 				};
 				let result = crate::subtyping::type_is_subtype(
 					extends,
@@ -619,6 +620,7 @@ pub(crate) fn compute_extends_rule(
 				staging_covariant: Default::default(),
 			}),
 			object_constraints: Default::default(),
+			constraint_inference_requests: None,
 			others: SubTypingOptions::default(),
 		};
 		let result =

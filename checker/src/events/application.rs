@@ -606,6 +606,7 @@ pub(crate) fn apply_events(
 										contributions: None,
 										object_constraints: None,
 										others: crate::subtyping::SubTypingOptions::default(),
+										constraint_inference_requests: None,
 									};
 
 									let result = type_is_subtype(

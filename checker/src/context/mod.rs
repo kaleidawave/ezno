@@ -171,6 +171,8 @@ pub struct Context<T: ContextType> {
 	pub possibly_mutated_objects: HashMap<TypeId, TypeId>,
 	pub possibly_mutated_variables: HashSet<VariableId>,
 
+	pub constraint_inference_requests: crate::Map<TypeId, TypeId>,
+
 	// pub (crate) info: info,
 	pub info: LocalInformation,
 }
@@ -565,6 +567,7 @@ impl<T: ContextType> Context<T> {
 			info: Default::default(),
 			possibly_mutated_objects: Default::default(),
 			possibly_mutated_variables: Default::default(),
+			constraint_inference_requests: Default::default(),
 		}
 	}
 
@@ -608,6 +611,7 @@ impl<T: ContextType> Context<T> {
 			mut info,
 			possibly_mutated_objects,
 			possibly_mutated_variables,
+			constraint_inference_requests,
 		} = new_environment;
 
 		// if let Some(self_state) = self.context_type.get_state_mut() {
@@ -620,6 +624,8 @@ impl<T: ContextType> Context<T> {
 		self.variable_names.extend(variable_names);
 		self.possibly_mutated_objects.extend(possibly_mutated_objects);
 		self.possibly_mutated_variables.extend(possibly_mutated_variables);
+
+		self.constraint_inference_requests.extend(constraint_inference_requests);
 
 		// TODO
 		// self.tasks_to_run.extend(tasks_to_run.into_iter());

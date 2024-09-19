@@ -116,6 +116,7 @@ impl RootContext {
 			info,
 			possibly_mutated_objects: Default::default(),
 			possibly_mutated_variables: Default::default(),
+			constraint_inference_requests: Default::default(),
 		}
 	}
 

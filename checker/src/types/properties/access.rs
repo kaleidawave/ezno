@@ -249,92 +249,8 @@ pub(crate) fn get_property_unbound(
 					types,
 				)
 			}),
-			Type::RootPolyType(_nature) => {
-				if let Some(on) = on_type_arguments.and_then(|args| args.get_single_argument(on)) {
-					resolver(
-						(on, on_type_arguments),
-						(publicity, under, under_type_arguments),
-						info_chain,
-						types,
-					)
-					.map(wrap)
-					.map(LogicalOrValid::Logical)
-					.ok_or(Invalid(on))
-				} else {
-					// I think this is for assigning to properties on parameters
-					resolver(
-						(on, on_type_arguments),
-						(publicity, under, under_type_arguments),
-						info_chain,
-						types,
-					)
-					.map(wrap)
-					.map(LogicalOrValid::Logical)
-					.ok_or(Invalid(on))
-					.or_else(|_| {
-						// Can assign to properties on parameters etc
-						let aliases =
-							get_constraint(on, types).expect("poly type with no constraint");
-
-						if is_inferrable_type(aliases) {
-							Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }))
-						} else {
-							get_property_on_type_unbound(
-								(aliases, on_type_arguments),
-								(publicity, under, under_type_arguments),
-								require_both_logical,
-								info_chain,
-								types,
-							)
-						}
-					})
-				}
-			}
-			Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
-				on: base,
-				arguments,
-			}) => {
-				let on_sg_type = if let GenericArguments::Closure(_) = arguments {
-					resolver(
-						(on, on_type_arguments),
-						(publicity, under, under_type_arguments),
-						info_chain,
-						types,
-					)
-					.map(wrap)
-					.map(LogicalOrValid::Logical)
-					.ok_or(Invalid(on))
-				} else {
-					Err(Invalid(on))
-				};
-
-				on_sg_type.or_else(|_| {
-					let on_type_arguments = crate::types::GenericChainLink::append(
-						on,
-						on_type_arguments.as_ref(),
-						arguments,
-					);
-
-					crate::utilities::notify!("{:?}", on_type_arguments);
-
-					let property = get_property_on_type_unbound(
-						(*base, on_type_arguments),
-						(publicity, under, under_type_arguments),
-						require_both_logical,
-						info_chain,
-						types,
-					)?;
-
-					Ok(if let LogicalOrValid::Logical(fact) = property {
-						Logical::Implies { on: Box::new(fact), antecedent: arguments.clone() }
-							.into()
-					} else {
-						property
-					})
-				})
-			}
-			Type::Constructor(crate::types::Constructor::ConditionalResult { .. })
-			| Type::Or(..) => {
+			Type::Or(..)
+			| Type::Constructor(crate::types::Constructor::ConditionalResult { .. }) => {
 				let (condition, truthy_result, otherwise_result) =
 					get_conditional(on, types).expect("case above != get_conditional");
 
@@ -385,7 +301,54 @@ pub(crate) fn get_property_unbound(
 					}
 				}
 			}
-			Type::Constructor(_constructor) => {
+			Type::RootPolyType(nature) => {
+				crate::utilities::notify!("Here {:?} {:?}", nature, on_type_arguments);
+				if let Some(on) = on_type_arguments.and_then(|args| args.get_single_argument(on)) {
+					resolver(
+						(on, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info_chain,
+						types,
+					)
+					.map(wrap)
+					.map(LogicalOrValid::Logical)
+					.ok_or(Invalid(on))
+				} else {
+					crate::utilities::notify!("Here");
+					if nature.is_inferrable() {
+						return Ok(NeedsCalculation::Infer { on }.into());
+					}
+
+					// I think this is for assigning to properties on parameters
+					resolver(
+						(on, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info_chain,
+						types,
+					)
+					.map(wrap)
+					.map(LogicalOrValid::Logical)
+					.ok_or(Invalid(on))
+					.or_else(|_| {
+						// Can assign to properties on parameters etc
+						let aliases =
+							get_constraint(on, types).expect("poly type with no constraint");
+
+						if is_inferrable_type(aliases) {
+							Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }))
+						} else {
+							get_property_on_type_unbound(
+								(aliases, on_type_arguments),
+								(publicity, under, under_type_arguments),
+								require_both_logical,
+								info_chain,
+								types,
+							)
+						}
+					})
+				}
+			}
+			Type::Constructor(constructor) => {
 				let on_constructor_type = resolver(
 					(on, on_type_arguments),
 					(publicity, under, under_type_arguments),
@@ -396,7 +359,11 @@ pub(crate) fn get_property_unbound(
 				.map(LogicalOrValid::Logical)
 				.ok_or(Invalid(on));
 
-				let aliases = get_constraint(on, types).expect("no constraint for constructor");
+				let aliases = constructor.get_constraint();
+
+				if let TypeId::ANY_TO_INFER_TYPE = aliases {
+					return Ok(NeedsCalculation::Infer { on }.into());
+				}
 
 				on_constructor_type.or_else(|_| {
 					get_property_on_type_unbound(
@@ -406,6 +373,49 @@ pub(crate) fn get_property_unbound(
 						info_chain,
 						types,
 					)
+				})
+			}
+			Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
+				on: base,
+				arguments,
+			}) => {
+				let on_sg_type = if let GenericArguments::Closure(_) = arguments {
+					resolver(
+						(on, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info_chain,
+						types,
+					)
+					.map(wrap)
+					.map(LogicalOrValid::Logical)
+					.ok_or(Invalid(on))
+				} else {
+					Err(Invalid(on))
+				};
+
+				on_sg_type.or_else(|_| {
+					let on_type_arguments = crate::types::GenericChainLink::append(
+						on,
+						on_type_arguments.as_ref(),
+						arguments,
+					);
+
+					crate::utilities::notify!("{:?}", on_type_arguments);
+
+					let property = get_property_on_type_unbound(
+						(*base, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						require_both_logical,
+						info_chain,
+						types,
+					)?;
+
+					Ok(if let LogicalOrValid::Logical(fact) = property {
+						Logical::Implies { on: Box::new(fact), antecedent: arguments.clone() }
+							.into()
+					} else {
+						property
+					})
 				})
 			}
 			Type::Object(ObjectNature::AnonymousTypeAnnotation(properties)) => {
@@ -662,8 +672,6 @@ pub(crate) fn get_property_unbound(
 				// TODO or above temp
 				Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on }))
 			} else {
-				crate::utilities::notify!("{:?}", types.get_type_by_id(on));
-
 				Ok(Logical::BasedOnKey(BasedOnKey::Right(PropertyOn { on, key })).into())
 			}
 		}
@@ -719,17 +727,9 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 	// 	checking_data,
 	// ))
 
-	let (to_index, via) = if let Some(constraint) = get_constraint(on, types) {
-		(constraint, Some(on))
-	} else if let Some(constraint) = top_environment.possibly_mutated_objects.get(&on).copied() {
-		(constraint, Some(on))
-	} else {
-		(on, None)
-	};
-
 	let require_both_logical = true;
 	let result = get_property_unbound(
-		(to_index, None),
+		(on, None),
 		(publicity, under, None),
 		require_both_logical,
 		top_environment,
@@ -753,7 +753,7 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 
 			let is_constant = types.get_type_by_id(result).is_constant();
 
-			if let (false, Some(_via)) = (is_constant, via) {
+			if let (false, true) = (is_constant, get_constraint(on, types).is_some()) {
 				let constructor = types.register_type(Type::Constructor(Constructor::Property {
 					on,
 					under: under.into_owned(),
@@ -778,14 +778,25 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(proxy, proxy_ty))) => {
 			proxy_access((proxy, proxy_ty), under, (behavior, diagnostics), top_environment, types)
 		}
-		Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { .. })) => {
-			crate::utilities::notify!("Here infer constraint");
+		Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Infer { on })) => {
+			crate::utilities::notify!("Access inference");
+
 			let constructor = types.register_type(Type::Constructor(Constructor::Property {
 				on,
 				under: under.into_owned(),
 				result: TypeId::ANY_TO_INFER_TYPE,
 				mode,
 			}));
+
+			{
+				let property =
+					(Publicity::Public, under.into_owned(), PropertyValue::Value(constructor));
+				let new = types.register_type(Type::Object(
+					crate::types::ObjectNature::AnonymousTypeAnnotation(vec![property]),
+				));
+				top_environment.constraint_inference_requests.insert(on, new);
+			}
+
 			// TODO if not constant etc
 			behavior.get_latest_info(top_environment).events.push(Event::Getter {
 				on,

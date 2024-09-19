@@ -82,6 +82,7 @@ pub fn types_are_disjoint(
 				contributions: None,
 				others: subtyping::SubTypingOptions { allow_errors: true },
 				object_constraints: None,
+				constraint_inference_requests: None,
 			};
 
 			crate::utilities::notify!("{:?}", (lhs, inner));
@@ -101,6 +102,7 @@ pub fn types_are_disjoint(
 				contributions: None,
 				others: subtyping::SubTypingOptions { allow_errors: true },
 				object_constraints: None,
+				constraint_inference_requests: None,
 			};
 
 			crate::utilities::notify!("{:?}", (lhs, inner));
