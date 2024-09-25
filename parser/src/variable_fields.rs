@@ -30,9 +30,13 @@ pub enum VariableIdentifier {
 }
 
 impl ASTNode for VariableIdentifier {
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let identifier = reader.parse_identifier().unwrap();
+		let identifier = reader.parse_identifier()?;
 		let position = start.with_length(identifier.len());
 		Ok(Self::Standard(identifier.to_owned(), position))
 		// TODO
@@ -57,10 +61,6 @@ impl ASTNode for VariableIdentifier {
 				assert!(!options.expect_markers, "variable marker attempted to convert to string");
 			}
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		*self.get()
 	}
 }
 
@@ -96,6 +96,15 @@ pub enum VariableField {
 }
 
 impl ASTNode for VariableField {
+	fn get_position(&self) -> Span {
+		match self {
+			VariableField::Array { position, .. } | VariableField::Object { position, .. } => {
+				*position
+			}
+			VariableField::Name(id) => id.get_position(),
+		}
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.is_operator_advance("{") {
 			let start = reader.get_start();
@@ -161,15 +170,6 @@ impl ASTNode for VariableField {
 				options.push_gap_optionally(buf);
 				buf.push('}');
 			}
-		}
-	}
-
-	fn get_position(&self) -> Span {
-		match self {
-			VariableField::Array { position, .. } | VariableField::Object { position, .. } => {
-				*position
-			}
-			VariableField::Name(id) => id.get_position(),
 		}
 	}
 }
@@ -245,6 +245,15 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 }
 
 impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
+	fn get_position(&self) -> Span {
+		match self {
+			ArrayDestructuringField::Comment { position, .. } => *position,
+			// TODO misses out optional expression
+			ArrayDestructuringField::Name(vf, ..) => vf.get_position(),
+			ArrayDestructuringField::None => source_map::Nullable::NULL,
+		}
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.is_operator(",") || reader.is_operator("}") {
 			Ok(Self::None)
@@ -292,15 +301,6 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 			Self::None => {}
 		}
 	}
-
-	fn get_position(&self) -> Span {
-		match self {
-			ArrayDestructuringField::Comment { position, .. } => *position,
-			// TODO misses out optional expression
-			ArrayDestructuringField::Name(vf, ..) => vf.get_position(),
-			ArrayDestructuringField::None => source_map::Nullable::NULL,
-		}
-	}
 }
 
 /// For
@@ -338,6 +338,10 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ObjectDestructuringFiel
 }
 
 impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		// #[cfg(not(feature = "extras"))]
 		// fn is_destructuring_into_marker(t: &TSXToken, _options: &ParseOptions) -> bool {
@@ -387,8 +391,6 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 			Ok(Self::Name(standard, annotation, default_value, position))
 		} else {
 			todo!("expect colon")
-			// let token = reader.next().ok_or_else(parse_lexing_error)?;
-			// throw_unexpected_token_with_token(token, &[TSXToken::Colon])
 		}
 	}
 
@@ -421,10 +423,6 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 				}
 			}
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		*self.get()
 	}
 }
 

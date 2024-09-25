@@ -19,12 +19,16 @@ impl ListItem for TypeParameter {
 }
 
 impl ASTNode for TypeParameter {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		#[cfg(feature = "full-typescript")]
 		let is_constant = reader.is_keyword_advance("const");
 
 		let start = reader.get_start();
-		let name = reader.parse_identifier().expect("TODO").to_owned();
+		let name = reader.parse_identifier()?.to_owned();
 
 		let extends = reader
 			.is_keyword_advance("extends")
@@ -63,9 +67,5 @@ impl ASTNode for TypeParameter {
 			buf.push_str(" = ");
 			default.to_string_from_buffer(buf, options, local);
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		self.position
 	}
 }

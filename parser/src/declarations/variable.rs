@@ -3,9 +3,8 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE, ASTNode,
-	Expression, ParseError, ParseErrors, ParseOptions, ParseResult, Span, TypeAnnotation,
-	VariableField, WithComment,
+	derive_ASTNode, expressions::operators::COMMA_PRECEDENCE, ASTNode, Expression, ParseError,
+	ParseErrors, ParseOptions, ParseResult, Span, TypeAnnotation, VariableField, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -105,6 +104,10 @@ pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 }
 
 impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem<TExpr> {
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let name = WithComment::<VariableField>::from_reader(reader)?;
 		let type_annotation = if reader.is_operator_advance(":") {
@@ -138,10 +141,6 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		}
 
 		self.expression.expression_to_string_from_buffer(buf, options, local);
-	}
-
-	fn get_position(&self) -> Span {
-		*self.get()
 	}
 }
 
@@ -178,6 +177,10 @@ impl VariableDeclarationKeyword {
 }
 
 impl ASTNode for VariableDeclaration {
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.is_keyword_advance("let") {
@@ -299,10 +302,6 @@ impl ASTNode for VariableDeclaration {
 				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		*self.get()
 	}
 }
 

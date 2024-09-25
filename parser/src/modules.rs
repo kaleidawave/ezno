@@ -21,6 +21,10 @@ impl PartialEq for Module {
 }
 
 impl ASTNode for Module {
+	fn get_position(&self) -> Span {
+		self.span
+	}
+
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
@@ -33,10 +37,6 @@ impl ASTNode for Module {
 			buf.push_new_line();
 		}
 		statements_and_declarations_to_string(&self.items, buf, options, local);
-	}
-
-	fn get_position(&self) -> Span {
-		self.span
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {

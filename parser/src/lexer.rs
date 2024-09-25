@@ -2,70 +2,43 @@
 #![allow(unused)]
 
 use crate::{
-	errors::LexingErrors, html_tag_contains_literal_content, html_tag_is_self_closing, Comments,
-	Quoted, Span,
+	errors::{ParseError, ParseErrors},
+	html_tag_contains_literal_content, html_tag_is_self_closing,
+	options::ParseOptions,
+	Comments, Quoted, Span,
 };
 
-// use derive_finite_automaton::{
-// 	FiniteAutomata, FiniteAutomataConstructor, GetAutomataStateForValue, GetNextResult,
-// };
-
-#[allow(clippy::struct_excessive_bools)]
-pub struct LexerOptions {
-	/// Whether to append tokens when lexing. If false will just ignore
-	pub comments: Comments,
-	/// Whether to parse JSX. TypeScript's `<number> 2` breaks the lexer so this can be disabled to allow
-	/// for that syntax
-	pub lex_jsx: bool,
-	/// TODO temp
-	pub allow_unsupported_characters_in_jsx_attribute_keys: bool,
-	pub allow_expressions_in_jsx: bool,
-	pub top_level_html: bool,
-}
-
-impl Default for LexerOptions {
-	fn default() -> Self {
-		Self {
-			comments: Comments::All,
-			lex_jsx: true,
-			allow_unsupported_characters_in_jsx_attribute_keys: true,
-			allow_expressions_in_jsx: true,
-			top_level_html: false,
-		}
-	}
-}
-
 // mod lexer_state {
-pub(super) enum JSXAttributeValueDelimiter {
-	None,
-	SingleQuote,
-	DoubleQuote,
-}
+// pub(super) enum JSXAttributeValueDelimiter {
+// 	None,
+// 	SingleQuote,
+// 	DoubleQuote,
+// }
 
-pub(super) enum JSXTagNameDirection {
-	Opening,
-	Closing,
-}
+// pub(super) enum JSXTagNameDirection {
+// 	Opening,
+// 	Closing,
+// }
 
-pub(super) enum JSXLexingState {
-	/// Only for top level html
-	ExpectingOpenChevron,
-	TagName {
-		direction: JSXTagNameDirection,
-		lexed_start: bool,
-	},
-	/// For lexing the close chevron after the slash in self closing tags
-	SelfClosingTagClose,
-	AttributeKey,
-	AttributeEqual,
-	AttributeValue(JSXAttributeValueDelimiter),
-	Comment,
-	Content,
-	/// For script and style tags
-	LiteralContent {
-		last_char_was_open_chevron: bool,
-	},
-}
+// pub(super) enum JSXLexingState {
+// 	/// Only for top level html
+// 	ExpectingOpenChevron,
+// 	TagName {
+// 		direction: JSXTagNameDirection,
+// 		lexed_start: bool,
+// 	},
+// 	/// For lexing the close chevron after the slash in self closing tags
+// 	SelfClosingTagClose,
+// 	AttributeKey,
+// 	AttributeEqual,
+// 	AttributeValue(JSXAttributeValueDelimiter),
+// 	Comment,
+// 	Content,
+// 	/// For script and style tags
+// 	LiteralContent {
+// 		last_char_was_open_chevron: bool,
+// 	},
+// }
 
 pub(super) enum NumberLiteralType {
 	BinaryLiteral,
@@ -87,88 +60,55 @@ impl Default for NumberLiteralType {
 	}
 }
 
-// /// Current parsing state of the lexer.
-// pub(super) enum LexingState {
-// 	String {
-// 		double_quoted: bool,
-// 		escaped: bool,
-// 	},
-// 	TemplateLiteral {
-// 		interpolation_depth: u16,
-// 		last_char_was_dollar: bool,
-// 		escaped: bool,
-// 	},
-// 	JSXLiteral {
-// 		state: JSXLexingState,
-// 		interpolation_depth: u16,
-// 		tag_depth: u16,
-// 		/// `true` for `script` and `style` tags
-// 		/// TODO currently isn't handled at all
-// 		no_inner_tags_or_expressions: bool,
-// 		is_self_closing_tag: bool,
-// 	},
-// 	RegexLiteral {
-// 		escaped: bool,
-// 		/// aka on flags
-// 		after_last_slash: bool,
-// 		/// Forward slash while in `[...]` is allowed
-// 		in_set: bool,
-// 	},
-// }
-
-// TODO WIP
-// const DEFAULT_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
-// 	interpolation_depth: 0,
-// 	tag_depth: 0,
-// 	state: JSXLexingState::ExpectingOpenChevron,
-// 	no_inner_tags_or_expressions: false,
-// 	is_self_closing_tag: false,
-// };
-// const FIRST_CHEVRON_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
-// 	interpolation_depth: 0,
-// 	tag_depth: 0,
-// 	state: JSXLexingState::TagName { direction: JSXTagNameDirection::Opening, lexed_start: false },
-// 	no_inner_tags_or_expressions: false,
-// 	is_self_closing_tag: false,
-// };
-// // }
-
 // TODO state for "use strict" etc?
 // TODO hold Keywords map, markers, syntax errors etc
-pub struct Lexer<'a> {
-	options: LexerOptions,
-	// last: u32,
-	head: u32,
-	on: &'a str,
-
+#[derive(Default)]
+pub struct ParsingState {
 	last_new_lines: u32,
-	// state: LexingState,
-	// state_stack: Vec<LexingState>,
+}
+
+pub struct Lexer<'a> {
+	// last: u32,
+	pub(crate) head: u32,
+	script: &'a str,
+
+	options: ParseOptions,
+	state: ParsingState,
 }
 
 // TODO helpers for number, regular expression, maybe JSX maybe not.
 impl<'a> Lexer<'a> {
 	// (crate)
-	pub fn new(script: &'a str, offset: Option<u32>, options: LexerOptions) -> Self {
+	pub fn new(script: &'a str, offset: Option<u32>, options: ParseOptions) -> Self {
 		if script.len() > u32::MAX as usize {
 			todo!()
 			// return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
 		}
-		Lexer {
-			options,
-			// last: offset.unwrap_or_default(),
-			head: 0, // TODO offset.unwrap_or_default(),
-			on: script,
-			last_new_lines: 0,
-		}
+		// TODO offset.unwrap_or_default(),
+		let state = ParsingState::default();
+		Lexer { options, state, script, head: 0 }
+	}
+
+	/// Just used for specific things, not all annotations
+	pub fn parse_type_annotations(&self) -> bool {
+		self.options.type_annotations
 	}
 
 	pub fn get_current(&self) -> &'a str {
-		&self.on[self.head as usize..]
+		&self.script[self.head as usize..]
+	}
+
+	// TODO temp
+	fn get_surrounding(&self) -> (&'a str, &'a str) {
+		const WIDTH: usize = 14;
+		let head = self.head as usize;
+		let start = head.saturating_sub(WIDTH);
+		let end = std::cmp::min(head + WIDTH, self.script.len());
+		(&self.script[start..head], &self.script[head..end])
 	}
 
 	pub fn last_was_from_new_line(&self) -> u32 {
-		self.last_new_lines
+		self.state.last_new_lines
 	}
 
 	pub fn skip(&mut self) {
@@ -184,12 +124,13 @@ impl<'a> Lexer<'a> {
 			count += 1;
 		}
 		if count > 0 {
-			self.last_new_lines = new_lines;
+			self.state.last_new_lines = new_lines;
 			self.head += count;
 		}
 	}
 
 	pub fn is_keyword(&mut self, keyword: &str) -> bool {
+		self.skip();
 		let current = self.get_current();
 		let length = keyword.len();
 		current.starts_with(keyword)
@@ -211,7 +152,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	// Does not advance
-	pub fn is_one_of_keyword<'b>(&self, keywords: &'static [&'b str]) -> Option<&'b str> {
+	pub fn is_one_of_keywords<'b>(&self, keywords: &'static [&'b str]) -> Option<&'b str> {
 		let current = self.get_current();
 		for item in keywords {
 			if current.starts_with(item)
@@ -223,7 +164,7 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
-	pub fn is_one_of_keyword_advance<'b>(
+	pub fn is_one_of_keywords_advance<'b>(
 		&mut self,
 		keywords: &'static [&'b str],
 	) -> Option<&'b str> {
@@ -239,7 +180,7 @@ impl<'a> Lexer<'a> {
 		None
 	}
 
-	pub fn expect_start(&mut self, chr: char) -> Result<source_map::Start, crate::ParseError> {
+	pub fn expect_start(&mut self, chr: char) -> Result<source_map::Start, ParseError> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(chr) {
@@ -248,15 +189,15 @@ impl<'a> Lexer<'a> {
 			Ok(start)
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
-			let reason = crate::ParseErrors::UnexpectedCharacter {
+			let reason = ParseErrors::UnexpectedCharacter {
 				expected: &[chr],
 				found: current.chars().next().unwrap(),
 			};
-			Err(crate::ParseError::new(reason, position))
+			Err(ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect(&mut self, chr: char) -> Result<source_map::End, crate::ParseError> {
+	pub fn expect(&mut self, chr: char) -> Result<source_map::End, ParseError> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(chr) {
@@ -264,35 +205,37 @@ impl<'a> Lexer<'a> {
 			Ok(source_map::End(self.head))
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
-			let reason = crate::ParseErrors::UnexpectedCharacter {
+			let reason = ParseErrors::UnexpectedCharacter {
 				expected: &[chr],
 				found: current.chars().next().unwrap(),
 			};
-			Err(crate::ParseError::new(reason, position))
+			Err(ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect_operator(&mut self, str: &'static str) -> Result<(), crate::ParseError> {
+	pub fn expect_operator(&mut self, str: &'static str) -> Result<(), ParseError> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(str) {
 			self.head += str.len() as u32;
 			Ok(())
 		} else {
-			todo!("error {:?} {:?}", str, &current[..20]);
+			todo!(
+				"expect operator error expect={:?} found={:?} at {:?}",
+				str,
+				current.get(..50).unwrap_or(current),
+				self.head
+			);
 			// let position = self.get_start().with_length(chr.len_utf8());
-			// let reason = crate::ParseErrors::UnexpectedCharacter {
+			// let reason = ParseErrors::UnexpectedCharacter {
 			// 	expected: &[chr],
 			// 	found: current.chars().next().unwrap(),
 			// };
-			// Err(crate::ParseError::new(reason, position))
+			// Err(ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect_keyword(
-		&mut self,
-		str: &'static str,
-	) -> Result<source_map::Start, crate::ParseError> {
+	pub fn expect_keyword(&mut self, str: &'static str) -> Result<source_map::Start, ParseError> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(str) {
@@ -317,8 +260,8 @@ impl<'a> Lexer<'a> {
 
 			let found = &current[..next_empty_occurance(current)];
 			let position = self.get_start().with_length(found.len());
-			let reason = crate::ParseErrors::ExpectedKeyword { expected: str, found };
-			Err(crate::ParseError::new(reason, position))
+			let reason = ParseErrors::ExpectedKeyword { expected: str, found };
+			Err(ParseError::new(reason, position))
 		}
 	}
 
@@ -390,16 +333,22 @@ impl<'a> Lexer<'a> {
 		self.head += count;
 	}
 
-	pub fn parse_identifier(&mut self) -> Result<&'a str, ()> {
+	pub fn parse_identifier(&mut self) -> Result<&'a str, ParseError> {
 		self.skip();
 		let current = self.get_current();
+		let start = self.get_start();
 		let mut iter = current.char_indices();
-		if iter.next().is_some_and(|(_, chr)| {
+		if let Some((_, chr)) = iter.next() {
 			let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
-			!first_is_valid
-		}) {
-			dbg!(&self.get_current()[..20]);
-			return Err(());
+			if !first_is_valid {
+				let current = self.get_current();
+				return Err(ParseError::new(
+					ParseErrors::ExpectedIdentifier,
+					start.with_length(chr.len_utf8()),
+				));
+			}
+		} else {
+			return Err(ParseError::new(ParseErrors::ExpectedIdentifier, start.with_length(0)));
 		}
 
 		for (idx, chr) in iter {
@@ -408,10 +357,14 @@ impl<'a> Lexer<'a> {
 			if !is_valid {
 				let value = &current[..idx];
 				self.head += idx as u32;
+				// TODO check value isn't `const` etc
 				return Ok(value);
 			}
 		}
-		Err(())
+
+		self.head += current.len() as u32;
+
+		Ok(current)
 	}
 
 	// For comments
@@ -421,6 +374,10 @@ impl<'a> Lexer<'a> {
 		for (idx, _) in current.char_indices() {
 			if current[idx..].starts_with(until) {
 				self.head += (idx + until.len()) as u32;
+				// TODO temp fix
+				if let "\n" = until {
+					self.head -= 1;
+				}
 				return Ok(&current[..idx]);
 			}
 		}
@@ -599,7 +556,15 @@ impl<'a> Lexer<'a> {
 				},
 				'.' => {
 					if let NumberLiteralType::Decimal { ref mut fractional } = state {
-						if current[..idx].ends_with(['_']) {
+						// Return if already fractional. This is valid syntax: `1..toString()`
+						if *fractional {
+							let num_slice = &current[..idx];
+							let number = crate::number::NumberRepresentation::from_str(num_slice);
+							let number = number.unwrap();
+							let length = idx as u32;
+							self.head += length;
+							return Ok((number, length));
+						} else if current[..idx].ends_with(['_']) {
 							// (LexingErrors::InvalidUnderscore)
 							return Err(());
 						} else {
@@ -736,6 +701,7 @@ impl<'a> Lexer<'a> {
 			} else if let b')' | b'}' | b']' | b'>' = chr {
 				paren_count = paren_count.saturating_sub(1);
 				if paren_count == 0 {
+					// dbg!(&current[..idx]);
 					return &current[(idx + 1)..].trim_start();
 				}
 			}
@@ -750,11 +716,17 @@ impl<'a> Lexer<'a> {
 		let mut paren_count: u32 = 0;
 
 		let mut chars = current.as_bytes().into_iter().enumerate();
-		for (_, chr) in chars.by_ref() {
+		for (idx, chr) in chars.by_ref() {
 			if !chr.is_ascii_whitespace() {
-				break;
+				// test here as iteration consumed
+				if !chr.is_ascii_alphanumeric() {
+					return &current[idx..].trim_start();
+				} else {
+					break;
+				}
 			}
 		}
+
 		for (idx, chr) in chars {
 			if !chr.is_ascii_alphanumeric() {
 				return &current[idx..].trim_start();
@@ -772,6 +744,8 @@ impl<'a> Lexer<'a> {
 			current = &current["const".len()..].trim_start();
 		} else if current.starts_with("let") {
 			current = &current["let".len()..].trim_start();
+		} else if current.starts_with("var") {
+			current = &current["var".len()..].trim_start();
 		}
 
 		if current.starts_with("{") || current.starts_with("[") {
@@ -803,5 +777,76 @@ impl<'a> Lexer<'a> {
 		}
 		// Return empty slice
 		Default::default()
+	}
+
+	/// TODO error
+	pub fn expect_semi_colon(&mut self) -> () {
+		let last = self.state.last_new_lines;
+		// TODO order
+		let semi_colon_like = self.starts_with_str("//")
+			|| self.last_was_from_new_line() > 0
+			|| self.is_operator("}")
+			|| self.is_operator_advance(";")
+			// TODO what about spaces
+			|| self.starts_with_str("\n")
+			|| self.is_finished();
+
+		if !semi_colon_like {
+			let current = self.get_current();
+			eprintln!(
+				"expect semi colon error {:?} {:?}, {:?}",
+				self.get_surrounding(),
+				self.head,
+				last
+			);
+		}
+	}
+
+	pub fn is_semi_colon(&mut self) -> bool {
+		self.skip();
+		self.starts_with('}') || self.starts_with(';') || self.last_was_from_new_line() > 0
+	}
+
+	pub fn is_arrow_function(&mut self) -> (bool, Option<crate::types::TypeAnnotation>) {
+		let current = self.get_current();
+		let mut paren_count: u32 = 0;
+		// TODO account for string literals and comments
+		let mut after: u32 = 0;
+		for (idx, chr) in current.as_bytes().into_iter().enumerate() {
+			if let b'(' = chr {
+				paren_count += 1;
+			} else if let b')' = chr {
+				paren_count = paren_count.saturating_sub(1);
+				if paren_count == 0 {
+					after = (idx + ")".len()) as u32;
+					break;
+				}
+			}
+		}
+
+		// TODO no new lines
+		let after_brackets = &current[after as usize..].trim_start();
+		if after_brackets.starts_with("=>") {
+			(true, None)
+		} else if self.options.type_annotations && after_brackets.starts_with(":") {
+			// TODO WIP implementation
+			let save_point = self.head;
+			let mut reader = self;
+			reader.head += after + 1;
+			// I hate this!!. Can double allocate for expressions
+			let annotation = crate::types::TypeAnnotation::from_reader_with_precedence(
+				reader,
+				crate::types::type_annotations::TypeOperatorKind::ReturnType,
+			);
+			let starts_with_arrow = reader.starts_with_str("=>");
+			reader.head = save_point;
+			if let (true, Ok(annotation)) = (starts_with_arrow, annotation) {
+				(true, Some(annotation))
+			} else {
+				(false, None)
+			}
+		} else {
+			(false, None)
+		}
 	}
 }

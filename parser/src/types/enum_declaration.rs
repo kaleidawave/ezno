@@ -18,34 +18,33 @@ impl ASTNode for EnumDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
-		let _existing = r#"let const_pos = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Const)))
-			.map(|Token(_, pos)| pos);
-
-		let is_constant = const_pos.is_some();
-		let enum_pos = reader.expect_keyword("TSXKeyword::Enum")?;
-		let (name, _) =
-			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum name")?;
-		reader.expect(TSXToken::OpenBrace)?;
+		let start = reader.get_start();
+		let is_constant = reader.is_keyword_advance("const");
+		reader.expect_keyword("enum")?;
+		// token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum name")?;
+		let name = reader.parse_identifier()?.to_owned();
+		reader.expect('{')?;
 		let mut members = Vec::new();
 		loop {
-			if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
+			if reader.is_operator("}") {
 				break;
 			}
+			// TODO temp
+			if reader.is_operator_advance("//") {
+				let _content = reader.parse_until("\n").expect("TODO");
+				continue;
+			} else if reader.is_operator_advance("/*") {
+				let _content = reader.parse_until("*/").expect("TODO");
+				continue;
+			}
 			members.push(EnumMember::from_reader(reader)?);
-			// Commas are optional
-			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-				reader.next();
+			if !reader.is_operator_advance(",") {
+				reader.expect_semi_colon();
 			}
 		}
-		let end = reader.expect_get_end(TSXToken::CloseBrace)?;
-		Ok(EnumDeclaration {
-			is_constant,
-			position: const_pos.unwrap_or(enum_pos).union(end),
-			name,
-			members,
-		})"#;
-		todo!();
+		reader.expect('}')?;
+		let position = start.union(reader.get_end());
+		Ok(EnumDeclaration { is_constant, name, position, members })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -94,21 +93,15 @@ impl ASTNode for EnumMember {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
-		let _existing = r#"let (name, start_pos) =
-			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum variant")?;
-		match reader.peek() {
-			Some(Token(TSXToken::Assign, _)) => {
-				reader.next();
-				let expression = Expression::from_reader(reader)?;
-				Ok(EnumMember::Variant {
-					name,
-					position: start_pos.union(expression.get_position()),
-					value: Some(expression),
-				})
-			}
-			_ => Ok(EnumMember::Variant { name, value: None, position: start_pos }),
-		}"#;
-		todo!();
+		let start = reader.get_start();
+		let name = reader.parse_identifier()?.to_owned();
+		let (position, value) = if reader.is_operator_advance("=") {
+			let expression = Expression::from_reader(reader)?;
+			(start.union(expression.get_position()), Some(expression))
+		} else {
+			(start.with_length(name.len()), None)
+		};
+		Ok(EnumMember::Variant { name, value, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

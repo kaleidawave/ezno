@@ -9,6 +9,7 @@ pub mod type_annotations;
 pub mod type_declarations;
 
 pub use interface::InterfaceDeclaration;
+pub use type_annotations::TypeAnnotation;
 
 use crate::derive_ASTNode;
 

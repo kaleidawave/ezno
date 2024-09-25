@@ -32,10 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let now = Instant::now();
 
-	// TODO temp
-	const STACK_SIZE_MB: usize = 32;
 	let parse_options = ParseOptions {
-		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		comments,
 		record_keyword_positions: display_keywords,
 		partial_syntax,
@@ -59,7 +56,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
 	eprintln!("parsing {:?} bytes", source.len());
-	let result = Module::from_string_with_options(source.clone(), parse_options, None);
+
+	// TODO temp
+	const STACK_SIZE_MB: usize = 16;
+	let thread =
+		std::thread::Builder::new().name("parsing".into()).stack_size(STACK_SIZE_MB * 1024 * 1024);
+
+	let handler = thread
+		.spawn(move || {
+			let result = Module::from_string_with_options(source.clone(), parse_options, None);
+			result
+		})
+		.unwrap();
+
+	let result = handler.join().unwrap();
 
 	match result {
 		Ok((module, state)) => {

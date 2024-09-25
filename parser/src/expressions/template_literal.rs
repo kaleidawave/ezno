@@ -1,5 +1,5 @@
 use super::{Expression, MultipleExpression};
-use crate::{derive_ASTNode, errors::parse_lexing_error, ASTNode, ParseOptions, ParseResult, Span};
+use crate::{derive_ASTNode, ASTNode, ParseOptions, ParseResult, Span};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]

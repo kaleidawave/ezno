@@ -8,10 +8,7 @@ use source_map::Span;
 use std::fmt::Debug;
 use temporary_annex::Annex;
 
-use crate::{
-	errors::parse_lexing_error, number::NumberRepresentation, ASTNode, Expression, ParseOptions,
-	ParseResult,
-};
+use crate::{number::NumberRepresentation, ASTNode, Expression, ParseOptions, ParseResult};
 
 pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {
 	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)>;
@@ -35,7 +32,7 @@ pub struct AlwaysPublic;
 impl PropertyKeyKind for AlwaysPublic {
 	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
-		let name = reader.parse_identifier().expect("TODO");
+		let name = reader.parse_identifier()?;
 		Ok((name.to_owned(), start.with_length(name.len()), Self::new_public()))
 	}
 
@@ -65,10 +62,10 @@ impl PropertyKeyKind for PublicOrPrivate {
 	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
 		if reader.is_operator_advance("#") {
-			let name = reader.parse_identifier().expect("TODO");
+			let name = reader.parse_identifier()?;
 			Ok((name.to_owned(), start.with_length(name.len()), Self::Private))
 		} else {
-			let name = reader.parse_identifier().expect("TODO");
+			let name = reader.parse_identifier()?;
 			Ok((name.to_owned(), start.with_length(name.len()), Self::Public))
 		}
 	}

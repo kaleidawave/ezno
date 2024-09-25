@@ -34,6 +34,10 @@ pub enum Optionality {
 }
 
 impl ASTNode for InterfaceDeclaration {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("interface")?;
 
@@ -118,10 +122,6 @@ impl ASTNode for InterfaceDeclaration {
 			buf.push('}');
 		}
 	}
-
-	fn get_position(&self) -> Span {
-		self.position
-	}
 }
 
 /// For some reason mapped types can have a negated a readonly keyword
@@ -195,6 +195,10 @@ pub enum InterfaceMember {
 
 #[allow(clippy::similar_names)]
 impl ASTNode for InterfaceMember {
+	fn get_position(&self) -> Span {
+		*GetFieldByType::get(self)
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let is_readonly = reader.is_keyword_advance("readonly");
@@ -291,16 +295,18 @@ impl ASTNode for InterfaceMember {
 				// todo!()
 				Err(crate::ParseError::new(ParseErrors::ExpectRule, start.with_length(1)))
 			}
+		} else if let Some(comment_prefix) = reader.is_one_of(&["//", "/*"]) {
+			let start = reader.get_start();
+			let is_multiline = comment_prefix == "/*";
+			reader.advance(2);
+			let content = if is_multiline {
+				reader.parse_until("*/").expect("TODO").to_owned()
+			} else {
+				reader.parse_until("\n").expect("TODO").to_owned()
+			};
+			let position = start.union(reader.get_end());
+			Ok(InterfaceMember::Comment(content, is_multiline, position))
 		} else {
-			// token if token.is_comment() => {
-			// 	let token = reader.next().unwrap();
-			// 	if let Ok((comment, is_multiline, span)) = TSXToken::try_into_comment(token) {
-			// 		Ok(InterfaceMember::Comment(comment, is_multiline, span))
-			// 	} else {
-			// 		unreachable!()
-			// 	}
-			// }
-
 			// TODO
 			let header = Some(MethodHeader::default());
 
@@ -318,7 +324,7 @@ impl ASTNode for InterfaceMember {
 					// "name" is the name of the parameter name for indexing
 					// "interface parameter"
 					let start = reader.get_start();
-					let name = reader.parse_identifier().expect("TODO");
+					let name = reader.parse_identifier()?;
 
 					// Catch for computed symbol: e.g. `[Symbol.instanceOf()]`, rather than indexer
 					if reader.is_operator(".") {
@@ -389,7 +395,7 @@ impl ASTNode for InterfaceMember {
 				}
 			} else {
 				let start = reader.get_start();
-				let name = reader.parse_identifier().expect("TODO");
+				let name = reader.parse_identifier()?;
 				// TODO...?
 				let privacy = PublicOrPrivate::Public;
 				PropertyKey::Identifier(name.to_owned(), start.with_length(name.len()), privacy)
@@ -440,7 +446,7 @@ impl ASTNode for InterfaceMember {
 					position,
 				})
 			} else {
-				todo!()
+				todo!("{:?}", reader.get_current().get(..40))
 				// 	}
 				// 	token => throw_unexpected_token_with_token(
 				// 		token,
@@ -586,10 +592,6 @@ impl ASTNode for InterfaceMember {
 			}
 		}
 	}
-
-	fn get_position(&self) -> Span {
-		*GetFieldByType::get(self)
-	}
 }
 
 pub(crate) fn interface_members_from_reader(
@@ -602,9 +604,9 @@ pub(crate) fn interface_members_from_reader(
 			break;
 		}
 		let decorated_member = WithComment::from_reader(reader)?;
-		members.push(decorated_member);
 
 		if reader.is_operator("}") {
+			members.push(decorated_member);
 			break;
 		} else {
 			let comma = reader.is_keyword_advance(",");
@@ -612,9 +614,11 @@ pub(crate) fn interface_members_from_reader(
 				|| reader.last_was_from_new_line() > 0
 				|| reader.is_operator("}")
 				|| reader.is_operator_advance(";");
+
 			if !semi_colon_like {
 				todo!("error {:?}", &reader.get_current()[..10]);
 			}
+			members.push(decorated_member);
 		}
 	}
 	Ok(members)

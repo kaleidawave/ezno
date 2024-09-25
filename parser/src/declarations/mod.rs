@@ -66,7 +66,7 @@ pub enum Declaration {
 impl Declaration {
 	// TODO strict mode can affect result
 	pub(crate) fn is_declaration_start(reader: &crate::new::Lexer) -> bool {
-		let declaration_keyword = reader.is_one_of_keyword(&[
+		let declaration_keyword = reader.is_one_of_keywords(&[
 			"let",
 			"const",
 			"function",
@@ -80,10 +80,15 @@ impl Declaration {
 			"export",
 		]);
 
-		if let Some("import") = declaration_keyword {
-			let is_import_meta =
-				reader.get_current()["import".len()..].trim_start().starts_with('.');
-			!is_import_meta
+		if let Some(name @ ("import" | "namespace" | "type")) = declaration_keyword {
+			let after_declaration_keyword = reader.get_current()[name.len()..].trim_start();
+			// TODO more (is operator like?)
+			let is_declaration_keyword_expression = after_declaration_keyword.starts_with('(')
+				|| after_declaration_keyword.starts_with('.')
+				|| after_declaration_keyword.starts_with('[')
+				|| after_declaration_keyword.starts_with('(')
+				|| after_declaration_keyword.starts_with('=');
+			!is_declaration_keyword_expression
 		} else {
 			declaration_keyword.is_some()
 		}
@@ -140,93 +145,24 @@ impl Declaration {
 	}
 }
 
-#[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ImportLocation {
-	Quoted(String, Quoted),
-	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(
-		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportLocation>"))] Marker<Self>,
-	),
-}
-
-impl ImportLocation {
-	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
-		// let _existing = r#"if let (true, Some(start), Some(Token(peek, at))) =
-		// 	(options.partial_syntax, start, reader.peek())
-		// {
-		// 	let next_is_not_location_like = peek.is_statement_or_declaration_start()
-		// 		&& state
-		// 			.line_starts
-		// 			.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize);
-
-		// 	if next_is_not_location_like {
-		// 		return Ok((
-		// 			ImportLocation::Marker(state.new_partial_point_marker(*at)),
-		// 			source_map::End(start.0),
-		// 		));
-		// 	}
-		// }
-
-		reader.skip();
-
-		if reader.starts_with_string_delimeter() {
-			let start = reader.get_start();
-			let (content, quoted) = reader.parse_string_literal().expect("TODO");
-			Ok((ImportLocation::Quoted(content.to_owned(), quoted)))
-		} else {
-			todo!("{:?}", reader.get_current())
-			// else if options.interpolation_points
-			// 	&& matches!(&token.0, TSXToken::Identifier(i) if i == crate::marker::MARKER)
-			// {
-			// Ok((Self::Marker(state.new_partial_point_marker(token.1)), source_map::End(token.1 .0)))
-			// 	todo!()
-			// Err(ParseError::new(
-			// 	ParseErrors::ExpectedStringLiteral { found: token.0 },
-			// 	token.1.with_length(0),
-			// ))
-		}
-	}
-
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
-		match self {
-			ImportLocation::Quoted(inner, quoted) => {
-				buf.push(quoted.as_char());
-				buf.push_str(inner);
-				buf.push(quoted.as_char());
-			}
-			ImportLocation::Marker(_) => {}
-		}
-	}
-
-	/// Can be None if self is a marker point
-	#[must_use]
-	pub fn get_path(&self) -> Option<&str> {
-		if let Self::Quoted(name, _) = self {
-			Some(name)
-		} else {
-			None
-		}
-	}
-}
-
 impl crate::ASTNode for Declaration {
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
 		// TODO assert decorators are used. If they exist but item is not `Decorated`
 		// then need to throw a parse error
 		let decorators = decorators::decorators_from_reader(reader)?;
 
 		if reader.is_keyword("const") {
-			// TODO `const enum`
-			// Const can be either variable declaration or const enum
-			// let after_const = reader.peek_n(2);
-			// if after_const {
-			// 	EnumDeclaration::from_reader(reader)
-			// 		.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
-			// } else {
-			let declaration = VariableDeclaration::from_reader(reader)?;
-			Ok(Declaration::Variable(declaration))
-		// }
+			// Const can be either variable declaration or `const enum`
+			if reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
+				EnumDeclaration::from_reader(reader)
+					.map(|on| Declaration::Enum(Decorated::new(decorators, on)))
+			} else {
+				VariableDeclaration::from_reader(reader).map(Declaration::Variable)
+			}
 		} else if reader.is_keyword("let") {
 			let declaration = VariableDeclaration::from_reader(reader)?;
 			Ok(Declaration::Variable(declaration))
@@ -248,11 +184,14 @@ impl crate::ASTNode for Declaration {
 		} else if reader.is_keyword("type") {
 			// options.type_annotations => {
 			TypeAlias::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("namespace") {
+			// options.type_annotations => {
+			crate::types::namespace::Namespace::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("declare") {
 			let start = reader.get_start();
 			reader.advance("declare".len() as u32);
 			reader.skip();
-			if reader.is_one_of_keyword(&["let", "const", "var"]).is_some() {
+			if let Some(_keyword) = reader.is_one_of_keywords(&["let", "const", "var"]) {
 				let mut declare = DeclareVariableDeclaration::from_reader_without_declare(reader)?;
 				// TODO pass these down
 				declare.decorators = decorators;
@@ -272,8 +211,13 @@ impl crate::ASTNode for Declaration {
 				alias.name.is_declare = true;
 				alias.position.start = start.0;
 				Ok(Declaration::TypeAlias(alias))
+			} else if reader.is_keyword("namespace") {
+				let mut namespace = crate::types::namespace::Namespace::from_reader(reader)?;
+				namespace.is_declare = true;
+				namespace.position.start = start.0;
+				Ok(Declaration::Namespace(namespace))
 			} else {
-				todo!("{:?}", reader.get_current());
+				todo!("{:?}", reader.get_current().get(..20));
 			}
 		// 		#[cfg(feature = "full-typescript")]
 		// 		TSXToken::Keyword(TSXKeyword::Namespace) => {
@@ -336,7 +280,7 @@ impl crate::ASTNode for Declaration {
 			// 		TSXToken::Keyword(TSXKeyword::Generator),
 			// 	],
 			// );
-			todo!("{:?}", &reader.get_current()[..100])
+			todo!("{:?}", &reader.get_current().get(..20))
 		}
 	}
 
@@ -359,10 +303,6 @@ impl crate::ASTNode for Declaration {
 			#[cfg(feature = "full-typescript")]
 			Declaration::Namespace(ns) => ns.to_string_from_buffer(buf, options, local),
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		*self.get()
 	}
 }
 
@@ -509,7 +449,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 		&self,
 		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
 	) {
-		todo!("")
+		todo!()
 	}
 }
 
@@ -532,6 +472,7 @@ impl ImportExportName {
 		// 	let marker = state.new_partial_point_marker(*pos);
 		// 	return Ok((ImportExportName::Marker(marker), pos.union(source_map::End(pos.0))));
 		// }
+		reader.skip();
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
 			let (content, quoted) = reader.parse_string_literal().expect("TODO");
@@ -539,7 +480,7 @@ impl ImportExportName {
 			Ok((ImportExportName::Quoted(content.to_owned(), quoted), position))
 		} else {
 			// let ident = crate::tokens::token_as_identifier(token, "import alias")?;
-			let ident = reader.parse_identifier().expect("TODO").to_owned();
+			let ident = reader.parse_identifier()?.to_owned();
 			// if options.interpolation_points && ident == crate::marker::MARKER {
 			// 	Ok((ImportExportName::Marker(state.new_partial_point_marker(pos.get_start())), pos))
 			// } else {
@@ -563,6 +504,76 @@ impl ImportExportName {
 				buf.push(q.as_char());
 			}
 			ImportExportName::Marker(_) => {}
+		}
+	}
+}
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportLocation {
+	Quoted(String, Quoted),
+	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
+	Marker(
+		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportLocation>"))] Marker<Self>,
+	),
+}
+
+impl ImportLocation {
+	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+		// let _existing = r#"if let (true, Some(start), Some(Token(peek, at))) =
+		// 	(options.partial_syntax, start, reader.peek())
+		// {
+		// 	let next_is_not_location_like = peek.is_statement_or_declaration_start()
+		// 		&& state
+		// 			.line_starts
+		// 			.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize);
+
+		// 	if next_is_not_location_like {
+		// 		return Ok((
+		// 			ImportLocation::Marker(state.new_partial_point_marker(*at)),
+		// 			source_map::End(start.0),
+		// 		));
+		// 	}
+		// }
+
+		reader.skip();
+
+		if reader.starts_with_string_delimeter() {
+			let start = reader.get_start();
+			let (content, quoted) = reader.parse_string_literal().expect("TODO");
+			Ok((ImportLocation::Quoted(content.to_owned(), quoted)))
+		} else {
+			todo!("{:?}", reader.get_current().get(..20))
+			// else if options.interpolation_points
+			// 	&& matches!(&token.0, TSXToken::Identifier(i) if i == crate::marker::MARKER)
+			// {
+			// Ok((Self::Marker(state.new_partial_point_marker(token.1)), source_map::End(token.1 .0)))
+			// 	todo!()
+			// Err(ParseError::new(
+			// 	ParseErrors::ExpectedStringLiteral { found: token.0 },
+			// 	token.1.with_length(0),
+			// ))
+		}
+	}
+
+	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
+		match self {
+			ImportLocation::Quoted(inner, quoted) => {
+				buf.push(quoted.as_char());
+				buf.push_str(inner);
+				buf.push(quoted.as_char());
+			}
+			ImportLocation::Marker(_) => {}
+		}
+	}
+
+	/// Can be `None` if self is a marker point
+	#[must_use]
+	pub fn get_path(&self) -> Option<&str> {
+		if let Self::Quoted(name, _) = self {
+			Some(name)
+		} else {
+			None
 		}
 	}
 }

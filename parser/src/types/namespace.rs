@@ -15,16 +15,16 @@ pub struct Namespace {
 }
 
 impl crate::ASTNode for Namespace {
+	fn get_position(&self) -> source_map::Span {
+		*self.get()
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
 		let start = reader.expect_keyword("namespace")?;
-		todo!();
-		// let (name, _) = crate::tokens::token_as_identifier(
-		// 	reader.next().ok_or_else(crate::errors::parse_lexing_error)?,
-		// 	"namespace name",
-		// )?;
-		// let inner = Block::from_reader(reader)?;
-		// let position = start.union(inner.get_position());
-		// Ok(Self { is_declare: false, name, inner, position })
+		let name = reader.parse_identifier()?.to_owned();
+		let inner = Block::from_reader(reader)?;
+		let position = start.union(inner.get_position());
+		Ok(Self { is_declare: false, name, inner, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -42,9 +42,5 @@ impl crate::ASTNode for Namespace {
 			buf.push(' ');
 			self.inner.to_string_from_buffer(buf, options, local);
 		}
-	}
-
-	fn get_position(&self) -> source_map::Span {
-		*self.get()
 	}
 }

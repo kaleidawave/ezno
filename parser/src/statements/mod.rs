@@ -81,23 +81,18 @@ impl ASTNode for Statement {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		// TODO Labeled statements
-		// if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
-		// 	let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
-		// 	let _colon = reader.next().unwrap();
-		// 	let statement = Statement::from_reader(reader).map(Box::new)?;
-		// 	if statement.requires_semi_colon() {
-		// 		let _ = crate::expect_semi_colon(
-		// 			reader,
-		// 			&state.line_starts,
-		// 			statement.get_position().start,
-		// 			options,
-		// 		)?;
-		// 	}
-		// 	// TODO statement.can_be_labelled()
-		// 	let position = label_name_pos.union(statement.get_position());
-		// 	return Ok(Statement::Labelled { name, statement, position });
-		// }
+		if reader.after_identifier().starts_with(":") {
+			let start = reader.get_start();
+			let name = reader.parse_identifier()?.to_owned();
+			let _ = reader.expect(':')?;
+			let statement = Statement::from_reader(reader).map(Box::new)?;
+			if statement.requires_semi_colon() {
+				reader.expect_semi_colon();
+			}
+			// TODO check statement.can_be_labelled()
+			let position = start.union(statement.get_position());
+			return Ok(Statement::Labelled { name, statement, position });
+		}
 
 		reader.skip();
 		let start = reader.get_start();
@@ -119,40 +114,29 @@ impl ASTNode for Statement {
 		} else if reader.starts_with('{') {
 			Block::from_reader(reader).map(Statement::Block)
 		} else if reader.is_keyword_advance("debugger") {
-			todo!()
-		// Ok(Statement::Debugger(reader.next().unwrap().get_span()))
+			Ok(Statement::Debugger(start.with_length("debugger".len())))
 		} else if reader.is_keyword_advance("return") {
-			let mut rest_is_empty_line = true;
-			for (idx, chr) in reader.get_current().char_indices() {
-				if let '\n' = chr {
-					break;
-				} else if !chr.is_whitespace() {
-					rest_is_empty_line = false;
-					break;
-				}
-			}
-			if rest_is_empty_line {
-				Ok(Statement::Return(ReturnStatement(None, start.with_length(6))))
+			if reader.is_semi_colon() {
+				Ok(Statement::Return(ReturnStatement(None, start.with_length("return".len()))))
 			} else {
 				let multiple_expression = MultipleExpression::from_reader(reader)?;
 				let position = start.union(multiple_expression.get_position());
 				Ok(Statement::Return(ReturnStatement(Some(multiple_expression), position)))
 			}
 		} else if reader.is_keyword_advance("break") {
-			reader.skip();
-			if reader.starts_with(';') || reader.last_was_from_new_line() > 0 {
+			if reader.is_semi_colon() {
 				Ok(Statement::Break(None, start.with_length("break".len() as usize)))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier().expect("TODO");
+				let label = reader.parse_identifier()?;
 				Ok(Statement::Break(Some(label.to_owned()), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("continue") {
-			if reader.starts_with(';') || reader.last_was_from_new_line() > 0 {
+			if reader.is_semi_colon() {
 				Ok(Statement::Continue(None, start.with_length("continue".len() as usize)))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier().expect("TODO");
+				let label = reader.parse_identifier()?;
 				Ok(Statement::Continue(Some(label.to_owned()), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("throw") {

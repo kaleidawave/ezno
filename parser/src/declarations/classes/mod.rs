@@ -28,14 +28,18 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> ASTNode
 	for ClassDeclaration<U>
 {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		reader.skip();
 		let start = reader.get_start();
 		reader.expect_keyword("class")?;
 
-		let name = U::from_reader(reader)?;
-		// TODO U::not_allowed_name && keyword "extends" => error
+		let name = U::class_name_from_reader(reader)?;
 
+		// TODO check name?
 		let type_parameters = if reader.is_operator_advance("<") {
 			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
 			Some(params)
@@ -74,8 +78,9 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 			let semi_colon_like = reader.last_was_from_new_line() > 0
 				|| reader.is_operator("}")
 				|| reader.is_operator_advance(";");
+
 			if !semi_colon_like {
-				todo!("error {:?}", &reader.get_current()[..20]);
+				todo!("error {:?}", reader.get_current().get(..20));
 			}
 		}
 
@@ -122,10 +127,6 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 		}
 		options.add_indent(local.depth, buf);
 		buf.push('}');
-	}
-
-	fn get_position(&self) -> Span {
-		self.position
 	}
 }
 

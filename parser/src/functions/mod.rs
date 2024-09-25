@@ -156,7 +156,10 @@ const TYPES: &str = r"
 impl<T: FunctionBased> Eq for FunctionBase<T> {}
 
 impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
-	#[allow(clippy::similar_names)]
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let (header_and_left, name) = T::header_and_name_from_reader(reader)?;
 		Self::from_reader_with_header_and_name(reader, header_and_left, name)
@@ -190,10 +193,6 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		}
 		self.body.to_string_from_buffer(buf, options, local.next_level());
 	}
-
-	fn get_position(&self) -> Span {
-		self.position
-	}
 }
 
 #[allow(clippy::similar_names)]
@@ -210,7 +209,12 @@ impl<T: FunctionBased> FunctionBase<T> {
 		};
 		let parameters = FunctionParameters::from_reader(reader)?;
 		let return_type = if reader.is_operator_advance(":") {
-			Some(TypeAnnotation::from_reader(reader)?)
+			let precedence = if let Some("=>") = T::get_parameter_body_boundary_slice() {
+				crate::types::type_annotations::TypeOperatorKind::ReturnType
+			} else {
+				crate::types::type_annotations::TypeOperatorKind::None
+			};
+			Some(TypeAnnotation::from_reader_with_precedence(reader, precedence)?)
 		} else {
 			None
 		};
@@ -398,11 +402,21 @@ impl ASTNode for FunctionHeader {
 
 		reader.expect_keyword("function")?;
 
+		let generator_star_token_position = if reader.is_operator("*") {
+			let position = reader.get_start().with_length(1);
+			reader.advance(1);
+			Some(position)
+		} else {
+			None
+		};
+
 		// TODO
 		Ok(Self::VirginFunctionHeader {
 			is_async,
-			location: None,                      // Option<FunctionLocationModifier>,
-			generator_star_token_position: None, // Option<Span>,
+			// TODO first thing
+			// Option<FunctionLocationModifier>,
+			location: None,
+			generator_star_token_position,
 			position: start.union(reader.get_end()),
 		})
 	}
@@ -424,87 +438,6 @@ impl ASTNode for FunctionHeader {
 		}
 	}
 }
-
-// pub(crate) fn parse_special_then_regular_header(
-// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-// 	state: &mut crate::ParsingState,
-// 	async_kw_pos: Option<TokenStart>,
-// ) -> Result<FunctionHeader, crate::ParseError> {
-// 	#[cfg(feature = "extras")]
-// 	{
-// 		let next_generator = reader
-// 			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(crate::TSXKeyword::Generator)));
-
-// 		if let Some(token) = next_generator {
-// 			let span = token.get_span();
-// 			let location = parse_function_location(reader);
-
-// 			let pos = state.expect_keyword_get_full_span(reader, TSXKeyword::Function)?;
-// 			let position = span.union(pos);
-
-// 			Ok(FunctionHeader::ChadFunctionHeader {
-// 				is_async: async_kw_pos.is_some(),
-// 				location,
-// 				is_generator: true,
-// 				position,
-// 			})
-// 		} else {
-// 			parse_regular_header(reader, state, async_kw_pos)
-// 		}
-// 	}
-
-// 	#[cfg(not(feature = "extras"))]
-// 	parse_regular_header(reader, state, async_kw_pos)
-// }
-
-// #[cfg(feature = "extras")]
-// pub(crate) fn parse_function_location(
-// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-// ) -> Option<FunctionLocationModifier> {
-// 	if let Some(Token(TSXToken::Keyword(TSXKeyword::Server | TSXKeyword::Worker), _)) =
-// 		reader.peek()
-// 	{
-// 		Some(match reader.next().unwrap() {
-// 			Token(TSXToken::Keyword(TSXKeyword::Server), _) => FunctionLocationModifier::Server,
-// 			Token(TSXToken::Keyword(TSXKeyword::Worker), _) => FunctionLocationModifier::Worker,
-// 			_ => unreachable!(),
-// 		})
-// 	} else {
-// 		None
-// 	}
-// }
-
-// fn parse_regular_header(
-// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-// 	state: &mut crate::ParsingState,
-// 	async_kw_pos: Option<TokenStart>,
-// ) -> Result<FunctionHeader, crate::ParseError> {
-// 	#[cfg(feature = "extras")]
-// 	let location = parse_function_location(reader);
-
-// 	let function_start = reader.expect_keyword("TSXKeyword::Function")?;
-// 	let is_async = async_kw_pos.is_some();
-
-// 	let generator_star_token_position = reader
-// 		.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-// 		.map(|token| token.get_span());
-
-// 	let start = async_kw_pos.unwrap_or(function_start);
-
-// 	let position = if let Some(ref generator_star_token_position) = generator_star_token_position {
-// 		start.union(generator_star_token_position)
-// 	} else {
-// 		function_start.with_length(TSXKeyword::Function.length() as usize)
-// 	};
-
-// 	Ok(FunctionHeader::VirginFunctionHeader {
-// 		is_async,
-// 		generator_star_token_position,
-// 		position,
-// 		#[cfg(feature = "extras")]
-// 		location,
-// 	})
-// }
 
 impl FunctionHeader {
 	#[must_use]
@@ -570,7 +503,7 @@ impl MethodHeader {
 	}
 
 	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> Self {
-		if let Some(kind) = reader.is_one_of_keyword_advance(&["get", "set"]) {
+		if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
 			match kind {
 				"get" => MethodHeader::Get,
 				"set" => MethodHeader::Set,

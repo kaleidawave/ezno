@@ -89,6 +89,13 @@ impl<T> WithComment<T> {
 }
 
 impl<T: ASTNode> ASTNode for WithComment<T> {
+	fn get_position(&self) -> Span {
+		match self {
+			Self::None(ast) => ast.get_position(),
+			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => *position,
+		}
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.is_operator_advance("/*") {
@@ -105,13 +112,6 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 			} else {
 				Ok(Self::None(item))
 			}
-		}
-	}
-
-	fn get_position(&self) -> Span {
-		match self {
-			Self::None(ast) => ast.get_position(),
-			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => *position,
 		}
 	}
 

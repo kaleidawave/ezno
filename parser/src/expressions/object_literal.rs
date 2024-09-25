@@ -183,6 +183,10 @@ impl ASTNode for ObjectLiteral {
 }
 
 impl ASTNode for ObjectLiteralMember {
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
+	}
+
 	#[allow(clippy::similar_names)]
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
@@ -210,7 +214,6 @@ impl ASTNode for ObjectLiteralMember {
 			return Ok(Self::Spread(expression, position));
 		};
 
-		// TODO Catch for named get or set :(
 		let (header, key) = crate::functions::get_method_name(reader)?;
 
 		if reader.is_operator("(") || reader.is_operator("<") {
@@ -283,9 +286,5 @@ impl ASTNode for ObjectLiteralMember {
 				}
 			}
 		};
-	}
-
-	fn get_position(&self) -> Span {
-		*get_field_by_type::GetFieldByType::get(self)
 	}
 }

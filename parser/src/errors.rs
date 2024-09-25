@@ -224,11 +224,6 @@ impl Display for LexingErrors {
 	}
 }
 
-// For TokenReader::next which only
-pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, source_map::Nullable::NULL)
-}
-
 pub trait ParserErrorReason: Display {}
 
 impl<'a> ParserErrorReason for ParseErrors<'a> {}

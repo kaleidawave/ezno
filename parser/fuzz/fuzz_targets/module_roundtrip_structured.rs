@@ -13,9 +13,9 @@ use pretty_assertions::assert_eq;
 fn do_fuzz(data: common::FuzzSource) -> Corpus {
 	let input = data.source;
 
-	const STACK_SIZE_MB: usize = 32;
+	// const STACK_SIZE_MB: usize = 32;
 	let parse_options = ParseOptions {
-		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
+		// stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		jsx: false,
 		type_annotations: false,
 		// fixes some strange ; issues in asserting outputs same

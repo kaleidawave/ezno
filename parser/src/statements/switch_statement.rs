@@ -67,26 +67,17 @@ impl ASTNode for SwitchStatement {
 			// `TSXKeyword::Default` are delimiters
 			let mut items = Vec::new();
 			loop {
-				todo!()
-				// if let Some(Token(
-				// 	TSXToken::Keyword(TSXKeyword::Case | TSXKeyword::Default)
-				// 	| TSXToken::CloseBrace,
-				// 	_,
-				// )) = reader.peek()
-				// {
-				// 	break;
-				// }
-				// let value = StatementOrDeclaration::from_reader(reader)?;
-				// if value.requires_semi_colon() {
-				// 	let _ = crate::expect_semi_colon(
-				// 		reader,
-				// 		&state.line_starts,
-				// 		value.get_position().end,
-				// 		options,
-				// 	)?;
-				// }
-				// // Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
-				// items.push(value);
+				if reader.is_operator("}")
+					|| reader.is_one_of_keywords(&["case", "default"]).is_some()
+				{
+					break;
+				}
+				let value = StatementOrDeclaration::from_reader(reader)?;
+				if value.requires_semi_colon() {
+					reader.expect_semi_colon();
+				}
+				// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
+				items.push(value);
 			}
 
 			if let Some(case) = case {

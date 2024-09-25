@@ -133,16 +133,19 @@ impl ASTNode for AnnotationWithBinder {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		// TODO after keyword
-		// if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
-		// 	let (name, pos) =
-		// 		token_as_identifier(reader.next().unwrap(), "tuple literal named item")?;
-		// 	reader.next();
-		// 	let ty = TypeAnnotation::from_reader(reader)?;
-		// 	Ok(AnnotationWithBinder::Annotated { position: pos.union(ty.get_position()), name, ty })
-		// } else {
-		TypeAnnotation::from_reader(reader).map(Self::NoAnnotation)
-		// }
+		if reader.after_identifier().starts_with(":") {
+			let start = reader.get_start();
+			let name = reader.parse_identifier()?.to_owned();
+			let _ = reader.expect(':')?;
+			let ty = TypeAnnotation::from_reader(reader)?;
+			Ok(AnnotationWithBinder::Annotated {
+				position: start.union(ty.get_position()),
+				name,
+				ty,
+			})
+		} else {
+			TypeAnnotation::from_reader(reader).map(Self::NoAnnotation)
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -223,8 +226,12 @@ pub enum IsItem {
 }
 
 impl ASTNode for TypeAnnotation {
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		Self::from_reader_with_config(reader, None)
+		Self::from_reader_with_precedence(reader, TypeOperatorKind::None)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -428,20 +435,19 @@ impl ASTNode for TypeAnnotation {
 			}
 		}
 	}
-
-	fn get_position(&self) -> Span {
-		*get_field_by_type::GetFieldByType::get(self)
-	}
 }
 
-/// For parsing
+/// For parsing. Precedence level. WIP
 #[derive(Clone, Copy)]
 pub(crate) enum TypeOperatorKind {
+	None,
 	Union,
 	Intersection,
 	// not an implication, not an implication, not an implication
 	Function,
 	Query,
+	/// Break before `=>`
+	ReturnType,
 }
 
 const COMMON_TYPE_NAMES: &[&str] =
@@ -450,9 +456,9 @@ const COMMON_TYPE_NAMES: &[&str] =
 impl TypeAnnotation {
 	/// Also returns the local the generic arguments ran over
 	/// TODO refactor and tidy a lot of this, precedence rather than config
-	pub(crate) fn from_reader_with_config(
+	pub(crate) fn from_reader_with_precedence(
 		reader: &mut crate::new::Lexer,
-		parent_kind: Option<TypeOperatorKind>,
+		parent_kind: TypeOperatorKind,
 	) -> ParseResult<Self> {
 		let _existing = r#"if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
 			let next_is_not_type_annotation_like = matches!(
@@ -484,28 +490,26 @@ impl TypeAnnotation {
 		// 	reader.next();
 		// }
 
-		// if let (None, Some(Token(TSXToken::BitwiseOr, _))) = (parent_kind, reader.peek()) {
-		// 	reader.next();
-		// }
-		// if let (None, Some(Token(TSXToken::BitwiseAnd, _))) = (parent_kind, reader.peek()) {
-		// 	reader.next();
-		// }
+		// Yes leading syntax is allowed sometimes
+		if let TypeOperatorKind::None = parent_kind {
+			let _ = reader.is_operator_advance("|") || reader.is_operator_advance("&");
+		}
 
 		reader.skip();
 
 		let start = reader.get_start();
 
 		let mut reference = if let Some(keyword) =
-			reader.is_one_of_keyword_advance(&["true", "false"])
+			reader.is_one_of_keywords_advance(&["true", "false"])
 		{
 			TypeAnnotation::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
 		} else if reader.is_keyword_advance("this") {
 			TypeAnnotation::This(start.with_length(4))
 		} else if reader.is_keyword_advance("infer") {
-			let name = reader.parse_identifier().expect("TODO"); // , "infer name")?;
+			let name = reader.parse_identifier()?; // , "infer name")?;
 			let (position, extends) = if reader.is_keyword_advance("extends") {
 				let extends =
-					TypeAnnotation::from_reader_with_config(reader, Some(TypeOperatorKind::Query))?;
+					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 				(start.union(extends.get_position()), Some(Box::new(extends)))
 			} else {
 				let position = start.with_length(name.len());
@@ -513,7 +517,7 @@ impl TypeAnnotation {
 			};
 			TypeAnnotation::Infer { name: name.to_owned(), extends, position }
 		} else if reader.is_keyword_advance("asserts") {
-			let predicate = TypeAnnotation::from_reader_with_config(reader, parent_kind)?;
+			let predicate = TypeAnnotation::from_reader_with_precedence(reader, parent_kind)?;
 			let position = start.union(predicate.get_position());
 			TypeAnnotation::Asserts(Box::new(predicate), position)
 		} else if reader.is_keyword_advance("typeof") {
@@ -522,17 +526,17 @@ impl TypeAnnotation {
 			Self::TypeOf(Box::new(reference), position)
 		} else if reader.is_keyword_advance("readonly") {
 			let readonly_type =
-				TypeAnnotation::from_reader_with_config(reader, Some(TypeOperatorKind::Query))?;
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = start.union(readonly_type.get_position());
 			TypeAnnotation::Readonly(Box::new(readonly_type), position)
 		} else if reader.is_keyword_advance("keyof") {
 			let key_of_type =
-				TypeAnnotation::from_reader_with_config(reader, Some(TypeOperatorKind::Query))?;
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = start.union(key_of_type.get_position());
 			TypeAnnotation::KeyOf(Box::new(key_of_type), position)
 		} else if reader.is_keyword_advance("abstract") {
 			let inner_type =
-				TypeAnnotation::from_reader_with_config(reader, Some(TypeOperatorKind::Query))?;
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = start.union(inner_type.get_position());
 			TypeAnnotation::Abstract(Box::new(inner_type), position)
 		} else if reader.is_keyword_advance("new") {
@@ -556,7 +560,7 @@ impl TypeAnnotation {
 		// 	type_parameters,
 		// 	return_type: Box::new(return_type),
 		// }
-		} else if let Some(keyword) = reader.is_one_of_keyword_advance(COMMON_TYPE_NAMES) {
+		} else if let Some(keyword) = reader.is_one_of_keywords_advance(COMMON_TYPE_NAMES) {
 			let name = match keyword {
 				"string" => CommonTypes::String,
 				"number" => CommonTypes::Number,
@@ -606,7 +610,7 @@ impl TypeAnnotation {
 			let decorator = Decorator::from_reader(reader)?;
 			// TODO ...
 			let this_declaration =
-				Self::from_reader_with_config(reader, Some(TypeOperatorKind::Query))?;
+				Self::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = start.union(this_declaration.get_position());
 			Self::Decorated(decorator, Box::new(this_declaration), position)
 		} else if reader.is_operator("(") {
@@ -669,14 +673,14 @@ impl TypeAnnotation {
 			}
 			result
 		} else {
-			let name = reader.parse_identifier().expect("TODO");
+			let name = reader.parse_identifier()?;
 			let position = start.with_length(name.len());
 			let name = name.to_owned();
 
 			let name = if reader.is_operator(".") {
 				let mut namespace = vec![name];
 				while reader.is_operator_advance(".") {
-					let name = reader.parse_identifier().expect("TODO");
+					let name = reader.parse_identifier()?;
 					namespace.push(name.to_owned());
 				}
 				let position = position.union(reader.get_end());
@@ -777,9 +781,9 @@ impl TypeAnnotation {
 
 			match type_annotation_as_name(reference) {
 				Ok((item, span)) => {
-					let is_type = TypeAnnotation::from_reader_with_config(
+					let is_type = TypeAnnotation::from_reader_with_precedence(
 						reader,
-						Some(TypeOperatorKind::Query),
+						TypeOperatorKind::Query,
 					)?;
 					// TODO local
 					let position = span.union(is_type.get_position());
@@ -797,12 +801,12 @@ impl TypeAnnotation {
 		}
 
 		if reader.is_keyword("extends") {
-			if parent_kind.is_some() {
+			if let TypeOperatorKind::Query = parent_kind {
 				return Ok(reference);
 			}
 			reader.advance("extends".len() as u32);
 			let extends_type =
-				TypeAnnotation::from_reader_with_config(reader, Some(TypeOperatorKind::Query))?;
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = reference.get_position().union(extends_type.get_position());
 			reference = TypeAnnotation::Extends {
 				item: Box::new(reference),
@@ -811,52 +815,55 @@ impl TypeAnnotation {
 			};
 		}
 
+		// Fix for `as` and `satisfies` expressions
+		if reader.is_one_of(&["||", "&&"]).is_some() {
+			return Ok(reference);
+		}
+
 		// Intersections, unions, conditonals and (special) implicit function literals
-		if reader.is_operator("|") {
-			if let Some(TypeOperatorKind::Query | TypeOperatorKind::Function) = parent_kind {
+		while let Some(operator) = reader.is_one_of_operators(&["|", "&"]) {
+			if let TypeOperatorKind::Function = parent_kind {
+				return Ok(reference);
+			} else if let ("|", TypeOperatorKind::Intersection) = (operator, parent_kind) {
 				return Ok(reference);
 			}
-			let mut members = vec![reference];
-			while reader.is_operator_advance("|") {
-				members.push(Self::from_reader_with_config(
-					reader,
-					Some(parent_kind.unwrap_or(TypeOperatorKind::Union)),
-				)?);
+			reader.advance(1);
+			if let "&" = operator {
+				let precedence = TypeOperatorKind::Intersection;
+				let rhs = Self::from_reader_with_precedence(reader, precedence)?;
+				let position = reference.get_position().union(rhs.get_position());
+				if let TypeAnnotation::Intersection(members, existing) = &mut reference {
+					*existing = position;
+					members.push(rhs);
+				} else {
+					reference = TypeAnnotation::Intersection(vec![reference, rhs], position)
+				}
+			} else if let "|" = operator {
+				let rhs = Self::from_reader_with_precedence(reader, parent_kind)?;
+				let position = reference.get_position().union(rhs.get_position());
+				if let TypeAnnotation::Union(members, existing) = &mut reference {
+					*existing = position;
+					members.push(rhs);
+				} else {
+					reference = TypeAnnotation::Union(vec![reference, rhs], position)
+				}
+			} else {
+				unreachable!("{operator}")
 			}
-			let position = members
-				.first()
-				.unwrap()
-				.get_position()
-				.union(members.last().unwrap().get_position());
-			Ok(Self::Union(members, position))
-		} else if reader.is_operator("&") {
-			if let Some(
-				TypeOperatorKind::Union | TypeOperatorKind::Query | TypeOperatorKind::Function,
-			) = parent_kind
-			{
-				return Ok(reference);
-			}
-			let mut members = vec![reference];
-			while reader.is_operator_advance("&") {
-				members.push(Self::from_reader_with_config(
-					reader,
-					Some(parent_kind.unwrap_or(TypeOperatorKind::Intersection)),
-				)?);
-			}
-			let position = members
-				.first()
-				.unwrap()
-				.get_position()
-				.union(members.last().unwrap().get_position());
-			Ok(Self::Intersection(members, position))
-		} else if reader.is_operator("=>") {
+		}
+
+		if reader.is_operator("=>") {
 			// TODO is this good syntax?
-			if let Some(TypeOperatorKind::Query | TypeOperatorKind::Function) = parent_kind {
+			if let TypeOperatorKind::Query
+			| TypeOperatorKind::Function
+			| TypeOperatorKind::ReturnType
+			| TypeOperatorKind::Intersection = parent_kind
+			{
 				return Ok(reference);
 			}
 			reader.advance(2);
 			let return_type =
-				Self::from_reader_with_config(reader, Some(TypeOperatorKind::Function))?;
+				Self::from_reader_with_precedence(reader, TypeOperatorKind::Function)?;
 			let parameters_position = reference.get_position();
 			let position = parameters_position.union(return_type.get_position());
 			Ok(Self::FunctionLiteral {
@@ -876,7 +883,7 @@ impl TypeAnnotation {
 				return_type: Box::new(return_type),
 			})
 		} else if reader.is_operator("?") {
-			if let Some(TypeOperatorKind::Query) = parent_kind {
+			if let TypeOperatorKind::Query = parent_kind {
 				return Ok(reference);
 			}
 			reader.advance(1);
@@ -927,7 +934,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			let start = reader.get_start();
 
 			if reader.is_operator_advance("...") {
-				let name = reader.parse_identifier().expect("TODO").to_owned();
+				let name = reader.parse_identifier()?.to_owned();
 				// // TODO is this a good feature
 				// let name = if reader.after_identifier().starts_with(":") {
 				// 	Some(WithComment::<VariableField>::from_reader(reader)?)
@@ -952,14 +959,16 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				break;
 			} else {
 				// TODO is this a good feature
-				let name = if reader.after_identifier().starts_with(":") {
-					Some(WithComment::<VariableField>::from_reader(reader)?)
-				} else {
-					None
-				};
+				let after_identifier = reader.after_identifier();
+				let name =
+					if after_identifier.starts_with(":") || after_identifier.starts_with("?:") {
+						Some(WithComment::<VariableField>::from_reader(reader)?)
+					} else {
+						None
+					};
 
 				let is_optional = if name.is_some() {
-					if reader.is_operator_advance(":?") {
+					if reader.is_operator_advance("?:") {
 						true
 					} else if reader.is_operator_advance(":") {
 						false

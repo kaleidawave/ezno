@@ -1,6 +1,6 @@
 use crate::{
-	ast::FunctionArgument, derive_ASTNode, errors::parse_lexing_error, ASTNode, Expression,
-	ParseError, ParseOptions, ParseResult, Span,
+	ast::FunctionArgument, derive_ASTNode, ASTNode, Expression, ParseError, ParseOptions,
+	ParseResult, Span,
 };
 use visitable_derive::Visitable;
 
@@ -38,6 +38,10 @@ impl From<JSXElement> for JSXNode {
 }
 
 impl ASTNode for JSXElement {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('<')?;
 		let tag_name = reader.parse_identifier().unwrap().to_owned();
@@ -96,7 +100,7 @@ impl ASTNode for JSXElement {
 
 		let children = jsx_children_from_reader(reader)?;
 		if reader.is_operator_advance("</") {
-			let closing_tag_name = reader.parse_identifier().expect("TODO");
+			let closing_tag_name = reader.parse_identifier()?;
 			let end = reader.expect('>')?;
 			if closing_tag_name != tag_name {
 				todo!()
@@ -146,10 +150,6 @@ impl ASTNode for JSXElement {
 			}
 		}
 	}
-
-	fn get_position(&self) -> Span {
-		self.position
-	}
 }
 
 #[apply(derive_ASTNode)]
@@ -187,6 +187,13 @@ impl ASTNode for JSXFragment {
 }
 
 impl ASTNode for JSXRoot {
+	fn get_position(&self) -> Span {
+		match self {
+			JSXRoot::Element(element) => element.get_position(),
+			JSXRoot::Fragment(fragment) => fragment.get_position(),
+		}
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.starts_with_str("<>") {
 			JSXFragment::from_reader(reader).map(JSXRoot::Fragment)
@@ -204,13 +211,6 @@ impl ASTNode for JSXRoot {
 		match self {
 			JSXRoot::Element(element) => element.to_string_from_buffer(buf, options, local),
 			JSXRoot::Fragment(fragment) => fragment.to_string_from_buffer(buf, options, local),
-		}
-	}
-
-	fn get_position(&self) -> Span {
-		match self {
-			JSXRoot::Element(element) => element.get_position(),
-			JSXRoot::Fragment(fragment) => fragment.get_position(),
 		}
 	}
 }
@@ -288,7 +288,6 @@ impl ASTNode for JSXNode {
 			let content = reader.parse_until("-->");
 			todo!("comment")
 		} else if reader.starts_with_str("<") {
-			dbg!();
 			let element = JSXElement::from_reader(reader)?;
 			Ok(JSXNode::Element(element))
 		} else {

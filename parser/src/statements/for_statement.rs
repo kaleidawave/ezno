@@ -91,9 +91,16 @@ pub enum ForLoopCondition {
 }
 
 impl ASTNode for ForLoopCondition {
+	fn get_position(&self) -> Span {
+		match self {
+			ForLoopCondition::ForOf { position, .. }
+			| ForLoopCondition::ForIn { position, .. }
+			| ForLoopCondition::Statements { position, .. } => *position,
+		}
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		reader.expect('(')?;
-
 		reader.skip();
 
 		let start = reader.get_start();
@@ -107,6 +114,8 @@ impl ASTNode for ForLoopCondition {
 				Some(VariableKeyword::Const)
 			} else if reader.is_keyword_advance("let") {
 				Some(VariableKeyword::Let)
+			} else if reader.is_keyword_advance("var") {
+				Some(VariableKeyword::Var)
 			} else {
 				None
 			};
@@ -123,6 +132,8 @@ impl ASTNode for ForLoopCondition {
 				Some(VariableKeyword::Const)
 			} else if reader.is_keyword_advance("let") {
 				Some(VariableKeyword::Let)
+			} else if reader.is_keyword_advance("var") {
+				Some(VariableKeyword::Var)
 			} else {
 				None
 			};
@@ -137,7 +148,7 @@ impl ASTNode for ForLoopCondition {
 			// Not great `is_await`, set from above
 			Self::ForOf { variable, keyword, of, position, is_await: false }
 		} else {
-			let initialiser = if reader.is_one_of_keyword(&["const", "let"]).is_some() {
+			let initialiser = if reader.is_one_of_keywords(&["const", "let"]).is_some() {
 				let declaration = VariableDeclaration::from_reader(reader)?;
 				Some(ForLoopStatementInitialiser::VariableDeclaration(declaration))
 			} else if reader.is_keyword("var") {
@@ -260,14 +271,6 @@ impl ASTNode for ForLoopCondition {
 			}
 		}
 		buf.push(')');
-	}
-
-	fn get_position(&self) -> Span {
-		match self {
-			ForLoopCondition::ForOf { position, .. }
-			| ForLoopCondition::ForIn { position, .. }
-			| ForLoopCondition::Statements { position, .. } => *position,
-		}
 	}
 }
 

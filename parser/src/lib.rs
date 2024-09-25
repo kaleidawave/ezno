@@ -42,7 +42,6 @@ pub use extensions::{
 pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
 use iterator_endiate::EndiateIteratorExt;
-pub use lexer::LexerOptions;
 pub use modules::Module;
 pub use options::*;
 pub use property_key::PropertyKey;
@@ -179,7 +178,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
 		partial_points: Default::default(),
 	};
-	let mut lexer = crate::new::Lexer::new(script, offset, options.get_lex_options());
+	let mut lexer = crate::new::Lexer::new(script, offset, options);
 
 	T::from_reader(&mut lexer).map(|ok| (ok, state))
 }
@@ -296,6 +295,7 @@ pub trait ExpressionOrStatementPosition:
 	type FunctionBody: ASTNode;
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self>;
+	fn class_name_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self>;
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier>;
 
@@ -329,6 +329,10 @@ impl ExpressionOrStatementPosition for StatementPosition {
 			.map(|identifier| Self { identifier, is_declare: false })
 	}
 
+	fn class_name_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		Self::from_reader(reader)
+	}
+
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier> {
 		Some(&self.identifier)
 	}
@@ -355,9 +359,17 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		reader.skip();
+		let is_not_name = reader.is_finished() || reader.is_one_of(&["(", "{", "[", "<"]).is_some();
+		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
+		Ok(Self(inner))
+	}
+
+	fn class_name_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		reader.skip();
+		// TODO "implements" is TS syntax (reader options)
 		let is_not_name = reader.is_finished()
-			|| reader.is_keyword("extends")
-			|| reader.is_one_of(&["(", "{", "["]).is_some();
+			|| reader.is_one_of_keywords(&["extends", "implements"]).is_some()
+			|| reader.is_one_of(&["(", "{", "[", "<"]).is_some();
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
 	}
@@ -403,7 +415,6 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
 		if let Some(empty) = T::EMPTY {
-			// let Token(next, _) = reader.peek().ok_or_else(parse_lexing_error)?;
 			// if matches!(next, TSXToken::Comma) || *next == end {
 			// 	if matches!(next, TSXToken::Comma) || (*next == end && !nodes.is_empty()) {
 			// 		nodes.push(empty);
@@ -436,7 +447,8 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 		if reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		} else {
-			todo!();
+			let current = reader.get_current();
+			todo!("error {:?} at {:?}", current.get(..20).unwrap_or(current), reader.head);
 			// let position = token.get_span();
 			// return Err(ParseError::new(
 			// 	crate::ParseErrors::UnexpectedToken {
@@ -562,7 +574,8 @@ impl VariableKeyword {
 		} else if reader.is_keyword_advance("var") {
 			Ok(Self::Var)
 		} else {
-			todo!("error here {:?}", reader.get_current())
+			let current = reader.get_current();
+			todo!("error here {:?}", current.get(..20).unwrap_or(current));
 		}
 	}
 

@@ -82,17 +82,19 @@ impl FunctionBased for ArrowFunctionBase {
 		local: crate::LocalToStringInformation,
 	) {
 		// Use shorthand if one parameter with no declared type
-		if let (true, [Parameter { name, .. }]) =
-			(parameters.rest_parameter.is_none(), parameters.parameters.as_slice())
+		if let ([Parameter { name, type_annotation, .. }], None) =
+			(parameters.parameters.as_slice(), &parameters.rest_parameter)
 		{
-			if let VariableField::Name(name, ..) = name.get_ast_ref() {
-				name.to_string_from_buffer(buf, options, local);
-			} else {
-				parameters.to_string_from_buffer(buf, options, local);
+			let is_printing_type_annotation =
+				options.include_type_annotations && type_annotation.is_some();
+			if !is_printing_type_annotation {
+				if let VariableField::Name(name, ..) = name.get_ast_ref() {
+					name.to_string_from_buffer(buf, options, local);
+					return;
+				}
 			}
-		} else {
-			parameters.to_string_from_buffer(buf, options, local);
 		}
+		parameters.to_string_from_buffer(buf, options, local);
 	}
 
 	fn parameter_body_boundary_token_to_string_from_buffer<T: source_map::ToString>(
@@ -161,32 +163,6 @@ impl ArrowFunction {
 		};
 		Ok(arrow_function)
 	}
-
-	// pub(crate) fn from_reader_sub_open_paren(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-	// 	let _existing = r#"let parameters =
-	// 		FunctionParameters::from_reader_sub_open_parenthesis(reader, start)?;
-
-	// 	let return_type = if reader
-	// 		.conditional_next(|token| options.type_annotations && matches!(token, TSXToken::Colon))
-	// 		.is_some()
-	// 	{
-	// 		Some(TypeAnnotation::from_reader(reader)?)
-	// 	} else {
-	// 		None
-	// 	};
-	// 	reader.expect(TSXToken::Arrow)?;
-	// 	let body = ExpressionOrBlock::from_reader(reader)?;
-	// 	Ok(FunctionBase {
-	// 		header: is_async,
-	// 		name: (),
-	// 		parameters,
-	// 		return_type,
-	// 		type_parameters: None,
-	// 		position: start.union(body.get_position()),
-	// 		body,
-	// 	})"#;
-	// 	todo!();
-	// }
 }
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies

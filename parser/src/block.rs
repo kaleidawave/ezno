@@ -5,16 +5,9 @@ use visitable_derive::Visitable;
 
 use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
-	derive_ASTNode, // expect_semi_colon,
+	derive_ASTNode,
 	marker::MARKER,
-	Declaration,
-	Decorated,
-	Marker,
-	ParseOptions,
-	ParseResult,
-	Statement,
-	VisitOptions,
-	Visitable,
+	Declaration, Decorated, Marker, ParseOptions, ParseResult, Statement, VisitOptions, Visitable,
 };
 
 #[apply(derive_ASTNode)]
@@ -142,6 +135,10 @@ impl<'a> From<&'a mut Block> for BlockLikeMut<'a> {
 }
 
 impl ASTNode for Block {
+	fn get_position(&self) -> Span {
+		self.1
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('{')?;
 		let items = statements_and_declarations_from_reader(reader)?;
@@ -171,10 +168,6 @@ impl ASTNode for Block {
 			}
 			buf.push('}');
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		self.1
 	}
 }
 
@@ -231,6 +224,59 @@ impl Visitable for Block {
 				items
 					.rev()
 					.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+			}
+		}
+	}
+}
+
+impl ASTNode for BlockOrSingleStatement {
+	fn get_position(&self) -> Span {
+		match self {
+			BlockOrSingleStatement::Braced(blk) => blk.get_position(),
+			BlockOrSingleStatement::SingleStatement(stmt) => stmt.get_position(),
+		}
+	}
+
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let stmt = Statement::from_reader(reader)?;
+		// dbg!(&stmt, reader.get_current());
+		Ok(match stmt {
+			Statement::Block(blk) => Self::Braced(blk),
+			stmt => {
+				if stmt.requires_semi_colon() {
+					reader.expect_semi_colon();
+				}
+				Box::new(stmt).into()
+			}
+		})
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		if buf.should_halt() {
+			return;
+		}
+		match self {
+			BlockOrSingleStatement::Braced(block) => {
+				block.to_string_from_buffer(buf, options, local);
+			}
+			BlockOrSingleStatement::SingleStatement(statement) => {
+				if let Statement::Empty(..) = &**statement {
+					buf.push(';');
+				} else if options.pretty && !options.single_statement_on_new_line {
+					buf.push_new_line();
+					options.push_gap_optionally(buf);
+					statement.to_string_from_buffer(buf, options, local.next_level());
+				} else {
+					statement.to_string_from_buffer(buf, options, local);
+					if statement.requires_semi_colon() {
+						buf.push(';');
+					}
+				}
 			}
 		}
 	}
@@ -296,63 +342,6 @@ impl From<Statement> for BlockOrSingleStatement {
 	}
 }
 
-impl ASTNode for BlockOrSingleStatement {
-	fn get_position(&self) -> Span {
-		match self {
-			BlockOrSingleStatement::Braced(blk) => blk.get_position(),
-			BlockOrSingleStatement::SingleStatement(stmt) => stmt.get_position(),
-		}
-	}
-
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let stmt = Statement::from_reader(reader)?;
-		Ok(match stmt {
-			Statement::Block(blk) => Self::Braced(blk),
-			stmt => {
-				// if stmt.requires_semi_colon() {
-				// 	let _ = expect_semi_colon(
-				// 		reader,
-				// 		&state.line_starts,
-				// 		stmt.get_position().end,
-				// 		options,
-				// 	)?;
-				// }
-				Box::new(stmt).into()
-			}
-		})
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		if buf.should_halt() {
-			return;
-		}
-		match self {
-			BlockOrSingleStatement::Braced(block) => {
-				block.to_string_from_buffer(buf, options, local);
-			}
-			BlockOrSingleStatement::SingleStatement(statement) => {
-				if let Statement::Empty(..) = &**statement {
-					buf.push(';');
-				} else if options.pretty && !options.single_statement_on_new_line {
-					buf.push_new_line();
-					options.push_gap_optionally(buf);
-					statement.to_string_from_buffer(buf, options, local.next_level());
-				} else {
-					statement.to_string_from_buffer(buf, options, local);
-					if statement.requires_semi_colon() {
-						buf.push(';');
-					}
-				}
-			}
-		}
-	}
-}
-
 /// Parse statements, regardless of bracing or not
 pub(crate) fn statements_and_declarations_from_reader(
 	reader: &mut crate::new::Lexer,
@@ -368,14 +357,7 @@ pub(crate) fn statements_and_declarations_from_reader(
 		// let end = reader.get_end();
 
 		if item.requires_semi_colon() {
-			// TODO abstract
-			let semi_colon_like = reader.starts_with_str("//")
-				|| reader.last_was_from_new_line() > 0
-				|| reader.is_operator("}")
-				|| reader.is_operator_advance(";");
-			if !semi_colon_like {
-				todo!("error {:?}", &reader.get_current()[..20]);
-			}
+			reader.expect_semi_colon();
 		}
 
 		// let blank_lines_after_statement = if requires_semi_colon {

@@ -17,6 +17,10 @@ pub struct TypeAlias {
 }
 
 impl ASTNode for TypeAlias {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
 		let start = reader.get_start();
 		let _ = reader.expect_keyword("type")?;
@@ -53,9 +57,5 @@ impl ASTNode for TypeAlias {
 			buf.push_str(" = ");
 			self.references.to_string_from_buffer(buf, options, local);
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		self.position
 	}
 }

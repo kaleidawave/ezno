@@ -71,6 +71,11 @@ impl ASTNode for ClassMember {
 			todo!("comment; return Ok(Self::Comment(comment, is_multiline, span));");
 		}
 
+		// TODO temp fixes
+		let _ = reader.is_keyword_advance("declare");
+		let _ = reader.is_keyword_advance("public");
+		let _ = reader.is_keyword_advance("private");
+
 		if reader.is_keyword("constructor") {
 			let constructor = ClassConstructor::from_reader(reader)?;
 			return Ok(ClassMember::Constructor(constructor));

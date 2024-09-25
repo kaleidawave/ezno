@@ -14,6 +14,15 @@ pub enum ImportedItems {
 	All { under: VariableIdentifier },
 }
 
+impl ImportedItems {
+	pub fn is_some(&self) -> bool {
+		match self {
+			Self::Parts(None) => false,
+			_ => true,
+		}
+	}
+}
+
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -32,11 +41,16 @@ pub struct ImportDeclaration {
 }
 
 impl ASTNode for ImportDeclaration {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let out = import_specifier_and_parts_from_reader(reader)?;
 
-		if !matches!(out.items, ImportedItems::Parts(None)) && out.default.is_none() {
+		// If not `import "./side_effect.js"`
+		if out.items.is_some() || out.default.is_some() {
 			reader.expect_keyword("from")?;
 		}
 
@@ -116,10 +130,6 @@ impl ASTNode for ImportDeclaration {
 		}
 		self.from.to_string_from_buffer(buf);
 	}
-
-	fn get_position(&self) -> Span {
-		self.position
-	}
 }
 
 impl ImportDeclaration {
@@ -161,7 +171,7 @@ pub(crate) struct PartsResult {
 	pub items: ImportedItems,
 }
 
-/// Covers import and exports
+/// Covers `import` keyword, more 2
 pub(crate) fn import_specifier_and_parts_from_reader(
 	reader: &mut crate::new::Lexer,
 ) -> ParseResult<PartsResult> {
@@ -175,8 +185,11 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 	// TODO temp
 
 	reader.skip();
-	let is_identifier = reader.get_current().chars().next().is_some_and(|c| c.is_alphabetic());
-
+	let is_identifier = reader
+		.get_current()
+		.chars()
+		.next()
+		.is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$');
 	let default = if is_identifier {
 		let default_identifier = VariableIdentifier::from_reader(reader)?;
 		if reader.is_operator_advance(",") {
@@ -195,7 +208,6 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 		None
 	};
 
-	// let peek = reader.peek();
 	let items = if reader.is_operator_advance("*") {
 		reader.expect_keyword("as")?;
 		let under = VariableIdentifier::from_reader(reader)?;
@@ -203,11 +215,10 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 	} else if reader.is_operator_advance("{") {
 		let (parts, _) = bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
 		ImportedItems::Parts(Some(parts))
-	} else if reader.starts_with_string_delimeter() {
-		todo!("what")
-	// ImportedItems::Parts(None)
+	} else if reader.starts_with_string_delimeter() || reader.is_keyword("from") {
+		ImportedItems::Parts(None)
 	} else {
-		todo!("{:?}", reader.get_current())
+		todo!("error for: {:?}", reader.get_current().get(..20).unwrap_or(reader.get_current()))
 		// return throw_unexpected_token(reader, &[TSXToken::Multiply, TSXToken::OpenBrace]);
 	};
 

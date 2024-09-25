@@ -132,17 +132,58 @@ impl ASTNode for ExportDeclaration {
 				exported: Exportable::ImportAll { r#as, from },
 				position: start.union(end),
 			})
+		} else if reader.is_operator("{") {
+			if reader.after_brackets().starts_with("from") {
+				reader.advance(1);
+
+				let (parts, _) =
+					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
+				reader.expect_keyword("from")?;
+
+				let from = ImportLocation::from_reader(reader)?;
+				let end = reader.get_end();
+				Ok(Self::Item {
+					exported: Exportable::ImportParts { parts, from, type_definitions_only: false },
+					position: start.union(end),
+				})
+			} else {
+				reader.advance(1);
+				let (parts, _) =
+					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
+				let end = reader.get_end();
+				Ok(Self::Item { exported: Exportable::Parts(parts), position: start.union(end) })
+			}
 		} else if reader.is_keyword("class") {
 			let class_declaration = ClassDeclaration::from_reader(reader)?;
 			let position = start.union(class_declaration.get_position());
 			Ok(ExportDeclaration::Item { exported: Exportable::Class(class_declaration), position })
-		} else if reader.is_one_of_keyword(&["const", "let"]).is_some() {
-			let variable_declaration = VariableDeclaration::from_reader(reader)?;
-			let position = start.union(variable_declaration.get_position());
+		} else if let Some(keyword) = reader.is_one_of_keywords(&["const", "let"]) {
+			if keyword == "const"
+				&& reader.get_current()["const".len()..].trim_start().starts_with("enum ")
+			{
+				let enum_declaration = EnumDeclaration::from_reader(reader)?;
+				let position = start.union(enum_declaration.get_position());
+				Ok(ExportDeclaration::Item {
+					exported: Exportable::EnumDeclaration(enum_declaration),
+					position,
+				})
+			} else {
+				let variable_declaration = VariableDeclaration::from_reader(reader)?;
+				let position = start.union(variable_declaration.get_position());
+				Ok(ExportDeclaration::Item {
+					exported: Exportable::Variable(variable_declaration),
+					position,
+				})
+			}
+		} else if reader.is_keyword("function") {
+			let function_declaration = StatementFunction::from_reader(reader)?;
+			let position = start.union(function_declaration.get_position());
 			Ok(ExportDeclaration::Item {
-				exported: Exportable::Variable(variable_declaration),
+				exported: Exportable::Function(function_declaration),
 				position,
 			})
+		} else if reader.is_keyword("var") {
+			todo!()
 		} else if reader.is_keyword("interface") {
 			let interface_declaration = InterfaceDeclaration::from_reader(reader)?;
 			let position = start.union(interface_declaration.get_position());
@@ -176,65 +217,16 @@ impl ASTNode for ExportDeclaration {
 				let position = start.union(type_alias.get_position());
 				Ok(Self::Item { exported: Exportable::TypeAlias(type_alias), position })
 			}
-		} else if reader.is_operator_advance("{") {
-			// let mut bracket_depth = 1;
-			// let after_bracket = reader.scan(|token, _| match token {
-			// 	TSXToken::OpenBrace => {
-			// 		bracket_depth += 1;
-			// 		false
-			// 	}
-			// 	TSXToken::CloseBrace => {
-			// 		bracket_depth -= 1;
-			// 		bracket_depth == 0
-			// 	}
-			// 	_ => false,
-			// });
-			// if let Some(Token(token_type, _)) = after_bracket {
-			// 	if let TSXToken::Keyword(TSXKeyword::From) = token_type {
-			// 		let (parts, _, _end) = crate::bracketed_items_from_reader::<ImportExportPart<_>>(
-			// 			reader,
-			// 			state,
-			// 			options,
-			// 			None,
-			// 			TSXToken::CloseBrace,
-			// 		)?;
-			// 		let Token(_from_kw, start) = reader.next().unwrap();
-			// 		state.append_keyword_at_pos(start.0, TSXKeyword::From);
-
-			// 		let (from, end) =
-			// 			ImportLocation::from_reader(reader, Some(start))?;
-			// 		Ok(Self::Variable {
-			// 			exported: Exportable::ImportParts {
-			// 				parts,
-			// 				from,
-			// 				type_definitions_only: false,
-			// 			},
-			// 			position: start.union(end),
-			// 		})
-			// 	} else {
-			// 		let (parts, _, end) = crate::bracketed_items_from_reader::<ImportExportPart<_>>(
-			// 			reader,
-			// 			state,
-			// 			options,
-			// 			None,
-			// 			TSXToken::CloseBrace,
-			// 		)?;
-			// 		Ok(Self::Variable {
-			// 			exported: Exportable::Parts(parts),
-			// 			position: start.union(end),
-			// 		})
-			// 	}
-			// } else {
-			// 	Err(ParseError::new(
-			// 		crate::ParseErrors::UnmatchedBrackets,
-			// 		start.with_length(1),
-			// 	))
-			// }
-			todo!()
-		} else if reader.is_keyword("var") {
-			todo!()
+		} else if reader.is_keyword("enum") {
+			let enum_declaration = EnumDeclaration::from_reader(reader)?;
+			let position = start.union(enum_declaration.get_position());
+			// .map(|on| Declaration::Enum(Decorated::new(decorators, on)))
+			Ok(ExportDeclaration::Item {
+				exported: Exportable::EnumDeclaration(enum_declaration),
+				position,
+			})
 		} else {
-			todo!("{:?}", reader.get_current())
+			todo!("{:?}", reader.get_current().get(..20))
 			// }
 			// Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
 			// 	let function_declaration = StatementFunction::from_reader(reader)?;
