@@ -448,7 +448,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 
 					for ta in iter {
 						let ty = synthesise_type_annotation(ta, environment, checking_data);
-						extends = checking_data.types.new_and_type(extends, ty).unwrap();
+						extends = checking_data.types.new_and_type(extends, ty);
 					}
 
 					checking_data.types.set_extends_on_interface(interface_type, extends);

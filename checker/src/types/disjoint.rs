@@ -74,7 +74,7 @@ pub fn types_are_disjoint(
 		}) = lhs_ty
 		{
 			use super::subtyping;
-			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let lhs_inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 			let mut state = subtyping::State {
 				// TODO
 				already_checked: already_checked.clone(),
@@ -84,16 +84,16 @@ pub fn types_are_disjoint(
 				object_constraints: None,
 			};
 
-			crate::utilities::notify!("{:?}", (lhs, inner));
+			crate::utilities::notify!("{:?}", (lhs, lhs_inner));
 
-			subtyping::type_is_subtype(rhs, inner, &mut state, information, types).is_subtype()
+			subtyping::type_is_subtype(lhs_inner, rhs, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,
 			arguments,
 		}) = rhs_ty
 		{
 			use super::subtyping;
-			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let rhs_inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 			let mut state = subtyping::State {
 				// TODO
 				already_checked: already_checked.clone(),
@@ -103,9 +103,9 @@ pub fn types_are_disjoint(
 				object_constraints: None,
 			};
 
-			crate::utilities::notify!("{:?}", (lhs, inner));
+			crate::utilities::notify!("{:?}", (lhs, rhs_inner));
 
-			subtyping::type_is_subtype(lhs, inner, &mut state, information, types).is_subtype()
+			subtyping::type_is_subtype(rhs_inner, lhs, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
 			arguments: _,

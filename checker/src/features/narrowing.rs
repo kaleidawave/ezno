@@ -460,6 +460,9 @@ pub(crate) fn build_union_from_filter(
 		build_union_from_filter(rhs, filter, found, information, types);
 	} else if let Some(constraint) = crate::types::get_constraint(on, types) {
 		build_union_from_filter(constraint, filter, found, information, types);
+	} else if let TypeId::BOOLEAN_TYPE = on {
+		build_union_from_filter(TypeId::TRUE, filter, found, information, types);
+		build_union_from_filter(TypeId::FALSE, filter, found, information, types);
 	} else {
 		let not_already_added = !found.contains(&on);
 		if not_already_added && filter.type_matches_filter(on, information, types, false) {
