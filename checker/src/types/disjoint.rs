@@ -84,7 +84,7 @@ pub fn types_are_disjoint(
 				object_constraints: None,
 			};
 
-			crate::utilities::notify!("{:?}", (lhs, lhs_inner));
+			// crate::utilities::notify!("{:?}", (lhs, lhs_inner));
 
 			subtyping::type_is_subtype(lhs_inner, rhs, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -103,7 +103,7 @@ pub fn types_are_disjoint(
 				object_constraints: None,
 			};
 
-			crate::utilities::notify!("{:?}", (lhs, rhs_inner));
+			crate::utilities::notify!("{:?}", (rhs, rhs_inner));
 
 			subtyping::type_is_subtype(rhs_inner, lhs, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -116,6 +116,20 @@ pub fn types_are_disjoint(
 				let overlap = range.overlaps(rhs_range);
 				crate::utilities::notify!("{:?}", overlap);
 				!overlap
+			} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::MULTIPLE_OF,
+				arguments,
+			}) = rhs_ty
+			{
+				let multiple_of = types.get_type_by_id(
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
+				);
+				if let Type::Constant(Constant::Number(multiple_of)) = multiple_of {
+					!range.contains_multiple_of(*multiple_of)
+				} else {
+					crate::utilities::notify!("Here");
+					true
+				}
 			} else {
 				crate::utilities::notify!("Here");
 				true
@@ -130,6 +144,20 @@ pub fn types_are_disjoint(
 				let overlap = range.overlaps(lhs_range);
 				crate::utilities::notify!("{:?}", overlap);
 				!overlap
+			} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::MULTIPLE_OF,
+				arguments,
+			}) = lhs_ty
+			{
+				let multiple_of = types.get_type_by_id(
+					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
+				);
+				if let Type::Constant(Constant::Number(multiple_of)) = multiple_of {
+					!range.contains_multiple_of(*multiple_of)
+				} else {
+					crate::utilities::notify!("Here");
+					true
+				}
 			} else {
 				crate::utilities::notify!("Here");
 				true
@@ -144,23 +172,24 @@ pub fn types_are_disjoint(
 				types.get_type_by_id(
 					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
 				),
-				types.get_type_by_id(rhs),
+				rhs_ty,
 			) {
 				let result = rhs % lhs != 0.;
 				crate::utilities::notify!("{:?} {:?}", rhs, lhs);
 				result
 			} else {
 				crate::utilities::notify!("Here");
-				false
+				true
 			}
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::MULTIPLE_OF,
 			arguments,
 		}) = rhs_ty
 		{
+			let lhs = types.get_type_by_id(lhs);
 			// Little bit complex here because dealing with decimal types, not integers
 			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
-				types.get_type_by_id(lhs),
+				lhs,
 				types.get_type_by_id(
 					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
 				),
@@ -169,8 +198,8 @@ pub fn types_are_disjoint(
 				crate::utilities::notify!("{:?} {:?}", lhs, rhs);
 				result
 			} else {
-				crate::utilities::notify!("Here");
-				false
+				crate::utilities::notify!("Here {:?}", lhs);
+				true
 			}
 		} else if let Some(lhs) = super::get_constraint(lhs, types) {
 			// TODO not sure whether these should be here?
@@ -192,6 +221,18 @@ pub fn types_are_disjoint(
 			}
 		} else if let Type::Constant(rhs_cst) = rhs_ty {
 			types_are_disjoint(rhs_cst.get_backing_type(), lhs, already_checked, information, types)
+		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
+			_properties,
+		)) = lhs_ty
+		{
+			// TODO check properties
+			false
+		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
+			_properties,
+		)) = rhs_ty
+		{
+			// TODO check properties
+			false
 		} else {
 			crate::utilities::notify!(
 				"{:?} cap {:?} == empty ? cases. Might be missing, calling disjoint",

@@ -141,6 +141,17 @@ impl FloatRange {
 		}
 	}
 
+	pub fn contains_multiple_of(self, multiple_of: BetterF64) -> bool {
+		let (Self::Inclusive { floor, ceiling } | Self::Exclusive { floor, ceiling }) = self;
+
+		// (2, 4)
+		let floor = floor / multiple_of;
+		let ceiling = ceiling / multiple_of;
+
+		// TODO >= ?
+		ceiling.floor() > *floor
+	}
+
 	// TODO more :)
 }
 

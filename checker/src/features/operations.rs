@@ -669,7 +669,23 @@ pub fn evaluate_logical_operation_with_expression<
 			|env: &mut Environment, data: &mut CheckingData<T, A>| {
 				A::synthesise_expression(rhs, expecting, env, data)
 			},
-			Some(|_env: &mut Environment, _data: &mut CheckingData<T, A>| lhs.0),
+			Some(|env: &mut Environment, checking_data: &mut CheckingData<T, A>| {
+				if let Some(constraint) = crate::types::get_constraint(lhs.0, &checking_data.types)
+				{
+					let mut result = Vec::new();
+					super::narrowing::build_union_from_filter(
+						constraint,
+						super::narrowing::FASLY,
+						&mut result,
+						env,
+						&checking_data.types,
+					);
+					let narrowed_to = checking_data.types.new_or_type_from_iterator(result);
+					checking_data.types.register_type(Type::Narrowed { from: lhs.0, narrowed_to })
+				} else {
+					lhs.0
+				}
+			}),
 			checking_data,
 		)),
 		LogicalOperator::Or => Ok(new_conditional_context(

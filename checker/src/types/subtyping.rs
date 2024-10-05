@@ -267,7 +267,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				types,
 			);
 			// Temp fix for narrowing constants
-			crate::utilities::notify!("{:?}", super::helpers::is_not_of_constant(*right, types));
+			// crate::utilities::notify!("{:?}", super::helpers::is_not_of_constant(*right, types));
 			// SubTypeResult::IsNotSubType(_)
 			return if let (Type::Narrowed { from, .. }, _, true) =
 				(subtype, &result, super::helpers::is_not_of_constant(*right, types))
@@ -343,26 +343,13 @@ pub(crate) fn type_is_subtype_with_generics(
 		// TODO others
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: on @ TypeId::NOT_RESTRICTION,
-			arguments,
+			arguments: _,
 		}) => {
 			match *on {
 				TypeId::NOT_RESTRICTION => {
-					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
-					// https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Set/Basic.html#Set.subset_compl_comm -> https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Set/Basic.html#Set.subset_compl_iff_disjoint_left
-
-					let result = super::disjoint::types_are_disjoint(
-						base_type,
-						inner,
-						&mut state.already_checked,
-						information,
-						types,
-					);
-					// crate::utilities::notify!("Here {:?}", (&result, inner));
-					return if result {
-						SubTypeResult::IsSubType
-					} else {
-						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-					};
+					// This only happens when subtype ∪ supertype = `any`. This is only true when
+					// one is `any`. `Not<any>` is already `never` and `supertype = any` is handled above
+					return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
 				}
 				_ => unreachable!(),
 			}
@@ -440,14 +427,14 @@ pub(crate) fn type_is_subtype_with_generics(
 			// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
 			let right_arg = get_constraint(ty, types).unwrap();
 
-			crate::utilities::notify!(
-				"edge case {:?}",
-				(
-					types.get_type_by_id(ty),
-					types.get_type_by_id(right_arg),
-					types.get_type_by_id(right_arg).is_operator()
-				)
-			);
+			// crate::utilities::notify!(
+			// 	"RHS is parameter, edge case results to {:?}",
+			// 	(
+			// 		types.get_type_by_id(ty),
+			// 		types.get_type_by_id(right_arg),
+			// 		types.get_type_by_id(right_arg).is_operator()
+			// 	)
+			// );
 
 			// This is important that LHS is not operator
 			let left_is_operator_right_is_not =
@@ -2586,7 +2573,10 @@ pub(crate) fn slice_matches_type(
 					allow_casts,
 				)
 			} else if let Some(contributions) = contributions {
-				assert!(rpt.is_substitutable());
+				if !rpt.is_substitutable() {
+					eprintln!("{:?}", rpt);
+				}
+				// assert!(rpt.is_substitutable(), "{:?}", rpt);
 				let constraint = rpt.get_constraint();
 				let res = slice_matches_type(
 					(constraint, base_type_arguments),

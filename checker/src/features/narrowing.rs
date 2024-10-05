@@ -41,22 +41,34 @@ pub fn narrow_based_on_expression(
 				{
 					let from = get_origin(*on, types);
 					if let Type::Constant(Constant::String(c)) = types.get_type_by_id(*rhs) {
-						let narrowed_to = crate::features::string_name_to_type(c);
-						if let Some(narrowed_to) = narrowed_to {
+						let type_from_name = crate::features::string_name_to_type(c);
+						if let Some(type_from_name) = type_from_name {
 							if negate {
-								let mut result = Vec::new();
-								build_union_from_filter(
-									from,
-									Filter::Not(&Filter::IsType(narrowed_to)),
-									&mut result,
-									information,
-									types,
-								);
-								let narrowed_to = types.new_or_type_from_iterator(result);
+								crate::utilities::notify!("{:?}", from);
+								// TODO temp fix
+								let narrowed_to = if let Some(TypeId::ANY_TYPE) =
+									crate::types::get_constraint(from, types)
+								{
+									crate::types::intrinsics::new_intrinsic(
+										&crate::types::intrinsics::Intrinsic::Not,
+										type_from_name,
+										types,
+									)
+								} else {
+									let mut result = Vec::new();
+									build_union_from_filter(
+										from,
+										Filter::Not(&Filter::IsType(type_from_name)),
+										&mut result,
+										information,
+										types,
+									);
+									types.new_or_type_from_iterator(result)
+								};
 								let narrowed = types.new_narrowed(from, narrowed_to);
 								into.insert(from, narrowed);
 							} else {
-								let narrowed = types.new_narrowed(from, narrowed_to);
+								let narrowed = types.new_narrowed(from, type_from_name);
 								into.insert(from, narrowed);
 							}
 						} else {
@@ -364,10 +376,11 @@ pub(crate) enum Filter<'a> {
 static NULL_OR_UNDEFINED: Filter<'static> = Filter::NullOrUndefined;
 pub(crate) static NOT_NULL_OR_UNDEFINED: Filter<'static> = Filter::Not(&NULL_OR_UNDEFINED);
 
-static FASLY: Filter<'static> = Filter::Falsy;
+pub(crate) static FASLY: Filter<'static> = Filter::Falsy;
 pub(crate) static NOT_FASLY: Filter<'static> = Filter::Not(&FASLY);
 
 impl<'a> Filter<'a> {
+	// Returns `true` if `value` passes filter
 	pub(crate) fn type_matches_filter(
 		&self,
 		value: TypeId,
@@ -432,6 +445,12 @@ impl<'a> Filter<'a> {
 				(allowed_match && is_null_or_undefined) || (!allowed_match && !is_null_or_undefined)
 			}
 			Filter::Falsy => {
+				let can_be_falsy = [TypeId::NUMBER_TYPE, TypeId::STRING_TYPE, TypeId::BOOLEAN_TYPE];
+
+				if can_be_falsy.contains(&value) {
+					return true;
+				}
+
 				let is_falsy = [
 					TypeId::NULL_TYPE,
 					TypeId::UNDEFINED_TYPE,
@@ -447,6 +466,7 @@ impl<'a> Filter<'a> {
 	}
 }
 
+/// Important that this does not handle `any` well with negated filters. It needs to generate negated types but only has non-mutable access to `TypeStore`
 #[allow(clippy::used_underscore_binding)]
 pub(crate) fn build_union_from_filter(
 	on: TypeId,
