@@ -184,18 +184,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					}
 				}
 
-				use ezno_parser::{ast, functions, expressions::operators, Expression, Statement};
+				use ezno_parser::{ast, expressions::operators, functions, Expression, Statement};
 
 				let parameters = declare_lets
-				.into_iter()
-				.map(|(name, type_annotation)| functions::Parameter {
-					visibility: (),
-					name,
-					type_annotation,
-					additionally: None,
-					position: Span::NULL,
-				})
-				.collect();
+					.into_iter()
+					.map(|(name, type_annotation)| functions::Parameter {
+						visibility: (),
+						name,
+						type_annotation,
+						additionally: None,
+						position: Span::NULL,
+					})
+					.collect();
 				let function = Expression::ArrowFunction(ast::ArrowFunction {
 					// TODO maybe async
 					header: false,
