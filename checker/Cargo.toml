@@ -39,7 +39,7 @@ path-absolutize = { version = "3.0", features = ["use_unix_paths_on_wasm"] }
 either = "1.6"
 levenshtein = "1"
 ordered-float = "4.2"
-regress = { version = "0.10.0", features = [] }
+regress = { version = "0.10", features = [] }
 
 serde = { version = "1.0", features = ["derive"], optional = true }
 simple-json-parser = "0.0.2"

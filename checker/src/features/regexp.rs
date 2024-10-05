@@ -15,7 +15,7 @@ pub struct RegExp {
 	source: String,
 	re: Regex,
 	groups: u32,
-	named_group_indices: crate::Map<String, u16>,
+	group_names: Vec<String>,
 	flags_unsupported: bool,
 	used: bool,
 }
@@ -65,13 +65,12 @@ impl RegExp {
 		// let start_pred = compiled_regex.start_pred;
 		// let loops = compiled_regex.loops;
 		let groups = compiled_regex.groups + 1;
-		let named_group_indices =
-			compiled_regex.named_group_indices.iter().map(|(l, r)| (l.clone(), *r)).collect();
+		let group_names = compiled_regex.group_names.iter().map(|l| l.into()).collect();
 		// let flags = compiled_regex.flags;
 
 		let re = Regex::from(compiled_regex);
 
-		Ok(Self { source, re, groups, named_group_indices, flags_unsupported, used: false })
+		Ok(Self { source, re, groups, group_names, flags_unsupported, used: false })
 	}
 
 	#[must_use]
@@ -262,7 +261,7 @@ impl RegExp {
 					&mut environment.info,
 				);
 
-				for name in self.named_group_indices.keys() {
+				for name in &self.group_names {
 					let key = PropertyKey::String(name.to_string().into());
 
 					named_groups_object.append(
