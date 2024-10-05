@@ -26,6 +26,9 @@ pub trait DeclarationExpression:
 	fn as_option_expression_ref(&self) -> Option<&Expression>;
 
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression>;
+
+	/// TS nonsence
+	fn allow_definite_assignment_assertions() -> bool;
 }
 
 impl DeclarationExpression for Option<Expression> {
@@ -60,6 +63,10 @@ impl DeclarationExpression for Option<Expression> {
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression> {
 		self.as_mut()
 	}
+
+	fn allow_definite_assignment_assertions() -> bool {
+		true
+	}
 }
 
 impl DeclarationExpression for crate::Expression {
@@ -89,6 +96,10 @@ impl DeclarationExpression for crate::Expression {
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression> {
 		Some(self)
 	}
+
+	fn allow_definite_assignment_assertions() -> bool {
+		false
+	}
 }
 
 /// Represents a name =
@@ -110,6 +121,10 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let name = WithComment::<VariableField>::from_reader(reader)?;
+		if TExpr::allow_definite_assignment_assertions() {
+			let _ = reader.is_operator_advance("!");
+		}
+
 		let type_annotation = if reader.is_operator_advance(":") {
 			Some(TypeAnnotation::from_reader(reader)?)
 		} else {

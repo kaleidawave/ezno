@@ -3,7 +3,6 @@
 
 use crate::{
 	errors::{ParseError, ParseErrors},
-	html_tag_contains_literal_content, html_tag_is_self_closing,
 	options::ParseOptions,
 	Comments, Quoted, Span,
 };
@@ -96,6 +95,14 @@ impl<'a> Lexer<'a> {
 
 	pub fn get_current(&self) -> &'a str {
 		&self.script[self.head as usize..]
+	}
+
+	pub fn get_some_current(&self) -> (&'a str, usize) {
+		(
+			&self.script
+				[self.head as usize..std::cmp::min(self.script.len(), self.head as usize + 20)],
+			self.head as usize,
+		)
 	}
 
 	// TODO temp
@@ -629,7 +636,7 @@ impl<'a> Lexer<'a> {
 			}
 		}
 
-		let number = crate::number::NumberRepresentation::from_str(current).expect("TODO");
+		let number = crate::number::NumberRepresentation::from_str(current).expect("bad number");
 		let length = current.len() as u32;
 		self.head += length;
 		return Ok((number, length));
@@ -693,14 +700,31 @@ impl<'a> Lexer<'a> {
 	// TODO also can exit if there is `=` or `:` and = 0 in some examples
 	pub fn after_brackets(&self) -> &'a str {
 		let current = self.get_current();
-		let mut paren_count: u32 = 0;
+		let mut bracket_count: u32 = 0;
+		let mut open_chevrons = 0u64;
 		// TODO account for string literals and comments
+		// TODO account for utf16
 		for (idx, chr) in current.as_bytes().into_iter().enumerate() {
 			if let b'(' | b'{' | b'[' | b'<' = chr {
-				paren_count += 1;
+				open_chevrons |= (*chr == b'<') as u64;
+				open_chevrons = open_chevrons << 1;
+				bracket_count += 1;
 			} else if let b')' | b'}' | b']' | b'>' = chr {
-				paren_count = paren_count.saturating_sub(1);
-				if paren_count == 0 {
+				// TODO WIP
+				open_chevrons = open_chevrons >> 1;
+				let last_was_open_chevron = (open_chevrons & 1) != 0;
+				if last_was_open_chevron {
+					if let b')' | b'}' | b']' = chr {
+						// Extra removal
+						open_chevrons = open_chevrons >> 1;
+						bracket_count.saturating_sub(1);
+					}
+				} else if let b'>' = chr {
+					continue;
+				}
+
+				bracket_count = bracket_count.saturating_sub(1);
+				if bracket_count == 0 {
 					// dbg!(&current[..idx]);
 					return &current[(idx + 1)..].trim_start();
 				}

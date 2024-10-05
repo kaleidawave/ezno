@@ -342,6 +342,14 @@ impl From<Statement> for BlockOrSingleStatement {
 	}
 }
 
+impl From<crate::Expression> for StatementOrDeclaration {
+	fn from(expr: crate::Expression) -> Self {
+		StatementOrDeclaration::Statement(Statement::Expression(
+			crate::expressions::MultipleExpression::from(expr),
+		))
+	}
+}
+
 /// Parse statements, regardless of bracing or not
 pub(crate) fn statements_and_declarations_from_reader(
 	reader: &mut crate::new::Lexer,

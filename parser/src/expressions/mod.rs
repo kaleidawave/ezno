@@ -17,7 +17,7 @@ use self::{
 };
 
 use super::{
-	ASTNode, Block, FunctionBase, JSXRoot, ParseError, ParseOptions, Span, TypeAnnotation,
+	jsx::JSXRoot, ASTNode, Block, FunctionBase, ParseError, ParseOptions, Span, TypeAnnotation,
 };
 
 #[cfg(feature = "extras")]
@@ -714,8 +714,18 @@ impl Expression {
 				// TODO if next is arrrow
 				// } else {
 
-				// TODO on the same line
-				if reader.is_operator("=>") {
+				// Use this method to also not advance
+				// `trim` but without newlines
+				fn after_spaces_or_tabs(slices: &str) -> &str {
+					for (idx, chr) in slices.char_indices() {
+						if !matches!(chr, ' ' | '\t') {
+							return &slices[idx..];
+						}
+					}
+					Default::default()
+				}
+
+				if after_spaces_or_tabs(reader.get_current()).starts_with("=>") {
 					let identifier = crate::VariableIdentifier::Standard(name.to_owned(), position);
 					let is_async = false;
 					ArrowFunction::from_reader_with_first_parameter(reader, is_async, identifier)

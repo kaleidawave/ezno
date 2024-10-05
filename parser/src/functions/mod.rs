@@ -11,8 +11,10 @@ use crate::{
 use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Nullable, Span, ToString};
 
-mod parameters;
+pub mod parameters;
 pub use parameters::*;
+
+pub use crate::expressions::ArrowFunction;
 
 pub mod bases {
 	pub use crate::{

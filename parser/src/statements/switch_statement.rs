@@ -49,8 +49,17 @@ impl ASTNode for SwitchStatement {
 			} else if reader.is_operator_advance("default") {
 				reader.expect(':')?;
 				None
+			} else if reader.is_one_of(&["//", "/*"]).is_some() {
+				let is_multiline = reader.starts_with_str("/*");
+				reader.advance(2);
+				let _content = if is_multiline {
+					reader.parse_until("*/").expect("TODO").to_owned()
+				} else {
+					reader.parse_until("\n").expect("TODO").to_owned()
+				};
+				continue;
 			} else {
-				todo!()
+				todo!("{:?}", reader.get_some_current());
 				// token => {
 				// 	return throw_unexpected_token_with_token(
 				// 		token,

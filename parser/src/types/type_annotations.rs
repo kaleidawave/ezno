@@ -540,26 +540,22 @@ impl TypeAnnotation {
 			let position = start.union(inner_type.get_position());
 			TypeAnnotation::Abstract(Box::new(inner_type), position)
 		} else if reader.is_keyword_advance("new") {
-			todo!();
-		// let type_parameters = reader
-		// 	.conditional_next(|token| *token == TSXToken::OpenChevron)
-		// 	.is_some()
-		// 	.then(|| {
-		// 		bracketed_items_from_reader(reader, None, TSXToken::CloseChevron)
-		// 			.map(|(params, _, _)| params)
-		// 	})
-		// 	.transpose()?;
-		// let parameters =
-		// 	TypeAnnotationFunctionParameters::from_reader(reader)?;
-
-		// reader.expect(TSXToken::Arrow)?;
-		// let return_type = Self::from_reader(reader)?;
-		// Self::ConstructorLiteral {
-		// 	position: start.union(return_type.get_position()),
-		// 	parameters,
-		// 	type_parameters,
-		// 	return_type: Box::new(return_type),
-		// }
+			let type_parameters = if reader.starts_with('<') {
+				let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
+				Some(type_parameters)
+			} else {
+				None
+			};
+			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+			reader.expect_operator("=>")?;
+			let return_type = Box::new(TypeAnnotation::from_reader(reader)?);
+			let position = start.union(return_type.get_position());
+			TypeAnnotation::ConstructorLiteral {
+				position,
+				parameters,
+				type_parameters,
+				return_type,
+			}
 		} else if let Some(keyword) = reader.is_one_of_keywords_advance(COMMON_TYPE_NAMES) {
 			let name = match keyword {
 				"string" => CommonTypes::String,
@@ -615,7 +611,8 @@ impl TypeAnnotation {
 			Self::Decorated(decorator, Box::new(this_declaration), position)
 		} else if reader.is_operator("(") {
 			// Function literal or group
-			let is_arrow_function = reader.after_brackets().starts_with("=>");
+			let after = reader.after_brackets();
+			let is_arrow_function = after.starts_with("=>");
 
 			if is_arrow_function {
 				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
@@ -634,13 +631,13 @@ impl TypeAnnotation {
 				Self::ParenthesizedReference(type_annotation.into(), position)
 			}
 		} else if reader.is_operator_advance("<") {
-			let (generic_parameters, _) = bracketed_items_from_reader(reader, ">")?;
+			let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
 			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
 			reader.expect_operator("=>")?;
 			let return_type = Self::from_reader(reader)?;
 			Self::FunctionLiteral {
 				position: start.union(return_type.get_position()),
-				type_parameters: Some(generic_parameters),
+				type_parameters: Some(type_parameters),
 				parameters,
 				return_type: Box::new(return_type),
 			}

@@ -23,10 +23,12 @@ pub struct JSXElement {
 	pub position: Span,
 }
 
+pub type JSXChildren = Vec<JSXNode>;
+
 #[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXElementChildren {
-	Children(Vec<JSXNode>),
+	Children(JSXChildren),
 	/// For img elements
 	SelfClosing,
 }
@@ -152,11 +154,74 @@ impl ASTNode for JSXElement {
 	}
 }
 
+/// TODO spread attributes and boolean attributes
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
+pub enum JSXAttribute {
+	Static(String, String, Span),
+	Dynamic(String, Box<Expression>, Span),
+	BooleanAttribute(String, Span),
+	Spread(Expression, Span),
+	/// Preferably want a identifier here not an expr
+	Shorthand(Expression),
+}
+
+impl ASTNode for JSXAttribute {
+	fn get_position(&self) -> Span {
+		match self {
+			JSXAttribute::Static(_, _, pos)
+			| JSXAttribute::Dynamic(_, _, pos)
+			| JSXAttribute::BooleanAttribute(_, pos) => *pos,
+			JSXAttribute::Spread(_, spread_pos) => *spread_pos,
+			JSXAttribute::Shorthand(expr) => expr.get_position(),
+		}
+	}
+
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let _existing = r#"todo!("this is currently done in `JSXElement::from_reader`")"#;
+		todo!();
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		match self {
+			JSXAttribute::Static(key, expression, _) => {
+				buf.push_str(key.as_str());
+				buf.push('=');
+				buf.push('"');
+				buf.push_str(expression.as_str());
+				buf.push('"');
+			}
+			JSXAttribute::Dynamic(key, expression, _) => {
+				buf.push_str(key.as_str());
+				buf.push('=');
+				buf.push('{');
+				expression.to_string_from_buffer(buf, options, local);
+				buf.push('}');
+			}
+			JSXAttribute::BooleanAttribute(key, _) => {
+				buf.push_str(key.as_str());
+			}
+			JSXAttribute::Spread(expr, _) => {
+				buf.push_str("...");
+				expr.to_string_from_buffer(buf, options, local);
+			}
+			JSXAttribute::Shorthand(expr) => {
+				expr.to_string_from_buffer(buf, options, local);
+			}
+		}
+	}
+}
+
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct JSXFragment {
-	pub children: Vec<JSXNode>,
+	pub children: JSXChildren,
 	pub position: Span,
 }
 
@@ -324,69 +389,6 @@ impl ASTNode for JSXNode {
 					buf.push_str(comment);
 					buf.push_str("-->");
 				}
-			}
-		}
-	}
-}
-
-/// TODO spread attributes and boolean attributes
-#[derive(Debug, Clone, PartialEq, Visitable)]
-#[apply(derive_ASTNode)]
-pub enum JSXAttribute {
-	Static(String, String, Span),
-	Dynamic(String, Box<Expression>, Span),
-	BooleanAttribute(String, Span),
-	Spread(Expression, Span),
-	/// Preferably want a identifier here not an expr
-	Shorthand(Expression),
-}
-
-impl ASTNode for JSXAttribute {
-	fn get_position(&self) -> Span {
-		match self {
-			JSXAttribute::Static(_, _, pos)
-			| JSXAttribute::Dynamic(_, _, pos)
-			| JSXAttribute::BooleanAttribute(_, pos) => *pos,
-			JSXAttribute::Spread(_, spread_pos) => *spread_pos,
-			JSXAttribute::Shorthand(expr) => expr.get_position(),
-		}
-	}
-
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"todo!("this is currently done in `JSXElement::from_reader`")"#;
-		todo!();
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		match self {
-			JSXAttribute::Static(key, expression, _) => {
-				buf.push_str(key.as_str());
-				buf.push('=');
-				buf.push('"');
-				buf.push_str(expression.as_str());
-				buf.push('"');
-			}
-			JSXAttribute::Dynamic(key, expression, _) => {
-				buf.push_str(key.as_str());
-				buf.push('=');
-				buf.push('{');
-				expression.to_string_from_buffer(buf, options, local);
-				buf.push('}');
-			}
-			JSXAttribute::BooleanAttribute(key, _) => {
-				buf.push_str(key.as_str());
-			}
-			JSXAttribute::Spread(expr, _) => {
-				buf.push_str("...");
-				expr.to_string_from_buffer(buf, options, local);
-			}
-			JSXAttribute::Shorthand(expr) => {
-				expr.to_string_from_buffer(buf, options, local);
 			}
 		}
 	}

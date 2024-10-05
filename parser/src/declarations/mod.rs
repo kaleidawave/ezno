@@ -4,7 +4,7 @@ pub mod import;
 pub mod variable;
 
 pub use super::types::{
-	declare_variable::*,
+	declare_variable::DeclareVariableDeclaration,
 	enum_declaration::{EnumDeclaration, EnumMember},
 	interface::InterfaceDeclaration,
 	type_alias::TypeAlias,

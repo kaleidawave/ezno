@@ -115,12 +115,12 @@ jobs:
       - name: Run parsing & stringing (minfied) benchmarks
         shell: bash
         run: |
-          strings=(
+          urls=(
             "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
           )
           # Currently broken "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
 
-          for url in "${strings[@]}"; do
+          for url in "${urls[@]}"; do
               curl -sS $url > input.js
               echo "--- debug: $url ---"
               cargo run -p ezno-parser --example parse input.js --timings --render-timings

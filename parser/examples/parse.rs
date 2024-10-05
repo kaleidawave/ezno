@@ -53,9 +53,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let source = std::fs::read_to_string(path.clone())?;
 
-	let source_id = fs.new_source_id(path.into(), source.clone());
+	eprintln!("parsing {:?} bytes ({})", source.len(), path);
 
-	eprintln!("parsing {:?} bytes", source.len());
+	let source_id = fs.new_source_id(path.into(), source.clone());
 
 	// TODO temp
 	const STACK_SIZE_MB: usize = 16;
