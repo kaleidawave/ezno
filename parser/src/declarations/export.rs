@@ -46,6 +46,8 @@ pub enum Exportable {
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
 	EnumDeclaration(EnumDeclaration),
+	#[cfg(feature = "full-typescript")]
+	Namespace(crate::types::namespace::Namespace),
 	Parts(Vec<ImportExportPart<ExportDeclaration>>),
 	ImportAll {
 		r#as: Option<VariableIdentifier>,
@@ -226,6 +228,14 @@ impl ASTNode for ExportDeclaration {
 				position,
 			})
 		} else {
+			#[cfg(feature = "full-typescript")]
+			if reader.is_keyword("namespace") {
+				let namespace = crate::types::namespace::Namespace::from_reader(reader)?;
+				let position = start.union(namespace.get_position());
+
+				return Ok(Self::Item { exported: Exportable::Namespace(namespace), position });
+			}
+
 			todo!("{:?}", reader.get_current().get(..20))
 			// }
 			// Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
@@ -278,6 +288,10 @@ impl ASTNode for ExportDeclaration {
 					}
 					Exportable::EnumDeclaration(enum_declaration) => {
 						enum_declaration.to_string_from_buffer(buf, options, local);
+					}
+					#[cfg(feature = "full-typescript")]
+					Exportable::Namespace(namespace) => {
+						namespace.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::Parts(parts) => {
 						super::import_export_parts_to_string_from_buffer(
