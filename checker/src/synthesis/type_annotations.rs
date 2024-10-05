@@ -248,10 +248,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							// crate::utilities::notify!(
 							// 	"{:?} and {:?}",
 							// 	inner_type_alias_id,
-							// 	inner_type_alias_id.is_some_and(intrinsics::tsc_string_intrinsic)
+							// 	inner_type_alias_id.is_some_and(intrinsics::is_tsc_string_intrinsic)
 							// );
 
-							if intrinsics::tsc_string_intrinsic(inner_type_id) {
+							if intrinsics::is_tsc_string_intrinsic(inner_type_id) {
 								distribute_tsc_string_intrinsic(
 									inner_type_id,
 									type_arguments.get(&TypeId::STRING_GENERIC).unwrap().0,
@@ -354,10 +354,15 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			let mut acc = iterator.next().expect("Empty intersection");
 			for right in iterator {
-				if let Ok(new_ty) = checking_data.types.new_and_type(acc, right) {
-					acc = new_ty;
-				} else {
-					checking_data.diagnostics_container.add_error(
+				let is_disjoint = crate::types::disjoint::types_are_disjoint(
+					acc,
+					right,
+					&mut Vec::new(),
+					environment,
+					&checking_data.types,
+				);
+				if is_disjoint {
+					checking_data.diagnostics_container.add_warning(
 						TypeCheckWarning::TypesDoNotIntersect {
 							left: TypeStringRepresentation::from_type_id(
 								acc,
@@ -374,7 +379,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							position: position.with_source(environment.get_source()),
 						},
 					);
-					return TypeId::ERROR_TYPE;
+					return TypeId::NEVER_TYPE;
+				// return TypeId::ERROR_TYPE;
+				} else {
+					acc = checking_data.types.new_and_type(acc, right);
 				}
 			}
 			acc

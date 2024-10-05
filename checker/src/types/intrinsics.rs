@@ -93,7 +93,7 @@ pub(crate) fn apply_string_intrinsic(on: TypeId, s: &str) -> String {
 }
 
 #[must_use]
-pub fn tsc_string_intrinsic(id: TypeId) -> bool {
+pub fn is_tsc_string_intrinsic(id: TypeId) -> bool {
 	matches!(
 		id,
 		TypeId::STRING_UPPERCASE
@@ -105,8 +105,8 @@ pub fn tsc_string_intrinsic(id: TypeId) -> bool {
 
 #[must_use]
 pub fn is_intrinsic(id: TypeId) -> bool {
-	tsc_string_intrinsic(id)
-		|| ezno_number_intrinsic(id)
+	is_tsc_string_intrinsic(id)
+		|| is_ezno_number_intrinsic(id)
 		|| matches!(
 			id,
 			TypeId::LITERAL_RESTRICTION
@@ -119,8 +119,8 @@ pub fn is_intrinsic(id: TypeId) -> bool {
 }
 
 #[must_use]
-pub fn ezno_number_intrinsic(id: TypeId) -> bool {
-	matches!(id, TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE | TypeId::MULTIPLE_OF)
+pub fn is_ezno_number_intrinsic(id: TypeId) -> bool {
+	matches!(id, TypeId::GREATER_THAN | TypeId::LESS_THAN | TypeId::MULTIPLE_OF)
 }
 
 #[must_use]
@@ -128,14 +128,16 @@ pub fn get_greater_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)>
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
+		on: TypeId::GREATER_THAN,
 		arguments,
 	}) = ty
 	{
-		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
-		let floor = arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
-		Some((inclusive, floor))
+		let floor = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+		Some((false, floor))
 	} else if let Type::And(lhs, rhs) = ty {
+		get_greater_than(*lhs, types).or_else(|| get_greater_than(*rhs, types))
+	} else if let Type::Or(lhs, rhs) = ty {
+		// TODO temp
 		get_greater_than(*lhs, types).or_else(|| get_greater_than(*rhs, types))
 	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
 		Some((true, on))
@@ -149,16 +151,16 @@ pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	let on = get_constraint(on, types).unwrap_or(on);
 	let ty = types.get_type_by_id(on);
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
+		on: TypeId::LESS_THAN,
 		arguments,
 	}) = ty
 	{
-		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
-		Some((
-			inclusive,
-			arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap(),
-		))
+		let floor = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+		Some((false, floor))
 	} else if let Type::And(lhs, rhs) = ty {
+		get_less_than(*lhs, types).or_else(|| get_less_than(*rhs, types))
+	} else if let Type::Or(lhs, rhs) = ty {
+		// TODO temp
 		get_less_than(*lhs, types).or_else(|| get_less_than(*rhs, types))
 	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
 		Some((true, on))
@@ -169,57 +171,66 @@ pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 
 #[must_use]
 pub fn get_range(on: TypeId, types: &TypeStore) -> Option<FloatRange> {
-	let on = get_constraint(on, types).unwrap_or(on);
-	let ty = types.get_type_by_id(on);
-	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-		on: on @ (TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE),
-		arguments,
-	}) = ty
-	{
-		let inclusive = *on == TypeId::INCLUSIVE_RANGE;
-		crate::utilities::notify!("{:?} {:?}", on, arguments);
-		let floor = arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
-		let ceiling = arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap();
-		if let (
-			Type::Constant(crate::Constant::Number(floor)),
-			Type::Constant(crate::Constant::Number(ceiling)),
-		) = (types.get_type_by_id(floor), types.get_type_by_id(ceiling))
+	fn get_range2(range: &mut FloatRange, on: TypeId, types: &TypeStore) -> bool {
+		let on = get_constraint(on, types).unwrap_or(on);
+		let ty = types.get_type_by_id(on);
+		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
+			arguments,
+		}) = ty
 		{
-			let (floor, ceiling) = (*floor, *ceiling);
-			Some(if inclusive {
-				FloatRange::Inclusive { floor, ceiling }
+			let argument = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+			if let Type::Constant(crate::Constant::Number(argument)) =
+				types.get_type_by_id(argument)
+			{
+				if let TypeId::GREATER_THAN = *on {
+					range.floor.1 = *argument;
+				} else {
+					range.ceiling.1 = *argument;
+				}
+				true
 			} else {
-				FloatRange::Exclusive { floor, ceiling }
-			})
+				false
+			}
+		} else if let Type::And(_l, _r) = ty {
+			// todo!("take intersection")
+			false
+		} else if let Type::Or(_l, _r) = ty {
+			// todo!("change inclusivity based on ==")
+			false
+		} else if let Type::Constant(crate::Constant::Number(number)) = ty {
+			*range = FloatRange::single(*number);
+			true
 		} else {
-			crate::utilities::notify!("Not bottom top number");
-			None
+			false
 		}
-	} else if let Type::Constant(crate::Constant::Number(number)) = ty {
-		Some(FloatRange::single(*number))
-	} else {
-		None
 	}
+
+	let mut range = FloatRange::default();
+	let ok = get_range2(&mut range, on, types);
+	ok.then_some(range)
 }
 
 #[must_use]
-pub fn range_to_type(range: FloatRange, types: &mut TypeStore) -> TypeId {
-	use source_map::Nullable;
+pub fn range_to_type(_range: FloatRange, _types: &mut TypeStore) -> TypeId {
+	// use source_map::Nullable;
 
-	let on = if let FloatRange::Inclusive { .. } = range {
-		TypeId::INCLUSIVE_RANGE
-	} else {
-		TypeId::EXCLUSIVE_RANGE
-	};
-	let (FloatRange::Inclusive { floor, ceiling } | FloatRange::Exclusive { floor, ceiling }) =
-		range;
-	let floor = types.new_constant_type(crate::Constant::Number(floor));
-	let ceiling = types.new_constant_type(crate::Constant::Number(ceiling));
-	let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
-		(TypeId::NUMBER_FLOOR_GENERIC, (floor, SpanWithSource::NULL)),
-		(TypeId::NUMBER_CEILING_GENERIC, (ceiling, SpanWithSource::NULL)),
-	]));
-	types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }))
+	// let on = if let FloatRange::Inclusive { .. } = range {
+	// 	TypeId::INCLUSIVE_RANGE
+	// } else {
+	// 	TypeId::EXCLUSIVE_RANGE
+	// };
+	// let (FloatRange::Inclusive { floor, ceiling } | FloatRange::Exclusive { floor, ceiling }) =
+	// 	range;
+	// let floor = types.new_constant_type(crate::Constant::Number(floor));
+	// let ceiling = types.new_constant_type(crate::Constant::Number(ceiling));
+	// let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
+	// 	(TypeId::NUMBER_GENERIC, (floor, SpanWithSource::NULL)),
+	// 	(TypeId::NUMBER_CEILING_GENERIC, (ceiling, SpanWithSource::NULL)),
+	// ]));
+	// types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }))
+
+	TypeId::NUMBER_TYPE
 }
 
 #[must_use]
@@ -231,7 +242,7 @@ pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 		arguments,
 	}) = ty
 	{
-		arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC)
+		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC)
 	} else if let Type::And(lhs, rhs) = ty {
 		get_multiple(*lhs, types).or_else(|| get_multiple(*rhs, types))
 	} else if let Type::Constant(crate::Constant::Number(..)) = ty {
@@ -255,7 +266,7 @@ pub fn is_not_not_a_number(on: TypeId, types: &TypeStore) -> bool {
 		} else if let Type::Or(lhs, rhs) = ty {
 			is_not_not_a_number(*lhs, types) && is_not_not_a_number(*rhs, types)
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF | TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+			on: TypeId::MULTIPLE_OF | TypeId::GREATER_THAN | TypeId::LESS_THAN,
 			arguments: _,
 		}) = ty
 		{
@@ -281,26 +292,26 @@ pub fn new_intrinsic(intrinsic: &Intrinsic, argument: TypeId, types: &mut TypeSt
 			Intrinsic::NoInfer => (TypeId::NO_INFER, TypeId::T_TYPE),
 			Intrinsic::Literal => (TypeId::LITERAL_RESTRICTION, TypeId::T_TYPE),
 			Intrinsic::LessThan => {
-				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
-					(TypeId::NUMBER_FLOOR_GENERIC, (TypeId::NEG_INFINITY, SpanWithSource::NULL)),
-					(TypeId::NUMBER_CEILING_GENERIC, (argument, SpanWithSource::NULL)),
-				]));
+				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+					TypeId::NUMBER_GENERIC,
+					(argument, SpanWithSource::NULL),
+				)]));
 
 				return types.register_type(Type::PartiallyAppliedGenerics(
-					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
+					PartiallyAppliedGenerics { on: TypeId::LESS_THAN, arguments },
 				));
 			}
 			Intrinsic::GreaterThan => {
-				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
-					(TypeId::NUMBER_FLOOR_GENERIC, (argument, SpanWithSource::NULL)),
-					(TypeId::NUMBER_CEILING_GENERIC, (TypeId::INFINITY, SpanWithSource::NULL)),
-				]));
+				let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
+					TypeId::NUMBER_GENERIC,
+					(argument, SpanWithSource::NULL),
+				)]));
 
 				return types.register_type(Type::PartiallyAppliedGenerics(
-					PartiallyAppliedGenerics { on: TypeId::EXCLUSIVE_RANGE, arguments },
+					PartiallyAppliedGenerics { on: TypeId::GREATER_THAN, arguments },
 				));
 			}
-			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_FLOOR_GENERIC),
+			Intrinsic::MultipleOf => (TypeId::MULTIPLE_OF, TypeId::NUMBER_GENERIC),
 			Intrinsic::Exclusive => (TypeId::EXCLUSIVE_RESTRICTION, TypeId::T_TYPE),
 			Intrinsic::Not => {
 				// Double negation

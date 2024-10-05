@@ -148,30 +148,20 @@ impl Default for TypeStore {
 				name: "T".into(),
 				extends: TypeId::NUMBER_TYPE,
 			}),
-			Type::RootPolyType(PolyNature::StructureGeneric {
-				name: "U".into(),
-				extends: TypeId::NUMBER_TYPE,
-			}),
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "InclusiveRange".into(),
-				parameters: Some(vec![
-					TypeId::NUMBER_FLOOR_GENERIC,
-					TypeId::NUMBER_CEILING_GENERIC,
-				]),
+				name: "GreaterThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "ExclusiveRange".into(),
-				parameters: Some(vec![
-					TypeId::NUMBER_FLOOR_GENERIC,
-					TypeId::NUMBER_CEILING_GENERIC,
-				]),
+				name: "LessThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
-				parameters: Some(vec![TypeId::NUMBER_FLOOR_GENERIC]),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 			},
 			// Intermediate for the below
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -182,7 +172,6 @@ impl Default for TypeStore {
 				)])),
 			}),
 			Type::And(TypeId::NUMBER_TYPE, TypeId::NOT_NOT_A_NUMBER),
-			// TODO WIP
 			Type::AliasTo {
 				name: "Literal".into(),
 				to: TypeId::T_TYPE,
@@ -302,40 +291,28 @@ impl TypeStore {
 		iter.into_iter().reduce(|acc, n| self.new_or_type(acc, n)).unwrap_or(TypeId::NEVER_TYPE)
 	}
 
-	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> Result<TypeId, ()> {
+	// intersection. Does not calculate disjoint
+	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+		// string & string = string
 		if lhs == rhs {
-			return Ok(lhs);
-		}
-
-		let left_ty = self.get_type_by_id(lhs);
-		let right_ty = self.get_type_by_id(rhs);
-
-		// TODO more cases
-		if let (Type::Constant(l), Type::Constant(r)) = (left_ty, right_ty) {
-			if l != r {
-				return Err(());
-			}
-		} else if left_ty.is_nominal() && right_ty.is_nominal() {
-			return Err(());
+			return lhs;
 		}
 
 		// (left and right) distributivity.
-		let result = if let Type::Or(or_lhs, or_rhs) = left_ty {
+		if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(lhs) {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
-			let new_lhs = self.new_and_type(or_lhs, rhs)?;
-			let new_rhs = self.new_and_type(or_rhs, rhs)?;
+			let new_lhs = self.new_and_type(or_lhs, rhs);
+			let new_rhs = self.new_and_type(or_rhs, rhs);
 			self.new_or_type(new_lhs, new_rhs)
-		} else if let Type::Or(or_lhs, or_rhs) = right_ty {
+		} else if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(rhs) {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
-			let new_lhs = self.new_and_type(lhs, or_lhs)?;
-			let new_rhs = self.new_and_type(lhs, or_rhs)?;
+			let new_lhs = self.new_and_type(lhs, or_lhs);
+			let new_rhs = self.new_and_type(lhs, or_rhs);
 			self.new_or_type(new_lhs, new_rhs)
 		} else {
 			let ty = Type::And(lhs, rhs);
 			self.register_type(ty)
-		};
-
-		Ok(result)
+		}
 	}
 
 	/// TODO temp

@@ -1112,7 +1112,7 @@ pub fn new_name_expected_object(
 		&mut environment.info,
 	);
 
-	types.new_and_type(expected, name_object.build_object()).unwrap()
+	types.new_and_type(expected, name_object.build_object()) // .unwrap()
 }
 
 /// Reverse of the above

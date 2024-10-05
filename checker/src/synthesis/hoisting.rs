@@ -501,8 +501,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 										&mut sub_environment,
 										checking_data,
 									);
-									extends =
-										checking_data.types.new_and_type(extends, new).unwrap();
+									extends = checking_data.types.new_and_type(extends, new);
 								}
 								checking_data.types.set_extends_on_interface(ty, extends);
 							}
@@ -539,8 +538,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 										environment,
 										checking_data,
 									);
-									extends =
-										checking_data.types.new_and_type(extends, new).unwrap();
+									extends = checking_data.types.new_and_type(extends, new);
 								}
 								checking_data.types.set_extends_on_interface(ty, extends);
 							}

@@ -474,7 +474,8 @@ fn get_logical_callable_from_type(
 	// }
 	if ty == TypeId::ANY_TYPE {
 		crate::utilities::notify!("Calling ANY");
-		return Ok(NeedsCalculation::Infer { on: from.unwrap() }.into());
+		// TODO temp
+		return Ok(NeedsCalculation::Infer { on: from.unwrap_or(TypeId::ERROR_TYPE) }.into());
 	}
 
 	let le_ty = types.get_type_by_id(ty);
