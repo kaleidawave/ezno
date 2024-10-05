@@ -91,17 +91,19 @@ impl FunctionBased for ArrowFunctionBase {
 		local: crate::LocalToStringInformation,
 	) {
 		// Use shorthand if one parameter with no declared type
-		if let (true, [Parameter { name, .. }]) =
-			(parameters.rest_parameter.is_none(), parameters.parameters.as_slice())
+		if let ([Parameter { name, type_annotation, .. }], None) =
+			(parameters.parameters.as_slice(), &parameters.rest_parameter)
 		{
-			if let VariableField::Name(name, ..) = name.get_ast_ref() {
-				name.to_string_from_buffer(buf, options, local);
-			} else {
-				parameters.to_string_from_buffer(buf, options, local);
+			let is_printing_type_annotation =
+				options.include_type_annotations && type_annotation.is_some();
+			if !is_printing_type_annotation {
+				if let VariableField::Name(name, ..) = name.get_ast_ref() {
+					name.to_string_from_buffer(buf, options, local);
+					return;
+				}
 			}
-		} else {
-			parameters.to_string_from_buffer(buf, options, local);
 		}
+		parameters.to_string_from_buffer(buf, options, local);
 	}
 
 	fn parameter_body_boundary_token_to_string_from_buffer<T: source_map::ToString>(

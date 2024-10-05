@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let replace_satisfies_with_as = args.iter().any(|item| item == "--satisfies-with-as");
 	let add_headers_as_comments = args.iter().any(|item| item == "--comment-headers");
+	// let declare_to_function = args.iter().any(|item| item == "--declare-to-function");
 
 	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
 		matches!(item[0].as_str(), "--into-files").then_some((item[1].clone(), item[2].clone()))
@@ -35,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let content = std::fs::read_to_string(&path)?;
 
-	let filters: Vec<&str> = vec!["import", "export", "declare"];
+	let filters: Vec<&str> = vec!["import", "export"];
 
 	let blocks = if path.ends_with(".md") {
 		let mut blocks = Vec::new();
@@ -98,104 +99,187 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 			}
 		}
-		return Ok(());
-	}
-
-	// Else bundle into one, bound in arrow functions to prevent namespace collision
-	let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
-	for (header, code) in blocks {
-		let module = Module::from_string(code.clone(), Default::default()).map_err(Box::new)?;
-
-		let mut names = HashSet::new();
-
-		let mut visitors = Visitors {
-			expression_visitors: Default::default(),
-			statement_visitors: Default::default(),
-			variable_visitors: vec![Box::new(NameFinder)],
-			block_visitors: Default::default(),
-		};
-
-		module.visit::<HashSet<String>>(
-			&mut visitors,
-			&mut names,
-			&VisitOptions { visit_nested_blocks: false, reverse_statements: false },
-			source_map::Nullable::NULL,
-		);
-
-		// TODO quick fix to also register interface and type alias names to prevent conflicts
-		for item in module.items {
-			match item {
-				StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
-					name: StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
-					..
-				})) => {
-					names.insert(s.clone());
-				}
-				StatementOrDeclaration::Declaration(Declaration::Interface(Decorated {
-					on:
-						InterfaceDeclaration {
-							name:
-								StatementPosition {
-									identifier: VariableIdentifier::Standard(s, _), ..
-								},
-							..
-						},
-					..
-				})) => {
-					names.insert(s.clone());
-				}
-				_ => {}
-			}
-		}
-
-		// If available block add to that, otherwise create a new one
-		if let Some((items, block)) =
-			final_blocks.iter_mut().find(|(uses, _)| uses.is_disjoint(&names))
-		{
-			items.extend(names.into_iter());
-			if add_headers_as_comments {
-				block.push_str("\n\t// ");
-				block.push_str(&header);
-			}
-			for line in code.lines() {
-				block.push_str("\n\t");
-				block.push_str(&line);
-			}
-			// If the block is not terminated, it can change the parsing of the next one
-			if block.ends_with(')') {
-				block.push(';');
-			}
-			block.push('\n');
-		} else {
-			let mut block = String::new();
-			if add_headers_as_comments {
-				block.push_str("\t// ");
-				block.push_str(&header);
-			}
-			for line in code.lines() {
-				block.push_str("\n\t");
-				block.push_str(&line);
-			}
-			block.push('\n');
-			final_blocks.push((names, block));
-		}
-	}
-
-	// eprintln!("Generated {:?} blocks", final_blocks.len());
-
-	if let Some(out) = out_file {
-		let mut out = std::fs::File::create(out)?;
-		for (_items, block) in final_blocks {
-			writeln!(out, "() => {{\n{block}}};\n")?;
-		}
 	} else {
-		let mut out = std::io::stdout();
-		for (_items, block) in final_blocks {
-			// eprintln!("block includes: {items:?}\n{block}\n---");
-			writeln!(out, "() => {{\n{block}}};\n")?;
+		// Else bundle into one, bound in arrow functions to prevent namespace collision
+		let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
+		for (header, mut code) in blocks {
+			// TODO clone
+			let module = Module::from_string(code.clone(), Default::default()).map_err(Box::new)?;
+
+			let mut names = HashSet::new();
+
+			let mut visitors = Visitors {
+				expression_visitors: Default::default(),
+				statement_visitors: Default::default(),
+				variable_visitors: vec![Box::new(NameFinder)],
+				block_visitors: Default::default(),
+			};
+
+			module.visit::<HashSet<String>>(
+				&mut visitors,
+				&mut names,
+				&VisitOptions { visit_nested_blocks: false, reverse_statements: false },
+				source_map::Nullable::NULL,
+			);
+
+			let mut declare_lets = Vec::new();
+
+			// TODO quick fix to also register interface and type alias names to prevent conflicts
+			for item in &module.items {
+				match item {
+					StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
+						name:
+							StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
+						..
+					})) => {
+						names.insert(s.clone());
+					}
+					StatementOrDeclaration::Declaration(Declaration::Interface(Decorated {
+						on:
+							InterfaceDeclaration {
+								name:
+									StatementPosition {
+										identifier: VariableIdentifier::Standard(s, _),
+										..
+									},
+								..
+							},
+						..
+					})) => {
+						names.insert(s.clone());
+					}
+					StatementOrDeclaration::Declaration(Declaration::DeclareVariable(
+						declare_variable,
+					)) => {
+						for declaration in &declare_variable.declarations {
+							declare_lets.push((
+								declaration.name.clone(),
+								declaration.type_annotation.clone(),
+							));
+						}
+					}
+					_ => {}
+				}
+			}
+
+			if !declare_lets.is_empty() {
+				use source_map::{Nullable, Span};
+				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
+				for item in module.items {
+					match item {
+						StatementOrDeclaration::Declaration(Declaration::TypeAlias(
+							TypeAlias { .. },
+						)) => {
+							top_level.push(item);
+						}
+						StatementOrDeclaration::Declaration(Declaration::Interface(
+							Decorated { .. },
+						)) => {
+							top_level.push(item);
+						}
+						StatementOrDeclaration::Declaration(Declaration::DeclareVariable(..)) => {}
+						item => {
+							inside.push(item);
+						}
+					}
+				}
+
+				use ezno_parser::{ast, functions, expressions::operators, Expression, Statement};
+
+				let parameters = declare_lets
+				.into_iter()
+				.map(|(name, type_annotation)| functions::Parameter {
+					visibility: (),
+					name,
+					type_annotation,
+					additionally: None,
+					position: Span::NULL,
+				})
+				.collect();
+				let function = Expression::ArrowFunction(ast::ArrowFunction {
+					// TODO maybe async
+					header: false,
+					name: (),
+					parameters: functions::FunctionParameters {
+						parameters,
+						rest_parameter: Default::default(),
+						position: Span::NULL,
+						leading: (),
+					},
+					return_type: None,
+					type_parameters: None,
+					position: Span::NULL,
+					body: ast::ExpressionOrBlock::Block(ast::Block(inside, Span::NULL)),
+				});
+
+				// void is temp fix
+				top_level.push(
+					Statement::Expression(
+						Expression::UnaryOperation {
+							operator: operators::UnaryOperator::Void,
+							operand: Box::new(function),
+							position: Span::NULL,
+						}
+						.into(),
+					)
+					.into(),
+				);
+
+				let module = Module { hashbang_comment: None, items: top_level, span: Span::NULL };
+
+				code = module.to_string(&ezno_parser::ToStringOptions::typescript());
+			}
+
+			// If available block add to that, otherwise create a new one
+			if let Some((items, block)) =
+				final_blocks.iter_mut().find(|(uses, _)| uses.is_disjoint(&names))
+			{
+				items.extend(names.into_iter());
+				if add_headers_as_comments {
+					block.push_str("\n\t// ");
+					block.push_str(&header);
+				}
+				for line in code.lines() {
+					block.push_str("\n\t");
+					block.push_str(&line);
+				}
+				// If the block is not terminated, it can change the parsing of the next one
+				if block.ends_with(')') {
+					block.push(';');
+				}
+				block.push('\n');
+			} else {
+				let mut block = String::new();
+				if add_headers_as_comments {
+					block.push_str("\t// ");
+					block.push_str(&header);
+				}
+				for line in code.lines() {
+					block.push_str("\n\t");
+					block.push_str(&line);
+				}
+				block.push('\n');
+				final_blocks.push((names, block));
+			}
+		}
+
+		// eprintln!("Generated {:?} blocks", final_blocks.len());
+
+		eprintln!("Bundled into {} functions", final_blocks.len());
+
+		if let Some(out) = out_file {
+			let mut out = std::fs::File::create(out)?;
+			for (_items, block) in final_blocks {
+				writeln!(out, "() => {{\n{block}}};\n")?;
+			}
+		} else {
+			let mut out = std::io::stdout();
+			for (_items, block) in final_blocks {
+				// eprintln!("block includes: {items:?}\n{block}\n---");
+				writeln!(out, "() => {{\n{block}}};\n")?;
+			}
 		}
 	}
-
 	Ok(())
 }
 

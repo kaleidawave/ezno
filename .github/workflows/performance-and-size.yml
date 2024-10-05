@@ -49,7 +49,10 @@ jobs:
         shell: bash
         run: |
           # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md --comment-headers --out ./demo.tsx
+          cargo run -p ezno-parser \
+           --example code_blocks_to_script ./checker/specification/specification.md \
+           --comment-headers \
+           --out ./demo.tsx
 
           echo "### Checking
           \`\`\`shell
@@ -69,8 +72,8 @@ jobs:
           echo "::info::Wrote code to summary"
           
           command_output=$(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+          
           diagnostics=""; statistics=""; found_splitter=false;
-
           while IFS= read -r line; do
               if [[ "$line" == "---"* ]]; then found_splitter=true;
               elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
@@ -128,9 +131,17 @@ jobs:
       - name: Valgrind
         shell: bash
         run: |
-          valgrind --log-file=out-mem2.txt ./target/release/ezno check demo.tsx | true
+          echo "::group::Callgrind"
+          valgrind --tool=callgrind --callgrind-out-file=cpu-out ./target/release/ezno check demo.tsx | true
+          echo "CPU usage:"
+          head -n100 cpu-out
+          echo "::endgroup::"
 
-          echo "TODO callgrind"
+          echo "::group::Valgrind"
+          valgrind --log-file=memory-out ./target/release/ezno check demo.tsx | true
+          echo "Memory usage:"
+          cat memory-out
+          echo "::endgroup::"
 
       - name: Run parsing & stringing (minfied) benchmarks
         shell: bash
