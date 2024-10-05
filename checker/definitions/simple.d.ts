@@ -211,8 +211,9 @@ declare class Map<K, V> {
 
 type Record<K extends string, T> = { [P in K]: T }
 
-type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
-type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+type ExclusiveRange<F extends number, C extends Number> = GreaterThan<F> & LessThan<C>;
+type InclusiveRange<F extends number, C extends Number> = (GreaterThan<F> & LessThan<C>) | (F | C);
+
 type Integer = MultipleOf<1>;
 
 /**

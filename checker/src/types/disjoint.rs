@@ -30,15 +30,9 @@ pub fn types_are_disjoint(
 		if let Type::Or(lhs_lhs, lhs_rhs) = lhs_ty {
 			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
 				&& types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
-		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
-			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
-				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
 		} else if let Type::Or(rhs_lhs, rhs_rhs) = rhs_ty {
 			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
 				&& types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
-		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_ty {
-			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
-				|| types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
 		} else if let Type::AliasTo { to, parameters: None, name: _ } = lhs_ty {
 			// TODO temp fix, need infer ANY
 			if matches!(*to, TypeId::ANY_TYPE) {
@@ -107,62 +101,6 @@ pub fn types_are_disjoint(
 
 			subtyping::type_is_subtype(rhs_inner, lhs, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
-			arguments: _,
-		}) = lhs_ty
-		{
-			let range = super::intrinsics::get_range(lhs, types).unwrap();
-			if let Some(rhs_range) = super::intrinsics::get_range(rhs, types) {
-				let overlap = range.overlaps(rhs_range);
-				crate::utilities::notify!("{:?}", overlap);
-				!overlap
-			} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-				on: TypeId::MULTIPLE_OF,
-				arguments,
-			}) = rhs_ty
-			{
-				let multiple_of = types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
-				);
-				if let Type::Constant(Constant::Number(multiple_of)) = multiple_of {
-					!range.contains_multiple_of(*multiple_of)
-				} else {
-					crate::utilities::notify!("Here");
-					true
-				}
-			} else {
-				crate::utilities::notify!("Here");
-				true
-			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
-			arguments: _,
-		}) = rhs_ty
-		{
-			let range = super::intrinsics::get_range(rhs, types).unwrap();
-			if let Some(lhs_range) = super::intrinsics::get_range(lhs, types) {
-				let overlap = range.overlaps(lhs_range);
-				crate::utilities::notify!("{:?}", overlap);
-				!overlap
-			} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-				on: TypeId::MULTIPLE_OF,
-				arguments,
-			}) = lhs_ty
-			{
-				let multiple_of = types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
-				);
-				if let Type::Constant(Constant::Number(multiple_of)) = multiple_of {
-					!range.contains_multiple_of(*multiple_of)
-				} else {
-					crate::utilities::notify!("Here");
-					true
-				}
-			} else {
-				crate::utilities::notify!("Here");
-				true
-			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::MULTIPLE_OF,
 			arguments,
 		}) = lhs_ty
@@ -170,7 +108,7 @@ pub fn types_are_disjoint(
 			// Little bit complex here because dealing with decimal types, not integers
 			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
 				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
+					arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
 				),
 				rhs_ty,
 			) {
@@ -191,7 +129,7 @@ pub fn types_are_disjoint(
 			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
 				lhs,
 				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
+					arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
 				),
 			) {
 				let result = lhs % rhs != 0.;
@@ -201,6 +139,12 @@ pub fn types_are_disjoint(
 				crate::utilities::notify!("Here {:?}", lhs);
 				true
 			}
+		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_ty {
+			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
+				|| types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
+		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
+			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
+				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
 		} else if let Some(lhs) = super::get_constraint(lhs, types) {
 			// TODO not sure whether these should be here?
 			types_are_disjoint(lhs, rhs, already_checked, information, types)
@@ -233,6 +177,20 @@ pub fn types_are_disjoint(
 		{
 			// TODO check properties
 			false
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: _on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
+			arguments: _,
+		}) = rhs_ty
+		{
+			crate::utilities::notify!("TODO");
+			false
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: _on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
+			arguments: _,
+		}) = lhs_ty
+		{
+			crate::utilities::notify!("TODO");
+			false
 		} else {
 			crate::utilities::notify!(
 				"{:?} cap {:?} == empty ? cases. Might be missing, calling disjoint",
@@ -243,3 +201,35 @@ pub fn types_are_disjoint(
 		}
 	}
 }
+
+// fn todo() {
+// 	// else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+// 	// 	on: TypeId::GREATER_THAN
+// 	// 	arguments: _,
+// 	// }) = lhs_ty
+// 	// {
+// 	// 	let range = super::intrinsics::get_range(lhs, types).unwrap();
+// 	// 	if let Some(rhs_range) = super::intrinsics::get_range(rhs, types) {
+// 	// 		let overlap = range.overlaps(rhs_range);
+// 	// 		crate::utilities::notify!("{:?}", overlap);
+// 	// 		!overlap
+// 	// 	} else {
+// 	// 		crate::utilities::notify!("Here");
+// 	// 		true
+// 	// 	}
+// 	// } else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+// 	// 	on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+// 	// 	arguments: _,
+// 	// }) = rhs_ty
+// 	// {
+// 	// 	let range = super::intrinsics::get_range(rhs, types).unwrap();
+// 	// 	if let Some(lhs_range) = super::intrinsics::get_range(lhs, types) {
+// 	// 		let overlap = range.overlaps(lhs_range);
+// 	// 		crate::utilities::notify!("{:?}", overlap);
+// 	// 		!overlap
+// 	// 	} else {
+// 	// 		crate::utilities::notify!("Here");
+// 	// 		true
+// 	// 	}
+// 	// }
+// }

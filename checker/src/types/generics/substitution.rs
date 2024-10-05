@@ -146,7 +146,7 @@ pub(crate) fn substitute(
 			let generic_arguments = structure_arguments.clone();
 
 			// Fold intrinsic type
-			if intrinsics::tsc_string_intrinsic(on) {
+			if intrinsics::is_tsc_string_intrinsic(on) {
 				let arg =
 					structure_arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
 				let value = substitute(arg, arguments, environment, types);

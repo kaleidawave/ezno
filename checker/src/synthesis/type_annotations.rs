@@ -248,10 +248,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							// crate::utilities::notify!(
 							// 	"{:?} and {:?}",
 							// 	inner_type_alias_id,
-							// 	inner_type_alias_id.is_some_and(intrinsics::tsc_string_intrinsic)
+							// 	inner_type_alias_id.is_some_and(intrinsics::is_tsc_string_intrinsic)
 							// );
 
-							if intrinsics::tsc_string_intrinsic(inner_type_id) {
+							if intrinsics::is_tsc_string_intrinsic(inner_type_id) {
 								distribute_tsc_string_intrinsic(
 									inner_type_id,
 									type_arguments.get(&TypeId::STRING_GENERIC).unwrap().0,

@@ -127,8 +127,9 @@ declare class Array<T> {
 
 type Record<K extends string, T> = { [P in K]: T }
 
-type LessThan<T extends number> = ExclusiveRange<NegativeInfinity, T>;
-type GreaterThan<T extends number> = ExclusiveRange<T, Infinity>;
+type ExclusiveRange<F extends number, C extends number> = GreaterThan<F> & LessThan<C>;
+type InclusiveRange<F extends number, C extends number> = (GreaterThan<F> & LessThan<C>) | (F | C);
+
 type Integer = MultipleOf<1>;
 
 declare class Map<T, U> {
@@ -202,7 +203,7 @@ declare class Promise<T> { }
 
 declare class RegExp {
     @Constant("regexp:constructor")
-    constructor(pattern: string, flags?: string);
+        constructor(pattern: string, flags?: string);
 
     @Constant("regexp:exec")
     exec(input: string): RegExpExecArray | null;
@@ -222,10 +223,10 @@ interface RegExpExecArray extends Array<string> {
      * The first match. This will always be present because `null` will be returned if there are no matches.
      */
     0: string;
-}
+    // }
 
-// es2018
-interface RegExpExecArray {
+    // // es2018
+    // interface RegExpExecArray {
     groups?: {
         [key: string]: string;
     };

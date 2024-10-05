@@ -148,30 +148,20 @@ impl Default for TypeStore {
 				name: "T".into(),
 				extends: TypeId::NUMBER_TYPE,
 			}),
-			Type::RootPolyType(PolyNature::StructureGeneric {
-				name: "U".into(),
-				extends: TypeId::NUMBER_TYPE,
-			}),
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "InclusiveRange".into(),
-				parameters: Some(vec![
-					TypeId::NUMBER_FLOOR_GENERIC,
-					TypeId::NUMBER_CEILING_GENERIC,
-				]),
+				name: "GreaterThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
-				name: "ExclusiveRange".into(),
-				parameters: Some(vec![
-					TypeId::NUMBER_FLOOR_GENERIC,
-					TypeId::NUMBER_CEILING_GENERIC,
-				]),
+				name: "LessThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 			},
 			Type::AliasTo {
 				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
-				parameters: Some(vec![TypeId::NUMBER_FLOOR_GENERIC]),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 			},
 			// Intermediate for the below
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -182,7 +172,6 @@ impl Default for TypeStore {
 				)])),
 			}),
 			Type::And(TypeId::NUMBER_TYPE, TypeId::NOT_NOT_A_NUMBER),
-			// TODO WIP
 			Type::AliasTo {
 				name: "Literal".into(),
 				to: TypeId::T_TYPE,
