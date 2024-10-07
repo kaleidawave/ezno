@@ -75,13 +75,8 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 			let value = Decorated::<ClassMember>::from_reader(reader)?;
 			members.push(value);
 
-			let semi_colon_like = reader.last_was_from_new_line() > 0
-				|| reader.is_operator("}")
-				|| reader.is_operator_advance(";");
-
-			if !semi_colon_like {
-				todo!("error {:?}", reader.get_current().get(..20));
-			}
+			// TODO comments probably don't need this
+			reader.expect_semi_colon()?;
 		}
 
 		let end = reader.expect('}')?;

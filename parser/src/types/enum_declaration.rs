@@ -39,7 +39,7 @@ impl ASTNode for EnumDeclaration {
 			}
 			members.push(EnumMember::from_reader(reader)?);
 			if !reader.is_operator_advance(",") {
-				reader.expect_semi_colon();
+				reader.expect_semi_colon()?;
 			}
 		}
 		reader.expect('}')?;

@@ -83,7 +83,7 @@ impl ASTNode for SwitchStatement {
 				}
 				let value = StatementOrDeclaration::from_reader(reader)?;
 				if value.requires_semi_colon() {
-					reader.expect_semi_colon();
+					reader.expect_semi_colon()?;
 				}
 				// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
 				items.push(value);

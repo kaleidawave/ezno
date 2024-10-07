@@ -2,9 +2,9 @@ use ezno_parser::{ASTNode, Module};
 
 #[test]
 fn random_comments() {
-	let input = r#"
+	let input = r"
     const [,,/* hi */] = [];
-"#
+"
 	.trim_start()
 	.replace("    ", "\t");
 

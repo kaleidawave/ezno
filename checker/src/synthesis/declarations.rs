@@ -93,6 +93,9 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 							}
 						}
 					}
+					parser::declarations::export::Exportable::VarStatement(_) => {
+						todo!()
+					}
 					parser::declarations::export::Exportable::ImportAll { .. }
 					| parser::declarations::export::Exportable::ImportParts { .. }
 					| parser::declarations::export::Exportable::Function(_)

@@ -2,7 +2,10 @@
 
 use std::borrow::Cow;
 
-use parser::{ASTNode, Expression, jsx::{JSXAttribute, JSXElement, JSXNode, JSXRoot, JSXElementChildren}};
+use parser::{
+	jsx::{JSXAttribute, JSXElement, JSXElementChildren, JSXNode, JSXRoot},
+	ASTNode, Expression,
+};
 
 use crate::{
 	context::invocation::CheckThings,

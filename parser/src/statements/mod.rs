@@ -87,7 +87,7 @@ impl ASTNode for Statement {
 			let _ = reader.expect(':')?;
 			let statement = Statement::from_reader(reader).map(Box::new)?;
 			if statement.requires_semi_colon() {
-				reader.expect_semi_colon();
+				reader.expect_semi_colon()?;
 			}
 			// TODO check statement.can_be_labelled()
 			let position = start.union(statement.get_position());

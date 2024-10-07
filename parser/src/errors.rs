@@ -4,9 +4,11 @@ use std::fmt::{self, Display};
 
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
-	UnexpectedCharacter { expected: &'a [char], found: char },
+	UnexpectedCharacter { expected: &'a [char], found: Option<char> },
 	ExpectedKeyword { expected: &'static str, found: &'a str },
-	UnexpectedSymbol(derive_finite_automaton::InvalidCharacter),
+	ExpectedOperator { expected: &'static str, found: &'a str },
+	ExpectedOneOfOperator { expected: &'static [&'static str], found: &'a str },
+	// UnexpectedSymbol(derive_finite_automaton::InvalidCharacter),
 	ClosingTagDoesNotMatch { expected: &'a str, found: &'a str },
 	ExpectedStringLiteral { found: &'a str },
 	TypeArgumentsNotValidOnReference,
@@ -40,29 +42,26 @@ impl<'a> Display for ParseErrors<'a> {
 		match self {
 			ParseErrors::UnexpectedCharacter { expected, found } => {
 				f.write_str("Expected ")?;
-				match expected {
-					[] => unreachable!("no expected chars given"),
-					[a] => f.write_fmt(format_args!("{a}")),
-					[a, b] => f.write_fmt(format_args!("{a} or {b}")),
-					[head @ .., end] => {
-						let start = head
-							.iter()
-							.map(|char| format!("{char}"))
-							.reduce(|mut acc, char| {
-								acc.push_str(", ");
-								acc.push_str(&char);
-								acc
-							})
-							.unwrap();
-						f.write_fmt(format_args!("{start} or {end}"))
-					}
-				}?;
+				utilities::format_list(f, expected)?;
+				if let Some(found) = found {
+					write!(f, " found {found}")
+				} else {
+					write!(f, " found end of source")
+				}
+			}
+			ParseErrors::ExpectedOperator { expected, found } => {
+				write!(f, "Expected {expected} found {found}")
+			}
+			ParseErrors::ExpectedOneOfOperator { expected, found } => {
+				f.write_str("Expected ")?;
+				utilities::format_list(f, expected)?;
 				write!(f, " found {found}")
 			}
 			ParseErrors::ExpectedKeyword { expected, found } => {
 				write!(f, "Expected {expected:?}, found {found:?}")
 			}
-			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
+
+			// ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
 				write!(f, "Expected </{expected}> found </{found}>")
 			}
@@ -142,83 +141,26 @@ impl<'a> Display for ParseErrors<'a> {
 	}
 }
 
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub enum LexingErrors {
-	SecondDecimalPoint,
-	NumberLiteralCannotHaveDecimalPoint,
-	NumberLiteralBaseSpecifierMustPrecededWithZero,
-	InvalidCharacterInJSXTag(char),
-	UnbalancedJSXClosingTags,
-	ExpectedClosingChevronAtEndOfSelfClosingTag,
-	InvalidCharacterInAttributeKey(char),
-	UnexpectedCharacter(derive_finite_automaton::InvalidCharacter),
-	EmptyAttributeName,
-	ExpectedJSXEndTag,
-	NewLineInStringLiteral,
-	ExpectedEndToMultilineComment,
-	ExpectedEndToStringLiteral,
-	UnexpectedEndToNumberLiteral,
-	InvalidNumeralItemBecauseOfLiteralKind,
-	ExpectedEndToRegexLiteral,
-	ExpectedEndToJSXLiteral,
-	ExpectedEndToTemplateLiteral,
-	InvalidExponentUsage,
-	InvalidUnderscore,
-	CannotLoadLargeFile(usize),
-	ExpectedDashInComment,
-	ExpectedOpenChevron,
-}
-
-impl Display for LexingErrors {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			LexingErrors::SecondDecimalPoint => {
-				f.write_str("Second decimal point found in number literal")
-			}
-			LexingErrors::NumberLiteralCannotHaveDecimalPoint => {
-				f.write_str("Number literal with specified base cannot have decimal point")
-			}
-			LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero => {
-				f.write_str("Number literal base character must be proceeded with a zero")
-			}
-			LexingErrors::InvalidCharacterInJSXTag(chr) => {
-				write!(f, "Invalid character {chr:?} in JSX tag")
-			}
-			LexingErrors::ExpectedClosingChevronAtEndOfSelfClosingTag => {
-				f.write_str("Expected closing angle at end of self closing JSX tag")
-			}
-			LexingErrors::InvalidCharacterInAttributeKey(chr) => {
-				write!(f, "Invalid character {chr:?} in JSX attribute name")
-			}
-			LexingErrors::EmptyAttributeName => f.write_str("Empty JSX attribute name"),
-			LexingErrors::ExpectedJSXEndTag => f.write_str("Expected JSX end tag"),
-			LexingErrors::NewLineInStringLiteral => {
-				f.write_str("String literals cannot contain new lines")
-			}
-			LexingErrors::ExpectedEndToMultilineComment => {
-				f.write_str("Unclosed multiline comment")
-			}
-			LexingErrors::ExpectedEndToStringLiteral => f.write_str("Unclosed string literal"),
-			LexingErrors::UnexpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
-			LexingErrors::ExpectedEndToRegexLiteral => f.write_str("Unclosed regex literal"),
-			LexingErrors::ExpectedEndToJSXLiteral => f.write_str("Unclosed JSX literal"),
-			LexingErrors::ExpectedEndToTemplateLiteral => f.write_str("Unclosed template literal"),
-			LexingErrors::UnexpectedCharacter(err) => Display::fmt(err, f),
-			LexingErrors::UnbalancedJSXClosingTags => f.write_str("Too many closing JSX tags"),
-			LexingErrors::InvalidExponentUsage => f.write_str("Two e in number literal"),
-			LexingErrors::InvalidUnderscore => f.write_str("Numeric separator in invalid place"),
-			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
-				f.write_str("Invalid item in binary, hex or octal literal")
-			}
-			LexingErrors::CannotLoadLargeFile(size) => {
-				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
-			}
-			LexingErrors::ExpectedDashInComment => {
-				f.write_str("JSX comments must have two dashes after `<!` start")
-			}
-			LexingErrors::ExpectedOpenChevron => {
-				f.write_str("Unexpected char in HTML. Expected '<'")
+mod utilities {
+	pub fn format_list<T: std::fmt::Display>(
+		f: &mut std::fmt::Formatter<'_>,
+		items: &[T],
+	) -> std::fmt::Result {
+		match items {
+			[] => panic!("no items given"),
+			[a] => f.write_fmt(format_args!("{a}")),
+			[a, b] => f.write_fmt(format_args!("{a} or {b}")),
+			[head @ .., end] => {
+				let start = head
+					.iter()
+					.map(ToString::to_string)
+					.reduce(|mut acc, char| {
+						acc.push_str(", ");
+						acc.push_str(&char);
+						acc
+					})
+					.unwrap();
+				f.write_fmt(format_args!("{start} or {end}"))
 			}
 		}
 	}
@@ -227,7 +169,6 @@ impl Display for LexingErrors {
 pub trait ParserErrorReason: Display {}
 
 impl<'a> ParserErrorReason for ParseErrors<'a> {}
-impl ParserErrorReason for LexingErrors {}
 
 /// A error for not parsing
 #[derive(Debug)]

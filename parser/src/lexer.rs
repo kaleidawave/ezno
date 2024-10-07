@@ -88,6 +88,10 @@ impl<'a> Lexer<'a> {
 		Lexer { options, state, script, head: 0 }
 	}
 
+	pub fn get_options(&self) -> &ParseOptions {
+		&self.options
+	}
+
 	/// Just used for specific things, not all annotations
 	pub fn parse_type_annotations(&self) -> bool {
 		self.options.type_annotations
@@ -141,7 +145,10 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		let length = keyword.len();
 		current.starts_with(keyword)
-			&& current[length..].chars().next().map_or(true, |chr| !chr.is_alphanumeric())
+			&& current[length..]
+				.chars()
+				.next()
+				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
 	}
 
 	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
@@ -149,7 +156,10 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		let length = keyword.len();
 		if current.starts_with(keyword)
-			&& current[length..].chars().next().map_or(true, |chr| !chr.is_alphanumeric())
+			&& current[length..]
+				.chars()
+				.next()
+				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
 		{
 			self.head += length as u32;
 			true
@@ -198,7 +208,7 @@ impl<'a> Lexer<'a> {
 			let position = self.get_start().with_length(chr.len_utf8());
 			let reason = ParseErrors::UnexpectedCharacter {
 				expected: &[chr],
-				found: current.chars().next().unwrap(),
+				found: current.chars().next(),
 			};
 			Err(ParseError::new(reason, position))
 		}
@@ -214,25 +224,24 @@ impl<'a> Lexer<'a> {
 			let position = self.get_start().with_length(chr.len_utf8());
 			let reason = ParseErrors::UnexpectedCharacter {
 				expected: &[chr],
-				found: current.chars().next().unwrap(),
+				found: current.chars().next(),
 			};
 			Err(ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect_operator(&mut self, str: &'static str) -> Result<(), ParseError> {
+	pub fn expect_operator(&mut self, operator: &'static str) -> Result<(), ParseError> {
 		self.skip();
 		let current = self.get_current();
-		if current.starts_with(str) {
-			self.head += str.len() as u32;
+		if current.starts_with(operator) {
+			self.head += operator.len() as u32;
 			Ok(())
 		} else {
-			todo!(
-				"expect operator error expect={:?} found={:?} at {:?}",
-				str,
-				current.get(..50).unwrap_or(current),
-				self.head
-			);
+			let trailing = utilities::next_empty_occurance(current);
+			let position = self.get_start().with_length(trailing);
+			let found = &current[..trailing];
+			let reason = ParseErrors::ExpectedOperator { expected: operator, found };
+			Err(ParseError::new(reason, position))
 			// let position = self.get_start().with_length(chr.len_utf8());
 			// let reason = ParseErrors::UnexpectedCharacter {
 			// 	expected: &[chr],
@@ -250,22 +259,7 @@ impl<'a> Lexer<'a> {
 			self.head += str.len() as u32;
 			Ok(start)
 		} else {
-			// TODO move
-			fn next_empty_occurance(str: &str) -> usize {
-				let mut chars = str.char_indices();
-				let is_text = chars.next().is_some_and(|(_, chr)| chr.is_alphabetic());
-				for (idx, chr) in chars {
-					let should_break = chr.is_whitespace()
-						|| (is_text && !chr.is_alphanumeric())
-						|| (!is_text && chr.is_alphabetic());
-					if should_break {
-						return idx;
-					}
-				}
-				0
-			}
-
-			let found = &current[..next_empty_occurance(current)];
+			let found = &current[..utilities::next_empty_occurance(current)];
 			let position = self.get_start().with_length(found.len());
 			let reason = ParseErrors::ExpectedKeyword { expected: str, found };
 			Err(ParseError::new(reason, position))
@@ -504,7 +498,7 @@ impl<'a> Lexer<'a> {
 		for (idx, chr) in chars {
 			match chr {
 				_ if matches!(state, NumberLiteralType::BigInt) => {
-					todo!()
+					todo!("big int")
 					// if is_number_delimiter(chr) {
 					// 	// Content already checked
 					// 	push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
@@ -588,7 +582,7 @@ impl<'a> Lexer<'a> {
 						NumberLiteralType::OctalLiteral |
 						// Second `(idx - start) < 1` is for octal with prefix 0
 						NumberLiteralType::HexadecimalLiteral => {
-							todo!()
+							todo!("hex undescore")
 							// if start + 2 == idx {
 							// 	current[..idx].ends_with(['b', 'B', 'x', 'X', 'o' , 'O'])
 							// } else {
@@ -803,8 +797,10 @@ impl<'a> Lexer<'a> {
 		Default::default()
 	}
 
-	/// TODO error
-	pub fn expect_semi_colon(&mut self) -> () {
+	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
+	///
+	/// TODO Also returns the line difference
+	pub fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
 		let last = self.state.last_new_lines;
 		// TODO order
 		let semi_colon_like = self.starts_with_str("//")
@@ -815,14 +811,15 @@ impl<'a> Lexer<'a> {
 			|| self.starts_with_str("\n")
 			|| self.is_finished();
 
-		if !semi_colon_like {
+		if semi_colon_like {
+			Ok(())
+		} else {
 			let current = self.get_current();
-			eprintln!(
-				"expect semi colon error {:?} {:?}, {:?}",
-				self.get_surrounding(),
-				self.head,
-				last
-			);
+			let until_empty = crate::lexer::utilities::next_empty_occurance(current);
+			let position = self.get_start().with_length(until_empty);
+			let error =
+				ParseErrors::ExpectedOperator { expected: ";", found: &current[..until_empty] };
+			Err(ParseError::new(error, position))
 		}
 	}
 
@@ -872,5 +869,26 @@ impl<'a> Lexer<'a> {
 		} else {
 			(false, None)
 		}
+	}
+}
+
+pub(crate) mod utilities {
+	pub fn is_valid_identifier(chr: char) -> bool {
+		chr.is_alphanumeric() || chr == '_' || chr == '$'
+	}
+
+	// TODO move
+	pub fn next_empty_occurance(str: &str) -> usize {
+		let mut chars = str.char_indices();
+		let is_text = chars.next().is_some_and(|(_, chr)| chr.is_alphabetic());
+		for (idx, chr) in chars {
+			let should_break = chr.is_whitespace()
+				|| (is_text && !chr.is_alphanumeric())
+				|| (!is_text && chr.is_alphabetic());
+			if should_break {
+				return idx;
+			}
+		}
+		0
 	}
 }

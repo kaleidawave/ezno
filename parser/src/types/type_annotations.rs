@@ -570,7 +570,7 @@ impl TypeAnnotation {
 			};
 			Self::CommonName(name, start.with_length(keyword.len()))
 		} else if reader.is_keyword_advance("unique") {
-			todo!()
+			todo!("unique symbol type annotation")
 		// let position = t.get_span().union(kw_pos.with_length("symbol".len()));
 		// 	#[cfg(feature = "extras")]
 		// 	let name =
@@ -939,9 +939,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				// 	None
 				// };
 
-				if !reader.is_operator_advance(":") {
-					todo!("error")
-				}
+				let _ = reader.expect(':');
 				let type_annotation = TypeAnnotation::from_reader(reader)?;
 
 				let position = start.union(type_annotation.get_position());
@@ -970,7 +968,11 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 					} else if reader.is_operator_advance(":") {
 						false
 					} else {
-						todo!("error")
+						let position = reader.get_start().with_length(2);
+						let found = &reader.get_current()[..2];
+						let reason =
+							ParseErrors::ExpectedOneOfOperator { expected: &["?:", ":"], found };
+						return Err(ParseError::new(reason, position));
 					}
 				} else {
 					false

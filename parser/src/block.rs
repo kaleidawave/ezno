@@ -244,7 +244,7 @@ impl ASTNode for BlockOrSingleStatement {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {
 				if stmt.requires_semi_colon() {
-					reader.expect_semi_colon();
+					reader.expect_semi_colon()?;
 				}
 				Box::new(stmt).into()
 			}
@@ -365,7 +365,7 @@ pub(crate) fn statements_and_declarations_from_reader(
 		// let end = reader.get_end();
 
 		if item.requires_semi_colon() {
-			reader.expect_semi_colon();
+			reader.expect_semi_colon()?;
 		}
 
 		// let blank_lines_after_statement = if requires_semi_colon {

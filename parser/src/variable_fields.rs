@@ -106,12 +106,12 @@ impl ASTNode for VariableField {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		reader.skip();
+		let start = reader.get_start();
 		if reader.is_operator_advance("{") {
-			let start = reader.get_start();
 			let (members, spread) = bracketed_items_from_reader(reader, "}")?;
 			Ok(Self::Object { members, spread, position: start.union(reader.get_end()) })
 		} else if reader.is_operator_advance("[") {
-			let start = reader.get_start();
 			let (members, spread) = bracketed_items_from_reader(reader, "]")?;
 			Ok(Self::Array { members, spread, position: start.union(reader.get_end()) })
 		} else {
@@ -189,16 +189,11 @@ impl DestructuringFieldInto for VariableField {
 	fn type_annotation_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<Self::TypeAnnotation> {
-		Ok(None)
-
-		// todo!()
-		// if let (true, Some(Token(TSXToken::Colon, _))) =
-		// 	(options.destructuring_type_annotation, reader.peek())
-		// {
-		// 	reader.next();
-		// 	crate::TypeAnnotation::from_reader(reader).map(Some)
-		// } else {
-		// }
+		if reader.get_options().destructuring_type_annotation && reader.is_operator_advance(":") {
+			crate::TypeAnnotation::from_reader(reader).map(Some)
+		} else {
+			Ok(None)
+		}
 	}
 }
 
@@ -257,6 +252,16 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.is_operator(",") || reader.is_operator("}") {
 			Ok(Self::None)
+		} else if reader.starts_with_str("//") || reader.starts_with_str("/*") {
+			let is_multiline = reader.starts_with_str("/*");
+			reader.advance(2);
+			let content = if is_multiline {
+				reader.parse_until("*/").expect("TODO").to_owned()
+			} else {
+				reader.parse_until("\n").expect("TODO").to_owned()
+			};
+
+			Ok(Self::Comment { content: String, is_multiline: bool, position: Span })
 		} else {
 			let name = T::from_reader(reader)?;
 			let annotation = T::type_annotation_from_reader(reader)?;

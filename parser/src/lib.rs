@@ -447,15 +447,14 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 			return Ok((nodes, None));
 		} else {
 			let current = reader.get_current();
-			todo!("error {:?} at {:?}", current.get(..20).unwrap_or(current), reader.head);
-			// let position = token.get_span();
-			// return Err(ParseError::new(
-			// 	crate::ParseErrors::UnexpectedToken {
-			// 		expected: &[end, TSXToken::Comma],
-			// 		found: token.0,
-			// 	},
-			// 	position,
-			// ));
+			let position = reader.get_start().with_length(1);
+			return Err(ParseError::new(
+				ParseErrors::UnexpectedCharacter {
+					expected: &[','],
+					found: current.chars().next(),
+				},
+				position,
+			));
 		}
 	}
 }
@@ -499,56 +498,6 @@ pub(crate) fn bracketed_items_to_string<T: source_map::ToString, U: ASTNode>(
 		options.push_gap_optionally(buf);
 	}
 	buf.push(right_bracket);
-}
-
-/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
-///
-/// Also returns the line difference
-pub(crate) fn expect_semi_colon(reader: &mut crate::new::Lexer) -> ParseResult<usize> {
-	if reader.is_finished() {
-		Ok(0)
-	} else {
-		todo!("Skip spaces and tabs")
-		// let Token(kind, start) = token;
-
-		// if let TSXToken::CloseBrace
-		// | TSXToken::EOS
-		// | TSXToken::Comment(..)
-		// | TSXToken::MultiLineComment(..) = kind
-		// {
-		// 	Ok(line_starts
-		// 		.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1)
-		// 		.saturating_sub(1))
-		// } else if let TSXToken::SemiColon = kind {
-		// 	let Token(_, semicolon_end) = reader.next().unwrap();
-		// 	let Token(kind, next) = reader.peek().unwrap();
-		// 	if options.retain_blank_lines {
-		// 		let byte_indexes_crosses_lines = line_starts
-		// 			.byte_indexes_crosses_lines(semicolon_end.0 as usize, next.0 as usize + 1);
-
-		// 		// TODO WIP
-		// 		if let TSXToken::EOS = kind {
-		// 			Ok(byte_indexes_crosses_lines)
-		// 		} else {
-		// 			Ok(byte_indexes_crosses_lines.saturating_sub(1))
-		// 		}
-		// 	} else {
-		// 		Ok(0)
-		// 	}
-		// } else {
-		// 	let line_difference = line_starts
-		// 		.byte_indexes_crosses_lines(statement_end as usize, start.0 as usize + 1);
-		// 	if line_difference == 0 {
-		// 		if options.partial_syntax {
-		// 			Ok(0)
-		// 		} else {
-		// 			throw_unexpected_token(reader, &[TSXToken::SemiColon])
-		// 		}
-		// 	} else {
-		// 		Ok(line_difference - 1)
-		// 	}
-		// }
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

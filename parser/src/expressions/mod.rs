@@ -527,29 +527,18 @@ impl Expression {
 			// 		));
 			// 	}
 			// }
-			else if reader.starts_with('#') {
-				// let identifier = reader.parse_identifier()?;
-				todo!();
-			// let (property_name, _) = token_as_identifier(
-			// 	reader.next().ok_or_else(parse_lexing_error)?,
-			// 	"private in expression",
-			// )?;
-			// let in_pos = reader.expect_keyword("TSXKeyword::In")?;
-			// let rhs = Expression::from_reader_with_precedence(
-			// 	reader,
-			// 	state,
-			// 	options,
-			// 	RELATION_PRECEDENCE,
-			// 	Some(in_pos),
-			// )?;
-			// let position = start.union(rhs.get_position());
-			// Self::SpecialOperators(
-			// 	SpecialOperators::In {
-			// 		lhs: InExpressionLHS::PrivateProperty(property_name),
-			// 		rhs: Box::new(rhs),
-			// 	},
-			// 	position,
-			// )
+			else if reader.is_operator_advance("#") {
+				let property_name = reader.parse_identifier()?.to_owned();
+				let _ = reader.expect_keyword("in")?;
+				let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
+				let position = start.union(rhs.get_position());
+				Expression::SpecialOperators(
+					SpecialOperators::In {
+						lhs: InExpressionLHS::PrivateProperty(property_name),
+						rhs: Box::new(rhs),
+					},
+					position,
+				)
 			} else if let Some(op) = reader.is_one_of_operators(&["++", "--"]) {
 				let operator = match op {
 					"++" => UnaryPrefixAssignmentOperator::IncrementOrDecrement(
