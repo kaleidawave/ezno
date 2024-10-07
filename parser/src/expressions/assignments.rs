@@ -3,20 +3,15 @@ use crate::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		FunctionArgument,
 	},
-	derive_ASTNode, ParseErrors, PropertyKey, PropertyReference, SpreadDestructuringField,
-	TSXToken,
+	derive_ASTNode, ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
+	ParseError, ParseErrors, ParseResult, PropertyKey, PropertyReference, SpreadDestructuringField,
+	WithComment,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
-
-use crate::{
-	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField, ParseError,
-	ParseResult, WithComment,
-};
 
 use super::MultipleExpression;
 
@@ -44,12 +39,10 @@ impl ASTNode for VariableOrPropertyAccess {
 		*self.get()
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		Expression::from_reader(reader, state, options)?.try_into()
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		// I think this is correct
+		let precedence = super::operators::INDEX_PRECEDENCE - 1;
+		Expression::from_reader_with_precedence(reader, precedence)?.try_into()
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -90,18 +83,6 @@ impl ASTNode for VariableOrPropertyAccess {
 				buf.push(']');
 			}
 		}
-	}
-}
-
-impl VariableOrPropertyAccess {
-	pub(crate) fn from_reader_with_precedence(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-		return_precedence: u8,
-	) -> ParseResult<Self> {
-		Expression::from_reader_with_precedence(reader, state, options, return_precedence, None)?
-			.try_into()
 	}
 }
 
@@ -209,12 +190,8 @@ impl ASTNode for LHSOfAssignment {
 		}
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		Expression::from_reader(reader, state, options).and_then(TryInto::try_into)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		Expression::from_reader(reader).and_then(TryInto::try_into)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

@@ -1,10 +1,10 @@
 use crate::{
-	block::{parse_statements_and_declarations, statements_and_declarations_to_string},
+	block::{statements_and_declarations_from_reader, statements_and_declarations_to_string},
 	derive_ASTNode, BlockLike, BlockLikeMut, LocalToStringInformation, ParseOptions, ParseResult,
 	StatementOrDeclaration, VisitOptions,
 };
 
-use super::{ASTNode, Span, TSXToken, TokenReader};
+use super::{ASTNode, Span};
 
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
@@ -21,6 +21,10 @@ impl PartialEq for Module {
 }
 
 impl ASTNode for Module {
+	fn get_position(&self) -> Span {
+		self.span
+	}
+
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
@@ -35,30 +39,17 @@ impl ASTNode for Module {
 		statements_and_declarations_to_string(&self.items, buf, options, local);
 	}
 
-	fn get_position(&self) -> Span {
-		self.span
-	}
-
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let span = Span { start: 0, source: (), end: state.length_of_source };
-		let hashbang_comment = if let Some(crate::Token(TSXToken::HashBangComment(_), _)) =
-			reader.peek()
-		{
-			let Some(crate::Token(TSXToken::HashBangComment(hashbang_comment), _)) = reader.next()
-			else {
-				unreachable!()
-			};
-			Some(hashbang_comment)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let span = Span { start: 0, source: (), end: reader.get_current().len() as u32 };
+		let hashbang_comment = if reader.is_operator_advance("#!") {
+			let hashbang_comment = reader.parse_until("\n").expect("TODO");
+			Some(hashbang_comment.to_owned())
 		} else {
 			None
 		};
-		parse_statements_and_declarations(reader, state, options).map(|items| Module {
+		Ok(Module {
+			items: statements_and_declarations_from_reader(reader)?,
 			hashbang_comment,
-			items,
 			span,
 		})
 	}

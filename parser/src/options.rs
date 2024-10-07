@@ -1,5 +1,3 @@
-use super::lexer::LexerOptions;
-
 /// Options to customize parsing
 #[allow(unused)]
 #[derive(Copy, Clone)]
@@ -24,10 +22,6 @@ pub struct ParseOptions {
 	pub is_expressions: bool,
 	/// Allows functions to be prefixed with 'server'
 	pub custom_function_headers: bool,
-	/// TODO temp for seeing how channel performs
-	pub buffer_size: usize,
-	/// Has no effect on WASM. Increase for deeply nested AST structures
-	pub stack_size: Option<usize>,
 	/// Useful for LSP information
 	pub record_keyword_positions: bool,
 	/// For the generator
@@ -45,16 +39,16 @@ pub struct ParseOptions {
 }
 
 impl ParseOptions {
-	pub(crate) fn get_lex_options(&self) -> LexerOptions {
-		LexerOptions {
-			comments: self.comments,
-			lex_jsx: self.jsx,
-			allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
-			allow_expressions_in_jsx: true,
-			// allow_expressions_in_jsx: !self.top_level_html,
-			top_level_html: self.top_level_html,
-		}
-	}
+	// pub(crate) fn get_lex_options(&self) -> LexerOptions {
+	// 	LexerOptions {
+	// 		comments: self.comments,
+	// 		lex_jsx: self.jsx,
+	// 		allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
+	// 		allow_expressions_in_jsx: true,
+	// 		// allow_expressions_in_jsx: !self.top_level_html,
+	// 		top_level_html: self.top_level_html,
+	// 	}
+	// }
 
 	#[must_use]
 	pub fn all_features() -> Self {
@@ -67,8 +61,6 @@ impl ParseOptions {
 			decorators: true,
 			custom_function_headers: true,
 			is_expressions: true,
-			buffer_size: 100,
-			stack_size: None,
 			record_keyword_positions: true,
 			// Only used in the AST-generator
 			interpolation_points: false,
@@ -77,6 +69,7 @@ impl ParseOptions {
 			extra_operators: true,
 			retain_blank_lines: true,
 			top_level_html: false,
+			..Default::default()
 		}
 	}
 }
@@ -93,8 +86,6 @@ impl Default for ParseOptions {
 			decorators: true,
 			custom_function_headers: false,
 			is_expressions: false,
-			buffer_size: 100,
-			stack_size: None,
 			record_keyword_positions: false,
 			interpolation_points: false,
 			partial_syntax: false,

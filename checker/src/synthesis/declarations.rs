@@ -93,11 +93,15 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 							}
 						}
 					}
+					parser::declarations::export::Exportable::VarStatement(_) => {
+						todo!()
+					}
 					parser::declarations::export::Exportable::ImportAll { .. }
 					| parser::declarations::export::Exportable::ImportParts { .. }
 					| parser::declarations::export::Exportable::Function(_)
 					| parser::declarations::export::Exportable::EnumDeclaration(_)
 					| parser::declarations::export::Exportable::Interface(_)
+					| parser::declarations::export::Exportable::Namespace(_)
 					| parser::declarations::export::Exportable::TypeAlias(_) => {}
 				}
 			}

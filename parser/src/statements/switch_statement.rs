@@ -1,12 +1,10 @@
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenEnd, Token};
 use visitable_derive::Visitable;
 
 use crate::{
-	ast::MultipleExpression, derive_ASTNode, errors::parse_lexing_error,
-	throw_unexpected_token_with_token, ASTNode, Expression, ParseOptions, StatementOrDeclaration,
-	TSXKeyword, TSXToken,
+	ast::MultipleExpression, derive_ASTNode, ASTNode, Expression, ParseOptions,
+	StatementOrDeclaration,
 };
 
 #[apply(derive_ASTNode)]
@@ -30,81 +28,74 @@ impl ASTNode for SwitchStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::Switch)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let start = reader.expect_keyword("switch")?;
 
-		reader.expect_next(crate::TSXToken::OpenParentheses)?;
-		let case = MultipleExpression::from_reader(reader, state, options)?;
-		reader.expect_next(crate::TSXToken::CloseParentheses)?;
-		reader.expect_next(crate::TSXToken::OpenBrace)?;
+		reader.expect('(')?;
+		let case = MultipleExpression::from_reader(reader)?;
+		reader.expect(')')?;
+		reader.expect('{')?;
 
 		let mut branches = Vec::new();
-
-		// TODO not great has this works
-		let close_brace_pos: TokenEnd;
-
 		loop {
-			let case: Option<Expression> = match reader.next().ok_or_else(parse_lexing_error)? {
-				Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
-					reader.expect_next(TSXToken::Colon)?;
-					None
-				}
-				Token(TSXToken::Keyword(TSXKeyword::Case), _) => {
-					let case = Expression::from_reader(reader, state, options)?;
-					reader.expect_next(TSXToken::Colon)?;
-					Some(case)
-				}
-				Token(TSXToken::CloseBrace, pos) => {
-					close_brace_pos = TokenEnd::new(pos.0 + 1);
-					break;
-				}
-				token => {
-					return throw_unexpected_token_with_token(
-						token,
-						&[
-							TSXToken::Keyword(TSXKeyword::Default),
-							TSXToken::Keyword(TSXKeyword::Case),
-							TSXToken::CloseBrace,
-						],
-					);
-				}
+			let case: Option<Expression> = if reader.is_operator_advance("}") {
+				// Token(TSXToken::CloseBrace, pos) => {
+				// 	close_brace_pos = TokenEnd::new(pos.0 + 1);
+				break;
+			} else if reader.is_operator_advance("case") {
+				let case = Expression::from_reader(reader)?;
+				reader.expect(':')?;
+				Some(case)
+			} else if reader.is_operator_advance("default") {
+				reader.expect(':')?;
+				None
+			} else if reader.is_one_of(&["//", "/*"]).is_some() {
+				let is_multiline = reader.starts_with_str("/*");
+				reader.advance(2);
+				let _content = if is_multiline {
+					reader.parse_until("*/").expect("TODO").to_owned()
+				} else {
+					reader.parse_until("\n").expect("TODO").to_owned()
+				};
+				continue;
+			} else {
+				todo!("{:?}", reader.get_some_current());
+				// token => {
+				// 	return throw_unexpected_token_with_token(
+				// 		token,
+				// 		&[
+				// 			TSXToken::Keyword(TSXKeyword::Default),
+				// 			TSXToken::Keyword(TSXKeyword::Case),
+				// 			TSXToken::CloseBrace,
+				// 		],
+				// 	);
+				// }
 			};
 
 			// This is a modified form of Block::from_reader where `TSXKeyword::Case` and
 			// `TSXKeyword::Default` are delimiters
 			let mut items = Vec::new();
 			loop {
-				if let Some(Token(
-					TSXToken::Keyword(TSXKeyword::Case | TSXKeyword::Default)
-					| TSXToken::CloseBrace,
-					_,
-				)) = reader.peek()
+				if reader.is_operator("}")
+					|| reader.is_one_of_keywords(&["case", "default"]).is_some()
 				{
 					break;
 				}
-				let value = StatementOrDeclaration::from_reader(reader, state, options)?;
+				let value = StatementOrDeclaration::from_reader(reader)?;
 				if value.requires_semi_colon() {
-					let _ = crate::expect_semi_colon(
-						reader,
-						&state.line_starts,
-						value.get_position().end,
-						options,
-					)?;
+					reader.expect_semi_colon()?;
 				}
 				// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
 				items.push(value);
 			}
+
 			if let Some(case) = case {
 				branches.push(SwitchBranch::Case(case, items));
 			} else {
 				branches.push(SwitchBranch::Default(items));
 			}
 		}
-		Ok(Self { case, branches, position: start.union(close_brace_pos) })
+		Ok(Self { case, branches, position: start.union(reader.get_end()) })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

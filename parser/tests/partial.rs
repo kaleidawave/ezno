@@ -3,11 +3,11 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn declarations() {
-	let input = r#"
+	let input = r"
 const x = ;
 const y = 
 const z = 2
-"#
+"
 	.trim_start()
 	.replace("    ", "\t");
 
@@ -32,10 +32,10 @@ const z = 2
 
 #[test]
 fn in_statements() {
-	let input = r#"
+	let input = r"
 if () {
 	return 2
-}"#
+}"
 	.trim_start()
 	.replace("    ", "\t");
 
@@ -60,11 +60,11 @@ if () {
 #[test]
 fn type_annotations() {
 	// Can't do return type annotation because conflicts with object type
-	let input = r#"
+	let input = r"
 const x:  = 5;
 function y(c: ) {
 	return 2
-}"#
+}"
 	.trim_start()
 	.replace("    ", "\t");
 
@@ -91,11 +91,15 @@ function y(c: ) {
 fn invalid_syntax() {
 	let sources = [("", true), ("][", false), ("{}}", false)];
 
-	for (source, is_okay) in sources.into_iter() {
+	for (source, is_okay) in sources {
 		let result = Module::from_string(
 			source.to_owned(),
 			ParseOptions { partial_syntax: true, ..Default::default() },
 		);
-		assert_eq!(result.is_ok(), is_okay, "Source = {:?} (parsed {:?})", source, result);
+		if is_okay {
+			assert!(result.is_ok());
+		} else {
+			assert!(result.is_err());
+		}
 	}
 }

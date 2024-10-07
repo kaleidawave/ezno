@@ -86,7 +86,7 @@ jobs:
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true' || github.ref_name == 'main'
         run: |
-          cargo test
+          cargo test --no-fail-fast
           
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
           cargo run -p ezno-parser --example parse react.js
@@ -94,13 +94,11 @@ jobs:
 
       - name: Run checker specification
         if: (steps.changes.outputs.checker == 'true' && github.event_name != 'pull_request') || github.ref_name == 'main'
-        run: cargo test
-        working-directory: checker/specification
+        run: cargo test -p ezno-checker-specification
       
       - name: Run checker specification (w/ staging)
         if: steps.changes.outputs.checker == 'true' && github.event_name == 'pull_request'
-        run: cargo test -F staging
-        working-directory: checker/specification
+        run: cargo test -p ezno-checker-specification -F staging
         env:
           EZNO_DEBUG: 1
 
