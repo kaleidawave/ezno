@@ -96,7 +96,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						);
 						register_variable(name, environment, checking_data, argument);
 					}
-					ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
+					ArrayDestructuringField::None => {}
 				}
 			}
 		}

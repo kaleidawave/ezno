@@ -214,7 +214,6 @@ impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
 #[apply(derive_ASTNode)]
 pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 	Name(T, T::TypeAnnotation, Option<Box<Expression>>),
-	Comment { content: String, is_multiline: bool, position: Span },
 	None,
 }
 
@@ -242,7 +241,6 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	fn get_position(&self) -> Span {
 		match self {
-			ArrayDestructuringField::Comment { position, .. } => *position,
 			// TODO misses out optional expression
 			ArrayDestructuringField::Name(vf, ..) => vf.get_position(),
 			ArrayDestructuringField::None => source_map::Nullable::NULL,
@@ -250,18 +248,9 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		// Allowed
 		if reader.is_operator(",") || reader.is_operator("}") {
 			Ok(Self::None)
-		} else if reader.starts_with_str("//") || reader.starts_with_str("/*") {
-			let is_multiline = reader.starts_with_str("/*");
-			reader.advance(2);
-			let content = if is_multiline {
-				reader.parse_until("*/").expect("TODO").to_owned()
-			} else {
-				reader.parse_until("\n").expect("TODO").to_owned()
-			};
-
-			Ok(Self::Comment { content: String, is_multiline: bool, position: Span })
 		} else {
 			let name = T::from_reader(reader)?;
 			let annotation = T::type_annotation_from_reader(reader)?;
@@ -294,13 +283,6 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 					buf.push('=');
 					options.push_gap_optionally(buf);
 					default_value.to_string_from_buffer(buf, options, local);
-				}
-			}
-			Self::Comment { content, is_multiline: _is_multiline, position: _ } => {
-				if options.should_add_comment(content) {
-					buf.push_str("/*");
-					buf.push_str(content);
-					buf.push_str("*/");
 				}
 			}
 			Self::None => {}
@@ -497,7 +479,7 @@ impl Visitable for WithComment<ArrayDestructuringField<VariableField>> {
 		visitors.visit_variable(&array_destructuring_member, data, chain);
 		match field {
 			// TODO should be okay, no nesting here
-			ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
+			ArrayDestructuringField::None => {}
 			ArrayDestructuringField::Name(variable_field, _, expression) => {
 				variable_field.visit(visitors, data, options, chain);
 				expression.visit(visitors, data, options, chain);
@@ -516,7 +498,7 @@ impl Visitable for WithComment<ArrayDestructuringField<VariableField>> {
 			MutableVariableOrProperty::ArrayDestructuringMember(self.get_ast_mut());
 		visitors.visit_variable_mut(&mut array_destructuring_member, data, chain);
 		match self.get_ast_mut() {
-			ArrayDestructuringField::Comment { .. } | ArrayDestructuringField::None => {}
+			ArrayDestructuringField::None => {}
 			ArrayDestructuringField::Name(variable_field, _, default_value) => {
 				variable_field.visit_mut(visitors, data, options, chain);
 				default_value.visit_mut(visitors, data, options, chain);
