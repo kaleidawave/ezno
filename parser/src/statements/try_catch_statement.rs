@@ -42,7 +42,12 @@ impl ASTNode for TryCatchStatement {
 				// Optional type reference `catch (e: type)`
 				let exception_var_type: Option<TypeAnnotation> = if reader.is_operator_advance(":")
 				{
-					Some(TypeAnnotation::from_reader(reader)?)
+					let annotation = TypeAnnotation::from_reader(reader)?;
+					crate::lexer::utilities::assert_type_annotations(
+						reader,
+						annotation.get_position(),
+					)?;
+					Some(annotation)
 				} else {
 					None
 				};

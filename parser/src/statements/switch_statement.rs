@@ -39,8 +39,6 @@ impl ASTNode for SwitchStatement {
 		let mut branches = Vec::new();
 		loop {
 			let case: Option<Expression> = if reader.is_operator_advance("}") {
-				// Token(TSXToken::CloseBrace, pos) => {
-				// 	close_brace_pos = TokenEnd::new(pos.0 + 1);
 				break;
 			} else if reader.is_operator_advance("case") {
 				let case = Expression::from_reader(reader)?;
@@ -59,17 +57,10 @@ impl ASTNode for SwitchStatement {
 				};
 				continue;
 			} else {
-				todo!("{:?}", reader.get_some_current());
-				// token => {
-				// 	return throw_unexpected_token_with_token(
-				// 		token,
-				// 		&[
-				// 			TSXToken::Keyword(TSXKeyword::Default),
-				// 			TSXToken::Keyword(TSXKeyword::Case),
-				// 			TSXToken::CloseBrace,
-				// 		],
-				// 	);
-				// }
+				return Err(crate::lexer::utilities::expected_one_of_keywords(
+					reader,
+					&["default", "case", "}"],
+				));
 			};
 
 			// This is a modified form of Block::from_reader where `TSXKeyword::Case` and
@@ -81,12 +72,24 @@ impl ASTNode for SwitchStatement {
 				{
 					break;
 				}
-				let value = StatementOrDeclaration::from_reader(reader)?;
-				if value.requires_semi_colon() {
+				let item = StatementOrDeclaration::from_reader(reader)?;
+				// TODO temp
+				let retain_blank_lines = false;
+
+				if let (
+					false,
+					StatementOrDeclaration::Statement(
+						crate::Statement::AestheticSemiColon(..) | crate::Statement::Empty(..),
+					),
+				) = (retain_blank_lines, &item)
+				{
+					continue;
+				}
+				if item.requires_semi_colon() {
 					reader.expect_semi_colon()?;
 				}
 				// Could skip over semi colons regardless. But they are technically empty statements 🤷‍♂️
-				items.push(value);
+				items.push(item);
 			}
 
 			if let Some(case) = case {
@@ -120,37 +123,29 @@ impl ASTNode for SwitchStatement {
 			match branch {
 				SwitchBranch::Default(statements) => {
 					buf.push_str("default:");
-					for (at_end, stmt) in statements.iter().endiate() {
-						if options.pretty {
-							buf.push_new_line();
-							options.add_indent(local.depth + 1, buf);
-						}
-						stmt.to_string_from_buffer(buf, options, local.next_level());
-						if stmt.requires_semi_colon() {
-							buf.push(';');
-						}
-						if options.pretty && !at_end {
-							buf.push_new_line();
-						}
+					if options.pretty {
+						buf.push_new_line();
 					}
+					crate::block::statements_and_declarations_to_string(
+						&statements,
+						buf,
+						options,
+						local.next_level(),
+					);
 				}
 				SwitchBranch::Case(case, statements) => {
 					buf.push_str("case ");
 					case.to_string_from_buffer(buf, options, local);
 					buf.push(':');
-					for (at_end, stmt) in statements.iter().endiate() {
-						if options.pretty {
-							buf.push_new_line();
-							options.add_indent(local.depth + 1, buf);
-						}
-						stmt.to_string_from_buffer(buf, options, local.next_level());
-						if stmt.requires_semi_colon() {
-							buf.push(';');
-						}
-						if options.pretty && !at_end {
-							buf.push_new_line();
-						}
+					if options.pretty {
+						buf.push_new_line();
 					}
+					crate::block::statements_and_declarations_to_string(
+						&statements,
+						buf,
+						options,
+						local.next_level(),
+					);
 				}
 			}
 		}

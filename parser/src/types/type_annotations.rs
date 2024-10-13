@@ -135,7 +135,7 @@ impl ASTNode for AnnotationWithBinder {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.after_identifier().starts_with(":") {
 			let start = reader.get_start();
-			let name = reader.parse_identifier()?.to_owned();
+			let name = reader.parse_identifier("type annotation binder")?.to_owned();
 			let _ = reader.expect(':')?;
 			let ty = TypeAnnotation::from_reader(reader)?;
 			Ok(AnnotationWithBinder::Annotated {
@@ -460,29 +460,23 @@ impl TypeAnnotation {
 		reader: &mut crate::new::Lexer,
 		parent_kind: TypeOperatorKind,
 	) -> ParseResult<Self> {
-		let _existing = r#"if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
-			let next_is_not_type_annotation_like = matches!(
-				peek,
-				TSXToken::CloseParentheses
-					| TSXToken::CloseBracket
-					| TSXToken::CloseBrace
-					| TSXToken::Comma | TSXToken::OpenChevron
-			) || peek.is_assignment()
-				|| (start.map_or(false, |start| {
-					peek.is_statement_or_declaration_start()
-						&& state
-							.line_starts
-							.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize)
-				}));
+		if reader.get_options().partial_syntax {
+			let start = reader.get_start();
+			reader.skip();
+			let next_is_not_expression_like = reader.starts_with_expression_delimter()
+				|| reader.starts_with_statement_or_declaration_on_new_line();
 
-			if next_is_not_type_annotation_like {
-				let point = start.unwrap_or(*at);
+			if next_is_not_expression_like {
 				// take up the whole next part for checker suggestions
-				let position = point.union(source_map::End(at.0));
-				return Ok(TypeAnnotation::Marker(state.new_partial_point_marker(point), position));
+				let position = start.union(reader.get_end());
+				return Ok(TypeAnnotation::Marker(
+					reader.new_partial_point_marker(position),
+					position,
+				));
 			}
+		} else {
+			reader.skip();
 		}
-		"#;
 
 		// while let Some(Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _)) =
 		// 	reader.peek()
@@ -506,7 +500,7 @@ impl TypeAnnotation {
 		} else if reader.is_keyword_advance("this") {
 			TypeAnnotation::This(start.with_length(4))
 		} else if reader.is_keyword_advance("infer") {
-			let name = reader.parse_identifier()?; // , "infer name")?;
+			let name = reader.parse_identifier("infer name")?;
 			let (position, extends) = if reader.is_keyword_advance("extends") {
 				let extends =
 					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
@@ -670,14 +664,14 @@ impl TypeAnnotation {
 			}
 			result
 		} else {
-			let name = reader.parse_identifier()?;
+			let name = reader.parse_identifier("type name")?;
 			let position = start.with_length(name.len());
 			let name = name.to_owned();
 
 			let name = if reader.is_operator(".") {
 				let mut namespace = vec![name];
 				while reader.is_operator_advance(".") {
-					let name = reader.parse_identifier()?;
+					let name = reader.parse_identifier("type name")?;
 					namespace.push(name.to_owned());
 				}
 				let position = position.union(reader.get_end());
@@ -931,7 +925,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			let start = reader.get_start();
 
 			if reader.is_operator_advance("...") {
-				let name = reader.parse_identifier()?.to_owned();
+				let name = reader.parse_identifier("spread parameter name")?.to_owned();
 				// // TODO is this a good feature
 				// let name = if reader.after_identifier().starts_with(":") {
 				// 	Some(WithComment::<VariableField>::from_reader(reader)?)
@@ -971,7 +965,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 						let position = reader.get_start().with_length(2);
 						let found = &reader.get_current()[..2];
 						let reason =
-							ParseErrors::ExpectedOneOfOperator { expected: &["?:", ":"], found };
+							ParseErrors::ExpectedOneOfOperators { expected: &["?:", ":"], found };
 						return Err(ParseError::new(reason, position));
 					}
 				} else {
@@ -1006,7 +1000,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push('(');
-		for parameter in &self.parameters {
+		for (at_end, parameter) in self.parameters.iter().endiate() {
 			if let Some(ref name) = parameter.name {
 				name.to_string_from_buffer(buf, options, local);
 			}
@@ -1016,6 +1010,10 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				buf.push_str(": ");
 			}
 			parameter.type_annotation.to_string_from_buffer(buf, options, local);
+			if !at_end || self.rest_parameter.is_some() {
+				buf.push(',');
+				options.push_gap_optionally(buf);
+			}
 		}
 		if let Some(ref rest_parameter) = self.rest_parameter {
 			buf.push_str("...");

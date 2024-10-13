@@ -29,6 +29,8 @@ pub struct ParseOptions {
 	/// Extra
 	pub destructuring_type_annotation: bool,
 	/// Extra
+	pub reversed_imports: bool,
+	/// Extra
 	pub extra_operators: bool,
 	/// For formatting
 	pub retain_blank_lines: bool,
@@ -68,6 +70,7 @@ impl ParseOptions {
 			destructuring_type_annotation: true,
 			extra_operators: true,
 			retain_blank_lines: true,
+			reversed_imports: true,
 			top_level_html: false,
 			..Default::default()
 		}
@@ -93,6 +96,7 @@ impl Default for ParseOptions {
 			extra_operators: false,
 			retain_blank_lines: false,
 			top_level_html: false,
+			reversed_imports: false,
 		}
 	}
 }

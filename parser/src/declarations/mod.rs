@@ -78,9 +78,16 @@ impl Declaration {
 			"declare",
 			"import",
 			"export",
+			"from",
 		]);
 
-		if let Some(name @ ("import" | "namespace" | "type")) = declaration_keyword {
+		if let Some(name @ ("from" | "import" | "export" | "namespace" | "type")) =
+			declaration_keyword
+		{
+			if let (false, "from") = (reader.get_options().reversed_imports, name) {
+				return false;
+			}
+
 			let after_declaration_keyword = reader.get_current()[name.len()..].trim_start();
 			// TODO more (is operator like?)
 			let is_declaration_keyword_expression = after_declaration_keyword.starts_with('(')
@@ -141,7 +148,6 @@ impl Declaration {
 		// 				)
 		// 		};
 		// 	}
-		// }	// TODO '@'
 	}
 }
 
@@ -173,20 +179,20 @@ impl crate::ASTNode for Declaration {
 			// state.append_keyword_at_pos(start.0, TSXKeyword::Class);
 			ClassDeclaration::from_reader(reader)
 				.map(|on| Declaration::Class(Decorated::new(decorators, on)))
+		} else if reader.is_keyword("import") {
+			ImportDeclaration::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("export") {
 			ExportDeclaration::from_reader(reader)
 				.map(|on| Declaration::Export(Decorated::new(decorators, on)))
-		} else if reader.is_keyword("import") {
-			ImportDeclaration::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("interface") {
-			InterfaceDeclaration::from_reader(reader)
-				.map(|on| Declaration::Interface(Decorated::new(decorators, on)))
+			let interface = InterfaceDeclaration::from_reader(reader)?;
+			crate::lexer::utilities::assert_type_annotations(reader, interface.get_position())?;
+			Ok(Declaration::Interface(Decorated::new(decorators, interface)))
 		} else if reader.is_keyword("type") {
 			// options.type_annotations => {
-			TypeAlias::from_reader(reader).map(Into::into)
-		} else if reader.is_keyword("namespace") {
-			// options.type_annotations => {
-			crate::types::namespace::Namespace::from_reader(reader).map(Into::into)
+			let alias = TypeAlias::from_reader(reader)?;
+			crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
+			Ok(alias.into())
 		} else if reader.is_keyword("declare") {
 			let start = reader.get_start();
 			reader.advance("declare".len() as u32);
@@ -211,76 +217,59 @@ impl crate::ASTNode for Declaration {
 				alias.name.is_declare = true;
 				alias.position.start = start.0;
 				Ok(Declaration::TypeAlias(alias))
-			} else if reader.is_keyword("namespace") {
-				let mut namespace = crate::types::namespace::Namespace::from_reader(reader)?;
-				namespace.is_declare = true;
-				namespace.position.start = start.0;
-				Ok(Declaration::Namespace(namespace))
 			} else {
-				todo!("{:?}", reader.get_current().get(..20));
+				if reader.is_keyword("namespace") {
+					let mut namespace = crate::types::namespace::Namespace::from_reader(reader)?;
+					namespace.is_declare = true;
+					namespace.position.start = start.0;
+					return Ok(Declaration::Namespace(namespace));
+				}
+
+				Err(crate::lexer::utilities::expected_one_of_keywords(
+					reader,
+					&["let", "const", "var", "class", "type", "async", "function", "namespace"],
+				))
 			}
-		// 		#[cfg(feature = "full-typescript")]
-		// 		TSXToken::Keyword(TSXKeyword::Namespace) => {
-		// 			let mut namespace = crate::types::namespace::Namespace::from_reader(
-		// 				reader,
-		// 			)?;
-		// 			namespace.is_declare = true;
-		// 			namespace.position.start = start.0;
-		// 			Ok(Declaration::Namespace(namespace))
-		// 		}
-		// 		_ => throw_unexpected_token_with_token(
-		// 			reader.next().ok_or_else(parse_lexing_error)?,
-		// 			&[
-		// 				TSXToken::Keyword(TSXKeyword::Let),
-		// 				TSXToken::Keyword(TSXKeyword::Const),
-		// 				TSXToken::Keyword(TSXKeyword::Var),
-		// 				TSXToken::Keyword(TSXKeyword::Function),
-		// 				TSXToken::Keyword(TSXKeyword::Class),
-		// 				TSXToken::Keyword(TSXKeyword::Type),
-		// 				TSXToken::Keyword(TSXKeyword::Namespace),
-		// 			],
-		// 		),
-		// 	}
-		// }
-		// #[cfg(feature = "extras")]
-		// TSXToken::Keyword(TSXKeyword::From) => {
-		// 	ImportDeclaration::reversed_from_reader(reader).map(Into::into)
-		// }
-		// #[cfg(feature = "full-typescript")]
-		// TSXToken::Keyword(TSXKeyword::Namespace) => {
-		// 	crate::types::namespace::Namespace::from_reader(reader)
-		// 		.map(Into::into)
-		// }
 		} else if reader.is_keyword("function") || reader.is_keyword("async") {
 			// TODO more above ^^^
 			let function = StatementFunction::from_reader(reader)?;
 			Ok(Declaration::Function(Decorated::new(decorators, function)))
-		// #[cfg(feature = "extras")]
-		// TSXToken::Keyword(ref kw) if kw.is_special_function_header() => {
-		// }
-		// TSXToken::Keyword(TSXKeyword::Function | TSXKeyword::Async) => {
-		// 	let function = StatementFunction::from_reader(reader)?;
-		// 	Ok(Declaration::Function(Decorated::new(decorators, function)))
-		// }
 		} else {
-			// throw_unexpected_token_with_token(
-			// 	reader.next().ok_or_else(parse_lexing_error)?,
-			// 	&[
-			// 		TSXToken::Keyword(TSXKeyword::Let),
-			// 		TSXToken::Keyword(TSXKeyword::Const),
-			// 		TSXToken::Keyword(TSXKeyword::Function),
-			// 		TSXToken::Keyword(TSXKeyword::Class),
-			// 		TSXToken::Keyword(TSXKeyword::Enum),
-			// 		TSXToken::Keyword(TSXKeyword::Type),
-			// 		TSXToken::Keyword(TSXKeyword::Declare),
-			// 		TSXToken::Keyword(TSXKeyword::Import),
-			// 		TSXToken::Keyword(TSXKeyword::Export),
-			// 		TSXToken::Keyword(TSXKeyword::Async),
-			// 		#[cfg(feature = "extras")]
-			// 		TSXToken::Keyword(TSXKeyword::Generator),
-			// 	],
-			// );
-			todo!("{:?}", &reader.get_current().get(..20))
+			#[cfg(feature = "extras")]
+			if reader.is_keyword("from") {
+				return ImportDeclaration::from_reader_reversed(reader).map(Declaration::Import);
+			}
+
+			#[cfg(feature = "full-typescript")]
+			if reader.is_keyword("namespace") {
+				return crate::types::namespace::Namespace::from_reader(reader).map(Into::into);
+			}
+
+			// #[cfg(feature = "extras")]
+			// TSXToken::Keyword(ref kw) if kw.is_special_function_header() => {
+			// }
+			// TSXToken::Keyword(TSXKeyword::Function | TSXKeyword::Async) => {
+			// 	let function = StatementFunction::from_reader(reader)?;
+			// 	Ok(Declaration::Function(Decorated::new(decorators, function)))
+			// }
+
+			// TODO vary list on certain paramters
+			Err(crate::lexer::utilities::expected_one_of_keywords(
+				reader,
+				&[
+					"let",
+					"const",
+					"function",
+					"class",
+					"enum",
+					"type",
+					"declare",
+					"import",
+					"export",
+					"async",
+					"generator",
+				],
+			))
 		}
 	}
 
@@ -479,8 +468,7 @@ impl ImportExportName {
 			let position = start.with_length(content.len() + 2);
 			Ok((ImportExportName::Quoted(content.to_owned(), quoted), position))
 		} else {
-			// let ident = crate::tokens::token_as_identifier(token, "import alias")?;
-			let ident = reader.parse_identifier()?.to_owned();
+			let ident = reader.parse_identifier("import alias")?.to_owned();
 			// if options.interpolation_points && ident == crate::marker::MARKER {
 			// 	Ok((ImportExportName::Marker(state.new_partial_point_marker(pos.get_start())), pos))
 			// } else {

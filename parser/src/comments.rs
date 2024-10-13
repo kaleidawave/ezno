@@ -100,6 +100,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		let start = reader.get_start();
 		if reader.is_operator_advance("/*") {
 			let comment = reader.parse_until("*/").expect("TODO");
+			dbg!(&comment);
 			let item = T::from_reader(reader)?;
 			let position = start.union(item.get_position());
 			Ok(Self::PrefixComment(comment.to_owned(), item, position))

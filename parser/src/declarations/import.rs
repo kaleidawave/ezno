@@ -134,7 +134,7 @@ impl ASTNode for ImportDeclaration {
 
 impl ImportDeclaration {
 	#[cfg(feature = "extras")]
-	pub fn reversed_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	pub fn from_reader_reversed(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("from")?;
 
 		let from = ImportLocation::from_reader(reader)?;

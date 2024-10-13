@@ -218,7 +218,7 @@ impl ASTNode for ObjectLiteralMember {
 
 		if reader.is_operator("(") || reader.is_operator("<") {
 			let method: ObjectLiteralMethod =
-				FunctionBase::from_reader_with_header_and_name(reader, (Some(start), header), key)?;
+				FunctionBase::from_reader_with_header_and_name(reader, header, key)?;
 
 			Ok(Self::Method(method))
 		} else {

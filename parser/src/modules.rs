@@ -47,11 +47,15 @@ impl ASTNode for Module {
 		} else {
 			None
 		};
-		Ok(Module {
-			items: statements_and_declarations_from_reader(reader)?,
-			hashbang_comment,
-			span,
-		})
+		let items = statements_and_declarations_from_reader(reader)?;
+		if reader.is_finished() {
+			Ok(Module { items, hashbang_comment, span })
+		} else {
+			Err(crate::ParseError::new(
+				crate::ParseErrors::ExpectedEndOfSource { found: reader.get_current() },
+				reader.get_start().union(reader.get_end()),
+			))
+		}
 	}
 }
 

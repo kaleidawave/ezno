@@ -224,27 +224,24 @@ impl Expression {
 		// 	dbg!(reader.head);
 		// }
 
-		// if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
-		// 	let next_is_not_expression_like = peek.is_expression_delimiter()
-		// 		|| start.map_or(false, |start| {
-		// 			peek.is_statement_or_declaration_start()
-		// 				&& state
-		// 					.line_starts
-		// 					.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize)
-		// 		});
+		// TODO WIP
+		if reader.get_options().partial_syntax {
+			let start = reader.get_start();
+			reader.skip();
+			let next_is_not_expression_like = reader.starts_with_expression_delimter()
+				|| reader.starts_with_statement_or_declaration_on_new_line();
 
-		// 	if next_is_not_expression_like {
-		// 		let point = start.unwrap_or(*at);
-		// 		// take up the whole next part for checker suggestions
-		// 		let position = point.union(source_map::End(at.0));
-		// 		return Ok(Expression::Marker {
-		// 			marker_id: state.new_partial_point_marker(point),
-		// 			position,
-		// 		});
-		// 	}
-		// }
-
-		reader.skip();
+			if next_is_not_expression_like {
+				// take up the whole next part for checker suggestions
+				let position = start.union(reader.get_end());
+				return Ok(Expression::Marker {
+					marker_id: reader.new_partial_point_marker(position),
+					position,
+				});
+			}
+		} else {
+			reader.skip();
+		}
 
 		let start = reader.get_start();
 		let first_expression = {
@@ -323,212 +320,141 @@ impl Expression {
 				}
 			} else if reader.starts_with('`') {
 				TemplateLiteral::from_reader(reader).map(Expression::TemplateLiteral)?
-			}
-			// Token(TSXToken::Keyword(kw), start) if function_header_ish(kw, reader) => {
-			// 	// TODO not great to recreate token, but that is how Rust works :)
-			// 	let token = Token(TSXToken::Keyword(kw), start);
-			// 	let (is_async, start, token) =
-			// 		if let Token(TSXToken::Keyword(TSXKeyword::Async), start) = token {
-			// 			(true, start, reader.next().unwrap())
-			// 		} else {
-			// 			(false, start, token)
-			// 		};
+			} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
+				// TODO more cases here
+				if reader.get_current().starts_with("async function") {
+					// 		#[cfg(feature = "extras")]
+					// 		{
+					// 			use crate::functions::FunctionLocationModifier;
+					// 			let (generator_keyword, token) =
+					// 				if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
+					// 					(Some(token.get_span()), reader.next().unwrap())
+					// 				} else {
+					// 					(None, token)
+					// 				};
 
-			// 	if is_async
-			// 		&& !matches!(token, Token(TSXToken::Keyword(ref kw), _) if kw.is_in_function_header())
-			// 	{
-			// 		if let Token(TSXToken::OpenParentheses, start) = token {
-			// 			let function = ArrowFunction::from_reader_sub_open_paren(
-			// 				reader, is_async, start,
-			// 			)?;
-			// 			return Ok(Expression::ArrowFunction(function));
-			// 		}
+					// 			let (location, token) = match token {
+					// 				Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
+					// 					(Some(FunctionLocationModifier::Server), reader.next().unwrap())
+					// 				}
+					// 				Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
+					// 					(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
+					// 				}
+					// 				token => (None, token),
+					// 			};
 
-			// 		let (name, position) = token_as_identifier(token, "function parameter")?;
-			// 		ArrowFunction::from_reader_with_first_parameter(
-			// 			reader,
-			// 			state,
-			// 			options,
-			// 			(name, position),
-			// 			is_async,
-			// 		)
-			// 		.map(Expression::ArrowFunction)?
-			// 	} else {
-			// 		#[cfg(feature = "extras")]
-			// 		{
-			// 			use crate::functions::FunctionLocationModifier;
-			// 			let (generator_keyword, token) =
-			// 				if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
-			// 					(Some(token.get_span()), reader.next().unwrap())
-			// 				} else {
-			// 					(None, token)
-			// 				};
+					// 			// Here because `token` (can't use `.expect()`)
+					// 			let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
+					// 			else {
+					// 				return throw_unexpected_token_with_token(
+					// 					token,
+					// 					&[TSXToken::Keyword(TSXKeyword::Function)],
+					// 				);
+					// 			};
 
-			// 			let (location, token) = match token {
-			// 				Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
-			// 					(Some(FunctionLocationModifier::Server), reader.next().unwrap())
-			// 				}
-			// 				Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
-			// 					(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
-			// 				}
-			// 				token => (None, token),
-			// 			};
+					// 			let function_end =
+					// 				function_start.get_end_after(TSXKeyword::Function.length() as usize);
 
-			// 			// Here because `token` (can't use `.expect()`)
-			// 			let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
-			// 			else {
-			// 				return throw_unexpected_token_with_token(
-			// 					token,
-			// 					&[TSXToken::Keyword(TSXKeyword::Function)],
-			// 				);
-			// 			};
+					// 			if generator_keyword.is_some() {
+					// 				let position = start.union(function_end);
 
-			// 			let function_end =
-			// 				function_start.get_end_after(TSXKeyword::Function.length() as usize);
+					// 				let header = FunctionHeader::ChadFunctionHeader {
+					// 					is_async,
+					// 					is_generator: true,
+					// 					location,
+					// 					position,
+					// 				};
 
-			// 			if generator_keyword.is_some() {
-			// 				let position = start.union(function_end);
+					// 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
+					// 					reader.peek()
+					// 				{
+					// 					None
+					// 				} else {
+					// 					let (token, span) =
+					// 						token_as_identifier(reader.next().unwrap(), "function name")?;
+					// 					Some(crate::VariableIdentifier::Standard(token, span))
+					// 				};
 
-			// 				let header = FunctionHeader::ChadFunctionHeader {
-			// 					is_async,
-			// 					is_generator: true,
-			// 					location,
-			// 					position,
-			// 				};
+					// 				FunctionBase::from_reader_with_header_and_name(
+					// 					reader,
+					// 					state,
+					// 					options,
+					// 					(Some(header.get_position().get_start()), header),
+					// 					ExpressionPosition(name),
+					// 				)
+					// 				.map(Expression::ExpressionFunction)?
+					// 			} else {
+					// 				let is_generator = reader
+					// 					.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
+					// 					.map(|token| token.get_span());
 
-			// 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
-			// 					reader.peek()
-			// 				{
-			// 					None
-			// 				} else {
-			// 					let (token, span) =
-			// 						token_as_identifier(reader.next().unwrap(), "function name")?;
-			// 					Some(crate::VariableIdentifier::Standard(token, span))
-			// 				};
+					// 				let end = is_generator
+					// 					.as_ref()
+					// 					.map_or(function_end, Span::get_end);
 
-			// 				FunctionBase::from_reader_with_header_and_name(
-			// 					reader,
-			// 					state,
-			// 					options,
-			// 					(Some(header.get_position().get_start()), header),
-			// 					ExpressionPosition(name),
-			// 				)
-			// 				.map(Expression::ExpressionFunction)?
-			// 			} else {
-			// 				let generator_star_token_position = reader
-			// 					.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-			// 					.map(|token| token.get_span());
+					// 				let header = FunctionHeader::VirginFunctionHeader {
+					// 					position: start.union(end),
+					// 					is_async,
+					// 					location,
+					// 					is_generator,
+					// 				};
 
-			// 				let end = generator_star_token_position
-			// 					.as_ref()
-			// 					.map_or(function_end, Span::get_end);
+					// 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
+					// 					reader.peek()
+					// 				{
+					// 					None
+					// 				} else {
+					// 					let (token, span) =
+					// 						token_as_identifier(reader.next().unwrap(), "function name")?;
+					// 					Some(crate::VariableIdentifier::Standard(token, span))
+					// 				};
 
-			// 				let header = FunctionHeader::VirginFunctionHeader {
-			// 					position: start.union(end),
-			// 					is_async,
-			// 					location,
-			// 					generator_star_token_position,
-			// 				};
+					// 				FunctionBase::from_reader_with_header_and_name(
+					// 					reader,
+					// 					state,
+					// 					options,
+					// 					(Some(header.get_position().get_start()), header),
+					// 					ExpressionPosition(name),
+					// 				)
+					// 				.map(Expression::ExpressionFunction)?
+					// 			}
+					// 		}
 
-			// 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
-			// 					reader.peek()
-			// 				{
-			// 					None
-			// 				} else {
-			// 					let (token, span) =
-			// 						token_as_identifier(reader.next().unwrap(), "function name")?;
-			// 					Some(crate::VariableIdentifier::Standard(token, span))
-			// 				};
+					// #[cfg(not(feature = "extras"))]
+					{
+						reader.advance("async function".len() as u32);
+						let is_generator = reader.is_operator_advance("*");
 
-			// 				FunctionBase::from_reader_with_header_and_name(
-			// 					reader,
-			// 					state,
-			// 					options,
-			// 					(Some(header.get_position().get_start()), header),
-			// 					ExpressionPosition(name),
-			// 				)
-			// 				.map(Expression::ExpressionFunction)?
-			// 			}
-			// 		}
+						let header = FunctionHeader::VirginFunctionHeader {
+							position: start.union(reader.get_end()),
+							is_async: true,
+							is_generator,
+							// TODO
+							location: None,
+						};
 
-			// 		#[cfg(not(feature = "extras"))]
-			// 		{
-			// 			let Token(TSXToken::Keyword(TSXKeyword::Function), _) = token else {
-			// 				return throw_unexpected_token_with_token(
-			// 					token,
-			// 					&[TSXToken::Keyword(TSXKeyword::Function)],
-			// 				);
-			// 			};
-
-			// 			let generator_star_token_position = reader
-			// 				.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-			// 				.map(|token| token.get_span());
-
-			// 			let position =
-			// 				start.union(generator_star_token_position.as_ref().unwrap_or(
-			// 					&start.with_length(TSXKeyword::Function.length() as usize),
-			// 				));
-
-			// 			let header = FunctionHeader::VirginFunctionHeader {
-			// 				position,
-			// 				is_async,
-			// 				generator_star_token_position,
-			// 			};
-
-			// 			let name = if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek()
-			// 			{
-			// 				None
-			// 			} else {
-			// 				let (token, span) =
-			// 					token_as_identifier(reader.next().unwrap(), "function name")?;
-
-			// 				Some(crate::VariableIdentifier::Standard(token, span))
-			// 			};
-			// 			FunctionBase::from_reader_with_header_and_name(
-			// 				reader,
-			// 				state,
-			// 				options,
-			// 				(Some(start), header),
-			// 				ExpressionPosition(name),
-			// 			)
-			// 			.map(Expression::ExpressionFunction)?
-			// 		}
-			// 	}
-			// }
-
-			// #[cfg(feature = "extras")]
-			// t @ Token(TSXToken::Keyword(TSXKeyword::Is), start) if options.is_expressions => {
-			// 	// Maintains compatibility here
-			// 	let mut parentheses_depth = 0;
-			// 	let next = reader.scan(|token, _| match token {
-			// 		TSXToken::OpenParentheses => {
-			// 			parentheses_depth += 1;
-			// 			false
-			// 		}
-			// 		TSXToken::CloseParentheses => {
-			// 			parentheses_depth -= 1;
-			// 			parentheses_depth == 0
-			// 		}
-			// 		_ => false,
-			// 	});
-			// 	if let Some(Token(token_type, _)) = next {
-			// 		if let TSXToken::OpenBrace = token_type {
-			// 			let is_expression_from_reader_sub_is_keyword =
-			// 				is_expression_from_reader_sub_is_keyword(reader, start);
-
-			// 			is_expression_from_reader_sub_is_keyword.map(Expression::IsExpression)?
-			// 		} else {
-			// 			Expression::VariableReference("is".to_owned(), start.with_length(2))
-			// 		}
-			// 	} else {
-			// 		return Err(ParseError::new(
-			// 			crate::ParseErrors::UnmatchedBrackets,
-			// 			t.get_span(),
-			// 		));
-			// 	}
-			// }
-			else if reader.is_operator_advance("#") {
-				let property_name = reader.parse_identifier()?.to_owned();
+						let name = if reader.is_one_of_operators(&["(", "<"]).is_some() {
+							None
+						} else {
+							reader.skip();
+							let start = reader.get_start();
+							let content =
+								reader.parse_identifier("function name").expect("TODO").to_owned();
+							let position = start.with_length(content.len());
+							Some(crate::VariableIdentifier::Standard(content, position))
+						};
+						FunctionBase::from_reader_with_header_and_name(
+							reader,
+							header,
+							ExpressionPosition(name),
+						)
+						.map(Expression::ExpressionFunction)?
+					}
+				} else {
+					Expression::ArrowFunction(ArrowFunction::from_reader(reader)?)
+				}
+			} else if reader.is_operator_advance("#") {
+				let property_name = reader.parse_identifier("property name")?.to_owned();
 				let _ = reader.expect_keyword("in")?;
 				let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
 				let position = start.union(rhs.get_position());
@@ -644,7 +570,7 @@ impl Expression {
 				}
 			} else if reader.is_keyword_advance("super") {
 				let inner = if reader.is_operator_advance(".") {
-					let property = reader.parse_identifier()?.to_owned();
+					let property = reader.parse_identifier("property identifier")?.to_owned();
 					SuperReference::PropertyAccess { property }
 				// TODO PropertyReference::Standard { property, is_private }
 				} else if reader.is_operator_advance("(") {
@@ -688,7 +614,7 @@ impl Expression {
 					// );
 				}
 			} else {
-				let name = reader.parse_identifier()?;
+				let name = reader.parse_identifier("variable reference expression")?;
 				let position = start.with_length(name.len());
 				// if keyword.is_invalid_identifier() {
 				// 	return Err(ParseError::new(
@@ -1032,7 +958,7 @@ impl Expression {
 					todo!()
 				} else {
 					let is_private = reader.is_operator_advance("#");
-					let property = reader.parse_identifier()?.to_owned();
+					let property = reader.parse_identifier("property name")?.to_owned();
 					PropertyReference::Standard { property, is_private }
 				};
 				let position = top.get_position().union(reader.get_end());
@@ -1132,7 +1058,9 @@ impl Expression {
 						todo!("error")
 					}
 				};
+
 				let position = top_position.union(rhs_position);
+				crate::lexer::utilities::assert_type_annotations(reader, position)?;
 				top = Self::SpecialOperators(special_operators, position);
 			} else if let Some(operator) = reader.is_one_of_keywords(&["instanceof", "in"]) {
 				if AssociativityDirection::LeftToRight
@@ -1838,18 +1766,6 @@ impl Expression {
 	}
 }
 
-// fn function_header_ish(
-// 	kw: TSXKeyword,
-// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-// ) -> bool {
-// 	kw.is_in_function_header()
-// 		|| (kw.is_special_function_header()
-// 			&& reader.peek().map_or(
-// 				false,
-// 				|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
-// 			))
-// }
-
 #[derive(Clone, Copy)]
 pub(crate) struct ExpressionToStringArgument {
 	/// On left of statement
@@ -2109,59 +2025,56 @@ impl ASTNode for FunctionArgument {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		reader.skip();
 		let start = reader.get_start();
 		if reader.is_operator_advance("...") {
 			let expression = Expression::from_reader(reader)?;
 			let position = start.union(expression.get_position());
 			Ok(Self::Spread(expression, position))
+		} else if reader.starts_with_str("//") || reader.starts_with_str("/*") {
+			let is_multiline = reader.starts_with_str("/*");
+			reader.advance(2);
+			let content = if is_multiline {
+				reader.parse_until("*/").expect("TODO")
+			} else {
+				reader.parse_until("\n").expect("TODO")
+			}
+			.to_owned();
+
+			if reader.is_one_of_operators(&[")", "}", ","]).is_some() {
+				let position = start.union(reader.get_end());
+				return Ok(Self::Comment { content, is_multiline, position });
+			}
+
+			let inner = Self::from_reader(reader)?;
+			let position = start.union(inner.get_position());
+
+			Ok(match inner {
+				FunctionArgument::Spread(expr, _end) => FunctionArgument::Spread(
+					Expression::Comment {
+						content,
+						on: Box::new(expr),
+						position,
+						is_multiline,
+						prefix: true,
+					},
+					position,
+				),
+				FunctionArgument::Standard(expr) => {
+					FunctionArgument::Standard(Expression::Comment {
+						content,
+						on: Box::new(expr),
+						position,
+						is_multiline,
+						prefix: true,
+					})
+				}
+				// TODO combine?
+				c @ FunctionArgument::Comment { .. } => c,
+			})
 		} else {
 			Expression::from_reader(reader).map(Self::Standard)
 		}
-		// t if t.is_comment() => {
-		// 	let (content, is_multiline, position) =
-		// 		TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-
-		// 	// Function arguments, JSX interpolated expressions and array elements don't have to have a value
-		// 	if let Some(Token(
-		// 		TSXToken::CloseParentheses
-		// 		| TSXToken::JSXExpressionEnd
-		// 		| TSXToken::CloseBracket
-		// 		| TSXToken::Comma,
-		// 		_,
-		// 	)) = reader.peek()
-		// 	{
-		// 		return Ok(Self::Comment { content, is_multiline, position });
-		// 	}
-
-		// 	let expr = Self::from_reader(reader)?;
-		// 	let position = position.union(expr.get_position());
-
-		// 	Ok(match expr {
-		// 		FunctionArgument::Spread(expr, _end) => FunctionArgument::Spread(
-		// 			Expression::Comment {
-		// 				content,
-		// 				on: Box::new(expr),
-		// 				position,
-		// 				is_multiline,
-		// 				prefix: true,
-		// 			},
-		// 			position,
-		// 		),
-		// 		FunctionArgument::Standard(expr) => {
-		// 			FunctionArgument::Standard(Expression::Comment {
-		// 				content,
-		// 				on: Box::new(expr),
-		// 				position,
-		// 				is_multiline,
-		// 				prefix: true,
-		// 			})
-		// 		}
-		// 		// TODO
-		// 		c @ FunctionArgument::Comment { .. } => c,
-		// 	})
-		// }
-		// _ => ,
-		// }
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

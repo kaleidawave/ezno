@@ -38,7 +38,7 @@ impl FunctionBased for ArrowFunctionBase {
 	fn header_and_name_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		Ok(((None, reader.is_operator_advance("async")), ()))
+		Ok((reader.is_operator_advance("async"), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -59,9 +59,8 @@ impl FunctionBased for ArrowFunctionBase {
 		if reader.is_operator("(") {
 			FunctionParameters::from_reader(reader)
 		} else {
-			// "arrow function parameter"
 			let start = reader.get_start();
-			let name = reader.parse_identifier().unwrap();
+			let name = reader.parse_identifier("arrow function parameter").unwrap();
 			let position = start.with_length(name.len());
 			let parameters = vec![Parameter {
 				visibility: (),

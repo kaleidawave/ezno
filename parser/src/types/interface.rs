@@ -322,9 +322,8 @@ impl ASTNode for InterfaceMember {
 				} else {
 					use crate::Expression;
 					// "name" is the name of the parameter name for indexing
-					// "interface parameter"
 					let start = reader.get_start();
-					let name = reader.parse_identifier()?;
+					let name = reader.parse_identifier("interface parameter name")?;
 
 					// Catch for computed symbol: e.g. `[Symbol.instanceOf()]`, rather than indexer
 					if reader.is_operator(".") {
@@ -395,7 +394,7 @@ impl ASTNode for InterfaceMember {
 				}
 			} else {
 				let start = reader.get_start();
-				let name = reader.parse_identifier()?;
+				let name = reader.parse_identifier("interface parameter name")?;
 				// TODO...?
 				let privacy = PublicOrPrivate::Public;
 				PropertyKey::Identifier(name.to_owned(), start.with_length(name.len()), privacy)

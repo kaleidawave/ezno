@@ -83,7 +83,7 @@ impl ASTNode for Statement {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.after_identifier().starts_with(":") {
 			let start = reader.get_start();
-			let name = reader.parse_identifier()?.to_owned();
+			let name = reader.parse_identifier("statement label")?.to_owned();
 			let _ = reader.expect(':')?;
 			let statement = Statement::from_reader(reader).map(Box::new)?;
 			if statement.requires_semi_colon() {
@@ -128,7 +128,7 @@ impl ASTNode for Statement {
 				Ok(Statement::Break(None, start.with_length("break".len() as usize)))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier()?;
+				let label = reader.parse_identifier("break identifier")?;
 				Ok(Statement::Break(Some(label.to_owned()), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("continue") {
@@ -136,7 +136,7 @@ impl ASTNode for Statement {
 				Ok(Statement::Continue(None, start.with_length("continue".len() as usize)))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier()?;
+				let label = reader.parse_identifier("continue identifier")?;
 				Ok(Statement::Continue(Some(label.to_owned()), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("throw") {
@@ -328,13 +328,4 @@ impl ASTNode for VarVariableStatement {
 		buf.push_str("var ");
 		declarations_to_string(&self.declarations, buf, options, local, false);
 	}
-}
-
-fn on_different_lines_or_line_end(// line_starts: &source_map::LineStarts,
-	// keyword_position: crate::TokenStart,
-	// Token(kind, next): &Token<TSXToken, crate::TokenStart>,
-) -> bool {
-	todo!()
-	// matches!(kind, TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS)
-	// 	|| line_starts.byte_indexes_on_different_lines(keyword_position.0 as usize, next.0 as usize)
 }

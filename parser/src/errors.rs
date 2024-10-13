@@ -2,19 +2,45 @@ use source_map::Span;
 /// Contains lexing and parser errors
 use std::fmt::{self, Display};
 
+/// TODO documentation + combine some of these
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
-	UnexpectedCharacter { expected: &'a [char], found: Option<char> },
-	ExpectedKeyword { expected: &'static str, found: &'a str },
-	ExpectedOperator { expected: &'static str, found: &'a str },
-	ExpectedOneOfOperator { expected: &'static [&'static str], found: &'a str },
-	// UnexpectedSymbol(derive_finite_automaton::InvalidCharacter),
-	ClosingTagDoesNotMatch { expected: &'a str, found: &'a str },
-	ExpectedStringLiteral { found: &'a str },
+	UnexpectedCharacter {
+		expected: &'a [char],
+		found: Option<char>,
+	},
+	ExpectedKeyword {
+		expected: &'static str,
+		found: &'a str,
+	},
+	ExpectedOneOfKeywords {
+		expected: &'static [&'static str],
+		found: &'a str,
+	},
+	ExpectedOperator {
+		expected: &'static str,
+		found: &'a str,
+	},
+	ExpectedOneOfOperators {
+		expected: &'static [&'static str],
+		found: &'a str,
+	},
+	ClosingTagDoesNotMatch {
+		expected: &'a str,
+		found: &'a str,
+	},
+	ExpectedStringLiteral {
+		found: &'a str,
+	},
 	TypeArgumentsNotValidOnReference,
-	UnmatchedBrackets,
+	ExpectedEndOfSource {
+		found: &'a str,
+	},
 	FunctionParameterOptionalAndDefaultValue,
-	ExpectedIdent { found: &'a str, at_location: &'a str },
+	ExpectedIdent {
+		found: &'a str,
+		at_location: &'a str,
+	},
 	ParameterCannotHaveDefaultValueHere,
 	InvalidLHSAssignment,
 	LexingFailed,
@@ -27,7 +53,9 @@ pub enum ParseErrors<'a> {
 	ReservedIdentifier,
 	AwaitRequiresForOf,
 	CannotUseLeadingParameterHere,
-	ExpectedIdentifier,
+	ExpectedIdentifier {
+		location: &'static str,
+	},
 	ExpectedNumberLiteral,
 	NonStandardSyntaxUsedWithoutEnabled,
 	ExpectRule,
@@ -35,6 +63,8 @@ pub enum ParseErrors<'a> {
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
+	/// TODO this could be set to collect, rather than breaking (https://github.com/kaleidawave/ezno/issues/203)
+	TypeAnnotationUsed,
 }
 
 impl<'a> Display for ParseErrors<'a> {
@@ -52,7 +82,8 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::ExpectedOperator { expected, found } => {
 				write!(f, "Expected {expected} found {found}")
 			}
-			ParseErrors::ExpectedOneOfOperator { expected, found } => {
+			ParseErrors::ExpectedOneOfKeywords { expected, found }
+			| ParseErrors::ExpectedOneOfOperators { expected, found } => {
 				f.write_str("Expected ")?;
 				utilities::format_list(f, expected)?;
 				write!(f, " found {found}")
@@ -60,10 +91,9 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::ExpectedKeyword { expected, found } => {
 				write!(f, "Expected {expected:?}, found {found:?}")
 			}
-
 			// ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
-				write!(f, "Expected </{expected}> found </{found}>")
+				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")
 			}
 			ParseErrors::NonStandardSyntaxUsedWithoutEnabled => {
 				write!(f, "Cannot use this syntax without flag enabled")
@@ -74,7 +104,10 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::TypeArgumentsNotValidOnReference => {
 				write!(f, "Type arguments not valid on reference",)
 			}
-			ParseErrors::UnmatchedBrackets => f.write_str("Unmatched brackets"),
+			ParseErrors::ExpectedEndOfSource { found } => {
+				let found = &found[..std::cmp::min(found.len(), 10)];
+				f.write_str("Expected end of source, found {found}")
+			}
 			ParseErrors::FunctionParameterOptionalAndDefaultValue => {
 				f.write_str("Function parameter cannot be optional *and* have default expression")
 			}
@@ -116,8 +149,8 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::CannotUseLeadingParameterHere => {
 				write!(f, "Cannot write this constraint in this kind of function")
 			}
-			ParseErrors::ExpectedIdentifier => {
-				write!(f, "Expected variable identifier")
+			ParseErrors::ExpectedIdentifier { location } => {
+				write!(f, "Expected variable identifier at {location}")
 			}
 			ParseErrors::ExpectedNumberLiteral => {
 				write!(f, "Expected number literal")
@@ -136,6 +169,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::InvalidLHSOfIs => {
 				write!(f, "LHS must be variable reference")
+			}
+			ParseErrors::TypeAnnotationUsed => {
+				write!(f, "Cannot use type annotations in non-ts file")
 			}
 		}
 	}

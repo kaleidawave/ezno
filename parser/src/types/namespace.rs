@@ -21,7 +21,7 @@ impl crate::ASTNode for Namespace {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
 		let start = reader.expect_keyword("namespace")?;
-		let name = reader.parse_identifier()?.to_owned();
+		let name = reader.parse_identifier("namespace name")?.to_owned();
 		let inner = Block::from_reader(reader)?;
 		let position = start.union(inner.get_position());
 		Ok(Self { is_declare: false, name, inner, position })

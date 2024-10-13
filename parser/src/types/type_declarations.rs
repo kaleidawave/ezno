@@ -28,7 +28,7 @@ impl ASTNode for TypeParameter {
 		let is_constant = reader.is_keyword_advance("const");
 
 		let start = reader.get_start();
-		let name = reader.parse_identifier()?.to_owned();
+		let name = reader.parse_identifier("type parameter name")?.to_owned();
 
 		let extends = reader
 			.is_keyword_advance("extends")

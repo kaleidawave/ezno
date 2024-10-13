@@ -31,6 +31,8 @@ pub enum JSXElementChildren {
 	Children(JSXChildren),
 	/// For img elements
 	SelfClosing,
+	/// For script + style elements
+	Literal(String),
 }
 
 impl From<JSXElement> for JSXNode {
@@ -46,7 +48,7 @@ impl ASTNode for JSXElement {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('<')?;
-		let tag_name = reader.parse_identifier().unwrap().to_owned();
+		let tag_name = reader.parse_identifier("JSX element name").unwrap().to_owned();
 		let mut attributes = Vec::new();
 		// TODO spread attributes
 		// Kind of weird / not clear conditions for breaking out of while loop
@@ -77,7 +79,7 @@ impl ASTNode for JSXElement {
 			} else {
 				// TODO extras here @ etc
 				let start = reader.get_start();
-				let key = reader.parse_identifier().unwrap().to_owned();
+				let key = reader.parse_identifier("JSX element attribute").unwrap().to_owned();
 				if reader.is_operator_advance("=") {
 					let start = reader.get_start();
 					let attribute = if reader.is_operator_advance("{") {
@@ -100,19 +102,38 @@ impl ASTNode for JSXElement {
 			}
 		}
 
+		if html_tag_is_self_closing(&tag_name) {
+			return Ok(JSXElement {
+				tag_name,
+				attributes,
+				children: JSXElementChildren::SelfClosing,
+				position: start.union(reader.get_end()),
+			});
+		} else if html_tag_contains_literal_content(&tag_name) {
+			// TODO could embedded parser?
+			let content = reader.parse_until("</").expect("TODO").to_owned();
+			let closing_tag_name = reader.parse_identifier("JSX closing tag")?;
+			let end = reader.expect('>')?;
+			return Ok(JSXElement {
+				tag_name,
+				attributes,
+				children: JSXElementChildren::Literal(content),
+				position: start.union(end),
+			});
+		}
+
 		let children = jsx_children_from_reader(reader)?;
 		if reader.is_operator_advance("</") {
-			let closing_tag_name = reader.parse_identifier()?;
+			let closing_tag_name = reader.parse_identifier("JSX closing tag")?;
 			let end = reader.expect('>')?;
 			if closing_tag_name != tag_name {
-				todo!()
-				// return Err(ParseError::new(
-				// 	crate::ParseErrors::ClosingTagDoesNotMatch {
-				// 		expected: &tag_name,
-				// 		found: &closing_tag_name,
-				// 	},
-				// 	start.with_length(closing_tag_name.len() + 2),
-				// ));
+				return Err(ParseError::new(
+					crate::ParseErrors::ClosingTagDoesNotMatch {
+						expected: &tag_name,
+						found: &closing_tag_name,
+					},
+					start.with_length(closing_tag_name.len() + 2),
+				));
 			}
 			Ok(JSXElement {
 				tag_name,
@@ -138,17 +159,21 @@ impl ASTNode for JSXElement {
 			buf.push(' ');
 			attribute.to_string_from_buffer(buf, options, local);
 		}
+		buf.push('>');
 
 		match self.children {
 			JSXElementChildren::Children(ref children) => {
-				buf.push('>');
 				jsx_children_to_string(children, buf, options, local);
 				buf.push_str("</");
 				buf.push_str(&self.tag_name);
 				buf.push('>');
 			}
-			JSXElementChildren::SelfClosing => {
-				buf.push_str(">");
+			JSXElementChildren::SelfClosing => {}
+			JSXElementChildren::Literal(ref content) => {
+				buf.push_str(content);
+				buf.push_str("</");
+				buf.push_str(&self.tag_name);
+				buf.push('>');
 			}
 		}
 	}
@@ -285,6 +310,9 @@ fn jsx_children_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Vec<J
 	// TODO count new lines etc
 	loop {
 		reader.skip();
+		for _ in 0..reader.last_was_from_new_line() {
+			children.push(JSXNode::LineBreak);
+		}
 		if reader.starts_with_str("</") {
 			return Ok(children);
 		}
@@ -299,23 +327,24 @@ fn jsx_children_to_string<T: source_map::ToString>(
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
-	let element_of_line_break_in_children =
+	let element_or_line_break_in_children =
 		children.iter().any(|node| matches!(node, JSXNode::Element(..) | JSXNode::LineBreak));
 
-	let mut previous_was_break = true;
+	let mut previous_was_element_or_line_break = true;
 
 	for node in children {
-		if element_of_line_break_in_children
+		if element_or_line_break_in_children
 			&& !matches!(node, JSXNode::LineBreak)
-			&& previous_was_break
+			&& previous_was_element_or_line_break
 		{
 			options.add_indent(local.depth + 1, buf);
 		}
 		node.to_string_from_buffer(buf, options, local);
-		previous_was_break = matches!(node, JSXNode::Element(..) | JSXNode::LineBreak);
+		previous_was_element_or_line_break =
+			matches!(node, JSXNode::Element(..) | JSXNode::LineBreak);
 	}
 
-	if options.pretty && local.depth > 0 && previous_was_break {
+	if options.pretty && local.depth > 0 && previous_was_element_or_line_break {
 		options.add_indent(local.depth, buf);
 	}
 }
@@ -350,13 +379,15 @@ impl ASTNode for JSXNode {
 			let end = reader.expect('}')?;
 			Ok(JSXNode::InterpolatedExpression(Box::new(expression), start.union(end)))
 		} else if reader.starts_with_str("<!--") {
-			let content = reader.parse_until("-->");
-			todo!("comment")
+			reader.advance("<!--".len() as u32);
+			let content = reader.parse_until("-->").expect("TODO").to_owned();
+			let position = start.with_length(content.len());
+			Ok(JSXNode::Comment(content, position))
 		} else if reader.starts_with_str("<") {
 			let element = JSXElement::from_reader(reader)?;
 			Ok(JSXNode::Element(element))
 		} else {
-			let content = reader.parse_until_no_advance("<").expect("TODO");
+			let (content, _) = reader.parse_until_one_of_no_advance(&["<", "{"]).expect("TODO");
 			let position = start.with_length(content.len());
 			Ok(JSXNode::TextNode(content.trim_start().into(), position))
 		}

@@ -36,7 +36,7 @@ impl ASTNode for VariableIdentifier {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let identifier = reader.parse_identifier()?;
+		let identifier = reader.parse_identifier("variable identifier")?;
 		let position = start.with_length(identifier.len());
 		Ok(Self::Standard(identifier.to_owned(), position))
 		// TODO
@@ -222,22 +222,6 @@ pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 #[apply(derive_ASTNode)]
 pub struct SpreadDestructuringField<T: DestructuringFieldInto>(pub Box<T>, pub Span);
 
-impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField<T>> {
-	const EMPTY: Option<Self> = Some(WithComment::None(ArrayDestructuringField::None));
-
-	const LAST_PREFIX: Option<&'static str> = Some("...");
-
-	type LAST = SpreadDestructuringField<T>;
-
-	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
-		let start = reader.get_start();
-		reader.expect_operator("...")?;
-		let node = T::from_reader(reader)?;
-		let position = start.union(node.get_position());
-		Ok(SpreadDestructuringField(Box::new(node), position))
-	}
-}
-
 impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	fn get_position(&self) -> Span {
 		match self {
@@ -248,8 +232,10 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		// dbg!(reader.get_some_current());
+
 		// Allowed
-		if reader.is_operator(",") || reader.is_operator("}") {
+		if reader.is_operator(",") || reader.is_operator("]") {
 			Ok(Self::None)
 		} else {
 			let name = T::from_reader(reader)?;
@@ -287,6 +273,22 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 			}
 			Self::None => {}
 		}
+	}
+}
+
+impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField<T>> {
+	const EMPTY: Option<Self> = Some(WithComment::None(ArrayDestructuringField::None));
+
+	const LAST_PREFIX: Option<&'static str> = Some("...");
+
+	type LAST = SpreadDestructuringField<T>;
+
+	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
+		let start = reader.get_start();
+		reader.expect_operator("...")?;
+		let node = T::from_reader(reader)?;
+		let position = start.union(node.get_position());
+		Ok(SpreadDestructuringField(Box::new(node), position))
 	}
 }
 

@@ -32,7 +32,7 @@ pub struct AlwaysPublic;
 impl PropertyKeyKind for AlwaysPublic {
 	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
-		let name = reader.parse_identifier()?;
+		let name = reader.parse_identifier("propery key")?;
 		Ok((name.to_owned(), start.with_length(name.len()), Self::new_public()))
 	}
 
@@ -61,13 +61,9 @@ pub enum PublicOrPrivate {
 impl PropertyKeyKind for PublicOrPrivate {
 	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
-		if reader.is_operator_advance("#") {
-			let name = reader.parse_identifier()?;
-			Ok((name.to_owned(), start.with_length(name.len()), Self::Private))
-		} else {
-			let name = reader.parse_identifier()?;
-			Ok((name.to_owned(), start.with_length(name.len()), Self::Public))
-		}
+		let publicity = if reader.is_operator_advance("#") { Self::Private } else { Self::Public };
+		let name = reader.parse_identifier("property key")?;
+		Ok((name.to_owned(), start.with_length(name.len()), publicity))
 	}
 
 	fn is_private(&self) -> bool {

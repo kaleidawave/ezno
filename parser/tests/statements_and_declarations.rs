@@ -11,11 +11,11 @@ if (true) {
 for (const x in [4, 2]) {
     switch (x) {
         case 4:
-            doThing();
+            doThing()
         case 2:
-            break;
+            break
         default:
-            break;
+            break
     }
 }
 for (let i = 0; i < 4; i++) {
@@ -211,7 +211,8 @@ from "module-name" import defaultExport, * as name;
     "#
 	.trim();
 
-	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+	let module =
+		Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all_features()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 
@@ -222,8 +223,6 @@ from "module-name" import defaultExport, * as name;
 #[cfg(feature = "extras")]
 #[test]
 fn function_custom_headers() {
-	use ezno_parser::ParseOptions;
-
 	let input = "
 function a() {}
 generator function a() {}
@@ -234,7 +233,8 @@ worker function a() {}
     "
 	.trim();
 
-	let module = Module::from_string(input.to_owned(), ParseOptions::all_features()).unwrap();
+	let module =
+		Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all_features()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 

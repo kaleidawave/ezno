@@ -145,8 +145,7 @@ type Something<T, V extends keyof T> = { [P in keyof T]: V }
 fn jsx_nuances() {
 	let input = r"
 function x(a: <T>(a: number, b: T) => T) {}
-
-type B<T extends boolean> = T ? string : <U>(a: number, b: U) => T;
+type B<T extends boolean> = T ? string : <U>(a: number, b: U) => T
 "
 	.trim();
 

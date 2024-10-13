@@ -3,41 +3,10 @@
 
 use crate::{
 	errors::{ParseError, ParseErrors},
+	marker::Marker,
 	options::ParseOptions,
 	Comments, Quoted, Span,
 };
-
-// mod lexer_state {
-// pub(super) enum JSXAttributeValueDelimiter {
-// 	None,
-// 	SingleQuote,
-// 	DoubleQuote,
-// }
-
-// pub(super) enum JSXTagNameDirection {
-// 	Opening,
-// 	Closing,
-// }
-
-// pub(super) enum JSXLexingState {
-// 	/// Only for top level html
-// 	ExpectingOpenChevron,
-// 	TagName {
-// 		direction: JSXTagNameDirection,
-// 		lexed_start: bool,
-// 	},
-// 	/// For lexing the close chevron after the slash in self closing tags
-// 	SelfClosingTagClose,
-// 	AttributeKey,
-// 	AttributeEqual,
-// 	AttributeValue(JSXAttributeValueDelimiter),
-// 	Comment,
-// 	Content,
-// 	/// For script and style tags
-// 	LiteralContent {
-// 		last_char_was_open_chevron: bool,
-// 	},
-// }
 
 pub(super) enum NumberLiteralType {
 	BinaryLiteral,
@@ -64,6 +33,7 @@ impl Default for NumberLiteralType {
 #[derive(Default)]
 pub struct ParsingState {
 	last_new_lines: u32,
+	markers: Vec<Span>,
 }
 
 pub struct Lexer<'a> {
@@ -90,6 +60,12 @@ impl<'a> Lexer<'a> {
 
 	pub fn get_options(&self) -> &ParseOptions {
 		&self.options
+	}
+
+	pub fn new_partial_point_marker<T>(&mut self, span: Span) -> Marker<T> {
+		let idx = self.state.markers.len() as u8;
+		self.state.markers.push(span);
+		Marker(idx, std::marker::PhantomData::default())
 	}
 
 	/// Just used for specific things, not all annotations
@@ -303,6 +279,27 @@ impl<'a> Lexer<'a> {
 		self.get_current().starts_with(str)
 	}
 
+	/// Can't do `-` and `+` because they are valid expression prefixed
+	/// TODO `.` if not number etc.
+	pub fn starts_with_expression_delimter(&self) -> bool {
+		let current = self.get_current();
+		IntoIterator::into_iter(["=", ",", ":", "?", "]", ")", "}", ";"])
+			.any(|expression_delimiter| current.starts_with(expression_delimiter))
+	}
+
+	pub fn starts_with_statement_or_declaration_on_new_line(&self) -> bool {
+		let current = self.get_current();
+		IntoIterator::into_iter(["const", "let", "function", "class", "if", "for", "while"]).any(
+			|stmt_or_dec_prefix| {
+				current.starts_with(stmt_or_dec_prefix)
+					&& current[stmt_or_dec_prefix.len()..]
+						.chars()
+						.next()
+						.is_some_and(|next| !utilities::is_valid_identifier(next))
+			},
+		)
+	}
+
 	pub fn is_operator(&mut self, operator: &str) -> bool {
 		self.skip();
 		self.starts_with_str(operator)
@@ -334,7 +331,7 @@ impl<'a> Lexer<'a> {
 		self.head += count;
 	}
 
-	pub fn parse_identifier(&mut self) -> Result<&'a str, ParseError> {
+	pub fn parse_identifier(&mut self, location: &'static str) -> Result<&'a str, ParseError> {
 		self.skip();
 		let current = self.get_current();
 		let start = self.get_start();
@@ -344,12 +341,15 @@ impl<'a> Lexer<'a> {
 			if !first_is_valid {
 				let current = self.get_current();
 				return Err(ParseError::new(
-					ParseErrors::ExpectedIdentifier,
+					ParseErrors::ExpectedIdentifier { location },
 					start.with_length(chr.len_utf8()),
 				));
 			}
 		} else {
-			return Err(ParseError::new(ParseErrors::ExpectedIdentifier, start.with_length(0)));
+			return Err(ParseError::new(
+				ParseErrors::ExpectedIdentifier { location },
+				start.with_length(0),
+			));
 		}
 
 		for (idx, chr) in iter {
@@ -392,7 +392,7 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	// For JSX
+	// For comments etc
 	pub fn parse_until_no_advance(&mut self, until: &str) -> Result<&'a str, ()> {
 		let current = self.get_current();
 		for (idx, _) in current.char_indices() {
@@ -404,6 +404,7 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
+	// For JSX
 	pub fn parse_until_one_of(
 		&mut self,
 		possibles: &[&'static str],
@@ -413,6 +414,23 @@ impl<'a> Lexer<'a> {
 			if let Some(until) = possibles.into_iter().find(|s| current[i..].starts_with(**s)) {
 				self.head += (i + until.len()) as u32;
 				return Ok((&current[..i], until));
+			}
+		}
+		Err(())
+	}
+
+	pub fn parse_until_one_of_no_advance(
+		&mut self,
+		possibles: &[&'static str],
+	) -> Result<(&'a str, &'static str), ()> {
+		let current = self.get_current();
+		for i in 0.. {
+			if let Some(until) = possibles.into_iter().find(|s| current[i..].starts_with(**s)) {
+				self.head += i as u32;
+				let content = &current[..i];
+				self.state.last_new_lines =
+					content.chars().filter(|char| matches!(char, '\n')).count() as u32;
+				return Ok((content, until));
 			}
 		}
 		Err(())
@@ -890,5 +908,36 @@ pub(crate) mod utilities {
 			}
 		}
 		0
+	}
+
+	/// TODO lots more, also
+	pub fn is_function_header(str: &str) -> bool {
+		str.starts_with("async ") || {
+			str.starts_with("function")
+				&& !is_valid_identifier(str["function".len()..].chars().next().expect("TODO"))
+		}
+	}
+
+	/// TODO this could be set to collect, rather than breaking (https://github.com/kaleidawave/ezno/issues/203)
+	pub fn assert_type_annotations(
+		reader: &super::Lexer,
+		position: crate::Span,
+	) -> crate::ParseResult<()> {
+		if reader.get_options().type_annotations {
+			Ok(())
+		} else {
+			Err(crate::ParseError::new(crate::ParseErrors::TypeAnnotationUsed, position))
+		}
+	}
+
+	pub fn expected_one_of_keywords(
+		reader: &super::Lexer,
+		expected: &'static [&'static str],
+	) -> crate::ParseError {
+		let current = reader.get_current();
+		let found = &current[..self::next_empty_occurance(current)];
+		let position = reader.get_start().with_length(found.len());
+		let reason = crate::ParseErrors::ExpectedOneOfKeywords { expected, found };
+		crate::ParseError::new(reason, position)
 	}
 }

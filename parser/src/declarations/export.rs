@@ -72,52 +72,40 @@ impl ASTNode for ExportDeclaration {
 		reader.skip();
 
 		if reader.is_keyword_advance("default") {
-			// reader.peek().map_or(
-			// 	false,
-			// 	|t| matches!(t.0, TSXToken::Keyword(kw) if kw.is_in_function_header()),
-			// ) {
-			// let is_async = reader
-			// 	.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Async)))
-			// 	.is_some();
+			if reader.get_options().type_definition_module
+				&& crate::lexer::utilities::is_function_header(reader.get_current())
+			{
+				let is_async = reader.is_operator_advance("async");
+				let _ = reader.expect_keyword("function");
 
-			// #[allow(unused)]
-			// let token = reader.next();
-			// debug_assert!(matches!(
-			// 	token.unwrap().0,
-			// 	TSXToken::Keyword(TSXKeyword::Function)
-			// ));
+				let identifier = if reader.is_operator("(") {
+					None
+				} else {
+					Some(VariableIdentifier::from_reader(reader)?)
+				};
 
-			// let identifier =
-			// 	if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-			// 		None
-			// 	} else {
-			// 		Some(VariableIdentifier::from_reader(reader)?)
-			// 	};
+				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
 
-			// let parameters =
-			// 	TypeAnnotationFunctionParameters::from_reader(reader)?;
+				let return_type = if reader.is_operator_advance(":") {
+					Some(TypeAnnotation::from_reader(reader)?)
+				} else {
+					None
+				};
 
-			// let return_type = reader
-			// 	.conditional_next(|tok| matches!(tok, TSXToken::Colon))
-			// 	.is_some()
-			// 	.then(|| TypeAnnotation::from_reader(reader))
-			// 	.transpose()?;
+				let position = start.union(reader.get_end());
 
-			// let position = start.union(
-			// 	return_type.as_ref().map_or(parameters.position, ASTNode::get_position),
-			// );
-
-			// Ok(ExportDeclaration::DefaultFunction {
-			// 	position,
-			// 	is_async,
-			// 	identifier,
-			// 	parameters,
-			// 	return_type,
-			// })
-			// }
-			let expression = Expression::from_reader(reader)?;
-			let position = start.union(expression.get_position());
-			Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
+				Ok(ExportDeclaration::DefaultFunction {
+					position,
+					is_async,
+					identifier,
+					parameters,
+					return_type,
+				})
+			} else {
+				let expression = Expression::from_reader(reader)?;
+				let position = start.union(expression.get_position());
+				Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
+			}
 		} else if reader.is_operator_advance("*") {
 			let r#as = if reader.is_keyword_advance("as") {
 				// TODO state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::As);
@@ -199,24 +187,20 @@ impl ASTNode for ExportDeclaration {
 		} else if reader.is_keyword("type") {
 			if reader.get_current()["type".len()..].trim_start().starts_with("{") {
 				reader.advance("type".len() as u32);
+				let _ = reader.expect_operator("{");
 				let (parts, _) =
 					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
 
 				let _ = reader.expect_keyword("from")?;
-
 				let from = ImportLocation::from_reader(reader)?;
-
 				let end = reader.get_end();
-
-				Ok(Self::Item {
-					exported: Exportable::ImportParts {
-						parts,
-						from,
-						// Important
-						type_definitions_only: true,
-					},
-					position: start.union(end),
-				})
+				let exported = Exportable::ImportParts {
+					parts,
+					from,
+					// Important
+					type_definitions_only: true,
+				};
+				Ok(Self::Item { exported, position: start.union(end) })
 			} else {
 				let type_alias = TypeAlias::from_reader(reader)?;
 				let position = start.union(type_alias.get_position());

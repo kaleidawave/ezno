@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		is_expressions: extras,
 		special_jsx_attributes: extras,
 		extra_operators: extras,
+		reversed_imports: extras,
 		top_level_html,
 		..ParseOptions::default()
 	};

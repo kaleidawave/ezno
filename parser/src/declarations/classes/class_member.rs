@@ -126,8 +126,7 @@ impl ASTNode for ClassMember {
 		reader.skip();
 
 		if reader.starts_with('(') || reader.starts_with('<') {
-			let function =
-				ClassFunction::from_reader_with_config(reader, (Some(start), header), key)?;
+			let function = ClassFunction::from_reader_with_config(reader, header, key)?;
 			Ok(ClassMember::Method(is_static, function))
 		} else {
 			if !header.is_no_modifiers() {
@@ -140,8 +139,6 @@ impl ASTNode for ClassMember {
 			} else {
 				None
 			};
-
-			reader.skip();
 
 			let value: Option<Box<Expression>> = if reader.is_operator_advance("=") {
 				Some(Box::new(Expression::from_reader(reader)?))
@@ -237,7 +234,7 @@ impl ASTNode for ClassMember {
 impl ClassFunction {
 	fn from_reader_with_config(
 		reader: &mut crate::new::Lexer,
-		header: (Option<source_map::Start>, MethodHeader),
+		header: MethodHeader,
 		key: WithComment<PropertyKey<PublicOrPrivate>>,
 	) -> ParseResult<Self> {
 		FunctionBase::from_reader_with_header_and_name(reader, header, key)
@@ -259,12 +256,9 @@ impl FunctionBased for ClassFunctionBase {
 	fn header_and_name_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		// TODO not great
-		let start = reader.get_start();
 		let header = MethodHeader::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader)?;
-		let start = (!header.is_no_modifiers()).then_some(start);
-		Ok(((start, header), name))
+		Ok((header, name))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -326,7 +320,7 @@ impl FunctionBased for ClassConstructorBase {
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let start = reader.expect_keyword("constructor")?;
-		Ok(((Some(start), ()), ()))
+		Ok(((), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(

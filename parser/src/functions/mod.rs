@@ -29,7 +29,7 @@ pub mod bases {
 	};
 }
 
-pub type HeadingAndPosition<T> = (Option<source_map::Start>, <T as FunctionBased>::Header);
+pub type HeadingAndPosition<T> = <T as FunctionBased>::Header;
 
 /// Specialization information for [`FunctionBase`]
 pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
@@ -163,8 +163,8 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let (header_and_left, name) = T::header_and_name_from_reader(reader)?;
-		Self::from_reader_with_header_and_name(reader, header_and_left, name)
+		let (header, name) = T::header_and_name_from_reader(reader)?;
+		Self::from_reader_with_header_and_name(reader, header, name)
 	}
 
 	fn to_string_from_buffer<TS: source_map::ToString>(
@@ -201,9 +201,11 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 impl<T: FunctionBased> FunctionBase<T> {
 	pub(crate) fn from_reader_with_header_and_name(
 		reader: &mut crate::new::Lexer,
-		(header_start, header): (Option<source_map::Start>, T::Header),
+		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
+		// TODO header.get_start else here
+		let start = reader.get_start();
 		let type_parameters = if reader.is_operator_advance("<") {
 			Some(bracketed_items_from_reader(reader, ">").map(|(params, _)| params)?)
 		} else {
@@ -224,7 +226,6 @@ impl<T: FunctionBased> FunctionBase<T> {
 		if let Some(slice) = T::get_parameter_body_boundary_slice() {
 			reader.expect_operator(slice)?;
 		}
-
 		let body = T::Body::from_reader(reader)?;
 		let body_pos = body.get_position();
 		// TODO body.is_null
@@ -234,8 +235,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 			body_pos
 		};
 
-		let position =
-			header_start.unwrap_or_else(|| parameters.position.get_start()).union(end_pos);
+		let position = start.union(end_pos);
 
 		Ok(Self { header, name, type_parameters, parameters, return_type, body, position })
 	}
@@ -313,7 +313,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader)?;
 		let name = T::from_reader(reader)?;
-		Ok(((Some(header.get_position().get_start()), header), name))
+		Ok((header, name))
 	}
 
 	fn header_and_name_to_string_from_buffer<U: source_map::ToString>(
@@ -377,7 +377,7 @@ pub enum FunctionHeader {
 		is_async: bool,
 		#[cfg(feature = "extras")]
 		location: Option<FunctionLocationModifier>,
-		generator_star_token_position: Option<Span>,
+		is_generator: bool,
 		position: Span,
 	},
 	#[cfg(feature = "extras")]
@@ -404,13 +404,7 @@ impl ASTNode for FunctionHeader {
 
 		reader.expect_keyword("function")?;
 
-		let generator_star_token_position = if reader.is_operator("*") {
-			let position = reader.get_start().with_length(1);
-			reader.advance(1);
-			Some(position)
-		} else {
-			None
-		};
+		let is_generator = reader.is_operator_advance("*");
 
 		// TODO
 		Ok(Self::VirginFunctionHeader {
@@ -418,7 +412,7 @@ impl ASTNode for FunctionHeader {
 			// TODO first thing
 			// Option<FunctionLocationModifier>,
 			location: None,
-			generator_star_token_position,
+			is_generator,
 			position: start.union(reader.get_end()),
 		})
 	}
@@ -445,10 +439,7 @@ impl FunctionHeader {
 	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		match self {
-			FunctionHeader::VirginFunctionHeader {
-				generator_star_token_position: generator_star_token_pos,
-				..
-			} => generator_star_token_pos.is_some(),
+			FunctionHeader::VirginFunctionHeader { is_generator, .. } => *is_generator,
 			#[cfg(feature = "extras")]
 			FunctionHeader::ChadFunctionHeader { is_generator, .. } => *is_generator,
 		}
