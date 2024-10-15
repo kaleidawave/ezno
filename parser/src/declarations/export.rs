@@ -17,16 +17,12 @@ use visitable_derive::Visitable;
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ExportDeclaration {
-	Item {
-		exported: Exportable,
-		position: Span,
-	},
-	// `export default ...`
-	Default {
-		expression: Box<Expression>,
-		position: Span,
-	},
-	DefaultFunction {
+	/// `export *Exportable*`
+	Item { exported: Exportable, position: Span },
+	/// `export default ...`
+	Default { expression: Box<Expression>, position: Span },
+	/// In TypeScript you can `export default name` in type definition modules
+	TSDefaultFunctionDeclaration {
 		/// Technically not allowed in TypeScript
 		is_async: bool,
 		identifier: Option<VariableIdentifier>,
@@ -75,6 +71,8 @@ impl ASTNode for ExportDeclaration {
 			if reader.get_options().type_definition_module
 				&& crate::lexer::utilities::is_function_header(reader.get_current())
 			{
+				// Always have == .d.ts file here
+				// Unfortuantly have to do quite a bit of parsing here
 				let is_async = reader.is_operator_advance("async");
 				let _ = reader.expect_keyword("function");
 
@@ -93,8 +91,7 @@ impl ASTNode for ExportDeclaration {
 				};
 
 				let position = start.union(reader.get_end());
-
-				Ok(ExportDeclaration::DefaultFunction {
+				Ok(ExportDeclaration::TSDefaultFunctionDeclaration {
 					position,
 					is_async,
 					identifier,
@@ -223,28 +220,11 @@ impl ASTNode for ExportDeclaration {
 				return Ok(Self::Item { exported: Exportable::Namespace(namespace), position });
 			}
 
-			todo!("{:?}", reader.get_current().get(..20))
-			// }
-			// Token(TSXToken::Keyword(kw), _) if kw.is_in_function_header() => {
-			// 	let function_declaration = StatementFunction::from_reader(reader)?;
-			// 	let position = start.union(function_declaration.get_position());
-			// 	Ok(Self::Variable {
-			// 		exported: Exportable::Function(function_declaration),
-			// 		position,
-			// 	})
-			// }
-			// _ => throw_unexpected_token(
-			// 	reader,
-			// 	&[
-			// 		TSXToken::Keyword(TSXKeyword::Class),
-			// 		TSXToken::Keyword(TSXKeyword::Function),
-			// 		TSXToken::Keyword(TSXKeyword::Const),
-			// 		TSXToken::Keyword(TSXKeyword::Let),
-			// 		TSXToken::Keyword(TSXKeyword::Interface),
-			// 		TSXToken::Keyword(TSXKeyword::Type),
-			// 		TSXToken::OpenBrace,
-			// 	],
-			// ),
+			// TODO vary list on certain parameters
+			Err(crate::lexer::utilities::expected_one_of_keywords(
+				reader,
+				&["let", "const", "function", "class", "enum", "type", "interface", "{"],
+			))
 		}
 	}
 
@@ -317,7 +297,7 @@ impl ASTNode for ExportDeclaration {
 				buf.push_str("export default ");
 				expression.to_string_from_buffer(buf, options, local);
 			}
-			ExportDeclaration::DefaultFunction {
+			ExportDeclaration::TSDefaultFunctionDeclaration {
 				is_async,
 				identifier,
 				parameters,

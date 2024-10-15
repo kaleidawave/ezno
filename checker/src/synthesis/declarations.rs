@@ -128,7 +128,10 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			parser::declarations::ExportDeclaration::DefaultFunction { position, .. } => {
+			parser::declarations::ExportDeclaration::TSDefaultFunctionDeclaration {
+				position,
+				..
+			} => {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::FunctionWithoutBodyNotAllowedHere {
 						position: position.with_source(environment.get_source()),

@@ -115,11 +115,11 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoted) = reader.parse_string_literal().expect("TODO");
+			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
 			Ok(Self::StringLiteral(content.to_owned(), quoted, position))
 		} else if reader.starts_with_number() {
-			let (value, length) = reader.parse_number_literal().expect("TODO");
+			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
 			Ok(Self::NumberLiteral(value, position))
 		} else if reader.is_operator_advance("[") {

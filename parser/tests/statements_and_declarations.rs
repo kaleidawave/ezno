@@ -156,16 +156,11 @@ export { name1 as default };
 export default expression;
 export default function functionName() { 
 }
-export default class ClassName {  
-}
-export default function* generatorFunctionName() {  
-}
-export default function () {  
-}
-export default class {  
-}
-export default function* () {  
-}
+export default class ClassName { }
+export default function* generatorFunctionName() { }
+export default function () { }
+export default class { }
+export default function* () { }
 
 export interface X { property: number }
 

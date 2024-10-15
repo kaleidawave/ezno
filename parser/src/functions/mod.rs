@@ -380,10 +380,11 @@ pub enum FunctionHeader {
 		is_generator: bool,
 		position: Span,
 	},
+	/// Always is_generator
 	#[cfg(feature = "extras")]
 	ChadFunctionHeader {
 		is_async: bool,
-		is_generator: bool,
+		// is_generator: bool,
 		location: Option<FunctionLocationModifier>,
 		position: Span,
 	},
@@ -399,22 +400,39 @@ impl ASTNode for FunctionHeader {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		fn parse_location(reader: &mut crate::new::Lexer) -> Option<FunctionLocationModifier> {
+			if reader.is_keyword_advance("server") {
+				Some(FunctionLocationModifier::Server)
+			} else if reader.is_keyword_advance("worker") {
+				Some(FunctionLocationModifier::Worker)
+			} else {
+				None
+			}
+		}
+
 		let start = reader.get_start();
 		let is_async = reader.is_operator_advance("async");
 
-		reader.expect_keyword("function")?;
-
-		let is_generator = reader.is_operator_advance("*");
-
-		// TODO
-		Ok(Self::VirginFunctionHeader {
-			is_async,
-			// TODO first thing
-			// Option<FunctionLocationModifier>,
-			location: None,
-			is_generator,
-			position: start.union(reader.get_end()),
-		})
+		if reader.is_keyword_advance("generator") {
+			let location = parse_location(reader);
+			let _ = reader.expect_keyword("function")?;
+			Ok(Self::ChadFunctionHeader {
+				is_async,
+				location,
+				// is_generator: true,
+				position: start.union(reader.get_end()),
+			})
+		} else {
+			let location = parse_location(reader);
+			let _ = reader.expect_keyword("function")?;
+			let is_generator = reader.is_operator_advance("*");
+			Ok(Self::VirginFunctionHeader {
+				is_async,
+				location,
+				is_generator,
+				position: start.union(reader.get_end()),
+			})
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -441,7 +459,7 @@ impl FunctionHeader {
 		match self {
 			FunctionHeader::VirginFunctionHeader { is_generator, .. } => *is_generator,
 			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { is_generator, .. } => *is_generator,
+			FunctionHeader::ChadFunctionHeader { .. } => true,
 		}
 	}
 
@@ -567,23 +585,28 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 	Ok((function_header, key))
 }
 
-// #[cfg(feature = "full-typescript")]
 /// None if overloaded (declaration only)
+#[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
-// #[cfg(not(feature = "full-typescript"))]
-// pub type FunctionBody = Block;
+#[cfg(not(feature = "full-typescript"))]
+pub type FunctionBody = Block;
 
+#[cfg(feature = "full-typescript")]
 impl ASTNode for FunctionBody {
 	fn get_position(&self) -> Span {
 		self.0.as_ref().map_or(source_map::Nullable::NULL, |Block(_, pos)| *pos)
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		reader.skip();
-		let body = if reader.starts_with('{') { Some(Block::from_reader(reader)?) } else { None };
+		// If type annotations. Allow elided bodies for function overloading
+		let body = if reader.is_operator("{") || !reader.get_options().type_annotations {
+			Some(Block::from_reader(reader)?)
+		} else {
+			None
+		};
 		Ok(Self(body))
 	}
 

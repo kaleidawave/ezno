@@ -146,10 +146,10 @@ impl ASTNode for Statement {
 		} else if reader.is_operator_advance(";") {
 			Ok(Statement::AestheticSemiColon(start.with_length(1)))
 		} else if reader.is_operator_advance("//") {
-			let content = reader.parse_until("\n").expect("TODO");
+			let content = reader.parse_comment_literal(false)?;
 			Ok(Statement::Comment(content.to_owned(), start.with_length(2 + content.len())))
 		} else if reader.is_operator_advance("/*") {
-			let content = reader.parse_until("*/").expect("TODO");
+			let content = reader.parse_comment_literal(true)?;
 			Ok(Statement::MultiLineComment(
 				content.to_owned(),
 				start.with_length(4 + content.len()),
@@ -285,7 +285,7 @@ impl ASTNode for VarVariableStatement {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		reader.expect_keyword("var").expect("TODO");
+		let _ = reader.expect_keyword("var")?;
 		let mut declarations = Vec::new();
 		loop {
 			let value = VariableDeclarationItem::<Option<Expression>>::from_reader(reader)?;

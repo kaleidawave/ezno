@@ -246,11 +246,11 @@ impl Expression {
 		let start = reader.get_start();
 		let first_expression = {
 			if reader.starts_with_string_delimeter() {
-				let (content, quoted) = reader.parse_string_literal().expect("TODO");
+				let (content, quoted) = reader.parse_string_literal()?;
 				let position = start.with_length(content.len() + 2);
 				Expression::StringLiteral(content.to_owned(), quoted, position)
 			} else if reader.starts_with_number() {
-				let (value, length) = reader.parse_number_literal().expect("TODO");
+				let (value, length) = reader.parse_number_literal()?;
 				let position = start.with_length(length as usize);
 				Expression::NumberLiteral(value, position)
 			}
@@ -264,12 +264,7 @@ impl Expression {
 			else if reader.starts_with_str("//") || reader.starts_with_str("/*") {
 				let is_multiline = reader.starts_with_str("/*");
 				reader.advance(2);
-				let content = if is_multiline {
-					reader.parse_until("*/").expect("TODO").to_owned()
-				} else {
-					reader.parse_until("\n").expect("TODO").to_owned()
-				};
-
+				let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 				let expression = Self::from_reader_with_precedence(reader, return_precedence)?;
 				let position = start.union(expression.get_position());
 				Expression::Comment {
@@ -280,7 +275,7 @@ impl Expression {
 					prefix: true,
 				}
 			} else if reader.starts_with('/') {
-				let (pattern, flags, length) = reader.parse_regex_literal().expect("TODO");
+				let (pattern, flags, length) = reader.parse_regex_literal()?;
 				let position = start.with_length(length as usize);
 				Expression::RegexLiteral {
 					pattern: pattern.to_owned(),
@@ -322,134 +317,17 @@ impl Expression {
 				TemplateLiteral::from_reader(reader).map(Expression::TemplateLiteral)?
 			} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
 				// TODO more cases here
-				if reader.get_current().starts_with("async function") {
-					// 		#[cfg(feature = "extras")]
-					// 		{
-					// 			use crate::functions::FunctionLocationModifier;
-					// 			let (generator_keyword, token) =
-					// 				if let Token(TSXToken::Keyword(TSXKeyword::Generator), _) = token {
-					// 					(Some(token.get_span()), reader.next().unwrap())
-					// 				} else {
-					// 					(None, token)
-					// 				};
-
-					// 			let (location, token) = match token {
-					// 				Token(TSXToken::Keyword(TSXKeyword::Server), _) => {
-					// 					(Some(FunctionLocationModifier::Server), reader.next().unwrap())
-					// 				}
-					// 				Token(TSXToken::Keyword(TSXKeyword::Worker), _) => {
-					// 					(Some(FunctionLocationModifier::Worker), reader.next().unwrap())
-					// 				}
-					// 				token => (None, token),
-					// 			};
-
-					// 			// Here because `token` (can't use `.expect()`)
-					// 			let Token(TSXToken::Keyword(TSXKeyword::Function), function_start) = token
-					// 			else {
-					// 				return throw_unexpected_token_with_token(
-					// 					token,
-					// 					&[TSXToken::Keyword(TSXKeyword::Function)],
-					// 				);
-					// 			};
-
-					// 			let function_end =
-					// 				function_start.get_end_after(TSXKeyword::Function.length() as usize);
-
-					// 			if generator_keyword.is_some() {
-					// 				let position = start.union(function_end);
-
-					// 				let header = FunctionHeader::ChadFunctionHeader {
-					// 					is_async,
-					// 					is_generator: true,
-					// 					location,
-					// 					position,
-					// 				};
-
-					// 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
-					// 					reader.peek()
-					// 				{
-					// 					None
-					// 				} else {
-					// 					let (token, span) =
-					// 						token_as_identifier(reader.next().unwrap(), "function name")?;
-					// 					Some(crate::VariableIdentifier::Standard(token, span))
-					// 				};
-
-					// 				FunctionBase::from_reader_with_header_and_name(
-					// 					reader,
-					// 					state,
-					// 					options,
-					// 					(Some(header.get_position().get_start()), header),
-					// 					ExpressionPosition(name),
-					// 				)
-					// 				.map(Expression::ExpressionFunction)?
-					// 			} else {
-					// 				let is_generator = reader
-					// 					.conditional_next(|tok| matches!(tok, TSXToken::Multiply))
-					// 					.map(|token| token.get_span());
-
-					// 				let end = is_generator
-					// 					.as_ref()
-					// 					.map_or(function_end, Span::get_end);
-
-					// 				let header = FunctionHeader::VirginFunctionHeader {
-					// 					position: start.union(end),
-					// 					is_async,
-					// 					location,
-					// 					is_generator,
-					// 				};
-
-					// 				let name = if let Some(Token(TSXToken::OpenParentheses, _)) =
-					// 					reader.peek()
-					// 				{
-					// 					None
-					// 				} else {
-					// 					let (token, span) =
-					// 						token_as_identifier(reader.next().unwrap(), "function name")?;
-					// 					Some(crate::VariableIdentifier::Standard(token, span))
-					// 				};
-
-					// 				FunctionBase::from_reader_with_header_and_name(
-					// 					reader,
-					// 					state,
-					// 					options,
-					// 					(Some(header.get_position().get_start()), header),
-					// 					ExpressionPosition(name),
-					// 				)
-					// 				.map(Expression::ExpressionFunction)?
-					// 			}
-					// 		}
-
-					// #[cfg(not(feature = "extras"))]
-					{
-						reader.advance("async function".len() as u32);
-						let is_generator = reader.is_operator_advance("*");
-
-						let header = FunctionHeader::VirginFunctionHeader {
-							position: start.union(reader.get_end()),
-							is_async: true,
-							is_generator,
-							// TODO
-							location: None,
-						};
-
-						let name = if reader.is_one_of_operators(&["(", "<"]).is_some() {
-							None
-						} else {
-							reader.skip();
-							let start = reader.get_start();
-							let content =
-								reader.parse_identifier("function name").expect("TODO").to_owned();
-							let position = start.with_length(content.len());
-							Some(crate::VariableIdentifier::Standard(content, position))
-						};
-						FunctionBase::from_reader_with_header_and_name(
-							reader,
-							header,
-							ExpressionPosition(name),
-						)
-						.map(Expression::ExpressionFunction)?
-					}
+				let mut current = reader.get_current();
+				if current.starts_with("async") {
+					current = &current["async".len()..].trim_start();
+				}
+				if current.starts_with("server") {
+					current = &current["server".len()..].trim_start();
+				} else if current.starts_with("worker") {
+					current = &current["worker".len()..].trim_start();
+				}
+				if current.starts_with("function") {
+					Expression::ExpressionFunction(ExpressionFunction::from_reader(reader)?)
 				} else {
 					Expression::ArrowFunction(ArrowFunction::from_reader(reader)?)
 				}
@@ -482,15 +360,6 @@ impl Expression {
 				let operand = VariableOrPropertyAccess::from_reader(reader)?;
 				let position = start.union(operand.get_position());
 				Expression::UnaryPrefixAssignmentOperation { operand, operator, position }
-			} else if reader.is_keyword("async") || reader.is_keyword("function") {
-				// TODO async () handling
-				if reader.is_keyword("function") {
-					FunctionBase::from_reader(reader).map(Expression::ExpressionFunction)?
-				} else {
-					// TODO generator keyword as well
-					// TODO arrow functions
-					todo!()
-				}
 			} else if reader.is_keyword("class") {
 				ClassDeclaration::from_reader(reader).map(Expression::ClassExpression)?
 			} else if let Some(op) = reader.is_one_of_operators(&["+", "-", "~", "!"]) {
@@ -582,7 +451,10 @@ impl Expression {
 					reader.expect(']')?;
 					SuperReference::Index { indexer: Box::new(indexer) }
 				} else {
-					todo!()
+					return Err(crate::lexer::utilities::expected_one_of_keywords(
+						reader,
+						&[".", "(", "["],
+					));
 				};
 				Expression::SuperExpression(inner, start.union(reader.get_end()))
 			} else if reader.is_keyword_advance("import") {
@@ -713,11 +585,7 @@ impl Expression {
 			if reader.starts_with_str("//") || reader.starts_with_str("/*") {
 				let is_multiline = reader.starts_with_str("/*");
 				reader.advance(2);
-				let content = if is_multiline {
-					reader.parse_until("*/").expect("TODO").to_owned()
-				} else {
-					reader.parse_until("\n").expect("TODO").to_owned()
-				};
+				let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 				let position = top.get_position().union(reader.get_end());
 				top = Expression::Comment {
 					is_multiline,
@@ -955,7 +823,7 @@ impl Expression {
 					// let marker = state.new_partial_point_marker(accessor_position);
 					// let position = accessor_position.union(source_map::End(at.0));
 					// (PropertyReference::Marker(marker), position)
-					todo!()
+					todo!("TODO partial syntax else error")
 				} else {
 					let is_private = reader.is_operator_advance("#");
 					let property = reader.parse_identifier("property name")?.to_owned();
@@ -2034,13 +1902,7 @@ impl ASTNode for FunctionArgument {
 		} else if reader.starts_with_str("//") || reader.starts_with_str("/*") {
 			let is_multiline = reader.starts_with_str("/*");
 			reader.advance(2);
-			let content = if is_multiline {
-				reader.parse_until("*/").expect("TODO")
-			} else {
-				reader.parse_until("\n").expect("TODO")
-			}
-			.to_owned();
-
+			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 			if reader.is_one_of_operators(&[")", "}", ","]).is_some() {
 				let position = start.union(reader.get_end());
 				return Ok(Self::Comment { content, is_multiline, position });
@@ -2118,7 +1980,12 @@ impl ASTNode for ArrayElement {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		FunctionArgument::from_reader(reader).map(Some).map(Self)
+		// This is allowed for some reason
+		if reader.is_one_of_operators(&[",", "]"]).is_some() {
+			Ok(Self(None))
+		} else {
+			FunctionArgument::from_reader(reader).map(Some).map(Self)
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -2149,8 +2016,6 @@ impl ArrayElement {
 }
 
 impl ListItem for ArrayElement {
-	const EMPTY: Option<Self> = Some(Self(None));
-
 	type LAST = ();
 }
 

@@ -393,7 +393,6 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 pub trait ListItem: Sized {
 	type LAST;
 	const LAST_PREFIX: Option<&'static str> = None;
-	const EMPTY: Option<Self> = None;
 
 	#[allow(unused)]
 	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
@@ -413,19 +412,6 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 	// 	}
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if let Some(empty) = T::EMPTY {
-			// if matches!(next, TSXToken::Comma) || *next == end {
-			// 	if matches!(next, TSXToken::Comma) || (*next == end && !nodes.is_empty()) {
-			// 		nodes.push(empty);
-			// 	}
-			// 	let Token(token, s) = reader.next().unwrap();
-			// 	if token == end {
-			// 		return Ok((nodes, None, s.get_end_after(token.length() as usize)));
-			// 	}
-			// 	continue;
-			// }
-		}
-
 		if reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		}

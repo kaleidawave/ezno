@@ -232,10 +232,8 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		// dbg!(reader.get_some_current());
-
 		// Allowed
-		if reader.is_operator(",") || reader.is_operator("]") {
+		if reader.is_one_of_operators(&[",", "]"]).is_some() {
 			Ok(Self::None)
 		} else {
 			let name = T::from_reader(reader)?;
@@ -277,13 +275,12 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 }
 
 impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField<T>> {
-	const EMPTY: Option<Self> = Some(WithComment::None(ArrayDestructuringField::None));
-
 	const LAST_PREFIX: Option<&'static str> = Some("...");
 
 	type LAST = SpreadDestructuringField<T>;
 
 	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
+		reader.skip();
 		let start = reader.get_start();
 		reader.expect_operator("...")?;
 		let node = T::from_reader(reader)?;
@@ -379,7 +376,7 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 
 			Ok(Self::Name(standard, annotation, default_value, position))
 		} else {
-			todo!("expect colon")
+			todo!("expect colon error")
 		}
 	}
 
@@ -517,7 +514,7 @@ impl Visitable for WithComment<ArrayDestructuringField<crate::ast::LHSOfAssignme
 		_options: &VisitOptions,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		todo!()
+		todo!("visit array destructuring field")
 	}
 
 	fn visit_mut<TData>(
@@ -527,7 +524,7 @@ impl Visitable for WithComment<ArrayDestructuringField<crate::ast::LHSOfAssignme
 		_options: &VisitOptions,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		todo!()
+		todo!("visit array destructuring field")
 	}
 }
 
@@ -596,7 +593,7 @@ impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignm
 		_options: &VisitOptions,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		todo!()
+		todo!("visit object destructuring field")
 	}
 
 	fn visit_mut<TData>(
@@ -606,7 +603,7 @@ impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignm
 		_options: &VisitOptions,
 		_chain: &mut temporary_annex::Annex<crate::Chain>,
 	) {
-		todo!()
+		todo!("visit object destructuring field")
 	}
 }
 

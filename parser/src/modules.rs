@@ -42,7 +42,7 @@ impl ASTNode for Module {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let span = Span { start: 0, source: (), end: reader.get_current().len() as u32 };
 		let hashbang_comment = if reader.is_operator_advance("#!") {
-			let hashbang_comment = reader.parse_until("\n").expect("TODO");
+			let hashbang_comment = reader.parse_comment_literal(false)?;
 			Some(hashbang_comment.to_owned())
 		} else {
 			None

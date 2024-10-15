@@ -23,7 +23,11 @@ impl ASTNode for TemplateLiteral {
 
 		let mut parts = Vec::new();
 		loop {
-			let (content, found) = reader.parse_until_one_of(&["${", "`"]).unwrap();
+			let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
+				// TODO might be a problem
+				let position = reader.get_start().with_length(reader.get_current().len());
+				crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
+			})?;
 			if let "${" = found {
 				let expression = MultipleExpression::from_reader(reader)?;
 				reader.expect('}')?;

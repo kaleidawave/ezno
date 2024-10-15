@@ -111,7 +111,14 @@ impl ASTNode for JSXElement {
 			});
 		} else if html_tag_contains_literal_content(&tag_name) {
 			// TODO could embedded parser?
-			let content = reader.parse_until("</").expect("TODO").to_owned();
+			let content = reader
+				.parse_until("</")
+				.map_err(|()| {
+					// TODO might be a problem
+					let position = reader.get_start().with_length(reader.get_current().len());
+					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
+				})?
+				.to_owned();
 			let closing_tag_name = reader.parse_identifier("JSX closing tag")?;
 			let end = reader.expect('>')?;
 			return Ok(JSXElement {
@@ -380,14 +387,25 @@ impl ASTNode for JSXNode {
 			Ok(JSXNode::InterpolatedExpression(Box::new(expression), start.union(end)))
 		} else if reader.starts_with_str("<!--") {
 			reader.advance("<!--".len() as u32);
-			let content = reader.parse_until("-->").expect("TODO").to_owned();
+			let content = reader
+				.parse_until("-->")
+				.map_err(|()| {
+					// TODO might be a problem
+					let position = reader.get_start().with_length(reader.get_current().len());
+					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
+				})?
+				.to_owned();
 			let position = start.with_length(content.len());
 			Ok(JSXNode::Comment(content, position))
 		} else if reader.starts_with_str("<") {
 			let element = JSXElement::from_reader(reader)?;
 			Ok(JSXNode::Element(element))
 		} else {
-			let (content, _) = reader.parse_until_one_of_no_advance(&["<", "{"]).expect("TODO");
+			let (content, _) = reader.parse_until_one_of_no_advance(&["<", "{"]).map_err(|()| {
+				// TODO might be a problem
+				let position = reader.get_start().with_length(reader.get_current().len());
+				ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
+			})?;
 			let position = start.with_length(content.len());
 			Ok(JSXNode::TextNode(content.trim_start().into(), position))
 		}

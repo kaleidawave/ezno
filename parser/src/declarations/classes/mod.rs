@@ -73,10 +73,10 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 				break;
 			}
 			let value = Decorated::<ClassMember>::from_reader(reader)?;
+			if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
+				reader.expect_semi_colon()?;
+			}
 			members.push(value);
-
-			// TODO comments probably don't need this
-			reader.expect_semi_colon()?;
 		}
 
 		let end = reader.expect('}')?;

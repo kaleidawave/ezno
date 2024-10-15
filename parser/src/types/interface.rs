@@ -299,11 +299,7 @@ impl ASTNode for InterfaceMember {
 			let start = reader.get_start();
 			let is_multiline = comment_prefix == "/*";
 			reader.advance(2);
-			let content = if is_multiline {
-				reader.parse_until("*/").expect("TODO").to_owned()
-			} else {
-				reader.parse_until("\n").expect("TODO").to_owned()
-			};
+			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 			let position = start.union(reader.get_end());
 			Ok(InterfaceMember::Comment(content, is_multiline, position))
 		} else {
@@ -312,11 +308,11 @@ impl ASTNode for InterfaceMember {
 
 			let name = if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
-					let (content, quoted) = reader.parse_string_literal().expect("TODO");
+					let (content, quoted) = reader.parse_string_literal()?;
 					let position = start.with_length(content.len() + 2);
 					PropertyKey::StringLiteral(content.to_owned(), quoted, position)
 				} else if reader.starts_with_number() {
-					let (value, length) = reader.parse_number_literal().expect("TODO");
+					let (value, length) = reader.parse_number_literal()?;
 					let position = start.with_length(length as usize);
 					PropertyKey::NumberLiteral(value, position)
 				} else {

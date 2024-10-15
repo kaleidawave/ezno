@@ -218,8 +218,7 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 	} else if reader.starts_with_string_delimeter() || reader.is_keyword("from") {
 		ImportedItems::Parts(None)
 	} else {
-		todo!("error for: {:?}", reader.get_current().get(..20).unwrap_or(reader.get_current()))
-		// return throw_unexpected_token(reader, &[TSXToken::Multiply, TSXToken::OpenBrace]);
+		return Err(crate::lexer::utilities::expected_one_of_keywords(reader, &["*", "["]));
 	};
 
 	Ok(PartsResult {

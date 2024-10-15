@@ -56,11 +56,7 @@ impl ASTNode for IfStatement {
 			if reader.is_one_of(&["//", "/*"]).is_some() {
 				let is_multiline = reader.starts_with_str("/*");
 				reader.advance(2);
-				let _content = if is_multiline {
-					reader.parse_until("*/").expect("TODO").to_owned()
-				} else {
-					reader.parse_until("\n").expect("TODO").to_owned()
-				};
+				let _content = reader.parse_comment_literal(is_multiline)?;
 				continue;
 			}
 

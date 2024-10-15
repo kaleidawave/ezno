@@ -65,11 +65,12 @@ pub enum Declaration {
 
 impl Declaration {
 	// TODO strict mode can affect result
+	// TODO reuse
+	// Warning expects skip to have been called
 	pub(crate) fn is_declaration_start(reader: &crate::new::Lexer) -> bool {
-		let declaration_keyword = reader.is_one_of_keywords(&[
+		let mut declaration_keyword = reader.is_one_of_keywords(&[
 			"let",
 			"const",
-			"function",
 			"class",
 			"enum",
 			"interface",
@@ -78,76 +79,30 @@ impl Declaration {
 			"declare",
 			"import",
 			"export",
+			// Extra
 			"from",
 		]);
 
-		if let Some(name @ ("from" | "import" | "export" | "namespace" | "type")) =
+		if let Some("from") = declaration_keyword {
+			reader.get_options().reversed_imports
+		} else if let Some(name @ ("import" | "export" | "namespace" | "type")) =
 			declaration_keyword
 		{
-			if let (false, "from") = (reader.get_options().reversed_imports, name) {
-				return false;
-			}
-
 			let after_declaration_keyword = reader.get_current()[name.len()..].trim_start();
+
 			// TODO more (is operator like?)
 			let is_declaration_keyword_expression = after_declaration_keyword.starts_with('(')
 				|| after_declaration_keyword.starts_with('.')
 				|| after_declaration_keyword.starts_with('[')
 				|| after_declaration_keyword.starts_with('(')
 				|| after_declaration_keyword.starts_with('=');
+
 			!is_declaration_keyword_expression
+		} else if declaration_keyword.is_some() {
+			true
 		} else {
-			declaration_keyword.is_some()
+			crate::lexer::utilities::is_function_header(reader.get_current())
 		}
-
-		// #[cfg(feature = "extras")]
-		// 		return result
-		// 			|| matches!(token, TSXToken::Keyword(kw) if options.custom_function_headers && kw.is_special_function_header())
-		// 			|| (matches!(token, TSXToken::Keyword(TSXKeyword::Namespace) if cfg!(feature = "full-typescript")))
-		// 			|| {
-		// 				let TSXToken::Keyword(token) = *token else { return false };
-		// 				let Some(Token(after, _)) = reader.peek_n(1) else { return false };
-
-		// 				#[allow(clippy::match_same_arms)]
-		// 				match (token, after) {
-		// 					// For dynamic import
-		// 					(
-		// 						TSXKeyword::Import,
-		// 						TSXToken::OpenBrace
-		// 						| TSXToken::Keyword(..)
-		// 						| TSXToken::Identifier(..)
-		// 						| TSXToken::StringLiteral(..)
-		// 						| TSXToken::Multiply,
-		// 					) => true,
-		// 					(TSXKeyword::Declare | TSXKeyword::Interface, _) => options.type_annotations,
-		// 					(TSXKeyword::Async, TSXToken::Keyword(TSXKeyword::Function)) => true,
-		// 					(TSXKeyword::Async, TSXToken::Keyword(kw)) => {
-		// 						options.custom_function_headers && kw.is_special_function_header()
-		// 					}
-		// 					// Extra
-		// 					(TSXKeyword::From, TSXToken::StringLiteral(..)) => true,
-		// 					(..) => false,
-		// 				}
-		// 			};
-
-		// 		#[cfg(not(feature = "extras"))]
-		// 		return result || {
-		// 			let TSXToken::Keyword(token) = *token else { return false };
-
-		// 			// For dynamic import
-		// 			matches!(token, TSXKeyword::Import)
-		// 				&& matches!(
-		// 					reader.peek_n(1),
-		// 					Some(Token(
-		// 						TSXToken::OpenBrace
-		// 							| TSXToken::Keyword(..) | TSXToken::Identifier(..)
-		// 							| TSXToken::StringLiteral(..)
-		// 							| TSXToken::Multiply,
-		// 						_
-		// 					))
-		// 				)
-		// 		};
-		// 	}
 	}
 }
 
@@ -230,8 +185,7 @@ impl crate::ASTNode for Declaration {
 					&["let", "const", "var", "class", "type", "async", "function", "namespace"],
 				))
 			}
-		} else if reader.is_keyword("function") || reader.is_keyword("async") {
-			// TODO more above ^^^
+		} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
 			let function = StatementFunction::from_reader(reader)?;
 			Ok(Declaration::Function(Decorated::new(decorators, function)))
 		} else {
@@ -253,7 +207,7 @@ impl crate::ASTNode for Declaration {
 			// 	Ok(Declaration::Function(Decorated::new(decorators, function)))
 			// }
 
-			// TODO vary list on certain paramters
+			// TODO vary list on certain parameters
 			Err(crate::lexer::utilities::expected_one_of_keywords(
 				reader,
 				&[
@@ -355,8 +309,14 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 				let name = crate::VariableIdentifier::Standard(name, position);
 				Ok(Self { just_type, name, alias: None, position, _marker: Default::default() })
 			} else {
-				todo!()
-				// crate::throw_unexpected_token(reader, &[TSXToken::Keyword(TSXKeyword::As)])
+				Err(ParseError::new(
+					ParseErrors::ExpectedKeyword {
+						expected: "as",
+						// TODO
+						found: reader.get_current(),
+					},
+					reader.next_item_span(),
+				))
 			}
 		} else {
 			let name = crate::VariableIdentifier::from_reader(reader)?;
@@ -438,7 +398,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 		&self,
 		_token_stream: &mut self_rust_tokenize::proc_macro2::TokenStream,
 	) {
-		todo!()
+		todo!("import export part to token stream")
 	}
 }
 
@@ -464,7 +424,7 @@ impl ImportExportName {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
-			let (content, quoted) = reader.parse_string_literal().expect("TODO");
+			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
 			Ok((ImportExportName::Quoted(content.to_owned(), quoted), position))
 		} else {
@@ -523,25 +483,21 @@ impl ImportLocation {
 		// 		));
 		// 	}
 		// }
+		// else if options.interpolation_points
+		// 	&& matches!(&token.0, TSXToken::Identifier(i) if i == crate::marker::MARKER)
+		// {
+		// Ok((Self::Marker(state.new_partial_point_marker(token.1)), source_map::End(token.1 .0)))
+		// 	todo!()
+		// Err(ParseError::new(
+		// 	ParseErrors::ExpectedStringLiteral { found: token.0 },
+		// 	token.1.with_length(0),
+		// ))
 
 		reader.skip();
 
-		if reader.starts_with_string_delimeter() {
-			let start = reader.get_start();
-			let (content, quoted) = reader.parse_string_literal().expect("TODO");
-			Ok((ImportLocation::Quoted(content.to_owned(), quoted)))
-		} else {
-			todo!("{:?}", reader.get_current().get(..20))
-			// else if options.interpolation_points
-			// 	&& matches!(&token.0, TSXToken::Identifier(i) if i == crate::marker::MARKER)
-			// {
-			// Ok((Self::Marker(state.new_partial_point_marker(token.1)), source_map::End(token.1 .0)))
-			// 	todo!()
-			// Err(ParseError::new(
-			// 	ParseErrors::ExpectedStringLiteral { found: token.0 },
-			// 	token.1.with_length(0),
-			// ))
-		}
+		let start = reader.get_start();
+		let (content, quoted) = reader.parse_string_literal()?;
+		Ok((ImportLocation::Quoted(content.to_owned(), quoted)))
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {

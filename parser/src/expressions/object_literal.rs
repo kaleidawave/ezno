@@ -191,20 +191,16 @@ impl ASTNode for ObjectLiteralMember {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 
-		if reader.is_operator_advance("//") {
-			let content = reader.parse_until("\n").expect("TODO");
-			return Ok(Self::Comment(
-				content.to_owned(),
-				false,
-				start.with_length(2 + content.len()),
-			));
-		} else if reader.is_operator_advance("/*") {
-			let content = reader.parse_until("*/").expect("TODO");
-			return Ok(Self::Comment(
-				content.to_owned(),
-				true,
-				start.with_length(4 + content.len()),
-			));
+		if reader.starts_with_str("//") || reader.starts_with_str("/*") {
+			let is_multiline = reader.starts_with_str("/*");
+			reader.advance(2);
+			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+			let position = if is_multiline {
+				start.with_length(2 + content.len())
+			} else {
+				start.with_length(4 + content.len())
+			};
+			return Ok(Self::Comment(content.to_owned(), false, position));
 		}
 
 		if reader.is_operator_advance("...") {

@@ -584,16 +584,16 @@ impl TypeAnnotation {
 		// 		name,
 		// 	}
 		} else if reader.starts_with_number() {
-			let (value, length) = reader.parse_number_literal().expect("TODO");
+			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
 			Self::NumberLiteral(value, position)
 		} else if reader.is_operator_advance("-") {
-			let (value, length) = reader.parse_number_literal().expect("TODO");
+			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
 			// important negation here
 			Self::NumberLiteral(value.neg(), position)
 		} else if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoted) = reader.parse_string_literal().expect("TODO");
+			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
 			Self::StringLiteral(content.to_owned(), quoted, position)
 		} else if reader.starts_with('@') {
@@ -648,7 +648,11 @@ impl TypeAnnotation {
 			let mut parts = Vec::new();
 			let result;
 			loop {
-				let (content, found) = reader.parse_until_one_of(&["${", "`"]).unwrap();
+				let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
+					// TODO might be a problem
+					let position = reader.get_start().with_length(reader.get_current().len());
+					ParseError::new(ParseErrors::UnexpectedEnd, position)
+				})?;
 				if let "${" = found {
 					let expression = AnnotationWithBinder::from_reader(reader)?;
 					reader.expect('}')?;
@@ -965,7 +969,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 						let position = reader.get_start().with_length(2);
 						let found = &reader.get_current()[..2];
 						let reason =
-							ParseErrors::ExpectedOneOfOperators { expected: &["?:", ":"], found };
+							ParseErrors::ExpectedOneOfItems { expected: &["?:", ":"], found };
 						return Err(ParseError::new(reason, position));
 					}
 				} else {
@@ -1090,8 +1094,6 @@ impl ASTNode for TupleLiteralElement {
 }
 
 impl ListItem for TupleLiteralElement {
-	const EMPTY: Option<Self> = None;
-
 	type LAST = ();
 }
 

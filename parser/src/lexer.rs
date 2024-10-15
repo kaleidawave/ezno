@@ -1,6 +1,3 @@
-#![allow(clippy::as_conversions, clippy::cast_possible_truncation)]
-#![allow(unused)]
-
 use crate::{
 	errors::{ParseError, ParseErrors},
 	marker::Marker,
@@ -436,14 +433,26 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
-	// TODO proper error type
-	pub fn parse_string_literal(&mut self) -> Result<(&'a str, crate::Quoted), ()> {
+	pub fn starts_with_string_delimeter(&self) -> bool {
+		self.starts_with('"') || self.starts_with('\'')
+	}
+
+	pub fn parse_string_literal(&mut self) -> Result<(&'a str, crate::Quoted), ParseError> {
 		let current = self.get_current();
 		let mut chars = current.char_indices();
 		let quoted = match chars.next() {
 			Some((_, '"')) => crate::Quoted::Double,
 			Some((_, '\'')) => crate::Quoted::Single,
-			_ => return Err(()),
+			_ => {
+				return Err(ParseError::new(
+					ParseErrors::ExpectedOneOfItems {
+						expected: &["\"", "'"],
+						// TODO bad
+						found: self.get_current(),
+					},
+					self.get_start().with_length(1),
+				));
+			}
 		};
 		let mut escaped = false;
 		for (idx, chr) in chars {
@@ -463,10 +472,16 @@ impl<'a> Lexer<'a> {
 			}
 
 			if let '\n' = chr {
-				return Err(());
+				return Err(ParseError::new(
+					ParseErrors::NoNewLinesInString,
+					self.get_start().with_length(idx),
+				));
 			}
 		}
-		Err(())
+		Err(ParseError::new(
+			ParseErrors::UnexpectedEnd,
+			self.get_start().with_length(self.get_current().len()),
+		))
 	}
 
 	pub fn starts_with_number(&self) -> bool {
@@ -476,14 +491,10 @@ impl<'a> Lexer<'a> {
 			.is_some_and(|b| (b'0'..=b'9').contains(&b) || *b == b'.')
 	}
 
-	pub fn starts_with_string_delimeter(&self) -> bool {
-		self.starts_with('"') || self.starts_with('\'')
-	}
-
 	// TODO errors + some parts are weird
 	pub fn parse_number_literal(
 		&mut self,
-	) -> Result<(crate::number::NumberRepresentation, u32), ()> {
+	) -> Result<(crate::number::NumberRepresentation, u32), ParseError> {
 		use std::str::FromStr;
 
 		enum NumberLiteralType {
@@ -510,7 +521,12 @@ impl<'a> Lexer<'a> {
 			}
 			Some('0'..='9') => NumberLiteralType::Decimal { fractional: false },
 			Some('.') => NumberLiteralType::Decimal { fractional: true },
-			Some(_) | None => return Err(()),
+			Some(_) | None => {
+				return Err(ParseError::new(
+					ParseErrors::InvalidNumber,
+					self.get_start().with_length(1),
+				))
+			}
 		};
 
 		for (idx, chr) in chars {
@@ -536,20 +552,29 @@ impl<'a> Lexer<'a> {
 						}
 					} else {
 						// LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
-						return Err(());
+						return Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						));
 					}
 				}
 				'0'..='9' | 'a'..='f' | 'A'..='F' => match state {
 					NumberLiteralType::BinaryLiteral => {
 						if !matches!(chr, '0' | '1') {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(());
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
 						}
 					}
 					NumberLiteralType::OctalLiteral => {
 						if !matches!(chr, '0'..='7') {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(());
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
 						}
 					}
 					// Handling for 'e' & 'E'
@@ -560,13 +585,19 @@ impl<'a> Lexer<'a> {
 							state = NumberLiteralType::Exponent;
 						} else if !chr.is_ascii_digit() {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(());
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
 						}
 					}
 					NumberLiteralType::Exponent => {
 						if !chr.is_ascii_digit() {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(());
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
 						}
 					}
 					// all above allowed
@@ -585,13 +616,19 @@ impl<'a> Lexer<'a> {
 							return Ok((number, length));
 						} else if current[..idx].ends_with(['_']) {
 							// (LexingErrors::InvalidUnderscore)
-							return Err(());
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
 						} else {
 							*fractional = true;
 						}
 					} else {
 						// (LexingErrors::NumberLiteralCannotHaveDecimalPoint);
-						return Err(());
+						return Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						));
 					}
 				}
 				'_' => {
@@ -613,7 +650,10 @@ impl<'a> Lexer<'a> {
 					};
 					if invalid {
 						// (LexingErrors::InvalidUnderscore);
-						return Err(());
+						return Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						));
 					}
 				}
 				'n' if matches!(state, NumberLiteralType::Decimal { fractional: false }) => {
@@ -651,10 +691,10 @@ impl<'a> Lexer<'a> {
 		let number = crate::number::NumberRepresentation::from_str(current).expect("bad number");
 		let length = current.len() as u32;
 		self.head += length;
-		return Ok((number, length));
+		Ok((number, length))
 	}
 
-	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, Option<&'a str>, usize), ()> {
+	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, Option<&'a str>, usize), ParseError> {
 		let mut escaped = false;
 		let mut after_last_slash = false;
 		let mut in_set = false;
@@ -681,7 +721,10 @@ impl<'a> Lexer<'a> {
 					in_set = false;
 				}
 				'\n' => {
-					todo!("new line in regex")
+					return Err(ParseError::new(
+						ParseErrors::InvalidRegularExpression,
+						self.get_start().with_length(idx),
+					));
 				}
 				_ => {
 					escaped = false;
@@ -707,6 +750,18 @@ impl<'a> Lexer<'a> {
 		self.head += flag_content as u32;
 
 		Ok((regex, (!regex_flag.is_empty()).then_some(regex_flag), flag_content))
+	}
+
+	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&str, ParseError> {
+		if is_multiline {
+			self.parse_until("*/").map_err(|()| {
+				// TODO might be a problem
+				let position = self.get_start().with_length(self.get_current().len());
+				ParseError::new(ParseErrors::UnexpectedEnd, position)
+			})
+		} else {
+			Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
+		}
 	}
 
 	// TODO also can exit if there is `=` or `:` and = 0 in some examples
@@ -888,6 +943,11 @@ impl<'a> Lexer<'a> {
 			(false, None)
 		}
 	}
+
+	// TODO test
+	pub fn next_item_span(&self) -> Span {
+		self.get_start().with_length(utilities::next_empty_occurance(self.get_current()))
+	}
 }
 
 pub(crate) mod utilities {
@@ -910,12 +970,20 @@ pub(crate) mod utilities {
 		0
 	}
 
-	/// TODO lots more, also
 	pub fn is_function_header(str: &str) -> bool {
-		str.starts_with("async ") || {
-			str.starts_with("function")
-				&& !is_valid_identifier(str["function".len()..].chars().next().expect("TODO"))
-		}
+		let str = str.trim_start();
+		// TODO
+		let extras = true;
+		str.starts_with("async ")
+			|| {
+				str.starts_with("function")
+					&& !str["function".len()..].chars().next().is_some_and(is_valid_identifier)
+			} || (extras && {
+			// TODO + after is "function"
+			str.starts_with("generator ")
+				|| str.starts_with("worker ")
+				|| str.starts_with("server ")
+		})
 	}
 
 	/// TODO this could be set to collect, rather than breaking (https://github.com/kaleidawave/ezno/issues/203)
@@ -937,7 +1005,7 @@ pub(crate) mod utilities {
 		let current = reader.get_current();
 		let found = &current[..self::next_empty_occurance(current)];
 		let position = reader.get_start().with_length(found.len());
-		let reason = crate::ParseErrors::ExpectedOneOfKeywords { expected, found };
+		let reason = crate::ParseErrors::ExpectedOneOfItems { expected, found };
 		crate::ParseError::new(reason, position)
 	}
 }

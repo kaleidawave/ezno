@@ -99,17 +99,16 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.is_operator_advance("/*") {
-			let comment = reader.parse_until("*/").expect("TODO");
-			dbg!(&comment);
+			let comment = reader.parse_comment_literal(true)?.to_owned();
 			let item = T::from_reader(reader)?;
 			let position = start.union(item.get_position());
-			Ok(Self::PrefixComment(comment.to_owned(), item, position))
+			Ok(Self::PrefixComment(comment, item, position))
 		} else {
 			let item = T::from_reader(reader)?;
 			if reader.is_operator_advance("/*") {
-				let comment = reader.parse_until("*/").expect("TODO");
+				let comment = reader.parse_comment_literal(true)?.to_owned();
 				let position = start.union(reader.get_end());
-				Ok(Self::PostfixComment(item, comment.to_owned(), position))
+				Ok(Self::PostfixComment(item, comment, position))
 			} else {
 				Ok(Self::None(item))
 			}

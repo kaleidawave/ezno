@@ -71,7 +71,7 @@ impl ASTNode for ClassMember {
 			todo!("comment; return Ok(Self::Comment(comment, is_multiline, span));");
 		}
 
-		// TODO temp fixes
+		// TODO temp fixes. Should be recorded
 		let _ = reader.is_keyword_advance("declare");
 		let _ = reader.is_keyword_advance("public");
 		let _ = reader.is_keyword_advance("private");
@@ -130,8 +130,11 @@ impl ASTNode for ClassMember {
 			Ok(ClassMember::Method(is_static, function))
 		} else {
 			if !header.is_no_modifiers() {
-				todo!()
-				// return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
+				// TODO ""
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::ExpectedOperator { expected: "(", found: "" },
+					reader.next_item_span(),
+				));
 			}
 			let is_optional = reader.is_operator_advance("?:");
 			let type_annotation = if is_optional || reader.is_operator_advance(":") {

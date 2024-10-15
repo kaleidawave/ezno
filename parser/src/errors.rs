@@ -13,16 +13,13 @@ pub enum ParseErrors<'a> {
 		expected: &'static str,
 		found: &'a str,
 	},
-	ExpectedOneOfKeywords {
+	// Keywords and/or operators
+	ExpectedOneOfItems {
 		expected: &'static [&'static str],
 		found: &'a str,
 	},
 	ExpectedOperator {
 		expected: &'static str,
-		found: &'a str,
-	},
-	ExpectedOneOfOperators {
-		expected: &'static [&'static str],
 		found: &'a str,
 	},
 	ClosingTagDoesNotMatch {
@@ -63,6 +60,12 @@ pub enum ParseErrors<'a> {
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
+	NoNewLinesInString,
+	InvalidNumber,
+	InvalidRegularExpression,
+	/// For strings, regular expressions, multiline comments.
+	/// TODO specify by field
+	UnexpectedEnd,
 	/// TODO this could be set to collect, rather than breaking (https://github.com/kaleidawave/ezno/issues/203)
 	TypeAnnotationUsed,
 }
@@ -82,14 +85,25 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::ExpectedOperator { expected, found } => {
 				write!(f, "Expected {expected} found {found}")
 			}
-			ParseErrors::ExpectedOneOfKeywords { expected, found }
-			| ParseErrors::ExpectedOneOfOperators { expected, found } => {
+			ParseErrors::ExpectedOneOfItems { expected, found } => {
 				f.write_str("Expected ")?;
 				utilities::format_list(f, expected)?;
 				write!(f, " found {found}")
 			}
 			ParseErrors::ExpectedKeyword { expected, found } => {
 				write!(f, "Expected {expected:?}, found {found:?}")
+			}
+			ParseErrors::NoNewLinesInString => {
+				write!(f, "Cannot use new lines in string")
+			}
+			ParseErrors::InvalidNumber => {
+				write!(f, "Invalid number")
+			}
+			ParseErrors::InvalidRegularExpression => {
+				write!(f, "Invalid regular expression")
+			}
+			ParseErrors::UnexpectedEnd => {
+				write!(f, "Unexpected end")
 			}
 			// ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
 			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {

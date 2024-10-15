@@ -403,7 +403,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 				Declaration::Export(Decorated {
-					on: ExportDeclaration::DefaultFunction { position, .. },
+					on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
 					..
 				}) => {
 					// TODO under definition file
