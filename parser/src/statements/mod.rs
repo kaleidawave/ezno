@@ -6,9 +6,7 @@ mod while_statement;
 
 use crate::{
 	declarations::variable::{declarations_to_string, VariableDeclarationItem},
-	derive_ASTNode,
-	tokens::token_as_identifier,
-	ParseError, ParseErrors,
+	derive_ASTNode, ParseError, ParseErrors,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use derive_partial_eq_extras::PartialEqExtras;
@@ -17,9 +15,7 @@ use std::fmt::Debug;
 
 use super::{
 	expressions::MultipleExpression, ASTNode, Block, Expression, ParseOptions, ParseResult, Span,
-	TSXKeyword, TSXToken, Token, TokenReader,
 };
-use crate::errors::parse_lexing_error;
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitialiser};
 pub use if_statement::*;
 pub use switch_statement::{SwitchBranch, SwitchStatement};
@@ -84,144 +80,82 @@ impl ASTNode for Statement {
 		*get_field_by_type::GetFieldByType::get(self)
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		// Labeled statements
-		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
-			let (name, label_name_pos) = token_as_identifier(reader.next().unwrap(), "label name")?;
-			let _colon = reader.next().unwrap();
-			let statement = Statement::from_reader(reader, state, options).map(Box::new)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		if reader.after_identifier().starts_with(":") {
+			let start = reader.get_start();
+			let name = reader.parse_identifier("statement label")?.to_owned();
+			let _ = reader.expect(':')?;
+			let statement = Statement::from_reader(reader).map(Box::new)?;
 			if statement.requires_semi_colon() {
-				let _ = crate::expect_semi_colon(
-					reader,
-					&state.line_starts,
-					statement.get_position().start,
-					options,
-				)?;
+				reader.expect_semi_colon()?;
 			}
-			// TODO statement.can_be_labelled()
-			let position = label_name_pos.union(statement.get_position());
+			// TODO check statement.can_be_labelled()
+			let position = start.union(statement.get_position());
 			return Ok(Statement::Labelled { name, statement, position });
 		}
 
-		let Token(token, _s) = &reader.peek().ok_or_else(parse_lexing_error)?;
+		reader.skip();
+		let start = reader.get_start();
 
-		match token {
-			TSXToken::Keyword(TSXKeyword::Var) => {
-				let stmt = VarVariableStatement::from_reader(reader, state, options)?;
-				Ok(Statement::VarVariable(stmt))
+		if reader.is_keyword("var") {
+			VarVariableStatement::from_reader(reader).map(Statement::VarVariable)
+		} else if reader.is_keyword("if") {
+			IfStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("for") {
+			ForLoopStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("switch") {
+			SwitchStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("while") {
+			WhileStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("do") {
+			DoWhileStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("try") {
+			TryCatchStatement::from_reader(reader).map(Into::into)
+		} else if reader.starts_with('{') {
+			Block::from_reader(reader).map(Statement::Block)
+		} else if reader.is_keyword_advance("debugger") {
+			Ok(Statement::Debugger(start.with_length("debugger".len())))
+		} else if reader.is_keyword_advance("return") {
+			if reader.is_semi_colon() {
+				Ok(Statement::Return(ReturnStatement(None, start.with_length("return".len()))))
+			} else {
+				let multiple_expression = MultipleExpression::from_reader(reader)?;
+				let position = start.union(multiple_expression.get_position());
+				Ok(Statement::Return(ReturnStatement(Some(multiple_expression), position)))
 			}
-			TSXToken::Keyword(TSXKeyword::Throw) => {
-				let Token(_, start) = reader.next().unwrap();
-				let expression = MultipleExpression::from_reader(reader, state, options)?;
-				let position = start.union(expression.get_position());
-				Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
+		} else if reader.is_keyword_advance("break") {
+			if reader.is_semi_colon() {
+				Ok(Statement::Break(None, start.with_length("break".len() as usize)))
+			} else {
+				let start = reader.get_start();
+				let label = reader.parse_identifier("break identifier")?;
+				Ok(Statement::Break(Some(label.to_owned()), start.union(reader.get_end())))
 			}
-			TSXToken::Keyword(TSXKeyword::If) => {
-				IfStatement::from_reader(reader, state, options).map(Into::into)
+		} else if reader.is_keyword_advance("continue") {
+			if reader.is_semi_colon() {
+				Ok(Statement::Continue(None, start.with_length("continue".len() as usize)))
+			} else {
+				let start = reader.get_start();
+				let label = reader.parse_identifier("continue identifier")?;
+				Ok(Statement::Continue(Some(label.to_owned()), start.union(reader.get_end())))
 			}
-			TSXToken::Keyword(TSXKeyword::For) => {
-				ForLoopStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::Switch) => {
-				SwitchStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::While) => {
-				WhileStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::Do) => {
-				DoWhileStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::Keyword(TSXKeyword::Try) => {
-				TryCatchStatement::from_reader(reader, state, options).map(Into::into)
-			}
-			TSXToken::OpenBrace => Block::from_reader(reader, state, options).map(Statement::Block),
-			TSXToken::Keyword(TSXKeyword::Debugger) => {
-				Ok(Statement::Debugger(reader.next().unwrap().get_span()))
-			}
-			TSXToken::Keyword(TSXKeyword::Return) => Ok({
-				let Token(_, start) = reader.next().unwrap();
-				state.append_keyword_at_pos(start.0, TSXKeyword::Return);
-				let next = reader.peek().ok_or_else(parse_lexing_error)?;
-				if on_different_lines_or_line_end(&state.line_starts, start, next) {
-					let position = start.with_length(TSXKeyword::Return.length() as usize);
-					Statement::Return(ReturnStatement(None, position))
-				} else {
-					let multiple_expression =
-						MultipleExpression::from_reader(reader, state, options)?;
-					let position = start.union(multiple_expression.get_position());
-					Statement::Return(ReturnStatement(Some(multiple_expression), position))
-				}
-			}),
-			TSXToken::Keyword(TSXKeyword::Break) => {
-				let Token(_break_token, start) = reader.next().unwrap();
-				state.append_keyword_at_pos(start.0, TSXKeyword::Break);
-				let next = reader.peek().ok_or_else(parse_lexing_error)?;
-				if on_different_lines_or_line_end(&state.line_starts, start, next) {
-					Ok(Statement::Break(
-						None,
-						start.with_length(TSXKeyword::Break.length() as usize),
-					))
-				} else {
-					let (label, position) =
-						token_as_identifier(reader.next().unwrap(), "break label")?;
-					Ok(Statement::Break(Some(label), start.union(position)))
-				}
-			}
-			TSXToken::Keyword(TSXKeyword::Continue) => {
-				let Token(_continue_token, start) = reader.next().unwrap();
-				state.append_keyword_at_pos(start.0, TSXKeyword::Continue);
-				let next = reader.peek().ok_or_else(parse_lexing_error)?;
-				if on_different_lines_or_line_end(&state.line_starts, start, next) {
-					Ok(Statement::Continue(
-						None,
-						start.with_length(TSXKeyword::Continue.length() as usize),
-					))
-				} else {
-					let (label, position) =
-						token_as_identifier(reader.next().unwrap(), "continue label")?;
-					Ok(Statement::Continue(Some(label), start.union(position)))
-				}
-			}
-			TSXToken::Comment(_) => {
-				if let Token(TSXToken::Comment(comment), start) = reader.next().unwrap() {
-					let position = start.with_length(comment.len() + 2);
-					Ok(Statement::Comment(comment, position))
-				} else {
-					unreachable!()
-				}
-			}
-			TSXToken::MultiLineComment(_) => {
-				if let Token(TSXToken::MultiLineComment(comment), start) = reader.next().unwrap() {
-					let position = start.with_length(comment.len() + 2);
-					Ok(Statement::MultiLineComment(comment, position))
-				} else {
-					unreachable!()
-				}
-			}
-			TSXToken::SemiColon => {
-				Ok(Statement::AestheticSemiColon(reader.next().unwrap().get_span()))
-			}
-			TSXToken::EOS => {
-				reader.next();
-				Ok(Statement::Empty(Span { start: 0, end: 0, source: () }))
-			}
-			// Finally ...!
-			_ => {
-				let expr = MultipleExpression::from_reader(reader, state, options)?;
-				if let (true, Expression::Marker { .. }) = (options.partial_syntax, expr.get_rhs())
-				{
-					Err(ParseError::new(
-						ParseErrors::ExpectedIdentifier,
-						reader.next().unwrap().get_span(),
-					))
-				} else {
-					Ok(Statement::Expression(expr))
-				}
-			}
+		} else if reader.is_keyword_advance("throw") {
+			let expression = MultipleExpression::from_reader(reader)?;
+			let position = start.union(expression.get_position());
+			Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
+		} else if reader.is_operator_advance(";") {
+			Ok(Statement::AestheticSemiColon(start.with_length(1)))
+		} else if reader.is_operator_advance("//") {
+			let content = reader.parse_comment_literal(false)?;
+			Ok(Statement::Comment(content.to_owned(), start.with_length(2 + content.len())))
+		} else if reader.is_operator_advance("/*") {
+			let content = reader.parse_comment_literal(true)?;
+			Ok(Statement::MultiLineComment(
+				content.to_owned(),
+				start.with_length(4 + content.len()),
+			))
+		} else {
+			MultipleExpression::from_reader(reader).map(Statement::Expression)
 		}
 	}
 
@@ -327,7 +261,7 @@ impl Statement {
 			self,
 			Statement::VarVariable(_)
 				| Statement::Expression(_)
-				| Statement::DoWhileLoop(_)
+				// | Statement::DoWhileLoop(_)
 				| Statement::Continue(..)
 				| Statement::Break(..)
 				| Statement::Return(..)
@@ -349,28 +283,23 @@ impl ASTNode for VarVariableStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let Token(_, start) = reader.next().unwrap();
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		let _ = reader.expect_keyword("var")?;
 		let mut declarations = Vec::new();
 		loop {
-			let value =
-				VariableDeclarationItem::<Option<Expression>>::from_reader(reader, state, options)?;
+			let value = VariableDeclarationItem::<Option<Expression>>::from_reader(reader)?;
 			if value.expression.is_none()
 				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
 			{
-				return Err(crate::ParseError::new(
-					crate::ParseErrors::DestructuringRequiresValue,
-					value.name.get_ast_ref().get_position(),
-				));
+				todo!()
+				// return Err(crate::ParseError::new(
+				// 	crate::ParseErrors::DestructuringRequiresValue,
+				// 	value.name.get_ast_ref().get_position(),
+				// ));
 			}
 			declarations.push(value);
-			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-				reader.next();
-			} else {
+			if !reader.is_operator_advance(",") {
 				break;
 			}
 		}
@@ -378,12 +307,13 @@ impl ASTNode for VarVariableStatement {
 		let position = if let Some(last) = declarations.last() {
 			start.union(last.get_position())
 		} else {
-			let position = start.with_length(3);
-			if options.partial_syntax {
-				position
-			} else {
-				return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
-			}
+			todo!();
+			// let position = start.with_length(3);
+			// if options.partial_syntax {
+			// 	position
+			// } else {
+			// 	return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+			// }
 		};
 
 		Ok(VarVariableStatement { declarations, position })
@@ -398,13 +328,4 @@ impl ASTNode for VarVariableStatement {
 		buf.push_str("var ");
 		declarations_to_string(&self.declarations, buf, options, local, false);
 	}
-}
-
-fn on_different_lines_or_line_end(
-	line_starts: &source_map::LineStarts,
-	keyword_position: crate::TokenStart,
-	Token(kind, next): &Token<TSXToken, crate::TokenStart>,
-) -> bool {
-	matches!(kind, TSXToken::SemiColon | TSXToken::CloseBrace | TSXToken::EOS)
-		|| line_starts.byte_indexes_on_different_lines(keyword_position.0 as usize, next.0 as usize)
 }

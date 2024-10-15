@@ -58,21 +58,6 @@ source-map = { version = "0.15", features = [
   "self-rust-tokenize",
 ] }
 
-# Needs buffered and not parralel for WASM
-[target.'cfg(target_family = "wasm")'.dependencies]
-tokenizer-lib = { version = "1.6", features = [
-  "buffered",
-  "sized-tokens",
-], default-features = false }
-tsify = "0.4.5"
-wasm-bindgen = "0.2"
-
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokenizer-lib = { version = "1.6", features = [
-  "parallel",
-  "sized-tokens",
-], default-features = false }
-
 [dev-dependencies]
 pretty_assertions = "1.3.0"
 match_deref = "0.1.1"

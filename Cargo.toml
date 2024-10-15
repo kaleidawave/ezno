@@ -96,5 +96,5 @@ result_unit_err = "allow"
 thread_local_initializer_can_be_made_const = "allow"
 implicit_hasher = "allow"
 
-[profile.dev]
-debug = false
+# [profile.dev]
+# debug = false

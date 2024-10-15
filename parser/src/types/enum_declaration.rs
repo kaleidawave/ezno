@@ -1,10 +1,7 @@
-use crate::{derive_ASTNode, TSXKeyword, TSXToken};
+use crate::{derive_ASTNode, ASTNode, Expression};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenReaderWithTokenEnds, Token};
 use visitable_derive::Visitable;
-
-use crate::{errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, Expression};
 
 #[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
@@ -20,38 +17,32 @@ impl ASTNode for EnumDeclaration {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let const_pos = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Const)))
-			.map(|Token(_, pos)| pos);
-
-		let is_constant = const_pos.is_some();
-		let enum_pos = state.expect_keyword(reader, TSXKeyword::Enum)?;
-		let (name, _) =
-			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum name")?;
-		reader.expect_next(TSXToken::OpenBrace)?;
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let start = reader.get_start();
+		let is_constant = reader.is_keyword_advance("const");
+		reader.expect_keyword("enum")?;
+		let name = reader.parse_identifier("enum name")?.to_owned();
+		reader.expect('{')?;
 		let mut members = Vec::new();
 		loop {
-			if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
+			if reader.is_operator("}") {
 				break;
 			}
-			members.push(EnumMember::from_reader(reader, state, options)?);
-			// Commas are optional
-			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-				reader.next();
+			// TODO temp
+			if reader.is_one_of(&["//", "/*"]).is_some() {
+				let is_multiline = reader.starts_with_str("/*");
+				reader.advance(2);
+				let _content = reader.parse_comment_literal(is_multiline)?;
+				continue;
+			}
+			members.push(EnumMember::from_reader(reader)?);
+			if !reader.is_operator_advance(",") {
+				reader.expect_semi_colon()?;
 			}
 		}
-		let end = reader.expect_next_get_end(TSXToken::CloseBrace)?;
-		Ok(EnumDeclaration {
-			is_constant,
-			position: const_pos.unwrap_or(enum_pos).union(end),
-			name,
-			members,
-		})
+		reader.expect('}')?;
+		let position = start.union(reader.get_end());
+		Ok(EnumDeclaration { is_constant, name, position, members })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -99,25 +90,16 @@ impl ASTNode for EnumMember {
 		}
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let (name, start_pos) =
-			token_as_identifier(reader.next().ok_or_else(parse_lexing_error)?, "Enum variant")?;
-		match reader.peek() {
-			Some(Token(TSXToken::Assign, _)) => {
-				reader.next();
-				let expression = Expression::from_reader(reader, state, options)?;
-				Ok(EnumMember::Variant {
-					name,
-					position: start_pos.union(expression.get_position()),
-					value: Some(expression),
-				})
-			}
-			_ => Ok(EnumMember::Variant { name, value: None, position: start_pos }),
-		}
+	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+		let start = reader.get_start();
+		let name = reader.parse_identifier("enum member name")?.to_owned();
+		let (position, value) = if reader.is_operator_advance("=") {
+			let expression = Expression::from_reader(reader)?;
+			(start.union(expression.get_position()), Some(expression))
+		} else {
+			(start.with_length(name.len()), None)
+		};
+		Ok(EnumMember::Variant { name, value, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

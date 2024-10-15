@@ -93,11 +93,15 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 							}
 						}
 					}
+					parser::declarations::export::Exportable::VarStatement(_) => {
+						todo!()
+					}
 					parser::declarations::export::Exportable::ImportAll { .. }
 					| parser::declarations::export::Exportable::ImportParts { .. }
 					| parser::declarations::export::Exportable::Function(_)
 					| parser::declarations::export::Exportable::EnumDeclaration(_)
 					| parser::declarations::export::Exportable::Interface(_)
+					| parser::declarations::export::Exportable::Namespace(_)
 					| parser::declarations::export::Exportable::TypeAlias(_) => {}
 				}
 			}
@@ -124,7 +128,10 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			parser::declarations::ExportDeclaration::DefaultFunction { position, .. } => {
+			parser::declarations::ExportDeclaration::TSDefaultFunctionDeclaration {
+				position,
+				..
+			} => {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::FunctionWithoutBodyNotAllowedHere {
 						position: position.with_source(environment.get_source()),
