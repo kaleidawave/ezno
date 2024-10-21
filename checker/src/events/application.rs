@@ -778,6 +778,11 @@ pub(crate) fn apply_events(
 					};
 					type_arguments.set_during_application(*referenced_in_scope_as, new_function_ty);
 				}
+				super::MiscellaneousEvents::MarkFunctionAsCalled(id) => {
+					if top_environment.is_always_run() {
+						types.called_functions.insert(*id);
+					}
+				}
 			},
 			Event::FinalEvent(final_event) => {
 				// I think this is okay

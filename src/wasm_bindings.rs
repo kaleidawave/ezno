@@ -23,7 +23,7 @@ export function experimental_build(
 pub fn experimental_build_wasm(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
-	minify: bool,
+	config: BuildConfig,
 ) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
@@ -37,8 +37,7 @@ pub fn experimental_build_wasm(
 		&fs_resolver,
 		None,
 		Path::new("out.js"),
-		&crate::build::BuildConfig { strip_whitespace: minify, source_maps: false },
-		None,
+		&config,
 	);
 
 	serde_wasm_bindgen::to_value(&result).unwrap()

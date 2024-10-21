@@ -42,6 +42,8 @@ pub struct BuildConfig {
 	pub strip_whitespace: bool,
 	#[cfg_attr(target_family = "wasm", serde(default))]
 	pub source_maps: bool,
+	#[cfg_attr(target_family = "wasm", serde(default))]
+	pub optimise: bool,
 }
 
 pub type EznoParsePostCheckVisitors =
@@ -71,7 +73,6 @@ pub fn build<T: crate::ReadFromFS>(
 	type_definition_module: Option<&Path>,
 	output_path: &Path,
 	config: &BuildConfig,
-	transformers: Option<EznoParsePostCheckVisitors>,
 ) -> Result<BuildOutput, FailedBuildOutput> {
 	// TODO parse options + non_standard_library & non_standard_syntax
 	let type_check_options = TypeCheckOptions { store_type_mappings: true, ..Default::default() };
@@ -97,7 +98,17 @@ pub fn build<T: crate::ReadFromFS>(
 
 		let mut outputs = Vec::new();
 
-		let mut transformers = transformers.unwrap_or_default();
+		let mut transformers = EznoParsePostCheckVisitors::default();
+
+		if config.optimise {
+			transformers
+				.expression_visitors_mut
+				.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
+
+			transformers
+				.statement_visitors_mut
+				.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
+		}
 
 		for source in keys {
 			// Remove the module
@@ -136,5 +147,51 @@ pub fn build<T: crate::ReadFromFS>(
 		Ok(BuildOutput { outputs, diagnostics: result.diagnostics, fs: data.module_contents })
 	} else {
 		Err(FailedBuildOutput { diagnostics: result.diagnostics, fs: data.module_contents })
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn tree_shaking() {
+		let source = r#"
+	function make_observable(obj) {
+		return new Proxy(obj, {
+			get(on, prop: string, _rec) {
+				return on[prop]
+			},
+		})
+	}
+
+	function get_a() {
+		return 1
+	}
+
+	function get_b() {
+		return 1
+	}
+
+	const obj = {
+		a() { return get_a() },
+		b() { return get_b() },
+		c: 2
+	}
+
+	const value = make_observable(obj);
+	const a_value = value.a();
+	const c_value = value.c;
+		"#;
+
+		let cfg = BuildConfig { optimise: true, ..Default::default() };
+
+		let output =
+			build(vec!["index.tsx"], |_| Some(source.to_owned()), None, "out.tsx").unwrap();
+
+		let first_source = output.outputs.content;
+
+		// TODO assert equal
+		panic!("{first_source:?}");
 	}
 }

@@ -863,6 +863,13 @@ fn call_logical<B: CallCheckingBehavior>(
 						call_site: input.call_site,
 						possibly_thrown,
 					});
+				} else {
+					// This fixes tree shaking of functions that are called within callbacks
+					// TODO this could be done under an option
+					let value = Event::Miscellaneous(
+						crate::events::MiscellaneousEvents::MarkFunctionAsCalled(function.function),
+					);
+					behavior.get_latest_info(top_environment).events.push(value);
 				}
 
 				Ok(result)

@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
+	build::{build, BuildConfig, BuildOutput, FailedBuildOutput},
 	check::check,
 	reporting::report_diagnostics_to_cli,
 	utilities::{self, print_to_cli, MaxDiagnostics},
@@ -272,18 +272,6 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		}) => {
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
 
-			let mut default_builders = EznoParsePostCheckVisitors::default();
-
-			if build_config.optimise {
-				default_builders
-					.expression_visitors_mut
-					.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
-
-				default_builders
-					.statement_visitors_mut
-					.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
-			}
-
 			let entry_points = match get_entry_points(build_config.input) {
 				Ok(entry_points) => entry_points,
 				Err(_) => return ExitCode::FAILURE,
@@ -300,8 +288,8 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				&BuildConfig {
 					strip_whitespace: build_config.minify,
 					source_maps: build_config.source_maps,
+					optimise: build_config.optimise,
 				},
-				Some(default_builders),
 			);
 
 			#[cfg(not(target_family = "wasm"))]
