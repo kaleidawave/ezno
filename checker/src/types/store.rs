@@ -315,12 +315,6 @@ impl TypeStore {
 		}
 	}
 
-	/// TODO temp
-	#[must_use]
-	pub fn into_vec_temp(self) -> Vec<(TypeId, Type)> {
-		self.types.into_iter().enumerate().map(|(idx, ty)| (TypeId(idx as u16), ty)).collect()
-	}
-
 	/// From something like: let a: number => string. Rather than a actual function
 	pub fn new_function_type_annotation(
 		&mut self,
@@ -609,5 +603,14 @@ impl TypeStore {
 
 	pub(crate) fn new_key_of(&mut self, of: TypeId) -> TypeId {
 		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
+	}
+
+	/// TODO temp for debugging
+	pub fn user_types(&self) -> impl Iterator<Item = (TypeId, &Type)> + '_ {
+		self.types
+			.iter()
+			.enumerate()
+			.skip(TypeId::INTERNAL_TYPE_COUNT)
+			.map(|(idx, ty)| (TypeId(idx as u16), ty))
 	}
 }

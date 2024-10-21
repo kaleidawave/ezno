@@ -60,8 +60,7 @@ fn main() {
 
 	if args.iter().any(|arg| arg == "--types") {
 		eprintln!("Types:");
-		let types = result.types.into_vec_temp();
-		for (type_id, item) in &types[types.len().saturating_sub(60)..] {
+		for (type_id, item) in result.types.user_types() {
 			eprintln!("\t{type_id:?}: {item:?}");
 		}
 	}
@@ -72,6 +71,10 @@ fn main() {
 		for item in entry_module.info.get_events() {
 			eprintln!("\t{item:?}");
 		}
+	}
+
+	if args.iter().any(|arg| arg == "--called-functions") {
+		eprintln!("Called function: {:?}", result.types.called_functions);
 	}
 
 	if args.iter().any(|arg| arg == "--time") {

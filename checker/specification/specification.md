@@ -1267,7 +1267,7 @@ new MyClass("hi").value satisfies "hello"
 
 - Expected "hello", found "hi"
 
-#### `new` on function prototype
+#### `new` on function with assigned prototype
 
 ```ts
 function MyClass(value) {
@@ -1778,13 +1778,13 @@ kestrel(3)(2) satisfies 4
 
 ```ts
 function kestrel2(a) {
-	return _b => _c => a
+	return b => c => (a * b) + c
 }
 
-kestrel2(3)(2)(6) satisfies 4
+kestrel2(3)(2)(1) satisfies 4
 ```
 
-- Expected 4, found 3
+- Expected 4, found 7
 
 #### Carry across objects
 
@@ -2646,6 +2646,9 @@ declare var x: number;
 declare var x: number;
 (x < 4) satisfies string;
 (x === 4) satisfies Math;
+(x !== 4) satisfies boolean;
+(x > 4) satisfies boolean;
+(x >= 4) satisfies boolean;
 ```
 
 - Expected string, found boolean
@@ -4010,6 +4013,8 @@ declare let x: Mutable<Y>;
 x.a = "hi";
 x.a = 4;
 ```
+
+<!-- TODO this is incorrect!!!!, should be string -->
 
 - Type 4 does not meet property constraint "hi"
 

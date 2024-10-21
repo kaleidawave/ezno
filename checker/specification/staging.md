@@ -36,3 +36,29 @@ function func(a: number, b: number) {
 ```
 
 - ?
+
+#### Multiplication changes modulo
+
+```ts
+// Integer = MultipleOf<1>
+function func(param: Integer) {
+  if (param * 8 === 2) {}
+}
+```
+
+- The equality is always false as MultipleOf<8> and 2 have no overlap
+
+#### TODO
+
+```ts
+function func(param: Integer) {
+  print_and_debug_type(param - 0.2);
+  print_and_debug_type(param / 2);
+  print_and_debug_type(2 / param);
+}
+
+function func2(param: number) {
+  print_and_debug_type((param - 5) + 5);
+  print_and_debug_type((param / 5) * 5);
+}
+```

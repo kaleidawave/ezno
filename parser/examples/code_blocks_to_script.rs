@@ -196,6 +196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						position: Span::NULL,
 					})
 					.collect();
+
 				let function = Expression::ArrowFunction(ast::ArrowFunction {
 					// TODO maybe async
 					header: false,
