@@ -78,8 +78,10 @@ impl Declaration {
 			token,
 			TSXToken::Keyword(
 				TSXKeyword::Let
-					| TSXKeyword::Const | TSXKeyword::Function
-					| TSXKeyword::Class | TSXKeyword::Export
+					| TSXKeyword::Const
+					| TSXKeyword::Function
+					| TSXKeyword::Class
+					| TSXKeyword::Export
 			) | TSXToken::At,
 		);
 
@@ -123,7 +125,8 @@ impl Declaration {
 					reader.peek_n(1),
 					Some(Token(
 						TSXToken::OpenBrace
-							| TSXToken::Keyword(..) | TSXToken::Identifier(..)
+							| TSXToken::Keyword(..)
+							| TSXToken::Identifier(..)
 							| TSXToken::StringLiteral(..)
 							| TSXToken::Multiply,
 						_

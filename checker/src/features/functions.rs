@@ -1137,6 +1137,7 @@ pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environm
 	}
 }
 
+#[must_use]
 pub fn class_generics_to_function_generics(
 	prototype: TypeId,
 	types: &TypeStore,

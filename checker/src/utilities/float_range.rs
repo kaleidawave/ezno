@@ -9,6 +9,7 @@ pub enum InclusiveExclusive {
 use InclusiveExclusive::{Exclusive, Inclusive};
 
 impl InclusiveExclusive {
+	#[must_use]
 	pub fn mix(self, other: Self) -> Self {
 		if let (Inclusive, Inclusive) = (self, other) {
 			Inclusive
@@ -49,7 +50,6 @@ impl FloatRange {
 		other.floor.1 <= self.ceiling.1 || other.ceiling.1 <= self.floor.1
 	}
 
-	#[must_use]
 	pub fn intersection(self, other: Self) -> Result<Self, ()> {
 		crate::utilities::notify!("{:?} ∩ {:?}", self, other);
 

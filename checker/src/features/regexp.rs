@@ -65,7 +65,7 @@ impl RegExp {
 		// let start_pred = compiled_regex.start_pred;
 		// let loops = compiled_regex.loops;
 		let groups = compiled_regex.groups + 1;
-		let group_names = compiled_regex.group_names.iter().cloned().collect();
+		let group_names = compiled_regex.group_names.to_vec();
 		// let flags = compiled_regex.flags;
 
 		let re = Regex::from(compiled_regex);

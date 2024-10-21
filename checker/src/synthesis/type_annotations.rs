@@ -380,10 +380,9 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						},
 					);
 					return TypeId::NEVER_TYPE;
-				// return TypeId::ERROR_TYPE;
-				} else {
-					acc = checking_data.types.new_and_type(acc, right);
 				}
+
+				acc = checking_data.types.new_and_type(acc, right);
 			}
 			acc
 		}

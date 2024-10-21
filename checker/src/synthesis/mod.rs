@@ -163,6 +163,8 @@ impl crate::ASTImplementation for EznoParser {
 			},
 			type_annotations: !is_js,
 			partial_syntax: lsp_mode,
+			// TODO
+			retain_blank_lines: lsp_mode,
 			is_expressions: extra_syntax,
 			..Default::default()
 		}
