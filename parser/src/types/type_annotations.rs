@@ -479,7 +479,8 @@ impl TypeAnnotation {
 				TSXToken::CloseParentheses
 					| TSXToken::CloseBracket
 					| TSXToken::CloseBrace
-					| TSXToken::Comma | TSXToken::OpenChevron
+					| TSXToken::Comma
+					| TSXToken::OpenChevron
 			) || peek.is_assignment()
 				|| (start.map_or(false, |start| {
 					peek.is_statement_or_declaration_start()

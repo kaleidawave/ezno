@@ -644,22 +644,23 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 	state: &mut crate::ParsingState,
 	options: &ParseOptions,
 ) -> Result<(MethodHeader, WithComment<PropertyKey<T>>), crate::ParseError> {
-	let is_named_get_set_or_async =
-		matches!(
-			reader.peek(),
-			Some(Token(TSXToken::Keyword(kw), _))
-			if kw.is_in_method_header()
-		) && matches!(
-			reader.peek_n(1),
-			Some(Token(
-				TSXToken::OpenParentheses
-					| TSXToken::Colon | TSXToken::OpenChevron
-					| TSXToken::CloseBrace
-					| TSXToken::Comma | TSXToken::QuestionMark
-					| TSXToken::OptionalMember,
-				_
-			))
-		);
+	let is_named_get_set_or_async = matches!(
+		reader.peek(),
+		Some(Token(TSXToken::Keyword(kw), _))
+		if kw.is_in_method_header()
+	) && matches!(
+		reader.peek_n(1),
+		Some(Token(
+			TSXToken::OpenParentheses
+				| TSXToken::Colon
+				| TSXToken::OpenChevron
+				| TSXToken::CloseBrace
+				| TSXToken::Comma
+				| TSXToken::QuestionMark
+				| TSXToken::OptionalMember,
+			_
+		))
+	);
 
 	let (function_header, key) = if is_named_get_set_or_async {
 		let token = reader.next().unwrap();

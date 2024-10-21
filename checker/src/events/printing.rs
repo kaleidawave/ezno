@@ -162,6 +162,9 @@ pub fn debug_effects<C: InformationChain>(
 				buf.push_str("end");
 			}
 			Event::Miscellaneous(misc) => match misc {
+				super::MiscellaneousEvents::MarkFunctionAsCalled(_) => {
+					buf.push_str("Calls inlined function");
+				}
 				super::MiscellaneousEvents::Has { .. } => {
 					buf.push_str("Has");
 				}

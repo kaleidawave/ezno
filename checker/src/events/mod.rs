@@ -185,6 +185,9 @@ pub enum MiscellaneousEvents {
 	},
 	/// Creates a new function or class
 	CreateConstructor { referenced_in_scope_as: TypeId, function: FunctionId },
+	/// While [`Event::CallsType`] marks callbacks (and parameters) as being called, it does not mark regular function as being called
+	/// this event has no effect but does add it to the global `HashSet` of called types
+	MarkFunctionAsCalled(FunctionId),
 }
 
 /// A break in application
@@ -252,7 +255,6 @@ pub enum ApplicationResult {
 		position: SpanWithSource,
 	},
 	/// From a `throw ***` statement (or expression).
-	///
 	Throw {
 		thrown: TypeId,
 		position: SpanWithSource,
