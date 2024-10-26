@@ -200,7 +200,7 @@ pub fn set_property<B: CallCheckingBehavior>(
 		result_union: _,
 	}) = types.get_type_by_id(on)
 	{
-		crate::utilities::notify!("Here");
+		crate::utilities::notify!("Cascading assigment bc of conditional result");
 		let truthy = *truthy_result;
 		let otherwise_result = *otherwise_result;
 

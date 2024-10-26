@@ -41,6 +41,14 @@ impl FloatRange {
 		Self { floor: (Inclusive, on), ceiling: (Inclusive, on) }
 	}
 
+	pub fn as_single(self) -> Option<BetterF64> {
+		if let FloatRange { floor: (Inclusive, floor), ceiling: (Inclusive, ceiling) } = self {
+			(floor == ceiling).then_some(floor)
+		} else {
+			None
+		}
+	}
+
 	/// For disjointness. TODO Think this is correct
 	#[must_use]
 	pub fn overlaps(self, other: Self) -> bool {
@@ -140,6 +148,39 @@ impl FloatRange {
 
 		// TODO >= ?
 		ceiling.floor() > *floor
+	}
+
+	// TODO double check
+	// TODO what happens when disjoint
+	#[must_use]
+	pub fn intersection(self, other: Self) -> Self {
+		let floor = if self.floor.0 < other.floor.0 {
+			other.floor
+		} else {
+			self.floor
+		};
+		let ceiling = if self.ceiling.0 < other.ceiling.0 {
+			self.ceiling
+		} else {
+			other.ceiling
+		};
+		Self {
+			floor,
+			ceiling,
+		}
+	}
+
+	// This will try to get cover
+	// A union like above might create gaps. aka if try_get_cover (0, 1) (3, 4) = (0, 4) then it implies 2 
+	// exists is in one of the ranges. Thus in this case it returns None
+	pub fn try_get_cover(self, other: Self) -> Option<Self> {
+		if self.contained_in(other) {
+			Some(other)
+		} else if other.contained_in(self) {
+			Some(self)
+		} else {
+			None
+		}
 	}
 
 	// TODO more :)

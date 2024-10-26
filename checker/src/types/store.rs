@@ -149,19 +149,19 @@ impl Default for TypeStore {
 				extends: TypeId::NUMBER_TYPE,
 			}),
 			Type::AliasTo {
-				to: TypeId::NUMBER_TYPE,
 				name: "GreaterThan".into(),
 				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				to: TypeId::NUMBER_TYPE,
 			},
 			Type::AliasTo {
-				to: TypeId::NUMBER_TYPE,
 				name: "LessThan".into(),
 				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				to: TypeId::NUMBER_TYPE,
 			},
 			Type::AliasTo {
-				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
 				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				to: TypeId::NUMBER_TYPE,
 			},
 			// Intermediate for the below
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -174,23 +174,23 @@ impl Default for TypeStore {
 			Type::And(TypeId::NUMBER_TYPE, TypeId::NOT_NOT_A_NUMBER),
 			Type::AliasTo {
 				name: "Literal".into(),
-				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
+				to: TypeId::T_TYPE,
 			},
 			Type::AliasTo {
 				name: "Exclusive".into(),
-				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
+				to: TypeId::T_TYPE,
 			},
 			Type::AliasTo {
 				name: "Not".into(),
-				to: TypeId::ANY_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
+				to: TypeId::ANY_TYPE,
 			},
 			Type::AliasTo {
 				name: "CaseInsensitive".into(),
-				to: TypeId::STRING_TYPE,
 				parameters: Some(vec![TypeId::STRING_GENERIC]),
+				to: TypeId::STRING_TYPE,
 			},
 			Type::RootPolyType(PolyNature::Open(TypeId::BOOLEAN_TYPE)),
 			Type::RootPolyType(PolyNature::Open(TypeId::NUMBER_TYPE)),
@@ -298,17 +298,28 @@ impl TypeStore {
 			return lhs;
 		}
 
-		// (left and right) distributivity.
-		if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(lhs) {
+		// (left and right) distributivity & some other reductions on singleton types bc why not
+		// TODO sort intrinsics?
+		let lhs_type = self.get_type_by_id(lhs);
+		let rhs_type = self.get_type_by_id(rhs);
+		if let Type::Or(or_lhs, or_rhs) = lhs_type {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
 			let new_lhs = self.new_and_type(or_lhs, rhs);
 			let new_rhs = self.new_and_type(or_rhs, rhs);
 			self.new_or_type(new_lhs, new_rhs)
-		} else if let Type::Or(or_lhs, or_rhs) = self.get_type_by_id(rhs) {
+		} else if let Type::Or(or_lhs, or_rhs) = rhs_type {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
 			let new_lhs = self.new_and_type(lhs, or_lhs);
 			let new_rhs = self.new_and_type(lhs, or_rhs);
 			self.new_or_type(new_lhs, new_rhs)
+		} else if let Type::Constant(_) = lhs_type {
+			lhs
+		} else if let Type::Constant(_) = rhs_type {
+			rhs
+		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_type {
+			let (rhs_lhs, rhs_rhs) = (*rhs_lhs, *rhs_rhs);
+			let lhs = self.new_and_type(lhs, rhs_lhs);
+			self.new_and_type(lhs, rhs_rhs)
 		} else {
 			let ty = Type::And(lhs, rhs);
 			self.register_type(ty)
@@ -525,7 +536,14 @@ impl TypeStore {
 		self.register_type(Type::RootPolyType(PolyNature::Open(base)))
 	}
 
+	/// Will provide origin rewriting as well
 	pub fn new_narrowed(&mut self, from: TypeId, narrowed_to: TypeId) -> TypeId {
+		// TODO more. Fixes stuff
+		let narrowed_to = if let Type::Narrowed { from: _, narrowed_to: existing } = self.get_type_by_id(from) {
+			self.new_and_type(narrowed_to, *existing)
+		} else {
+			narrowed_to
+		};
 		self.register_type(Type::Narrowed { from, narrowed_to })
 	}
 

@@ -118,7 +118,7 @@ jobs:
           # Test checker with the parser features
           cargo test -F ezno-parser -p ezno-checker
 
-      - name: Run base tests
+      - name: Run CLI and base tests
         run: cargo test
 
   extras:
@@ -362,4 +362,6 @@ jobs:
     steps:
       - name: Kick off other workflow if the PR has a label
         if: contains(github.event.pull_request.labels.*.name, 'compiler-performance')
-        run: gh workflow run performance-and-size.yml --ref ${{ github.event.base_ref }}
+        run: |
+          echo ${{ github.event.after }}
+          gh workflow run performance-and-size.yml --ref ${{ github.event.after }}

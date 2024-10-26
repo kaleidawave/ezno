@@ -2496,7 +2496,7 @@ function func(a: string, b: number) {
 - Expected string, found true
 - Expected null, found boolean
 
-#### Ranges for interal types
+#### Ranges for internal types
 
 ```ts
 function func(a: number) {

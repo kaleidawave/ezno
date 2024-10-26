@@ -100,6 +100,18 @@ pub fn types_are_disjoint(
 			crate::utilities::notify!("{:?}", (rhs, rhs_inner));
 
 			subtyping::type_is_subtype(rhs_inner, lhs, &mut state, information, types).is_subtype()
+		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_ty {
+			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
+				|| types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
+		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
+			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
+				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
+		} else if let Some(lhs) = super::get_constraint(lhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
+		} else if let Some(rhs) = super::get_constraint(rhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::MULTIPLE_OF,
 			arguments,
@@ -133,24 +145,60 @@ pub fn types_are_disjoint(
 				),
 			) {
 				let result = lhs % rhs != 0.;
-				crate::utilities::notify!("{:?} {:?}", lhs, rhs);
+				// crate::utilities::notify!("{:?} {:?}", lhs, rhs);
 				result
 			} else {
-				crate::utilities::notify!("Here {:?}", lhs);
+				// crate::utilities::notify!("Here {:?}", lhs);
 				true
 			}
-		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_ty {
-			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
-				|| types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
-		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
-			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
-				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
-		} else if let Some(lhs) = super::get_constraint(lhs, types) {
-			// TODO not sure whether these should be here?
-			types_are_disjoint(lhs, rhs, already_checked, information, types)
-		} else if let Some(rhs) = super::get_constraint(rhs, types) {
-			// TODO not sure whether these should be here?
-			types_are_disjoint(lhs, rhs, already_checked, information, types)
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
+			arguments,
+		}) = rhs_ty
+		{
+			crate::utilities::notify!("Here");
+			if let Type::Constant(Constant::Number(rhs)) = types.get_type_by_id(
+				arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
+			) {
+				if let Type::Constant(Constant::Number(lhs)) = lhs_ty {
+					crate::utilities::notify!("{:?} {} {}", on, lhs, rhs);
+					if *on == TypeId::GREATER_THAN {
+						lhs < rhs
+					} else {
+						lhs > rhs
+					}
+				} else {
+					crate::utilities::notify!("Unsure here {:?}", (lhs_ty, rhs_ty));
+					false
+				}
+			} else {
+				crate::utilities::notify!("Unsure here");
+				false
+			}
+		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
+			arguments,
+		}) = lhs_ty
+		{
+			crate::utilities::notify!("Here");
+			if let Type::Constant(Constant::Number(lhs)) = types.get_type_by_id(
+				arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
+			) {
+				if let Type::Constant(Constant::Number(rhs)) = rhs_ty {
+					crate::utilities::notify!("{:?} {} {}", on, lhs, rhs);
+					if *on == TypeId::GREATER_THAN {
+						lhs > rhs
+					} else {
+						lhs < rhs
+					}
+				} else {
+					crate::utilities::notify!("Unsure here {:?}", (lhs_ty, rhs_ty));
+					false
+				}
+			} else {
+				crate::utilities::notify!("Unsure here");
+				false
+			}
 		} else if let Type::Constant(lhs_cst) = lhs_ty {
 			if let Type::Constant(rhs_cst) = rhs_ty {
 				lhs_cst != rhs_cst
@@ -176,20 +224,6 @@ pub fn types_are_disjoint(
 		)) = rhs_ty
 		{
 			// TODO check properties
-			false
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: _on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
-			arguments: _,
-		}) = rhs_ty
-		{
-			crate::utilities::notify!("TODO");
-			false
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: _on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
-			arguments: _,
-		}) = lhs_ty
-		{
-			crate::utilities::notify!("TODO");
 			false
 		} else {
 			crate::utilities::notify!(

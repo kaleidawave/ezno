@@ -190,13 +190,11 @@ pub enum Type {
 	/// - Can be used for subtypes (aka N aliases number then more types on top)
 	/// - **Does not imply .prototype = **
 	AliasTo {
-		to: TypeId,
 		name: String,
 		parameters: Option<Vec<TypeId>>,
+		to: TypeId,
 	},
-	/// For number and other rooted types
-	///
-	/// Although they all alias Object
+	/// Properties are in environment (for declaration merging)
 	Interface {
 		name: String,
 		parameters: Option<Vec<TypeId>>,
@@ -1059,7 +1057,7 @@ pub(crate) mod helpers {
 		matches!(ty, TypeId::ANY_TO_INFER_TYPE | TypeId::OBJECT_TYPE)
 	}
 
-	/// For quick checking
+	/// For quick checking. Wraps [`subtyping::type_is_subtype`]
 	#[must_use]
 	pub fn simple_subtype(
 		expr_ty: TypeId,
@@ -1097,6 +1095,19 @@ pub(crate) mod helpers {
 		{
 			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 			types.get_type_by_id(inner).is_constant()
+		} else {
+			false
+		}
+	}
+
+	// TODO narrowed as well
+	pub fn type_equal(lhs: TypeId, rhs: TypeId, types: &TypeStore) -> bool {
+		if lhs == rhs {
+			true
+		} else if let (Type::Constant(lhs), Type::Constant(rhs)) =
+			(types.get_type_by_id(lhs), types.get_type_by_id(rhs))
+		{
+			lhs == rhs
 		} else {
 			false
 		}

@@ -36,10 +36,10 @@ pub fn narrow_based_on_expression(
 				operator: CanonicalEqualityAndInequality::StrictEqual,
 				rhs,
 			} => {
-				if let Type::Constructor(Constructor::TypeOperator(TypeOperator::TypeOf(on))) =
-					types.get_type_by_id(*lhs)
-				{
-					let from = get_origin(*on, types);
+				let lhs_type = types.get_type_by_id(*lhs);
+				if let Type::Constructor(Constructor::TypeOperator(TypeOperator::TypeOf(on))) = lhs_type {
+					// let from = get_origin(*on, types);
+					let from = *on; //, types);
 					if let Type::Constant(Constant::String(c)) = types.get_type_by_id(*rhs) {
 						let type_from_name = crate::features::string_name_to_type(c);
 						if let Some(type_from_name) = type_from_name {
@@ -82,7 +82,7 @@ pub fn narrow_based_on_expression(
 					operator: MathematicalAndBitwise::Modulo,
 					rhs: modulo,
 					result: _,
-				}) = types.get_type_by_id(*lhs)
+				}) = lhs_type
 				{
 					if *rhs == TypeId::ZERO {
 						crate::utilities::notify!("TODO only if sensible");
@@ -103,14 +103,8 @@ pub fn narrow_based_on_expression(
 						crate::utilities::notify!("maybe subtract LHS");
 					}
 				} else {
-					if let Type::RootPolyType(PolyNature::Parameter { .. }) =
-						types.get_type_by_id(*lhs)
-					{
-						crate::utilities::notify!(
-							"lhs is {:?} with {:?}",
-							lhs,
-							types.get_type_by_id(*rhs)
-						);
+					if let Type::RootPolyType(PolyNature::Parameter { .. }) = lhs_type {
+						crate::utilities::notify!( "lhs is {:?} with {:?}", lhs_type, rhs);
 					}
 
 					if negate && lhs == rhs {
@@ -118,7 +112,9 @@ pub fn narrow_based_on_expression(
 						return;
 					}
 
-					let lhs = get_origin(*lhs, types);
+					// let lhs = get_origin(*lhs, types);
+					let lhs = *lhs;
+					let rhs = *rhs;
 
 					let result = if negate {
 						// TODO wip
@@ -126,7 +122,7 @@ pub fn narrow_based_on_expression(
 							let mut result = Vec::new();
 							build_union_from_filter(
 								lhs,
-								Filter::Not(&Filter::IsType(*rhs)),
+								Filter::Not(&Filter::IsType(rhs)),
 								&mut result,
 								information,
 								types,
@@ -138,19 +134,35 @@ pub fn narrow_based_on_expression(
 						} else {
 							crate::types::intrinsics::new_intrinsic(
 								&crate::types::intrinsics::Intrinsic::Not,
-								*rhs,
+								rhs,
 								types,
 							)
 						};
 						types.new_narrowed(lhs, narrowed_to)
 					} else {
-						*rhs
+						rhs
 					};
 
 					into.insert(lhs, result);
 
-					// PROPERTY HERE
-					if let Type::Constructor(Constructor::Property {
+					
+					// CONDITION NARROWING HERE ((x ? 1 : 2) = 1 => x)
+					// There are missed conditons around things like `typeof` etc (oh well)
+					// it should be done higher up
+					if let Type::Constructor(Constructor::ConditionalResult {
+						condition,
+						truthy_result,
+						otherwise_result,
+						result_union: _,
+					}) = types.get_type_by_id(lhs) {
+						if crate::types::helpers::type_equal(*truthy_result, rhs, types) {
+							narrow_based_on_expression(*condition, false, into, information, types);
+						} else if crate::types::helpers::type_equal(*otherwise_result, rhs, types) {
+							narrow_based_on_expression(*condition, true, into, information, types);
+						}
+					} 
+					// PROPERTY NARROWING HERE (x.a: b => x: {a: b})
+					else if let Type::Constructor(Constructor::Property {
 						on,
 						under,
 						result: _,

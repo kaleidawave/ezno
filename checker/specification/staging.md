@@ -27,38 +27,49 @@ function func3(p1: Not<string>, p2: Not<number>) {
 > TODO need to redo range to use interesection of less than and greater than
 
 ```ts
+// function func(a: number, b: number) {
+//   if (a % 15 === 0 && 31 < b && b < 37) {
+//     print_type(a, b)
+//     print_type(a === b)
+//   }
+// }
 function func(a: number, b: number) {
-  if (a % 15 === 0 && 31 < b && b < 37) {
-    print_type(a, b)
-    print_type(a === b)
+  if (31 < b && b < 37) {
+    print_type(b)
   }
 }
 ```
 
 - ?
 
-#### Multiplication changes modulo
-
-```ts
-// Integer = MultipleOf<1>
-function func(param: Integer) {
-  if (param * 8 === 2) {}
-}
-```
-
 - The equality is always false as MultipleOf<8> and 2 have no overlap
 
-#### TODO
+#### Modulo offsets
 
 ```ts
 function func(param: Integer) {
-  print_and_debug_type(param - 0.2);
-  print_and_debug_type(param / 2);
-  print_and_debug_type(2 / param);
+  print_type(param - 0.2);
+  print_type(param / 2);
+  print_type(2 / param);
 }
 
 function func2(param: number) {
-  print_and_debug_type((param - 5) + 5);
-  print_and_debug_type((param / 5) * 5);
+  print_type((param - 5) + 5);
+  print_type((param / 5) * 5);
 }
 ```
+
+- Hi
+
+#### Narrowing: Implication by
+
+```ts
+function func(a: boolean) {
+  const x = a ? 1 : 2;
+  if (x === 1) {
+    a satisfies "hi"
+  }
+}
+```
+
+- Expected "hi", found true
