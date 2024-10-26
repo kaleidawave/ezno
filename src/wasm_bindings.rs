@@ -23,7 +23,7 @@ export function experimental_build(
 pub fn experimental_build_wasm(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
-	config: BuildConfig,
+	config: crate::build::BuildConfig,
 ) -> JsValue {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 

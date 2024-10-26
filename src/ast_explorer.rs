@@ -9,7 +9,7 @@ use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOption
 
 use crate::{
 	reporting::report_diagnostics_to_cli,
-	utilities::{print_to_cli, print_to_cli_without_newline},
+	utilities::{print_to_cli, print_to_cli_without_newline, cli_input_resolver},
 };
 
 /// REPL for printing out AST from user input
@@ -28,7 +28,6 @@ impl ExplorerArguments {
 	pub(crate) fn run<T: crate::ReadFromFS, U: crate::CLIInputResolver>(
 		&mut self,
 		fs_resolver: &T,
-		cli_input_resolver: U,
 	) {
 		if let Some(ref file) = self.file {
 			let content = fs_resolver.get_content_at_path(file);
@@ -40,7 +39,7 @@ impl ExplorerArguments {
 		} else {
 			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
-				let input = cli_input_resolver(self.nested.to_str()).unwrap_or_default();
+				let input = cli_input_resolver(self.nested.to_str());
 
 				if input.is_empty() {
 					continue;
@@ -80,7 +79,6 @@ pub(crate) enum ExplorerSubCommand {
 	FullAST(FullASTArgs),
 	Prettifier(PrettyArgs),
 	Uglifier(UglifierArgs),
-	Lexer(LexerArgs),
 }
 
 /// Prints AST for a given expression
@@ -111,13 +109,12 @@ pub(crate) struct PrettyArgs {}
 #[argh(subcommand, name = "uglifier")]
 pub(crate) struct UglifierArgs {}
 
-/// Prints sources with tokens over
-#[derive(FromArgs, Debug, Default)]
-#[argh(subcommand, name = "lexer")]
-pub(crate) struct LexerArgs {}
-
 impl ExplorerSubCommand {
 	pub fn run(&self, input: String, path: Option<PathBuf>) {
+		if cfg!(target_family = "wasm") {
+			panic!("Cannot run ast-explorer in WASM because of input callback. Consider reimplementing using library");
+		}
+
 		match self {
 			ExplorerSubCommand::AST(cfg) => {
 				let mut fs =
@@ -193,28 +190,6 @@ impl ExplorerSubCommand {
 					)
 					.unwrap(),
 				}
-			}
-			ExplorerSubCommand::Lexer(_) => {
-				let mut color = console::Color::Red;
-				for (section, with) in parser::script_to_tokens(input) {
-					if with {
-						let value = style(section).bg(color);
-						// Cycle through colors
-						color = match color {
-							console::Color::Red => console::Color::Green,
-							console::Color::Green => console::Color::Yellow,
-							console::Color::Yellow => console::Color::Blue,
-							console::Color::Blue => console::Color::Magenta,
-							console::Color::Magenta => console::Color::Cyan,
-							console::Color::Cyan => console::Color::Red,
-							_ => unreachable!(),
-						};
-						print_to_cli_without_newline(format_args!("{value}"));
-					} else {
-						print_to_cli_without_newline(format_args!("{section}"));
-					}
-				}
-				print_to_cli(format_args!(""));
 			}
 		}
 	}

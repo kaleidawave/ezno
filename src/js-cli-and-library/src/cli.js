@@ -21,13 +21,10 @@ function writeFile(path, content) {
     writeFileSync(path, content)
 }
 
-function readFromCLI(prompt_msg) {
-    if (typeof Deno !== "undefined") {
-        return prompt(`${prompt_msg}>`);
-    } else {
-        console.error("Prompt not supported in NodeJS (sync issue)");
-        throw new Error("Prompt not supported in NodeJS");
-    }
+// Fix because REPL requires syncronous stdin input which isn't 
+// TODO also ast-explorer
+if (cliArguments.length === 1 && (cliArguments[0] === "repl" || cliArguments[0] === "ast-explorer")) {
+    console.error("TODO")
+} else {
+    run_cli(cliArguments, readFile, writeFile);
 }
-
-run_cli(cliArguments, readFile, writeFile, readFromCLI);

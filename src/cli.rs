@@ -173,11 +173,10 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 	}
 }
 
-pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
+pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 	cli_arguments: &[&str],
 	read_file: &T,
 	write_file: U,
-	cli_input_resolver: V,
 ) -> ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
@@ -398,12 +397,12 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			}
 		},
 		CompilerSubCommand::ASTExplorer(mut repl) => {
-			repl.run(read_file, cli_input_resolver);
+			repl.run(read_file);
 			// TODO not always true
 			ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Repl(argument) => {
-			crate::repl::run_repl(cli_input_resolver, argument);
+			crate::repl::run_repl(argument);
 			// TODO not always true
 			ExitCode::SUCCESS
 		} // CompilerSubCommand::Run(run_arguments) => {

@@ -34,11 +34,6 @@ where
 	}
 }
 
-/// prompt -> response
-pub trait CLIInputResolver: Fn(&str) -> Option<String> {}
-
-impl<T> CLIInputResolver for T where T: Fn(&str) -> Option<String> {}
-
 pub trait WriteToFS: Fn(&std::path::Path, String) {}
 
 impl<T> WriteToFS for T where T: Fn(&std::path::Path, String) {}
