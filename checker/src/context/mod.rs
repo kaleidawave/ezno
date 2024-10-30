@@ -7,6 +7,7 @@ pub mod information;
 pub mod invocation;
 mod root;
 
+use information::ObjectProtectionState;
 pub(crate) use invocation::CallCheckingBehavior;
 pub use root::RootContext;
 
@@ -518,7 +519,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO doesn't look at aliases using `get_type_fact`!
-	pub fn is_frozen(&self, value: TypeId) -> Option<TypeId> {
+	pub fn is_frozen(&self, value: TypeId) -> Option<ObjectProtectionState> {
 		self.parents_iter().find_map(|ctx| get_on_ctx!(ctx.info.frozen.get(&value))).copied()
 	}
 

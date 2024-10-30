@@ -2,7 +2,11 @@ use iterator_endiate::EndiateIteratorExt;
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{get_on_ctx, information::InformationChain, invocation::CheckThings},
+	context::{
+		get_on_ctx,
+		information::{InformationChain, ObjectProtectionState},
+		invocation::CheckThings,
+	},
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
@@ -310,7 +314,27 @@ pub(crate) fn call_constant_function(
 			if let Some(on) =
 				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
 			{
-				environment.info.frozen.insert(on);
+				environment.info.frozen.insert(on, ObjectProtectionState::Frozen);
+				Ok(ConstantOutput::Value(on))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
+		"seal" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				environment.info.frozen.insert(on, ObjectProtectionState::Sealed);
+				Ok(ConstantOutput::Value(on))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
+		"preventExtensions" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				environment.info.frozen.insert(on, ObjectProtectionState::NoExtensions);
 				Ok(ConstantOutput::Value(on))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
@@ -321,8 +345,19 @@ pub(crate) fn call_constant_function(
 				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
 			{
 				let is_frozen =
-					environment.get_chain_of_info().any(|info| info.frozen.contains(&on));
+					environment.get_chain_of_info().any(|info| info.frozen.contains_key(&on));
 				Ok(ConstantOutput::Value(if is_frozen { TypeId::TRUE } else { TypeId::FALSE }))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
+		"isSealed" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				let is_sealed =
+					environment.get_chain_of_info().any(|info| info.frozen.contains_key(&on));
+				Ok(ConstantOutput::Value(if is_sealed { TypeId::TRUE } else { TypeId::FALSE }))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}

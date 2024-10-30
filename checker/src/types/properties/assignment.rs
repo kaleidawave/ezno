@@ -60,7 +60,7 @@ pub fn set_property<B: CallCheckingBehavior>(
 ) -> SetPropertyResult {
 	// Frozen checks
 	{
-		if environment.info.frozen.contains(&on) {
+		if environment.info.frozen.contains_key(&on) {
 			return Err(SetPropertyError::NotWriteable {
 				property: PropertyKeyRepresentation::new(under, environment, types),
 				position,
