@@ -380,6 +380,9 @@ declare class Object {
     @Constant
     static isSealed(on: object): boolean;
 
+    @Constant
+    static isExtensible(on: object): boolean;
+
     // TODO defineProperties via body (not constant)
     @Constant
     static defineProperty(on: object, property: string, discriminator: PropertyDescriptor): boolean;
