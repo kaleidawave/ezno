@@ -362,6 +362,17 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
+		"isExtensible" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				let is_extensible =
+					!environment.get_chain_of_info().any(|info| info.frozen.contains_key(&on));
+				Ok(ConstantOutput::Value(if is_extensible { TypeId::TRUE } else { TypeId::FALSE }))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
 		"defineProperty" => {
 			// TODO check configurable
 			if let [on, property, descriptor] = arguments {
