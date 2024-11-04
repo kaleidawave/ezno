@@ -2,7 +2,7 @@ Currently implementing:
 
 > This file is for work-in-progress and can help separating features that are being implemented to regressions
 
-### Feats
+### Object protections
 
 #### `Object.freeze`
 
@@ -23,12 +23,17 @@ Object.isSealed(obj) satisfies true;
 > When `Object.seal` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
 
 ```ts
-const obj = {}
+const obj = { a: 2 }
 let result = Object.seal(obj);
 (obj === result) satisfies true;
+
+// Allowed
+obj.a = 4;
+// Not allowed
 obj.property = 2;
-Object.isFrozen(obj) satisfies true;
+
 Object.isSealed(obj) satisfies true;
+Object.isFrozen(obj) satisfies false;
 ```
 
 - Cannot write to property 'property'
@@ -38,12 +43,17 @@ Object.isSealed(obj) satisfies true;
 > When `Object.preventExtensions` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
 
 ```ts
-const obj = {}
+const obj = { a: 2 }
 let result = Object.preventExtensions(obj);
 (obj === result) satisfies true;
+
+// Allowed
+obj.a = 4;
+// Not allowed
 obj.property = 2;
-Object.isFrozen(obj) satisfies true;
-Object.isSealed(obj) satisfies true;
+
+Object.isFrozen(obj) satisfies false;
+Object.isSealed(obj) satisfies false;
 ```
 
 - Cannot write to property 'property'
@@ -53,12 +63,22 @@ Object.isSealed(obj) satisfies true;
 > The object that has been applied `Object.seal`, `Object.freeze` and `Object.preventExtensions` returns `false` by `Object.isExtensible`, otherwise returns `true`
 
 ```ts
-const obj = {}
-Object.isExtensible(obj) satisfies true;
-Object.preventExtensions(obj);
-Object.isExtensible(obj) satisfies false;
-Object.seal(obj);
-Object.isExtensible(obj) satisfies false;
-Object.freeze(obj);
-Object.isExtensible(obj) satisfies false;
+{
+	const obj = {}
+	Object.isExtensible(obj) satisfies true;
+	Object.preventExtensions(obj);
+	Object.isExtensible(obj) satisfies false;
+}
+{
+	const obj = {}
+	Object.seal(obj);
+	Object.isExtensible(obj) satisfies false;
+}
+{
+	const obj = {}
+	Object.freeze(obj);
+	Object.isExtensible(obj) satisfies 5;
+}
 ```
+
+- Expected 5, found false

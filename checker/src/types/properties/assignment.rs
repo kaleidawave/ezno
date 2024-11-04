@@ -1,7 +1,7 @@
 use super::{get_property_unbound, Descriptor, PropertyKey, PropertyValue, Publicity};
 
 use crate::{
-	context::CallCheckingBehavior,
+	context::{information::ObjectProtectionState, CallCheckingBehavior},
 	diagnostics::{PropertyKeyRepresentation, TypeStringRepresentation},
 	events::Event,
 	features::objects::Proxy,
@@ -59,8 +59,11 @@ pub fn set_property<B: CallCheckingBehavior>(
 	types: &mut TypeStore,
 ) -> SetPropertyResult {
 	// Frozen checks
+	let object_protection = environment.get_object_protection(on);
+
 	{
-		if environment.info.frozen.contains_key(&on) {
+		if let Some(ObjectProtectionState::Frozen) = object_protection {
+			// FUTURE this could have a separate error?
 			return Err(SetPropertyError::NotWriteable {
 				property: PropertyKeyRepresentation::new(under, environment, types),
 				position,
@@ -266,6 +269,17 @@ pub fn set_property<B: CallCheckingBehavior>(
 			position,
 		})
 	} else {
+		// Sealed & no extensions check for NEW property (frozen case covered above)
+		{
+			if object_protection.is_some() {
+				// FUTURE this could have a separate error?
+				return Err(SetPropertyError::NotWriteable {
+					property: PropertyKeyRepresentation::new(under, environment, types),
+					position,
+				});
+			}
+		}
+
 		crate::utilities::notify!("No property on object, assigning anyway");
 		let info = behavior.get_latest_info(environment);
 		info.register_property(

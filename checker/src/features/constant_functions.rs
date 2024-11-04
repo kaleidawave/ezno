@@ -344,9 +344,14 @@ pub(crate) fn call_constant_function(
 			if let Some(on) =
 				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
 			{
-				let is_frozen =
-					environment.get_chain_of_info().any(|info| info.frozen.contains_key(&on));
-				Ok(ConstantOutput::Value(if is_frozen { TypeId::TRUE } else { TypeId::FALSE }))
+				let object_protection = environment.get_object_protection(on);
+				let result = if matches!(object_protection, Some(ObjectProtectionState::Frozen)) {
+					TypeId::TRUE
+				} else {
+					// TODO test properties here
+					TypeId::FALSE
+				};
+				Ok(ConstantOutput::Value(result))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
@@ -355,9 +360,17 @@ pub(crate) fn call_constant_function(
 			if let Some(on) =
 				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
 			{
-				let is_sealed =
-					environment.get_chain_of_info().any(|info| info.frozen.contains_key(&on));
-				Ok(ConstantOutput::Value(if is_sealed { TypeId::TRUE } else { TypeId::FALSE }))
+				let object_protection = environment.get_object_protection(on);
+				let result = if matches!(
+					object_protection,
+					Some(ObjectProtectionState::Frozen | ObjectProtectionState::Sealed)
+				) {
+					TypeId::TRUE
+				} else {
+					// TODO test properties here
+					TypeId::FALSE
+				};
+				Ok(ConstantOutput::Value(result))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
@@ -366,9 +379,15 @@ pub(crate) fn call_constant_function(
 			if let Some(on) =
 				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
 			{
-				let is_extensible =
-					!environment.get_chain_of_info().any(|info| info.frozen.contains_key(&on));
-				Ok(ConstantOutput::Value(if is_extensible { TypeId::TRUE } else { TypeId::FALSE }))
+				// Not this method returns an inverse result
+				let object_protection = environment.get_object_protection(on);
+				let result = if object_protection.is_some() {
+					TypeId::FALSE
+				} else {
+					TypeId::TRUE
+					// TODO test properties here
+				};
+				Ok(ConstantOutput::Value(result))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
