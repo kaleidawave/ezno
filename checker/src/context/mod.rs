@@ -7,6 +7,7 @@ pub mod information;
 pub mod invocation;
 mod root;
 
+use information::ObjectProtectionState;
 pub(crate) use invocation::CallCheckingBehavior;
 pub use root::RootContext;
 
@@ -518,7 +519,7 @@ impl<T: ContextType> Context<T> {
 	}
 
 	/// TODO doesn't look at aliases using `get_type_fact`!
-	pub fn is_frozen(&self, value: TypeId) -> Option<TypeId> {
+	pub fn get_object_protection(&self, value: TypeId) -> Option<ObjectProtectionState> {
 		self.parents_iter().find_map(|ctx| get_on_ctx!(ctx.info.frozen.get(&value))).copied()
 	}
 
@@ -526,9 +527,9 @@ impl<T: ContextType> Context<T> {
 	// TODO should check the TypeId::is_primitive... via aliases + open_poly
 	pub(crate) fn _is_immutable(&self, _value: TypeId) -> bool {
 		todo!()
-		// let is_frozen = self.is_frozen(value);
+		// let get_object_protection = self.get_object_protection(value);
 
-		// if is_frozen == Some(TypeId::TRUE) {
+		// if get_object_protection == Some(TypeId::TRUE) {
 		// 	true
 		// } else if let Some(
 		// 	Constant::Boolean(..)
