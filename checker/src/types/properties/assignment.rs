@@ -121,6 +121,8 @@ pub fn set_property<B: CallCheckingBehavior>(
 					contributions: Default::default(),
 					others: Default::default(),
 					object_constraints: Default::default(),
+					// TODO
+					constraint_inference_requests: None,
 				};
 				let result = crate::subtyping::type_is_subtype_of_property(
 					(&property_constraint, None),
@@ -427,6 +429,8 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 					contributions: Default::default(),
 					others: Default::default(),
 					object_constraints: Default::default(),
+					// TODO
+					constraint_inference_requests: None,
 				};
 				let result = crate::subtyping::type_is_subtype_with_generics(
 					(constraint_for_new, generics),

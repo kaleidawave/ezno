@@ -281,8 +281,54 @@ pub fn call_type_handle_errors<T: crate::ReadFromFS, A: crate::ASTImplementation
 				if on == TypeId::ERROR_TYPE {
 					(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
 				} else {
-					crate::utilities::notify!("TODO function calling inference on {:?}", on);
-					(TypeId::UNIMPLEMENTED_ERROR_TYPE, None)
+					let mut new_arguments = Vec::<SynthesisedArgument>::new();
+					let mut inferred_parameters =
+						super::functions::SynthesisedParameters::default();
+
+					for (idx, argument) in arguments.iter().enumerate() {
+						let value = A::synthesise_expression(
+							argument.expression,
+							TypeId::ANY_TYPE,
+							environment,
+							checking_data,
+						);
+
+						let position = A::expression_position(argument.expression)
+							.with_source(environment.get_source());
+
+						new_arguments.push(SynthesisedArgument {
+							spread: argument.spread,
+							position,
+							value,
+						});
+						inferred_parameters.parameters.push(
+							super::functions::SynthesisedParameter {
+								name: char::from(0x61u8 + idx as u8).to_string(),
+								is_optional: false,
+								ty: value,
+								position,
+							},
+						);
+					}
+
+					let image_ty =
+						checking_data.types.register_type(Type::Constructor(Constructor::Image {
+							// TODO
+							on,
+							with: new_arguments.into_boxed_slice(),
+							result: TypeId::ANY_TO_INFER_TYPE,
+						}));
+
+					let new = checking_data.types.new_function_type_annotation(
+						None,
+						inferred_parameters,
+						image_ty,
+						&call_site,
+					);
+
+					environment.constraint_inference_requests.insert(on, new);
+
+					(image_ty, None)
 				}
 			}
 			NeedsCalculation::Proxy(..) => {
@@ -1323,6 +1369,7 @@ impl FunctionType {
 					contributions: None,
 					mode: SubTypingMode::default(),
 					object_constraints: None,
+					constraint_inference_requests: None,
 					others: Default::default(),
 				};
 
@@ -1412,6 +1459,7 @@ impl FunctionType {
 									contributions: None,
 									object_constraints: None,
 									others: SubTypingOptions::default(),
+									constraint_inference_requests: None,
 								};
 
 								let result = type_is_subtype(
@@ -1775,6 +1823,8 @@ fn check_parameter_type(
 		contributions: Some(contributions),
 		others: SubTypingOptions { allow_errors: true },
 		object_constraints: None,
+		// TODO some
+		constraint_inference_requests: Some(Vec::new()),
 	};
 
 	let result = type_is_subtype_with_generics(
@@ -1784,6 +1834,11 @@ fn check_parameter_type(
 		environment,
 		types,
 	);
+
+	// TODO WIP abstract. Also need to merge somethings
+	for (key, value) in state.constraint_inference_requests.unwrap() {
+		environment.constraint_inference_requests.insert(key, value);
+	}
 
 	if result.is_subtype() {
 		// mut parameter_constraint_request,
@@ -1871,6 +1926,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 						contributions: None,
 						others: Default::default(),
 						object_constraints: None,
+						constraint_inference_requests: None,
 					};
 					let type_is_subtype =
 						type_is_subtype(*extends, ty, &mut state, environment, types);

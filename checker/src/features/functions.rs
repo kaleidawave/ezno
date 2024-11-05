@@ -838,6 +838,7 @@ where
 		// 	function.get_name()
 		// );
 
+		// Marked here as mutating things here
 		let info = function_environment.info;
 		let variable_names = function_environment.variable_names;
 
@@ -854,6 +855,7 @@ where
 						others: crate::subtyping::SubTypingOptions::default(),
 						// TODO don't think there is much case in constraining it here
 						object_constraints: None,
+						constraint_inference_requests: None,
 					};
 
 					let result = crate::subtyping::type_is_subtype(
@@ -896,22 +898,23 @@ where
 			TypeId::UNDEFINED_TYPE
 		};
 
+		// Constraint inference here
 		{
 			// let mut _back_requests = HashMap::<(), ()>::new();
-			// for (on, to) in requests {
-			// 	let type_to_alter = checking_data.types.get_type_by_id(on);
-			// 	if let Type::RootPolyType(
-			// 		PolyNature::Parameter { .. } | PolyNature::FreeVariable { .. },
-			// 	) = type_to_alter
-			// 	{
-			// 		checking_data.types.set_inferred_constraint(on, to);
-			// 	} else if let Type::Constructor(constructor) = type_to_alter {
-			// 		crate::utilities::notify!("TODO constructor {:?}", constructor);
-			// 	} else {
-			// 		crate::utilities::notify!("TODO {:?}", type_to_alter);
-			// 	}
-			// 	crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
-			// }
+			for (on, to) in function_environment.constraint_inference_requests {
+				let type_to_alter = checking_data.types.get_type_by_id(on);
+				if let Type::RootPolyType(
+					PolyNature::Parameter { .. } | PolyNature::FreeVariable { .. },
+				) = type_to_alter
+				{
+					checking_data.types.set_inferred_constraint(on, to);
+				} else if let Type::Constructor(constructor) = type_to_alter {
+					crate::utilities::notify!("TODO constructor {:?}", constructor);
+				} else {
+					crate::utilities::notify!("TODO {:?}", type_to_alter);
+				}
+				crate::utilities::notify!("TODO temp, setting inferred constraint. No nesting");
+			}
 		}
 
 		// TODO this fixes prototypes and properties being lost during printing and subtyping of the return type
