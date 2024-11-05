@@ -58,6 +58,13 @@ fn main() {
 		None,
 	);
 
+	if args.iter().any(|arg| arg == "--emit-dts") && !result.diagnostics.has_error() {
+		eprintln!("dts:");
+		let mut buf = String::new();
+		synthesis::definition_files::build_definition_file(&result, &mut buf);
+		eprintln!("{buf}");
+	}
+
 	if args.iter().any(|arg| arg == "--types") {
 		eprintln!("Types:");
 		let types = result.types.into_vec_temp();

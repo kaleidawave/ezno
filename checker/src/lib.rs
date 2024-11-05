@@ -516,9 +516,16 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			let current = checking_data.options.measure_time.then(std::time::Instant::now);
 			match module {
 				Ok(module) => {
-					let _module = root.new_module_context(source, module, &mut checking_data);
+					root.synthesise_module(source, module, &mut checking_data);
 					if let Some(current) = current {
 						checking_data.chronometer.check += current.elapsed();
+					}
+
+					let evaluate_exports = checking_data.options.evaluate_exports;
+					if evaluate_exports {
+						let module =
+							checking_data.modules.synthesised_modules.get(&source).unwrap();
+						module.exported.clone().evaluate_generally(&root, &mut checking_data.types);
 					}
 				}
 				Err(err) => {
