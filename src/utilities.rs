@@ -1,4 +1,4 @@
-use std::fmt::Arguments;
+use std::{fmt::Arguments, io};
 
 pub(crate) fn print_info() {
 	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {

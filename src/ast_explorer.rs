@@ -3,7 +3,6 @@
 use std::{fs, path::PathBuf};
 
 use argh::FromArgs;
-use console::style;
 use enum_variants_strings::EnumVariantsStrings;
 use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOptions};
 
@@ -25,11 +24,7 @@ pub(crate) struct ExplorerArguments {
 
 impl ExplorerArguments {
 	#[allow(clippy::needless_continue)]
-	pub(crate) fn run<T: crate::ReadFromFS, U: crate::CLIInputResolver>(
-		&mut self,
-		fs_resolver: &T,
-		cli_input_resolver: U,
-	) {
+	pub(crate) fn run<T: crate::ReadFromFS>(&mut self, fs_resolver: &T) {
 		if let Some(ref file) = self.file {
 			let content = fs_resolver.get_content_at_path(file);
 			if let Some(content) = content {
@@ -99,6 +94,9 @@ pub(crate) struct FullASTArgs {
 	/// print results as json
 	#[argh(switch)]
 	json: bool,
+	/// just print whether parse was successful
+	#[argh(switch)]
+	check: bool,
 }
 
 /// Prettifies source code (full whitespace)
@@ -148,11 +146,20 @@ impl ExplorerSubCommand {
 			ExplorerSubCommand::FullAST(cfg) => {
 				let mut fs =
 					parser::source_map::MapFileStore::<parser::source_map::NoPathMap>::default();
-				let source_id = fs.new_source_id(path.unwrap_or_default(), input.clone());
+				let source_id = fs.new_source_id(path.clone().unwrap_or_default(), input.clone());
 				let res = Module::from_string(input, parser::ParseOptions::all_features());
 				match res {
 					Ok(res) => {
-						if cfg.json {
+						if cfg.check {
+							if let Some(ref path) = path {
+								print_to_cli(format_args!(
+									"{path} parsed successfully",
+									path = path.display()
+								));
+							} else {
+								print_to_cli(format_args!("Parsed successfully",));
+							}
+						} else if cfg.json {
 							print_to_cli(format_args!(
 								"{}",
 								serde_json::to_string_pretty(&res).unwrap()

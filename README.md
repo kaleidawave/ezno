@@ -1,4 +1,4 @@
-A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance.
+A fast, rich and correct TypeScript type checker and compiler
 
 > [!IMPORTANT]
 > Ezno is in active development and **does not currently support enough features to check existing projects** (see [blocking issues](https://github.com/kaleidawave/ezno/labels/blocking)). Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).

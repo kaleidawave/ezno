@@ -136,6 +136,6 @@ fn heading_to_rust_identifier(heading: &str) -> String {
 	heading
 		.replace("...", "")
 		.replace([' ', '-', '/', '.', '+'], "_")
-		.replace(['*', '\'', '`', '"', '&', '!', '(', ')', ','], "")
+		.replace(['*', '\'', '`', '"', '&', '!', '(', ')', ',', ':'], "")
 		.to_lowercase()
 }

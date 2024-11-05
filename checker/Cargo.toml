@@ -1,6 +1,6 @@
 [package]
 name = "ezno-checker"
-description = "A type checker for JavaScript"
+description = "A fast, rich and correct TypeScript type checker"
 version = "0.0.17"
 license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"

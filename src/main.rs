@@ -13,7 +13,6 @@
 #![warn(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
 use ezno_lib::cli::run_cli;
-use std::io;
 
 #[cfg(target_family = "windows")]
 pub(crate) fn cli_input_resolver(prompt: &str) -> String {
