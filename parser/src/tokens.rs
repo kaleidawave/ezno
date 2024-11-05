@@ -456,7 +456,8 @@ impl TSXToken {
 				| TSXToken::LogicalAnd
 				| TSXToken::LogicalOr
 				| TSXToken::Multiply
-				| TSXToken::Add | TSXToken::Subtract
+				| TSXToken::Add
+				| TSXToken::Subtract
 				| TSXToken::Divide
 		) || self.is_assignment()
 	}
@@ -479,10 +480,14 @@ impl TSXToken {
 			self,
 			TSXToken::Keyword(
 				TSXKeyword::Function
-					| TSXKeyword::If | TSXKeyword::For
-					| TSXKeyword::While | TSXKeyword::Const
-					| TSXKeyword::Let | TSXKeyword::Break
-					| TSXKeyword::Import | TSXKeyword::Export
+					| TSXKeyword::If
+					| TSXKeyword::For
+					| TSXKeyword::While
+					| TSXKeyword::Const
+					| TSXKeyword::Let
+					| TSXKeyword::Break
+					| TSXKeyword::Import
+					| TSXKeyword::Export
 			)
 		)
 	}
