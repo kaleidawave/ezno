@@ -1,4 +1,4 @@
-use std::{fmt::Arguments, io};
+use std::fmt::Arguments;
 
 pub(crate) fn print_info() {
 	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {
@@ -36,6 +36,29 @@ pub(crate) fn print_info() {
 		print_to_cli(format_args!("  Sponsors (join them @ {SPONSORS_URL}):"));
 		wrap_with_ident(sponsors);
 	}
+}
+
+#[cfg(target_family = "windows")]
+pub(crate) fn cli_input_resolver(prompt: &str) -> String {
+	use std::io;
+	print!("{prompt}> ");
+	std::io::Write::flush(&mut io::stdout()).unwrap();
+	let mut input = String::new();
+	let std_in = &mut io::stdin();
+	let _n = multiline_term_input::read_string(std_in, &mut input);
+	input
+}
+
+#[cfg(target_family = "unix")]
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn cli_input_resolver(prompt: &str) -> String {
+	use std::io;
+	print!("{prompt}> ");
+	io::Write::flush(&mut io::stdout()).unwrap();
+	let mut input = String::new();
+	let std_in = &mut io::stdin();
+	let _n = std_in.read_line(&mut input).unwrap();
+	input
 }
 
 fn wrap_with_ident(input: &str) {
@@ -111,6 +134,33 @@ impl argh::FromArgValue for MaxDiagnostics {
 impl Default for MaxDiagnostics {
 	fn default() -> Self {
 		Self::FixedTo(30)
+	}
+}
+
+#[cfg(target_family = "wasm")]
+pub struct FSFunction(pub js_sys::Function);
+
+#[cfg(target_family = "wasm")]
+impl checker::ReadFromFS for FSFunction {
+	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>> {
+		self.0
+			.call1(
+				&wasm_bindgen::JsValue::null(),
+				&wasm_bindgen::JsValue::from(path.display().to_string()),
+			)
+			.ok()
+			.and_then(|s| s.as_string())
+			.map(|s| s.into_bytes())
+	}
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub struct FSFunction;
+
+#[cfg(not(target_family = "wasm"))]
+impl checker::ReadFromFS for FSFunction {
+	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>> {
+		std::fs::read(path).ok()
 	}
 }
 

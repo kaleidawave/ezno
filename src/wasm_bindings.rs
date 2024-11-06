@@ -128,7 +128,6 @@ export function run_cli(
 	cli_arguments: string[],
 	read_from_file: (path: string) => string | undefined,
 	write_to_file: (path: string, content: string) => void,
-	cli_input_resolver: (prompt: string) => string | undefined
 ): void
 "#;
 #[wasm_bindgen(js_name = run_cli, skip_typescript)]
@@ -136,11 +135,10 @@ pub fn run_cli_wasm(
 	cli_arguments: Box<[JsValue]>,
 	read_from_file: &js_sys::Function,
 	write_to_file: &js_sys::Function,
-	cli_input_resolver_js: &js_sys::Function,
 ) {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-	let arguments = cli_arguments.into_iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
+	let arguments = cli_arguments.iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
 	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
 
 	let read_from_file = |path: &std::path::Path| {
@@ -159,15 +157,7 @@ pub fn run_cli_wasm(
 			.unwrap();
 	};
 
-	let cli_input_resolver = |prompt: &str| {
-		cli_input_resolver_js
-			.call1(&JsValue::null(), &JsValue::from(prompt.to_owned()))
-			.ok()
-			.as_ref()
-			.and_then(JsValue::as_string)
-	};
-
-	crate::run_cli(&arguments, &read_from_file, write_to_file, cli_input_resolver);
+	crate::run_cli(&arguments, &read_from_file, write_to_file);
 }
 
 #[wasm_bindgen(typescript_custom_section)]

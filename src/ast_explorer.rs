@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use argh::FromArgs;
+use console::style;
 use enum_variants_strings::EnumVariantsStrings;
 use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOptions};
 
@@ -23,7 +24,13 @@ pub(crate) struct ExplorerArguments {
 }
 
 impl ExplorerArguments {
+	#[cfg(target_family = "wasm")]
+	pub(crate) fn run<T: crate::ReadFromFS>(&mut self, _fs_resolver: &T) {
+		panic!("Cannot run ast-explorer in WASM because of input callback. Consider reimplementing using library");
+	}
+
 	#[allow(clippy::needless_continue)]
+	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn run<T: crate::ReadFromFS>(&mut self, fs_resolver: &T) {
 		if let Some(ref file) = self.file {
 			let content = fs_resolver.get_content_at_path(file);
@@ -35,7 +42,7 @@ impl ExplorerArguments {
 		} else {
 			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
-				let input = cli_input_resolver(self.nested.to_str()).unwrap_or_default();
+				let input = crate::utilities::cli_input_resolver(self.nested.to_str());
 
 				if input.is_empty() {
 					continue;
@@ -50,7 +57,7 @@ impl ExplorerArguments {
 						}
 					};
 				} else if let Some(path) = input.strip_prefix("#load-file ") {
-					let input = match fs::read_to_string(path.trim()) {
+					let input = match std::fs::read_to_string(path.trim()) {
 						Ok(string) => string,
 						Err(err) => {
 							print_to_cli(format_args!("{err:?}"));

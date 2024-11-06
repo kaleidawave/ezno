@@ -1,17 +1,19 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use argh::FromArgs;
 use parser::{visiting::VisitorsMut, ASTNode};
 use parser::{Expression, Module, Statement};
 
 use crate::reporting::report_diagnostics_to_cli;
-use crate::utilities::print_to_cli;
 
-/// Run project repl using deno. (`deno` command must be in path)
-#[derive(FromArgs, PartialEq, Debug)]
+#[cfg(target_family = "wasm")]
+use wasm_bindgen::prelude::wasm_bindgen;
+
+/// Run type checking REPL
+#[derive(FromArgs, PartialEq, Debug, Default)]
 #[argh(subcommand, name = "repl")]
-pub(crate) struct ReplArguments {
+#[cfg_attr(target_family = "wasm", derive(serde::Deserialize), serde(default))]
+pub struct ReplArguments {
 	/// use mutable variables everywhere
 	#[argh(switch)]
 	const_as_let: bool,
@@ -20,55 +22,71 @@ pub(crate) struct ReplArguments {
 	type_definition_module: Option<PathBuf>,
 }
 
-#[allow(unused)]
-fn file_system_resolver(path: &Path) -> Option<Vec<u8>> {
-	// Cheaty
-	if path.to_str() == Some("BLANK") {
-		Some(Vec::new())
-	} else {
-		match fs::read_to_string(path) {
-			Ok(source) => Some(source.into()),
-			Err(_) => None,
-		}
-	}
-}
-
 /// Wraps `checker::synthesis::interactive::State`
-pub struct ReplSystem<'a, T: checker::ReadFromFS> {
+#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+pub struct ReplSystem {
 	arguments: ReplArguments,
 	source: parser::SourceId,
-	state: checker::synthesis::interactive::State<'a, T>,
+	state: checker::synthesis::interactive::State<'static, crate::utilities::FSFunction>,
 }
 
-impl<'a, T: checker::ReadFromFS> ReplSystem<'a, T> {
+pub type ReplSystemErr = (
+	checker::DiagnosticsContainer,
+	crate::source_map::MapFileStore<crate::source_map::WithPathMap>,
+);
+
+impl ReplSystem {
 	pub fn new(
 		arguments: ReplArguments,
-		file_system_resolver: &'a T,
-	) -> Result<
-		Self,
-		(
-			checker::DiagnosticsContainer,
-			crate::source_map::MapFileStore<crate::source_map::WithPathMap>,
-		),
-	> {
+		file_system_resolver: crate::utilities::FSFunction,
+	) -> Result<ReplSystem, ReplSystemErr> {
 		let definitions = if let Some(tdm) = arguments.type_definition_module.clone() {
 			std::iter::once(tdm).collect()
 		} else {
 			std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
 		};
 
-		let state = checker::synthesis::interactive::State::new(file_system_resolver, definitions)?;
+		let state = checker::synthesis::interactive::State::new(
+			Box::leak(Box::new(file_system_resolver)),
+			definitions,
+		)?;
 		let source = state.get_source_id();
 
 		Ok(ReplSystem { arguments, source, state })
 	}
+}
 
-	pub fn execute_statement(&mut self, input: String) {
-		let (from_index, _) = self.state.get_fs_mut().append_to_file(self.source, &input);
+#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+impl ReplSystem {
+	/// Not a constructor because returns result (can fail if can't find `d.ts` file)
+	/// Also `repl_arguments` rather than `arguments` otherwise breaks JS emit
+	#[cfg(target_family = "wasm")]
+	#[cfg_attr(target_family = "wasm", wasm_bindgen(js_name = "new_system"))]
+	pub fn new_js(
+		repl_arguments: wasm_bindgen::JsValue,
+		cb: &js_sys::Function,
+	) -> Option<ReplSystem> {
+		let repl_arguments: ReplArguments =
+			serde_wasm_bindgen::from_value(repl_arguments).expect("invalid TypeCheckOptions");
+		let cb = crate::utilities::FSFunction(cb.clone());
+		Self::new(repl_arguments, cb).ok()
+	}
+
+	#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+	pub fn execute_statement(&mut self, mut input: String) {
+		// New line fixes #210
+		input.truncate(input.trim_end().len());
+		input.push('\n');
+		let (start, _) = self.state.get_fs_mut().append_to_file(self.source, &input);
 
 		let options = Default::default();
-		let offset = Some(from_index as u32);
-		let result = if input.trim_start().starts_with('{') {
+		let offset = Some(start as u32);
+		
+		// self.offset += input.len() as u32 + 1;
+
+		// Fix to remain consistent with other JS REPLs
+		let starts_with_brace = input.trim_start().starts_with('{');
+		let result = if starts_with_brace {
 			Expression::from_string_with_options(input, options, offset).map(|(expression, _)| {
 				Module {
 					hashbang_comment: None,
@@ -77,11 +95,13 @@ impl<'a, T: checker::ReadFromFS> ReplSystem<'a, T> {
 				}
 			})
 		} else {
-			Module::from_string(input, options)
+			Module::from_string_with_options(input, options, offset).map(|(module, _state)| module)
 		};
 
 		match result {
 			Ok(mut item) => {
+				// crate::utilities::print_to_cli(format_args!("item={item:?}"));
+
 				if self.arguments.const_as_let {
 					item.visit_mut(
 						&mut VisitorsMut {
@@ -107,7 +127,7 @@ impl<'a, T: checker::ReadFromFS> ReplSystem<'a, T> {
 						.unwrap();
 
 						if let Some(last_ty) = last_ty {
-							println!("{last_ty}");
+							crate::utilities::print_to_cli(format_args!("{last_ty}"));
 						}
 					}
 					Err(diagnostics) => {
@@ -134,18 +154,20 @@ impl<'a, T: checker::ReadFromFS> ReplSystem<'a, T> {
 	}
 }
 
+#[cfg(target_family = "wasm")]
+pub(crate) fn run_repl(_arguments: ReplArguments) {
+	panic!(
+		"Cannot run Repl in WASM because of input callback. Consider reimplementing using library"
+	);
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub(crate) fn run_repl(arguments: ReplArguments) {
-	if cfg!(target_family = "wasm") {
-		panic!("Cannot run repl in WASM because of input callback. Consider reimplementing using library");
-	}
+	use crate::utilities::print_to_cli;
 
-	print_to_cli(format_args!("Entering REPL. Exit with `close()`"));
+	print_to_cli(format_args!("Entering Repl. Exit with `close()`"));
 
-	fn read_from_file(path: &std::path::Path) -> Option<String> {
-		std::fs::read_to_string(path).ok()
-	}
-
-	let mut system = match ReplSystem::new(arguments, &read_from_file) {
+	let mut system = match ReplSystem::new(arguments, crate::utilities::FSFunction) {
 		Ok(system) => system,
 		Err((diagnostics, fs)) => {
 			report_diagnostics_to_cli(

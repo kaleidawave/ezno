@@ -12,7 +12,7 @@ use crate::{
 	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
 	check::check,
 	reporting::report_diagnostics_to_cli,
-	utilities::{self, print_to_cli, MaxDiagnostics},
+	utilities::{print_to_cli, MaxDiagnostics},
 };
 use argh::FromArgs;
 use checker::{CheckOutput, TypeCheckOptions};
@@ -173,11 +173,10 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 	}
 }
 
-pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
+pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 	cli_arguments: &[&str],
 	read_file: &T,
 	write_file: U,
-	cli_input_resolver: V,
 ) -> ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
@@ -203,20 +202,22 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				max_diagnostics,
 			} = check_arguments;
 
-			let mut type_check_options: TypeCheckOptions = Default::default();
-
-			#[cfg(not(target_family = "wasm"))]
-			{
-				type_check_options.measure_time = timings;
-			}
+			let type_check_options: TypeCheckOptions = if cfg!(target_family = "wasm") {
+				Default::default()
+			} else {
+				let mut options = TypeCheckOptions::default();
+				options.measure_time = timings;
+				options
+			};
 
 			let entry_points = match get_entry_points(input) {
 				Ok(entry_points) => entry_points,
 				Err(_) => return ExitCode::FAILURE,
 			};
 
-			let CheckOutput { diagnostics, module_contents, chronometer, types, .. } =
+			let result =
 				check(entry_points, read_file, definition_file.as_deref(), type_check_options);
+			let CheckOutput { diagnostics, module_contents, chronometer, types, .. } = result;
 
 			let diagnostics_count = diagnostics.count();
 			let current = timings.then(std::time::Instant::now);
@@ -254,6 +255,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			#[cfg(not(target_family = "wasm"))]
 			if timings {
 				let reporting = current.unwrap().elapsed();
+
 				eprintln!("---\n");
 				eprintln!("Diagnostics:\t{}", diagnostics_count);
 				eprintln!("Types:      \t{}", types.count_of_types());
@@ -399,7 +401,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 		#[cfg(not(target_family = "wasm"))]
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Upgrade(UpgradeArguments {}),
-		}) => match utilities::upgrade_self() {
+		}) => match crate::utilities::upgrade_self() {
 			Ok(name) => {
 				print_to_cli(format_args!("Successfully updated to {name}"));
 				std::process::ExitCode::SUCCESS
@@ -410,12 +412,12 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			}
 		},
 		CompilerSubCommand::ASTExplorer(mut repl) => {
-			repl.run(read_file, cli_input_resolver);
+			repl.run(read_file);
 			// TODO not always true
 			ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Repl(argument) => {
-			crate::repl::run_repl(cli_input_resolver, argument);
+			crate::repl::run_repl(argument);
 			// TODO not always true
 			ExitCode::SUCCESS
 		} // CompilerSubCommand::Run(run_arguments) => {
@@ -454,6 +456,13 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 	}
 }
 
+// `glob` library does not work on WASM :(
+#[cfg(target_family = "wasm")]
+fn get_entry_points(input: String) -> Result<Vec<PathBuf>, ()> {
+	Ok(vec![input.into()])
+}
+
+#[cfg(not(target_family = "wasm"))]
 fn get_entry_points(input: String) -> Result<Vec<PathBuf>, ()> {
 	match glob::glob(&input) {
 		Ok(files) => {

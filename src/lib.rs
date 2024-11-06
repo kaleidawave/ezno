@@ -1,3 +1,5 @@
+#![cfg_attr(target_family = "wasm", allow(unused))]
+
 mod ast_explorer;
 mod build;
 mod check;
@@ -33,11 +35,6 @@ where
 		(self)(path)
 	}
 }
-
-/// prompt -> response
-pub trait CLIInputResolver: Fn(&str) -> Option<String> {}
-
-impl<T> CLIInputResolver for T where T: Fn(&str) -> Option<String> {}
 
 pub trait WriteToFS: Fn(&std::path::Path, String) {}
 
