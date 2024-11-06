@@ -1,4 +1,4 @@
-A fast, rich and correct TypeScript type checker and compiler
+A fast and correct TypeScript type checker and compiler with additional experiments
 
 > [!IMPORTANT]
 > Ezno is in active development and **does not currently support enough features to check existing projects** (see [blocking issues](https://github.com/kaleidawave/ezno/labels/blocking)). Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
@@ -28,6 +28,7 @@ Read more about Ezno (in chronological order)
 - [Ezno in '23](https://kaleidawave.github.io/posts/ezno-23/)
 - [A preview of the checker](https://kaleidawave.github.io/posts/a-preview-of-the-checker/)
 - [The quest continues](https://kaleidawave.github.io/posts/the-quest-continues/)
+- [Sets, types and type checking](https://kaleidawave.github.io/posts/sets-types-and-type-checking/) (*general post*)
 
 ---
 
