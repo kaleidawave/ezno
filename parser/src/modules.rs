@@ -44,7 +44,8 @@ impl ASTNode for Module {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		let span = Span { start: 0, source: (), end: state.length_of_source };
+		let start = reader.peek().map(|t| t.1.0).unwrap_or_default();
+		let span = Span { start, source: (), end: start + state.length_of_source };
 		let hashbang_comment = if let Some(crate::Token(TSXToken::HashBangComment(_), _)) =
 			reader.peek()
 		{
