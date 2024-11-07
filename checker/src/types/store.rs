@@ -538,12 +538,32 @@ impl TypeStore {
 
 	/// Will provide origin rewriting as well
 	pub fn new_narrowed(&mut self, from: TypeId, narrowed_to: TypeId) -> TypeId {
-		// TODO more. Fixes stuff
-		let narrowed_to = if let Type::Narrowed { from: _, narrowed_to: existing } = self.get_type_by_id(from) {
-			self.new_and_type(narrowed_to, *existing)
+		let from_ty = self.get_type_by_id(from);
+		let new_constraint = self.get_type_by_id(narrowed_to);
+		let (from, existing) = if let Type::Narrowed { from, narrowed_to } = from_ty {
+			(*from, Some(*narrowed_to))
 		} else {
+			(from, None)
+		};
+		// temp fix for adding things.
+		let narrowed_to = if let (
+			Some(existing),
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on:
+					TypeId::GREATER_THAN
+					| TypeId::LESS_THAN
+					| TypeId::MULTIPLE_OF
+					| TypeId::NOT_RESTRICTION,
+				arguments: _,
+			}),
+		) = (existing, new_constraint)
+		{
+			self.new_and_type(existing, narrowed_to)
+		} else {
+			// crate::utilities::notify!("{:?}", from_ty);
 			narrowed_to
 		};
+
 		self.register_type(Type::Narrowed { from, narrowed_to })
 	}
 

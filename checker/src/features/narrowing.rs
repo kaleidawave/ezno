@@ -37,9 +37,12 @@ pub fn narrow_based_on_expression(
 				rhs,
 			} => {
 				let lhs_type = types.get_type_by_id(*lhs);
-				if let Type::Constructor(Constructor::TypeOperator(TypeOperator::TypeOf(on))) = lhs_type {
-					// let from = get_origin(*on, types);
-					let from = *on; //, types);
+				if let Type::Constructor(Constructor::TypeOperator(TypeOperator::TypeOf(on))) =
+					lhs_type
+				{
+					let from = *on;
+					let origin = get_origin(from, types);
+
 					if let Type::Constant(Constant::String(c)) = types.get_type_by_id(*rhs) {
 						let type_from_name = crate::features::string_name_to_type(c);
 						if let Some(type_from_name) = type_from_name {
@@ -66,10 +69,10 @@ pub fn narrow_based_on_expression(
 									types.new_or_type_from_iterator(result)
 								};
 								let narrowed = types.new_narrowed(from, narrowed_to);
-								into.insert(from, narrowed);
+								into.insert(origin, narrowed);
 							} else {
 								let narrowed = types.new_narrowed(from, type_from_name);
-								into.insert(from, narrowed);
+								into.insert(origin, narrowed);
 							}
 						} else {
 							crate::utilities::notify!("Type name was (shouldn't be here)");
@@ -84,27 +87,37 @@ pub fn narrow_based_on_expression(
 					result: _,
 				}) = lhs_type
 				{
-					if *rhs == TypeId::ZERO {
-						crate::utilities::notify!("TODO only if sensible");
-
-						let (from, modulo) = (*operand, *modulo);
-						if negate {
-							crate::utilities::notify!("TODO do we not divisable by?");
-						} else {
-							let narrowed_to = crate::types::intrinsics::new_intrinsic(
-								&crate::types::intrinsics::Intrinsic::MultipleOf,
-								modulo,
-								types,
-							);
-							let narrowed = types.new_narrowed(from, narrowed_to);
-							into.insert(from, narrowed);
-						}
-					} else {
-						crate::utilities::notify!("maybe subtract LHS");
+					if negate {
+						crate::utilities::notify!("TODO do we not divisable by?");
+						return;
 					}
+					let (from, rhs, modulo) = (*operand, *rhs, *modulo);
+
+					let origin = get_origin(from, types);
+					let narrowed_to = crate::types::intrinsics::new_intrinsic(
+						&crate::types::intrinsics::Intrinsic::MultipleOf,
+						modulo,
+						types,
+					);
+
+					// TODO also from == x - 1 etc
+					let narrowed_to = if rhs != TypeId::ZERO {
+						types.register_type(Type::Constructor(
+							crate::types::Constructor::BinaryOperator {
+								lhs: narrowed_to,
+								operator: super::operations::MathematicalAndBitwise::Add,
+								rhs,
+								result: TypeId::NUMBER_TYPE,
+							},
+						))
+					} else {
+						narrowed_to
+					};
+					let narrowed = types.new_narrowed(from, narrowed_to);
+					into.insert(origin, narrowed);
 				} else {
 					if let Type::RootPolyType(PolyNature::Parameter { .. }) = lhs_type {
-						crate::utilities::notify!( "lhs is {:?} with {:?}", lhs_type, rhs);
+						crate::utilities::notify!("lhs is {:?} with {:?}", lhs_type, rhs);
 					}
 
 					if negate && lhs == rhs {
@@ -145,7 +158,6 @@ pub fn narrow_based_on_expression(
 
 					into.insert(lhs, result);
 
-					
 					// CONDITION NARROWING HERE ((x ? 1 : 2) = 1 => x)
 					// There are missed conditons around things like `typeof` etc (oh well)
 					// it should be done higher up
@@ -154,20 +166,21 @@ pub fn narrow_based_on_expression(
 						truthy_result,
 						otherwise_result,
 						result_union: _,
-					}) = types.get_type_by_id(lhs) {
+					}) = types.get_type_by_id(get_origin(lhs, types))
+					{
 						if crate::types::helpers::type_equal(*truthy_result, rhs, types) {
 							narrow_based_on_expression(*condition, false, into, information, types);
 						} else if crate::types::helpers::type_equal(*otherwise_result, rhs, types) {
 							narrow_based_on_expression(*condition, true, into, information, types);
 						}
-					} 
+					}
 					// PROPERTY NARROWING HERE (x.a: b => x: {a: b})
 					else if let Type::Constructor(Constructor::Property {
 						on,
 						under,
 						result: _,
 						mode: _,
-					}) = types.get_type_by_id(lhs)
+					}) = types.get_type_by_id(get_origin(lhs, types))
 					{
 						let on = *on;
 						let narrowed_to = if !negate
@@ -214,6 +227,12 @@ pub fn narrow_based_on_expression(
 						types,
 					);
 					let narrowed = types.new_narrowed(lhs, narrowed_to);
+					// temp fix
+					let narrowed = if let Some(existing) = into.get(&lhs) {
+						types.new_and_type(*existing, narrowed)
+					} else {
+						narrowed
+					};
 					into.insert(lhs, narrowed);
 				} else if types.get_type_by_id(rhs).is_dependent() {
 					let narrowed_to = crate::types::intrinsics::new_intrinsic(
@@ -222,6 +241,12 @@ pub fn narrow_based_on_expression(
 						types,
 					);
 					let narrowed = types.new_narrowed(rhs, narrowed_to);
+					// temp fix
+					let narrowed = if let Some(existing) = into.get(&rhs) {
+						types.new_and_type(*existing, narrowed)
+					} else {
+						narrowed
+					};
 					into.insert(rhs, narrowed);
 				}
 			}
@@ -487,14 +512,14 @@ pub(crate) fn build_union_from_filter(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) {
-	if let Some((_condition, lhs, rhs)) = get_conditional(on, types) {
-		build_union_from_filter(lhs, filter, found, information, types);
-		build_union_from_filter(rhs, filter, found, information, types);
-	} else if let Some(constraint) = crate::types::get_constraint(on, types) {
+	if let Some(constraint) = crate::types::get_constraint(on, types) {
 		build_union_from_filter(constraint, filter, found, information, types);
 	} else if let TypeId::BOOLEAN_TYPE = on {
 		build_union_from_filter(TypeId::TRUE, filter, found, information, types);
 		build_union_from_filter(TypeId::FALSE, filter, found, information, types);
+	} else if let Some((_condition, lhs, rhs)) = get_conditional(on, types) {
+		build_union_from_filter(lhs, filter, found, information, types);
+		build_union_from_filter(rhs, filter, found, information, types);
 	} else {
 		let not_already_added = !found.contains(&on);
 		if not_already_added && filter.type_matches_filter(on, information, types, false) {

@@ -112,93 +112,32 @@ pub fn types_are_disjoint(
 		} else if let Some(rhs) = super::get_constraint(rhs, types) {
 			// TODO not sure whether these should be here?
 			types_are_disjoint(lhs, rhs, already_checked, information, types)
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF,
-			arguments,
-		}) = lhs_ty
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics { on: TypeId::MULTIPLE_OF, arguments: _ },
+		) = lhs_ty
 		{
-			// Little bit complex here because dealing with decimal types, not integers
-			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
-				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
-				),
-				rhs_ty,
-			) {
-				let result = rhs % lhs != 0.;
-				crate::utilities::notify!("{:?} {:?}", rhs, lhs);
-				result
-			} else {
-				crate::utilities::notify!("Here");
-				true
-			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF,
-			arguments,
-		}) = rhs_ty
+			number_modulo_disjoint(args, rhs, types)
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics { on: TypeId::MULTIPLE_OF, arguments: _ },
+		) = rhs_ty
 		{
-			let lhs = types.get_type_by_id(lhs);
-			// Little bit complex here because dealing with decimal types, not integers
-			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
-				lhs,
-				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
-				),
-			) {
-				let result = lhs % rhs != 0.;
-				// crate::utilities::notify!("{:?} {:?}", lhs, rhs);
-				result
-			} else {
-				// crate::utilities::notify!("Here {:?}", lhs);
-				true
-			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
-			arguments,
-		}) = rhs_ty
+			number_modulo_disjoint(args, lhs, types)
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics {
+				on: TypeId::GREATER_THAN | TypeId::LESS_THAN,
+				arguments: _,
+			},
+		) = rhs_ty
 		{
-			crate::utilities::notify!("Here");
-			if let Type::Constant(Constant::Number(rhs)) = types.get_type_by_id(
-				arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
-			) {
-				if let Type::Constant(Constant::Number(lhs)) = lhs_ty {
-					crate::utilities::notify!("{:?} {} {}", on, lhs, rhs);
-					if *on == TypeId::GREATER_THAN {
-						lhs < rhs
-					} else {
-						lhs > rhs
-					}
-				} else {
-					crate::utilities::notify!("Unsure here {:?}", (lhs_ty, rhs_ty));
-					false
-				}
-			} else {
-				crate::utilities::notify!("Unsure here");
-				false
-			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
-			arguments,
-		}) = lhs_ty
+			number_range_disjoint(args, lhs, types)
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics {
+				on: TypeId::GREATER_THAN | TypeId::LESS_THAN,
+				arguments: _,
+			},
+		) = lhs_ty
 		{
-			crate::utilities::notify!("Here");
-			if let Type::Constant(Constant::Number(lhs)) = types.get_type_by_id(
-				arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap(),
-			) {
-				if let Type::Constant(Constant::Number(rhs)) = rhs_ty {
-					crate::utilities::notify!("{:?} {} {}", on, lhs, rhs);
-					if *on == TypeId::GREATER_THAN {
-						lhs > rhs
-					} else {
-						lhs < rhs
-					}
-				} else {
-					crate::utilities::notify!("Unsure here {:?}", (lhs_ty, rhs_ty));
-					false
-				}
-			} else {
-				crate::utilities::notify!("Unsure here");
-				false
-			}
+			number_range_disjoint(args, rhs, types)
 		} else if let Type::Constant(lhs_cst) = lhs_ty {
 			if let Type::Constant(rhs_cst) = rhs_ty {
 				lhs_cst != rhs_cst
@@ -233,6 +172,55 @@ pub fn types_are_disjoint(
 			);
 			true
 		}
+	}
+}
+
+fn number_modulo_disjoint(
+	this: &PartiallyAppliedGenerics,
+	other: TypeId,
+	types: &TypeStore,
+) -> bool {
+	let PartiallyAppliedGenerics { arguments, .. } = this;
+	let other = types.get_type_by_id(other);
+	// Little bit complex here because dealing with decimal types, not integers
+	if let (Type::Constant(Constant::Number(other)), Type::Constant(Constant::Number(this))) = (
+		other,
+		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap()),
+	) {
+		let result = other % this != 0.;
+		// crate::utilities::notify!("{:?} {:?}", lhs, rhs);
+		result
+	} else {
+		// crate::utilities::notify!("Here {:?}", lhs);
+		true
+	}
+}
+
+fn number_range_disjoint(
+	this: &PartiallyAppliedGenerics,
+	other: TypeId,
+	types: &TypeStore,
+) -> bool {
+	let PartiallyAppliedGenerics { on, arguments, .. } = this;
+	let greater_than = *on == TypeId::GREATER_THAN;
+	let this_ty =
+		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap());
+	if let Type::Constant(Constant::Number(this)) = this_ty {
+		let other_ty = types.get_type_by_id(other);
+		if let Type::Constant(Constant::Number(other)) = other_ty {
+			crate::utilities::notify!("{:?} {} {}", on, other, this);
+			if greater_than {
+				other < this
+			} else {
+				other > this
+			}
+		} else {
+			crate::utilities::notify!("Unsure here {:?}", (other_ty, this_ty));
+			false
+		}
+	} else {
+		crate::utilities::notify!("Unsure here");
+		false
 	}
 }
 
