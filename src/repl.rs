@@ -8,7 +8,7 @@ use parser::{Expression, Module, Statement};
 use crate::reporting::report_diagnostics_to_cli;
 use crate::utilities::print_to_cli;
 
-/// Interactive type checking
+/// Run project repl using deno. (`deno` command must be in path)
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "repl")]
 pub(crate) struct ReplArguments {
@@ -33,33 +33,51 @@ fn file_system_resolver(path: &Path) -> Option<Vec<u8>> {
 	}
 }
 
-/// Wraps `checker::synthesis::interactive::State`
-pub struct ReplSystem {
-	arguments: ReplArguments,
-	source: SourceId,
-	state: checker::synthesis::interactive::State
-}
+pub(crate) fn run_repl<U: crate::CLIInputResolver>(
+	cli_input_resolver: U,
+	ReplArguments { const_as_let, type_definition_module }: ReplArguments,
+) {
+	print_to_cli(format_args!("Entering REPL. Exit with `close()`"));
 
-impl ReplSystem {
-	pub fn new(arguments: ReplArguments) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
-		let definitions = if let Some(tdm) = type_definition_module {
-			std::iter::once(tdm).collect()
-		} else {
-			std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
-		};
-	
-		let state = checker::synthesis::interactive::State::new(&file_system_resolver, definitions)?;
-		let source = state.get_source_id();
+	let definitions = if let Some(tdm) = type_definition_module {
+		std::iter::once(tdm).collect()
+	} else {
+		std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
+	};
 
-		ReplSystem {
-			arguments,
-			source,
-			state
+	let state = checker::synthesis::interactive::State::new(&file_system_resolver, definitions);
+
+	let mut state = match state {
+		Ok(state) => state,
+		Err((diagnostics, fs)) => {
+			report_diagnostics_to_cli(
+				diagnostics,
+				&fs,
+				false,
+				crate::utilities::MaxDiagnostics::All,
+			)
+			.unwrap();
+			return;
 		}
-	}
+	};
 
-	pub fn execute_statement(&mut self, input: String) {
-		let (from_index, _) = self.state.get_fs_mut().append_to_file(source, &input);
+	let source = state.get_source_id();
+
+	loop {
+		let input = cli_input_resolver("");
+		let input = if let Some(input) = input {
+			if input.is_empty() {
+				continue;
+			} else if input.trim() == "close()" {
+				break;
+			}
+
+			input
+		} else {
+			continue;
+		};
+
+		let (from_index, _) = state.get_fs_mut().append_to_file(source, &input);
 
 		let options = Default::default();
 		let offset = Some(from_index as u32);
@@ -75,7 +93,7 @@ impl ReplSystem {
 			Module::from_string(input, options)
 		};
 
-		match result {
+		let mut item = match result {
 			Ok(item) => item,
 			Err(err) => {
 				report_diagnostics_to_cli(
@@ -85,10 +103,11 @@ impl ReplSystem {
 					crate::utilities::MaxDiagnostics::All,
 				)
 				.unwrap();
+				continue;
 			}
 		};
 
-		if self.arguments.const_as_let {
+		if const_as_let {
 			item.visit_mut(
 				&mut VisitorsMut {
 					statement_visitors_mut: vec![Box::new(crate::transformers::ConstToLet)],
@@ -111,7 +130,6 @@ impl ReplSystem {
 					crate::utilities::MaxDiagnostics::All,
 				)
 				.unwrap();
-
 				if let Some(last_ty) = last_ty {
 					println!("{last_ty}");
 				}
@@ -126,37 +144,5 @@ impl ReplSystem {
 				.unwrap();
 			}
 		}
-	}
-}
-
-pub(crate) fn run_repl<U: crate::CLIInputResolver>( arguments: ReplArguments) {
-	if cfg!(target_family = "wasm") {
-		panic!("Cannot run repl in WASM because of input callback. Consider reimplementing using library");
-	}
-
-	print_to_cli(format_args!("Entering REPL. Exit with `close()`"));
-
-	let mut system = match ReplSystem::new(arguments) {
-		Ok(system) => system,
-		Err((diagnostics, fs)) => {
-			report_diagnostics_to_cli(
-				diagnostics,
-				&fs,
-				false,
-				crate::utilities::MaxDiagnostics::All,
-			)
-			.unwrap();
-			return;
-		}
-	};
-
-	loop {
-		let input = cli_input_resolver("");
-		if input.is_empty() {
-			continue;
-		} else if input.trim() == "close()" {
-			break;
-		}
-		system.execute_statement(input)
 	}
 }

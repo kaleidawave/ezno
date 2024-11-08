@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-	build::{build, BuildConfig, BuildOutput, FailedBuildOutput},
+	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
 	check::check,
 	reporting::report_diagnostics_to_cli,
 	utilities::{self, print_to_cli, MaxDiagnostics},
@@ -173,10 +173,11 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 	}
 }
 
-pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
+pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
 	cli_arguments: &[&str],
 	read_file: &T,
 	write_file: U,
+	cli_input_resolver: V,
 ) -> ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
@@ -271,6 +272,18 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 		}) => {
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
 
+			let mut default_builders = EznoParsePostCheckVisitors::default();
+
+			if build_config.optimise {
+				default_builders
+					.expression_visitors_mut
+					.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
+
+				default_builders
+					.statement_visitors_mut
+					.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
+			}
+
 			let entry_points = match get_entry_points(build_config.input) {
 				Ok(entry_points) => entry_points,
 				Err(_) => return ExitCode::FAILURE,
@@ -287,8 +300,8 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 				&BuildConfig {
 					strip_whitespace: build_config.minify,
 					source_maps: build_config.source_maps,
-					optimise: build_config.optimise,
 				},
+				Some(default_builders),
 			);
 
 			#[cfg(not(target_family = "wasm"))]
@@ -397,12 +410,12 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			}
 		},
 		CompilerSubCommand::ASTExplorer(mut repl) => {
-			repl.run(read_file);
+			repl.run(read_file, cli_input_resolver);
 			// TODO not always true
 			ExitCode::SUCCESS
 		}
 		CompilerSubCommand::Repl(argument) => {
-			crate::repl::run_repl(argument);
+			crate::repl::run_repl(cli_input_resolver, argument);
 			// TODO not always true
 			ExitCode::SUCCESS
 		} // CompilerSubCommand::Run(run_arguments) => {

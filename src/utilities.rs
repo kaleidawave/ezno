@@ -89,27 +89,6 @@ pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
 	io::Write::flush(&mut io::stdout()).unwrap();
 }
 
-#[cfg(target_family = "windows")]
-pub(crate) fn cli_input_resolver(prompt: &str) -> String {
-	print!("{prompt}> ");
-	io::Write::flush(&mut io::stdout()).unwrap();
-	let mut input = String::new();
-	let std_in = &mut io::stdin();
-	let _n = multiline_term_input::read_string(std_in, &mut input);
-	input
-}
-
-#[cfg(target_family = "unix")]
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn cli_input_resolver(prompt: &str) -> String {
-	print!("{prompt}> ");
-	io::Write::flush(&mut io::stdout()).unwrap();
-	let mut input = String::new();
-	let std_in = &mut io::stdin();
-	let _n = std_in.read_line(&mut input).unwrap();
-	input
-}
-
 #[derive(Debug)]
 pub(crate) enum MaxDiagnostics {
 	All,
