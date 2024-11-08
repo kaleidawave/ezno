@@ -750,7 +750,7 @@ const z: false = true || 4
 
 ```ts
 (4 === 2) satisfies true;
-(4 !== 2) satisfies string;
+(4 !== 5) satisfies string;
 ```
 
 - Expected true, found false
@@ -1889,6 +1889,7 @@ function conditional(v: string) {
 		a++
 	}
 }
+
 conditional("x")
 a satisfies 2
 conditional("value")

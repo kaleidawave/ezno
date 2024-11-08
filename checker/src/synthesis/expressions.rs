@@ -32,9 +32,10 @@ use crate::{
 		objects::ObjectBuilder,
 		operations::is_null_or_undefined,
 		operations::{
-			evaluate_logical_operation_with_expression,
-			evaluate_pure_binary_operation_handle_errors, evaluate_unary_operator,
-			EqualityAndInequality, MathematicalAndBitwise, UnaryOperation,
+			evaluate_equality_inequality_operation, evaluate_logical_operation_with_expression,
+			evaluate_mathematical_operation, evaluate_unary_operator, EqualityAndInequality,
+			EqualityAndInequalityResultKind, LogicalOperator, MathematicalOrBitwiseOperation,
+			UnaryOperation,
 		},
 		template_literal::synthesise_template_literal_expression,
 		variables::VariableWithValue,
@@ -46,7 +47,7 @@ use crate::{
 	},
 	types::{
 		calling::{CallingInput, UnsynthesisedArgument},
-		get_larger_type,
+		helpers::get_larger_type,
 		logical::{Logical, LogicalOrValid},
 		printing::{print_property_key, print_type},
 		properties::{
@@ -251,11 +252,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			| BinaryOperator::NullCoalescing = operator
 			{
 				let operator = match operator {
-					BinaryOperator::LogicalAnd => crate::features::operations::LogicalOperator::And,
-					BinaryOperator::LogicalOr => crate::features::operations::LogicalOperator::Or,
-					BinaryOperator::NullCoalescing => {
-						crate::features::operations::LogicalOperator::NullCoalescing
-					}
+					BinaryOperator::LogicalAnd => LogicalOperator::And,
+					BinaryOperator::LogicalOr => LogicalOperator::Or,
+					BinaryOperator::NullCoalescing => LogicalOperator::NullCoalescing,
 					_ => unreachable!(),
 				};
 				return evaluate_logical_operation_with_expression(
@@ -267,64 +266,175 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					expecting, // TODO unwrap
 				)
 				.unwrap();
-			}
+			} else if let BinaryOperator::StrictEqual
+			| BinaryOperator::StrictNotEqual
+			| BinaryOperator::Equal
+			| BinaryOperator::NotEqual
+			| BinaryOperator::GreaterThan
+			| BinaryOperator::LessThan
+			| BinaryOperator::LessThanEqual
+			| BinaryOperator::GreaterThanEqual = operator
+			{
+				let rhs_ty =
+					synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
+				let operator = match operator {
+					BinaryOperator::StrictEqual => EqualityAndInequality::StrictEqual,
+					BinaryOperator::StrictNotEqual => EqualityAndInequality::StrictNotEqual,
+					BinaryOperator::Equal => EqualityAndInequality::Equal,
+					BinaryOperator::NotEqual => EqualityAndInequality::NotEqual,
+					BinaryOperator::GreaterThan => EqualityAndInequality::GreaterThan,
+					BinaryOperator::LessThan => EqualityAndInequality::LessThan,
+					BinaryOperator::LessThanEqual => EqualityAndInequality::LessThanOrEqual,
+					BinaryOperator::GreaterThanEqual => EqualityAndInequality::GreaterThanOrEqual,
+					_ => unreachable!(),
+				};
+				let result = evaluate_equality_inequality_operation(
+					lhs_ty,
+					&operator,
+					rhs_ty,
+					environment,
+					&mut checking_data.types,
+					checking_data.options.strict_casts,
+				);
 
-			let rhs_ty = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
+				if let Ok((result, warning)) = result {
+					if let EqualityAndInequalityResultKind::Disjoint = warning {
+						let lhs_pos =
+							ASTNode::get_position(&**lhs).with_source(environment.get_source());
+						let rhs_pos =
+							ASTNode::get_position(&**rhs).with_source(environment.get_source());
+						let position = lhs_pos
+							.without_source()
+							.union(rhs_pos.without_source())
+							.with_source(environment.get_source());
 
-			if lhs_ty == TypeId::ERROR_TYPE || rhs_ty == TypeId::ERROR_TYPE {
-				return TypeId::ERROR_TYPE;
-			}
+						checking_data.diagnostics_container.add_warning(
+							crate::TypeCheckWarning::DisjointEquality {
+								lhs: TypeStringRepresentation::from_type_id(
+									lhs_ty,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								rhs: TypeStringRepresentation::from_type_id(
+									rhs_ty,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								result: result == TypeId::TRUE,
+								position,
+							},
+						);
+					}
 
-			let lhs_pos = ASTNode::get_position(&**lhs).with_source(environment.get_source());
-			let rhs_pos = ASTNode::get_position(&**rhs).with_source(environment.get_source());
+					return result;
+				} else {
+					let lhs_pos =
+						ASTNode::get_position(&**lhs).with_source(environment.get_source());
+					let rhs_pos =
+						ASTNode::get_position(&**rhs).with_source(environment.get_source());
+					let position = lhs_pos
+						.without_source()
+						.union(rhs_pos.without_source())
+						.with_source(environment.get_source());
 
-			let operator = match operator {
-				BinaryOperator::Add => MathematicalAndBitwise::Add.into(),
-				BinaryOperator::Subtract => MathematicalAndBitwise::Subtract.into(),
-				BinaryOperator::Multiply => MathematicalAndBitwise::Multiply.into(),
-				BinaryOperator::Divide => MathematicalAndBitwise::Divide.into(),
-				BinaryOperator::Modulo => MathematicalAndBitwise::Modulo.into(),
-				BinaryOperator::Exponent => MathematicalAndBitwise::Exponent.into(),
-				BinaryOperator::BitwiseShiftLeft => MathematicalAndBitwise::BitwiseShiftLeft.into(),
-				BinaryOperator::BitwiseShiftRight => {
-					MathematicalAndBitwise::BitwiseShiftRight.into()
-				}
-				BinaryOperator::BitwiseShiftRightUnsigned => {
-					MathematicalAndBitwise::BitwiseShiftRightUnsigned.into()
-				}
-				BinaryOperator::BitwiseAnd => MathematicalAndBitwise::BitwiseAnd.into(),
-				BinaryOperator::BitwiseXOr => MathematicalAndBitwise::BitwiseXOr.into(),
-				BinaryOperator::BitwiseOr => MathematicalAndBitwise::BitwiseOr.into(),
-				BinaryOperator::StrictEqual => EqualityAndInequality::StrictEqual.into(),
-				BinaryOperator::StrictNotEqual => EqualityAndInequality::StrictNotEqual.into(),
-				BinaryOperator::Equal => EqualityAndInequality::Equal.into(),
-				BinaryOperator::NotEqual => EqualityAndInequality::NotEqual.into(),
-				BinaryOperator::GreaterThan => EqualityAndInequality::GreaterThan.into(),
-				BinaryOperator::LessThan => EqualityAndInequality::LessThan.into(),
-				BinaryOperator::LessThanEqual => EqualityAndInequality::LessThanOrEqual.into(),
-				BinaryOperator::GreaterThanEqual => {
-					EqualityAndInequality::GreaterThanOrEqual.into()
-				}
-				BinaryOperator::LogicalAnd
-				| BinaryOperator::LogicalOr
-				| BinaryOperator::NullCoalescing => {
-					unreachable!()
-				}
-				BinaryOperator::Pipe | BinaryOperator::Compose => {
-					checking_data.raise_unimplemented_error(
-						"special operations",
-						position.with_source(environment.get_source()),
+					checking_data.diagnostics_container.add_error(
+						crate::TypeCheckError::InvalidEqualityOperation {
+							operator,
+							lhs: TypeStringRepresentation::from_type_id(
+								lhs_ty,
+								environment,
+								&checking_data.types,
+								false,
+							),
+							rhs: TypeStringRepresentation::from_type_id(
+								rhs_ty,
+								environment,
+								&checking_data.types,
+								false,
+							),
+							position,
+						},
 					);
-					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+
+					return TypeId::ERROR_TYPE;
 				}
-			};
-			Instance::RValue(evaluate_pure_binary_operation_handle_errors(
-				(lhs_ty, lhs_pos),
-				operator,
-				(rhs_ty, rhs_pos),
-				checking_data,
-				environment,
-			))
+			} else {
+				let rhs_ty =
+					synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
+				let operator = match operator {
+					BinaryOperator::Add => MathematicalOrBitwiseOperation::Add,
+					BinaryOperator::Subtract => MathematicalOrBitwiseOperation::Subtract,
+					BinaryOperator::Multiply => MathematicalOrBitwiseOperation::Multiply,
+					BinaryOperator::Divide => MathematicalOrBitwiseOperation::Divide,
+					BinaryOperator::Modulo => MathematicalOrBitwiseOperation::Modulo,
+					BinaryOperator::Exponent => MathematicalOrBitwiseOperation::Exponent,
+					BinaryOperator::BitwiseShiftLeft => {
+						MathematicalOrBitwiseOperation::BitwiseShiftLeft
+					}
+					BinaryOperator::BitwiseShiftRight => {
+						MathematicalOrBitwiseOperation::BitwiseShiftRight
+					}
+					BinaryOperator::BitwiseShiftRightUnsigned => {
+						MathematicalOrBitwiseOperation::BitwiseShiftRightUnsigned
+					}
+					BinaryOperator::BitwiseAnd => MathematicalOrBitwiseOperation::BitwiseAnd,
+					BinaryOperator::BitwiseXOr => MathematicalOrBitwiseOperation::BitwiseXOr,
+					BinaryOperator::BitwiseOr => MathematicalOrBitwiseOperation::BitwiseOr,
+					BinaryOperator::Pipe | BinaryOperator::Compose => {
+						checking_data.raise_unimplemented_error(
+							"special operations",
+							position.with_source(environment.get_source()),
+						);
+						return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+					}
+					_ => {
+						unreachable!()
+					}
+				};
+				let result = evaluate_mathematical_operation(
+					lhs_ty,
+					operator,
+					rhs_ty,
+					environment,
+					&mut checking_data.types,
+					checking_data.options.strict_casts,
+				);
+				match result {
+					Ok(value) => Instance::RValue(value),
+					Err(()) => {
+						let lhs_pos =
+							ASTNode::get_position(&**lhs).with_source(environment.get_source());
+						let rhs_pos =
+							ASTNode::get_position(&**rhs).with_source(environment.get_source());
+						let position = lhs_pos
+							.without_source()
+							.union(rhs_pos.without_source())
+							.with_source(environment.get_source());
+
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+								operator,
+								lhs: TypeStringRepresentation::from_type_id(
+									lhs_ty,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								rhs: TypeStringRepresentation::from_type_id(
+									rhs_ty,
+									environment,
+									&checking_data.types,
+									false,
+								),
+								position,
+							},
+						);
+						return TypeId::ERROR_TYPE;
+					}
+				}
+			}
 		}
 		Expression::UnaryOperation { operand, operator, position } => {
 			match operator {
@@ -1060,37 +1170,37 @@ fn operator_to_assignment_kind(
 		),
 		BinaryAssignmentOperator::AddAssign
 		| BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::Add)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Add)
 		}
 		BinaryAssignmentOperator::SubtractAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::Subtract)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Subtract)
 		}
 		BinaryAssignmentOperator::MultiplyAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::Multiply)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Multiply)
 		}
 		BinaryAssignmentOperator::DivideAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::Divide)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Divide)
 		}
 		BinaryAssignmentOperator::ModuloAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::Modulo)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Modulo)
 		}
 		BinaryAssignmentOperator::ExponentAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::Exponent)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Exponent)
 		}
 		BinaryAssignmentOperator::BitwiseShiftLeftAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftLeft)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftLeft)
 		}
 		BinaryAssignmentOperator::BitwiseShiftRightAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseShiftRight)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftRight)
 		}
 		BinaryAssignmentOperator::BitwiseAndAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseAnd)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseAnd)
 		}
 		BinaryAssignmentOperator::BitwiseXOrAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseXOr)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseXOr)
 		}
 		BinaryAssignmentOperator::BitwiseOrAssign => {
-			AssignmentKind::PureUpdate(MathematicalAndBitwise::BitwiseOr)
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseOr)
 		}
 	}
 }

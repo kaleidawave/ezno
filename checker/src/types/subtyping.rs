@@ -6,7 +6,7 @@ use crate::{
 	context::{GeneralContext, InformationChain},
 	features::{
 		objects::{self, SpecialObject},
-		operations::MathematicalAndBitwise,
+		operations::MathematicalOrBitwiseOperation,
 	},
 	Constant, Environment, PropertyValue, TypeId,
 };
@@ -225,15 +225,15 @@ pub(crate) fn type_is_subtype_with_generics(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	{
-		let debug = true;
-		crate::utilities::notify!(
-			"Checking {} :>= {}, with {:?}",
-			print_type(base_type, types, information, debug),
-			print_type(ty, types, information, debug),
-			base_type_arguments
-		);
-	}
+	// {
+	// 	let debug = true;
+	// 	crate::utilities::notify!(
+	// 		"Checking {} :>= {}, with {:?}",
+	// 		print_type(base_type, types, information, debug),
+	// 		print_type(ty, types, information, debug),
+	// 		base_type_arguments
+	// 	);
+	// }
 
 	if base_type == TypeId::ANY_TYPE || ty == TypeId::NEVER_TYPE {
 		return SubTypeResult::IsSubType;
@@ -332,7 +332,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				};
 			}
 
-			crate::utilities::notify!("Looking for {:?} with {:?}", ty, ty_structure_arguments);
+			// crate::utilities::notify!("Looking for {:?} with {:?}", ty, ty_structure_arguments);
 
 			if let Some(arg) = ty_structure_arguments.and_then(|tas| tas.get_argument_covariant(ty))
 			{
@@ -646,10 +646,8 @@ pub(crate) fn type_is_subtype_with_generics(
 				// TODO temp fix
 				if let Type::Constructor(c) = subtype {
 					crate::utilities::notify!("TODO right hand side maybe okay");
-					if let Some(to) = c.get_base() {
-						if to == base_type {
-							return SubTypeResult::IsSubType;
-						}
+					if c.get_constraint() == base_type {
+						return SubTypeResult::IsSubType;
 					}
 				}
 				if let PolyNature::FunctionGeneric { .. } = nature {
@@ -1140,7 +1138,7 @@ pub(crate) fn type_is_subtype_with_generics(
 		Type::Constructor(cst) => match cst {
 			// For template literal types
 			Constructor::BinaryOperator {
-				operator: crate::types::MathematicalAndBitwise::Add,
+				operator: crate::types::MathematicalOrBitwiseOperation::Add,
 				..
 			} => {
 				if let Type::Constant(Constant::String(rs)) = subtype {
@@ -1487,8 +1485,8 @@ pub(crate) fn type_is_subtype_with_generics(
 			{
 				SubTypeResult::IsSubType
 			}
-			ty => {
-				crate::utilities::notify!("{:?} does not match class", ty);
+			_ty => {
+				// crate::utilities::notify!("{:?} does not match class", base_type);
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		},
@@ -2878,7 +2876,7 @@ pub(crate) fn slice_matches_type(
 		Type::Constructor(super::Constructor::BinaryOperator {
 			lhs,
 			rhs,
-			operator: MathematicalAndBitwise::Add,
+			operator: MathematicalOrBitwiseOperation::Add,
 			result: _,
 		}) => {
 			let lhs = base_type_arguments
@@ -2976,7 +2974,7 @@ pub(crate) fn number_matches_type(
 		}) => {
 			todo!()
 			// let lhs_range = intrinsics::get_range(base, types).unwrap();
-			// intrinsics::FloatRange::single(number.try_into().unwrap()).contained_in(lhs_range)
+			// intrinsics::FloatRange::new_single(number.try_into().unwrap()).contained_in(lhs_range)
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::GREATER_THAN,
@@ -2984,7 +2982,7 @@ pub(crate) fn number_matches_type(
 		}) => {
 			todo!()
 			// let lhs_range = intrinsics::get_range(base, types).unwrap();
-			// intrinsics::FloatRange::single(number.try_into().unwrap()).contained_in(lhs_range)
+			// intrinsics::FloatRange::new_single(number.try_into().unwrap()).contained_in(lhs_range)
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,

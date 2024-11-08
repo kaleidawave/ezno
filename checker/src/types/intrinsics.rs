@@ -2,15 +2,18 @@ use source_map::SpanWithSource;
 
 use crate::{
 	types::{
-		generics::generic_type_arguments::GenericArguments, get_constraint,
-		PartiallyAppliedGenerics, TypeStore,
+		generics::generic_type_arguments::GenericArguments, get_constraint, helpers::into_cases,
+		Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, TypeStore,
 	},
 	TypeId,
 };
 
 use super::Type;
 
-pub use crate::utilities::float_range::FloatRange;
+pub use crate::utilities::{
+	float_range::{FloatRange, InclusiveExclusive},
+	modulo_class::ModuloClass,
+};
 
 /// These are special marker types (using [`Type::Alias`])
 ///
@@ -169,68 +172,31 @@ pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	}
 }
 
+// TODO also take into account mod range
 #[must_use]
-pub fn get_range(on: TypeId, types: &TypeStore) -> Option<FloatRange> {
-	fn get_range2(range: &mut FloatRange, on: TypeId, types: &TypeStore) -> bool {
-		let on = get_constraint(on, types).unwrap_or(on);
-		let ty = types.get_type_by_id(on);
-		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN),
-			arguments,
-		}) = ty
-		{
-			let argument = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
-			if let Type::Constant(crate::Constant::Number(argument)) =
-				types.get_type_by_id(argument)
-			{
-				if let TypeId::GREATER_THAN = *on {
-					range.floor.1 = *argument;
-				} else {
-					range.ceiling.1 = *argument;
-				}
-				true
-			} else {
-				false
-			}
-		} else if let Type::And(_l, _r) = ty {
-			// todo!("take intersection")
-			false
-		} else if let Type::Or(_l, _r) = ty {
-			// todo!("change inclusivity based on ==")
-			false
-		} else if let Type::Constant(crate::Constant::Number(number)) = ty {
-			*range = FloatRange::single(*number);
-			true
-		} else {
-			false
-		}
+pub fn range_to_type(range: FloatRange, types: &mut TypeStore) -> TypeId {
+	// TODO skip if infinite
+	let floor_ty = types.new_constant_type(Constant::Number(range.floor.1));
+	let ceiling_ty = types.new_constant_type(Constant::Number(range.ceiling.1));
+	let floor = range
+		.get_greater_than()
+		.map(|_number| new_intrinsic(&Intrinsic::GreaterThan, floor_ty, types));
+	let ceiling =
+		range.get_less_than().map(|_number| new_intrinsic(&Intrinsic::LessThan, ceiling_ty, types));
+
+	let mut ty = if let (Some(f), Some(c)) = (floor, ceiling) {
+		types.new_and_type(f, c)
+	} else {
+		floor.or(ceiling).unwrap()
+	};
+
+	if let InclusiveExclusive::Inclusive = range.floor.0 {
+		ty = types.new_or_type(ty, floor_ty);
 	}
-
-	let mut range = FloatRange::default();
-	let ok = get_range2(&mut range, on, types);
-	ok.then_some(range)
-}
-
-#[must_use]
-pub fn range_to_type(_range: FloatRange, _types: &mut TypeStore) -> TypeId {
-	// use source_map::Nullable;
-
-	// let on = if let FloatRange::Inclusive { .. } = range {
-	// 	TypeId::INCLUSIVE_RANGE
-	// } else {
-	// 	TypeId::EXCLUSIVE_RANGE
-	// };
-	// let (FloatRange::Inclusive { floor, ceiling } | FloatRange::Exclusive { floor, ceiling }) =
-	// 	range;
-	// let floor = types.new_constant_type(crate::Constant::Number(floor));
-	// let ceiling = types.new_constant_type(crate::Constant::Number(ceiling));
-	// let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([
-	// 	(TypeId::NUMBER_GENERIC, (floor, SpanWithSource::NULL)),
-	// 	(TypeId::NUMBER_CEILING_GENERIC, (ceiling, SpanWithSource::NULL)),
-	// ]));
-	// types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }))
-
-	TypeId::NUMBER_TYPE
+	if let InclusiveExclusive::Inclusive = range.ceiling.0 {
+		ty = types.new_or_type(ty, ceiling_ty);
+	}
+	ty
 }
 
 #[must_use]
@@ -327,10 +293,169 @@ pub fn new_intrinsic(intrinsic: &Intrinsic, argument: TypeId, types: &mut TypeSt
 			}
 			Intrinsic::CaseInsensitive => (TypeId::CASE_INSENSITIVE, TypeId::STRING_GENERIC),
 		};
+
 	let arguments = GenericArguments::ExplicitRestrictions(crate::Map::from_iter([(
 		to_pair,
 		(argument, SpanWithSource::NULL),
 	)]));
 
 	types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }))
+}
+
+pub fn get_range_and_mod_class(
+	ty: TypeId,
+	types: &TypeStore,
+) -> (Option<FloatRange>, Option<ModuloClass>) {
+	let cases = into_cases(ty, types);
+	let interesting = cases.iter().enumerate().find_map(|(idx, case)| {
+		case.0
+			.iter()
+			.copied()
+			.try_fold(Vec::new(), |mut acc, ty| {
+				if let Ok(item) = PureNumberIntrinsic::try_from_type(ty.0, types) {
+					acc.push(item);
+					Some(acc)
+				} else {
+					None
+				}
+			})
+			.map(|value| (idx, value))
+	});
+
+	if let Some((idx, interesting)) = interesting {
+		let mut range: Option<FloatRange> = None;
+		let mut modulo_class: Option<ModuloClass> = None;
+		for number_condition in interesting {
+			match number_condition {
+				PureNumberIntrinsic::GreaterThan(greater_than) => {
+					range = Some(match range {
+						None => FloatRange::new_greater_than(greater_than),
+						Some(mut range) => {
+							range.floor.1 = range.floor.1.max(greater_than);
+							range
+						}
+					});
+				}
+				PureNumberIntrinsic::LessThan(less_than) => {
+					range = Some(match range {
+						None => FloatRange::new_less_than(less_than),
+						Some(mut range) => {
+							range.ceiling.1 = range.ceiling.1.max(less_than);
+							range
+						}
+					});
+				}
+				PureNumberIntrinsic::Modulo { modulo, offset } => {
+					modulo_class = Some(match modulo_class {
+						None => ModuloClass::new(modulo, offset),
+						Some(_) => {
+							crate::utilities::notify!("TODO intersection");
+							return (None, None);
+						}
+					});
+				}
+			}
+		}
+
+		for (other_idx, case) in cases.into_iter().enumerate() {
+			// Skip the interesting case
+			if idx == other_idx {
+				continue;
+			}
+			// Test whether all cases fit inside this new condition. Also modify ranges for inclusion if not
+			if let [value] = &case.0[..] {
+				if let Type::Constant(Constant::Number(num)) = types.get_type_by_id(value.0) {
+					let num = *num;
+					if let Some(ref modulo_class) = modulo_class {
+						if !modulo_class.contains(num) {
+							return (None, None);
+						}
+					}
+					if let Some(ref mut range) = range {
+						if !range.contains(num) {
+							return (None, None);
+						} else if range.floor.1 == num {
+							range.floor.0 = InclusiveExclusive::Inclusive;
+						} else if range.ceiling.1 == num {
+							range.ceiling.0 = InclusiveExclusive::Inclusive;
+						}
+					}
+				}
+			} else {
+				return (None, None);
+			}
+		}
+		(range, modulo_class)
+	} else if let Type::Constant(Constant::Number(num)) = types.get_type_by_id(ty) {
+		(Some(FloatRange::new_single(*num)), None)
+	} else {
+		crate::utilities::notify!("Not interesting or constant {:?}", ty);
+		(None, None)
+	}
+}
+
+type BetterF64 = ordered_float::NotNan<f64>;
+
+/// Unit. No combinations at this point
+pub enum PureNumberIntrinsic {
+	GreaterThan(BetterF64),
+	LessThan(BetterF64),
+	Modulo { modulo: BetterF64, offset: BetterF64 },
+}
+
+impl PureNumberIntrinsic {
+	pub fn try_from_type(ty: TypeId, types: &TypeStore) -> Result<PureNumberIntrinsic, ()> {
+		let ty = types.get_type_by_id(ty);
+		if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: on @ (TypeId::GREATER_THAN | TypeId::LESS_THAN | TypeId::MULTIPLE_OF),
+			arguments,
+		}) = ty
+		{
+			let arg = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+			if let Type::Constant(Constant::Number(number)) = types.get_type_by_id(arg) {
+				match *on {
+					TypeId::GREATER_THAN => Ok(PureNumberIntrinsic::GreaterThan(*number)),
+					TypeId::LESS_THAN => Ok(PureNumberIntrinsic::LessThan(*number)),
+					TypeId::MULTIPLE_OF => Ok(PureNumberIntrinsic::Modulo {
+						modulo: *number,
+						offset: 0f64.try_into().unwrap(),
+					}),
+					_ => todo!(),
+				}
+			} else {
+				Err(())
+			}
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			lhs,
+			operator: MathematicalOrBitwiseOperation::Add,
+			rhs,
+			..
+		}) = ty
+		{
+			let lhs_modulo = if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on: TypeId::MULTIPLE_OF,
+				arguments,
+			}) = types.get_type_by_id(*lhs)
+			{
+				let arg = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+				if let Type::Constant(Constant::Number(number)) = types.get_type_by_id(arg) {
+					Some(number)
+				} else {
+					None
+				}
+			} else {
+				None
+			};
+			if let (Some(modulo), Type::Constant(Constant::Number(offset))) =
+				(lhs_modulo, types.get_type_by_id(*rhs))
+			{
+				Ok(PureNumberIntrinsic::Modulo { modulo: *modulo, offset: *offset })
+			} else {
+				Err(())
+			}
+		} else {
+			crate::utilities::notify!("err here {:?}", ty);
+			Err(())
+		}
+	}
 }

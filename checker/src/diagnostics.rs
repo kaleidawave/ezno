@@ -423,7 +423,7 @@ pub(crate) enum TypeCheckError<'a> {
 	#[allow(clippy::upper_case_acronyms)]
 	VariableUsedInTDZ(VariableUsedInTDZ),
 	InvalidMathematicalOrBitwiseOperation {
-		operator: crate::features::operations::MathematicalAndBitwise,
+		operator: crate::features::operations::MathematicalOrBitwiseOperation,
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
 		position: SpanWithSource,
@@ -958,6 +958,7 @@ pub enum TypeCheckWarning {
 	DisjointEquality {
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
+		result: bool,
 		position: SpanWithSource,
 	},
 	ItemMustBeUsedWithFlag {
@@ -1039,11 +1040,15 @@ impl From<TypeCheckWarning> for Diagnostic {
 					kind,
 				}
 			}
-			TypeCheckWarning::DisjointEquality { lhs, rhs, position } => Diagnostic::Position {
-				reason: format!("This equality is always false as {lhs} and {rhs} have no overlap"),
-				position,
-				kind,
-			},
+			TypeCheckWarning::DisjointEquality { lhs, rhs, position, result } => {
+				Diagnostic::Position {
+					reason: format!(
+						"This equality is always {result} as {lhs} and {rhs} have no overlap"
+					),
+					position,
+					kind,
+				}
+			}
 		}
 	}
 }

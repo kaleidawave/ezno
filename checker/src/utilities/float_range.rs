@@ -17,6 +17,10 @@ impl InclusiveExclusive {
 			Exclusive
 		}
 	}
+
+	pub fn is_inclusive(self) -> bool {
+		matches!(self, Inclusive)
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -28,8 +32,8 @@ pub struct FloatRange {
 impl Default for FloatRange {
 	fn default() -> Self {
 		Self {
-			floor: (Exclusive, f64::MIN.try_into().unwrap()),
-			ceiling: (Exclusive, f64::MAX.try_into().unwrap()),
+			floor: (Exclusive, f64::NEG_INFINITY.try_into().unwrap()),
+			ceiling: (Exclusive, f64::INFINITY.try_into().unwrap()),
 		}
 	}
 }
@@ -37,7 +41,7 @@ impl Default for FloatRange {
 // TODO try_from (assert ceiling > floor etc)
 impl FloatRange {
 	#[must_use]
-	pub fn single(on: BetterF64) -> Self {
+	pub fn new_single(on: BetterF64) -> Self {
 		Self { floor: (Inclusive, on), ceiling: (Inclusive, on) }
 	}
 
@@ -46,6 +50,40 @@ impl FloatRange {
 			(floor == ceiling).then_some(floor)
 		} else {
 			None
+		}
+	}
+
+	pub fn new_greater_than(greater_than: BetterF64) -> Self {
+		FloatRange {
+			floor: (Exclusive, greater_than),
+			ceiling: (Exclusive, f64::INFINITY.try_into().unwrap()),
+		}
+	}
+
+	pub fn get_greater_than(self) -> Option<BetterF64> {
+		(self.floor.1 != f64::NEG_INFINITY).then_some(self.floor.1)
+	}
+
+	pub fn new_less_than(less_than: BetterF64) -> Self {
+		FloatRange {
+			floor: (Exclusive, f64::NEG_INFINITY.try_into().unwrap()),
+			ceiling: (Exclusive, less_than),
+		}
+	}
+
+	pub fn get_less_than(self) -> Option<BetterF64> {
+		(self.ceiling.1 != f64::INFINITY).then_some(self.ceiling.1)
+	}
+
+	pub fn contains(self, value: BetterF64) -> bool {
+		if self.floor.1 < value && value < self.ceiling.1 {
+			true
+		} else if self.floor.1 == value {
+			self.floor.0.is_inclusive()
+		} else if self.ceiling.1 == value {
+			self.ceiling.0.is_inclusive()
+		} else {
+			false
 		}
 	}
 
@@ -197,7 +235,7 @@ mod tests {
 	#[test]
 	fn contained_in() {
 		let zero_to_four: FloatRange = FloatRange::try_from(0f64..4f64).unwrap();
-		assert!(FloatRange::single(2.into()).contained_in(zero_to_four));
+		assert!(FloatRange::new_single(2.into()).contained_in(zero_to_four));
 	}
 
 	#[test]

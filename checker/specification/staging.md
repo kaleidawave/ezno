@@ -27,15 +27,11 @@ function func3(p1: Not<string>, p2: Not<number>) {
 > TODO need to redo range to use interesection of less than and greater than
 
 ```ts
-// function func(a: number, b: number) {
-//   if (a % 15 === 0 && 31 < b && b < 37) {
-//     print_type(a, b)
-//     print_type(a === b)
-//   }
-// }
 function func(a: number, b: number) {
-  if (31 < b && b < 37) {
-    print_type(b)
+  const condition = 31 < b && b < 37;
+  debug_type(condition);
+  if (condition) {
+    debug_type(b)
   }
 }
 ```
@@ -73,3 +69,25 @@ function func(a: boolean) {
 ```
 
 - Expected "hi", found true
+
+#### Modulo range
+
+```ts
+function func(x: number) {
+  return x % 5 === 6;
+}
+```
+
+- This equality is always false
+
+### Broken
+
+#### Template literal edge cases
+
+```ts
+const invalidNum1: `${1}` = 1;
+const invalidNum2: `${1}` = "1";
+const invalidNum3: `${1}` = "2";
+```
+
+- ?

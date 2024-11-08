@@ -142,6 +142,13 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
+		"debug_number" => {
+			let arg = arguments.iter().next().unwrap();
+			Ok(ConstantOutput::Diagnostic(format!(
+				"number: {:?}",
+				crate::types::intrinsics::get_range_and_mod_class(arg.value, types)
+			)))
+		}
 		"print_type" | "debug_type" | "print_and_debug_type" | "debug_type_independent" => {
 			fn to_string(
 				print: bool,

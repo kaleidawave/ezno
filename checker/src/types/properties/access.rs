@@ -421,7 +421,7 @@ pub(crate) fn get_property_unbound(
 			}
 			Type::Object(ObjectNature::RealDeal) => {
 				let object_constraint_structure_generics =
-					crate::types::get_structure_arguments_based_on_object_constraint(
+					crate::types::helpers::get_structure_arguments_based_on_object_constraint(
 						on, info_chain, types,
 					);
 

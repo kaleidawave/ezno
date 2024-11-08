@@ -186,7 +186,7 @@ impl<'a> PropertyKey<'a> {
 }
 
 /// For getting `length` and stuff
-pub(crate) fn get_simple_value(
+pub(crate) fn get_simple_property_value(
 	ctx: &impl InformationChain,
 	on: TypeId,
 	property: &PropertyKey,

@@ -15,10 +15,7 @@ use crate::{
 		},
 		modules::Exported,
 		objects::SpecialObject,
-		operations::{
-			evaluate_logical_operation_with_expression,
-			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
-		},
+		operations::{evaluate_logical_operation_with_expression, MathematicalOrBitwiseOperation},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
@@ -278,7 +275,7 @@ impl<'a> Environment<'a> {
 					}
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
-						let reference_position = reference.get_position();
+						// let reference_position = reference.get_position();
 						let existing = self.get_reference(
 							reference.clone(),
 							checking_data,
@@ -286,8 +283,9 @@ impl<'a> Environment<'a> {
 						);
 
 						let expression = expression.unwrap();
-						let expression_pos =
-							A::expression_position(expression).with_source(self.get_source());
+						// let expression_pos =
+						// 	A::expression_position(expression).with_source(self.get_source());
+
 						let rhs = A::synthesise_expression(
 							expression,
 							TypeId::ANY_TYPE,
@@ -295,22 +293,50 @@ impl<'a> Environment<'a> {
 							checking_data,
 						);
 
-						let new = evaluate_pure_binary_operation_handle_errors(
-							(existing, reference_position),
-							operator.into(),
-							(rhs, expression_pos),
-							checking_data,
+						let result = crate::features::operations::evaluate_mathematical_operation(
+							existing,
+							operator,
+							rhs,
 							self,
+							&mut checking_data.types,
+							checking_data.options.strict_casts,
 						);
-						let assignment_position =
-							assignment_position.with_source(self.get_source());
-						self.set_reference_handle_errors(
-							reference,
-							new,
-							assignment_position,
-							checking_data,
-						);
-						new
+						match result {
+							Ok(new) => {
+								let assignment_position =
+									assignment_position.with_source(self.get_source());
+
+								self.set_reference_handle_errors(
+									reference,
+									new,
+									assignment_position,
+									checking_data,
+								);
+
+								new
+							}
+							Err(()) => {
+								checking_data.diagnostics_container.add_error(
+									crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+										operator,
+										lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+											existing,
+											self,
+											&checking_data.types,
+											false,
+										),
+										rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+											rhs,
+											self,
+											&checking_data.types,
+											false,
+										),
+										position: assignment_position.with_source(self.get_source()),
+									},
+								);
+								TypeId::ERROR_TYPE
+							}
+						}
 					}
 					AssignmentKind::IncrementOrDecrement(direction, return_kind) => {
 						// let value =
@@ -323,31 +349,59 @@ impl<'a> Environment<'a> {
 						);
 
 						// TODO existing needs to be cast to number!!
-
-						let new = evaluate_pure_binary_operation_handle_errors(
-							(existing, position),
-							match direction {
-								IncrementOrDecrement::Increment => MathematicalAndBitwise::Add,
-								IncrementOrDecrement::Decrement => MathematicalAndBitwise::Subtract,
+						let operator = match direction {
+							IncrementOrDecrement::Increment => MathematicalOrBitwiseOperation::Add,
+							IncrementOrDecrement::Decrement => {
+								MathematicalOrBitwiseOperation::Subtract
 							}
-							.into(),
-							(TypeId::ONE, source_map::Nullable::NULL),
-							checking_data,
+						};
+
+						let result = crate::features::operations::evaluate_mathematical_operation(
+							existing,
+							operator,
+							TypeId::ONE,
 							self,
+							&mut checking_data.types,
+							checking_data.options.strict_casts,
 						);
+						match result {
+							Ok(new) => {
+								let assignment_position =
+									assignment_position.with_source(self.get_source());
 
-						let assignment_position =
-							assignment_position.with_source(self.get_source());
-						self.set_reference_handle_errors(
-							reference,
-							new,
-							assignment_position,
-							checking_data,
-						);
+								self.set_reference_handle_errors(
+									reference,
+									new,
+									assignment_position,
+									checking_data,
+								);
 
-						match return_kind {
-							AssignmentReturnStatus::Previous => existing,
-							AssignmentReturnStatus::New => new,
+								match return_kind {
+									AssignmentReturnStatus::Previous => existing,
+									AssignmentReturnStatus::New => new,
+								}
+							}
+							Err(()) => {
+								checking_data.diagnostics_container.add_error(
+									crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+										operator,
+										lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+											existing,
+											self,
+											&checking_data.types,
+											false,
+										),
+										rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+											TypeId::ONE,
+											self,
+											&checking_data.types,
+											false,
+										),
+										position,
+									},
+								);
+								TypeId::ERROR_TYPE
+							}
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {

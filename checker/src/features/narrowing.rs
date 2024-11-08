@@ -8,7 +8,7 @@ use crate::{
 	Map, Type, TypeId,
 };
 
-use super::operations::{CanonicalEqualityAndInequality, MathematicalAndBitwise};
+use super::operations::{CanonicalEqualityAndInequality, MathematicalOrBitwiseOperation};
 
 pub fn narrow_based_on_expression_into_vec(
 	condition: TypeId,
@@ -82,7 +82,7 @@ pub fn narrow_based_on_expression(
 					}
 				} else if let Type::Constructor(Constructor::BinaryOperator {
 					lhs: operand,
-					operator: MathematicalAndBitwise::Modulo,
+					operator: MathematicalOrBitwiseOperation::Modulo,
 					rhs: modulo,
 					result: _,
 				}) = lhs_type
@@ -105,7 +105,7 @@ pub fn narrow_based_on_expression(
 						types.register_type(Type::Constructor(
 							crate::types::Constructor::BinaryOperator {
 								lhs: narrowed_to,
-								operator: super::operations::MathematicalAndBitwise::Add,
+								operator: super::operations::MathematicalOrBitwiseOperation::Add,
 								rhs,
 								result: TypeId::NUMBER_TYPE,
 							},
@@ -229,6 +229,7 @@ pub fn narrow_based_on_expression(
 					let narrowed = types.new_narrowed(lhs, narrowed_to);
 					// temp fix
 					let narrowed = if let Some(existing) = into.get(&lhs) {
+						crate::utilities::notify!("Here");
 						types.new_and_type(*existing, narrowed)
 					} else {
 						narrowed
@@ -243,6 +244,7 @@ pub fn narrow_based_on_expression(
 					let narrowed = types.new_narrowed(rhs, narrowed_to);
 					// temp fix
 					let narrowed = if let Some(existing) = into.get(&rhs) {
+						crate::utilities::notify!("Here");
 						types.new_and_type(*existing, narrowed)
 					} else {
 						narrowed
@@ -465,8 +467,12 @@ impl<'a> Filter<'a> {
 				}
 			}
 			Filter::HasProperty { property, filter } => {
-				let value =
-					types::properties::get_simple_value(information, value, property, types);
+				let value = types::properties::get_simple_property_value(
+					information,
+					value,
+					property,
+					types,
+				);
 				if let Some(value) = value {
 					let matches = filter.type_matches_filter(value, information, types, negate);
 					crate::utilities::notify!("Value {:?}", (value, negate, matches));

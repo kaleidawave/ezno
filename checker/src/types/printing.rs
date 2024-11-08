@@ -9,7 +9,8 @@ use crate::{
 		calling::ThisValue,
 		functions::{FunctionBehavior, FunctionEffect},
 		generics::generic_type_arguments::GenericArguments,
-		get_array_length, get_constraint, get_simple_value,
+		get_constraint, get_simple_property_value,
+		helpers::get_array_length,
 		properties::{get_properties_on_single_type, AccessMode, PropertyKey, Publicity},
 		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, TypeExtends,
 	},
@@ -78,11 +79,21 @@ pub fn print_type_into_buf<C: InformationChain>(
 	let r#type = types.get_type_by_id(ty);
 	match r#type {
 		Type::And(a, b) => {
+			let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
+			if value.0.is_some() || value.1.is_some() {
+				crate::utilities::notify!("{:?}", value);
+			}
+
 			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
 			buf.push_str(" & ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
 		Type::Or(a, b) => {
+			let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
+			if value.0.is_some() || value.1.is_some() {
+				crate::utilities::notify!("{:?}", value);
+			}
+
 			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
 			buf.push_str(" | ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
@@ -618,8 +629,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 							if i != 0 {
 								buf.push_str(", ");
 							}
-							let value =
-								get_simple_value(info, ty, &PropertyKey::from_usize(i), types);
+							let value = get_simple_property_value(
+								info,
+								ty,
+								&PropertyKey::from_usize(i),
+								types,
+							);
 
 							if let Some(value) = value {
 								print_type_into_buf(value, buf, cycles, args, types, info, debug);

@@ -22,7 +22,7 @@ use crate::{
 	types::{
 		functions::{FunctionBehavior, FunctionEffect, FunctionType},
 		generics::substitution::SubstitutionArguments,
-		get_structure_arguments_based_on_object_constraint,
+		helpers::get_structure_arguments_based_on_object_constraint,
 		logical::{Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical},
 		properties::AccessMode,
 		substitute, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,

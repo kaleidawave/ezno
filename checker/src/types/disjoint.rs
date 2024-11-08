@@ -1,4 +1,7 @@
-use super::{Constant, PartiallyAppliedGenerics, Type, TypeId, TypeStore};
+use super::{
+	Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, Type, TypeId,
+	TypeStore,
+};
 use crate::context::InformationChain;
 
 /// For equality + [`crate::intrinsics::Intrinsics::Not`]
@@ -106,12 +109,6 @@ pub fn types_are_disjoint(
 		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
 			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
 				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
-		} else if let Some(lhs) = super::get_constraint(lhs, types) {
-			// TODO not sure whether these should be here?
-			types_are_disjoint(lhs, rhs, already_checked, information, types)
-		} else if let Some(rhs) = super::get_constraint(rhs, types) {
-			// TODO not sure whether these should be here?
-			types_are_disjoint(lhs, rhs, already_checked, information, types)
 		} else if let Type::PartiallyAppliedGenerics(
 			args @ PartiallyAppliedGenerics { on: TypeId::MULTIPLE_OF, arguments: _ },
 		) = lhs_ty
@@ -138,6 +135,50 @@ pub fn types_are_disjoint(
 		) = lhs_ty
 		{
 			number_range_disjoint(args, rhs, types)
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			lhs: _lhs,
+			operator: MathematicalOrBitwiseOperation::Modulo,
+			rhs,
+			result: _,
+		}) = lhs_ty
+		{
+			if let (
+				Type::Constant(Constant::Number(lhs_mod)),
+				Type::Constant(Constant::Number(num)),
+			) = (types.get_type_by_id(*rhs), rhs_ty)
+			{
+				crate::utilities::notify!("{:?}", (num, lhs_mod));
+				// Modulos return negative for negative number :(
+				// Checking whether out of range here
+				num.abs() > **lhs_mod
+			} else {
+				false
+			}
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			lhs: _lhs,
+			operator: MathematicalOrBitwiseOperation::Modulo,
+			rhs,
+			result: _,
+		}) = rhs_ty
+		{
+			if let (
+				Type::Constant(Constant::Number(num)),
+				Type::Constant(Constant::Number(rhs_mod)),
+			) = (types.get_type_by_id(*rhs), lhs_ty)
+			{
+				crate::utilities::notify!("{:?}", (num, rhs_mod));
+				// Modulos return negative for negative number :(
+				// Checking whether out of range here
+				num.abs() > **rhs_mod
+			} else {
+				false
+			}
+		} else if let Some(lhs) = super::get_constraint(lhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
+		} else if let Some(rhs) = super::get_constraint(rhs, types) {
+			// TODO not sure whether these should be here?
+			types_are_disjoint(lhs, rhs, already_checked, information, types)
 		} else if let Type::Constant(lhs_cst) = lhs_ty {
 			if let Type::Constant(rhs_cst) = rhs_ty {
 				lhs_cst != rhs_cst
