@@ -2441,7 +2441,7 @@ fakeRead(array1)
 #### Always known math
 
 ```ts
-// True regardless of 
+// True regardless of
 function func(a: number) { return a ** 0 }
 
 func satisfies string;
@@ -3689,7 +3689,7 @@ type Name = "Ben"
 
 > Should be `Expected "Hello Ben", found "test"`. See #188
 
-- Expected string, found "test"
+- Expected `Hello ${Name}`, found \"test\"
 
 #### Template literal type specialisation
 
@@ -4090,7 +4090,7 @@ x.property_a satisfies number;
 x.property_b
 ```
 
-- No property 'property_b' on { [string]: X[keyof X & string] }
+- No property 'property_b' on { [`property_${keyof X & string}`]: X[keyof X & string] }
 
 ### Readonly and `as const`
 
