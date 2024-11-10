@@ -33,13 +33,8 @@ test("Compiling", (t) => {
 	t.test("Compile", () => {
 		const example = "const x: 4 = 2 + 2;"
 		const output = experimental_build("input.ts", (_path) => example, true);
-		deepStrictEqual(output, {
-			Ok: {
-				diagnostics: [],
-				outputs: [{ content: 'const x=2+2', output_path: 'out.js' }],
-			}
-		});
-		// console.log(inspect(output, { depth: Infinity, colors: true }));
+		deepStrictEqual(output.diagnostics, []);
+		deepStrictEqual(output.artifacts, [{ content: 'const x=2+2', output_path: 'out.js' }]);
 	})
 });
 

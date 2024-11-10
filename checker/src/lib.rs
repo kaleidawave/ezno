@@ -478,7 +478,7 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 	crate::utilities::unpause_debug_mode();
 
-	if checking_data.diagnostics_container.has_error() {
+	if checking_data.diagnostics_container.contains_error() {
 		return CheckOutput {
 			types: checking_data.types,
 			module_contents: checking_data.modules.files,
@@ -753,7 +753,7 @@ pub fn generate_cache<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		add_definition_files_to_root(vec![on.to_path_buf()], &mut root, &mut checking_data);
 
 		assert!(
-			!checking_data.diagnostics_container.has_error(),
+			!checking_data.diagnostics_container.contains_error(),
 			"found error in definition file {:#?}",
 			checking_data.diagnostics_container.get_diagnostics()
 		);

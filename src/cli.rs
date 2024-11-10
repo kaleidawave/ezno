@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-	build::{build, BuildConfig, BuildOutput, EznoParsePostCheckVisitors, FailedBuildOutput},
+	build::{build, BuildConfig, BuildOutput, FailedBuildOutput},
 	check::check,
 	reporting::report_diagnostics_to_cli,
 	utilities::{print_to_cli, MaxDiagnostics},
@@ -88,7 +88,7 @@ pub(crate) struct BuildArguments {
 	pub compact_diagnostics: bool,
 	/// enable optimising transforms (warning can currently break code)
 	#[argh(switch)]
-	pub optimise: bool,
+	pub tree_shake: bool,
 	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
 	#[argh(option, default = "MaxDiagnostics::default()")]
 	pub max_diagnostics: MaxDiagnostics,
@@ -189,7 +189,7 @@ fn run_checker<T: crate::ReadFromFS>(
 	let diagnostics_count = diagnostics.count();
 	let current = timings.then(std::time::Instant::now);
 
-	let result = if diagnostics.has_error() {
+	let result = if diagnostics.contains_error() {
 		if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
 			let count = diagnostics.into_iter().count();
 			print_to_cli(format_args!(
@@ -342,18 +342,6 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 		}) => {
 			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
 
-			let mut default_builders = EznoParsePostCheckVisitors::default();
-
-			if build_config.optimise {
-				default_builders
-					.expression_visitors_mut
-					.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
-
-				default_builders
-					.statement_visitors_mut
-					.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
-			}
-
 			let entry_points = match get_entry_points(build_config.input) {
 				Ok(entry_points) => entry_points,
 				Err(_) => {
@@ -366,6 +354,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			let start = build_config.timings.then(std::time::Instant::now);
 
 			let config = BuildConfig {
+				tree_shake: build_config.tree_shake,
 				strip_whitespace: build_config.minify,
 				source_maps: build_config.source_maps,
 			};
@@ -376,7 +365,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 				build_config.definition_file.as_deref(),
 				&output_path,
 				&config,
-				Some(default_builders),
+				None,
 			);
 
 			#[cfg(not(target_family = "wasm"))]
@@ -387,13 +376,16 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			let compact_diagnostics = build_config.compact_diagnostics;
 
 			match output {
-				Ok(BuildOutput { diagnostics, fs, outputs }) => {
-					for output in outputs {
+				Ok(BuildOutput {
+					artifacts,
+					check_output: CheckOutput { module_contents, diagnostics, .. },
+				}) => {
+					for output in artifacts {
 						write_file(output.output_path.as_path(), output.content);
 					}
 					report_diagnostics_to_cli(
 						diagnostics,
-						&fs,
+						&module_contents,
 						compact_diagnostics,
 						build_config.max_diagnostics,
 					)
@@ -404,10 +396,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					));
 					ExitCode::SUCCESS
 				}
-				Err(FailedBuildOutput { fs, diagnostics }) => {
+				Err(FailedBuildOutput(CheckOutput { module_contents, diagnostics, .. })) => {
 					report_diagnostics_to_cli(
 						diagnostics,
-						&fs,
+						&module_contents,
 						compact_diagnostics,
 						build_config.max_diagnostics,
 					)

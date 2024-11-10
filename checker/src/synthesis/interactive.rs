@@ -27,7 +27,7 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 
 		add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
-		if checking_data.diagnostics_container.has_error() {
+		if checking_data.diagnostics_container.contains_error() {
 			Err((checking_data.diagnostics_container, checking_data.modules.files))
 		} else {
 			let source =
@@ -67,7 +67,7 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 			},
 		);
 		let dc = mem::take(&mut self.checking_data.diagnostics_container);
-		if dc.has_error() {
+		if dc.contains_error() {
 			Err(dc)
 		} else {
 			Ok((ty, dc))
