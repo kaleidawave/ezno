@@ -3751,14 +3751,18 @@ interface X {
 
 #### Template literal types
 
+> Last one tests printing
+
 ```ts
 type Introduction = `Hello ${string}`;
 
 const first: Introduction = "Hello Ben";
 const second: Introduction = "Hi Ben";
+const third: Introduction = "Hi Ben";
 ```
 
 - Type "Hi Ben" is not assignable to type Introduction
+- Type "Hi Ben" is not assignable to type `Hi${string}`
 
 #### Assigning to types as keys
 
