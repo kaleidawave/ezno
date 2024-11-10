@@ -32,6 +32,17 @@ pub trait ReadFromFS: Sync + Send {
 	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String>;
 }
 
+#[cfg(target_family = "wasm")]
+impl<T> ReadFromFS for T
+where
+	T: Fn(&std::path::Path) -> Option<String>,
+{
+	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String> {
+		(self)(path)
+	}
+}
+
+#[cfg(not(target_family = "wasm"))]
 impl<T> ReadFromFS for T
 where
 	T: Fn(&std::path::Path) -> Option<String> + Sync + Send,

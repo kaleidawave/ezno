@@ -235,11 +235,7 @@ fn run_checker<T: crate::ReadFromFS>(
 	result
 }
 
-pub fn run_cli<
-	T: crate::ReadFromFS,
-	U: crate::WriteToFS,
-	V: crate::CLIInputResolver,
->(
+pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
 	cli_arguments: &[&str],
 	read_file: &T,
 	write_file: U,
