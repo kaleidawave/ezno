@@ -764,7 +764,9 @@ pub(crate) fn type_is_subtype_with_generics(
 							information,
 							types,
 						)
-					} else if information.get_chain_of_info().any(|info| info.frozen.contains(&ty))
+					} else if information
+						.get_chain_of_info()
+						.any(|info| info.frozen.contains_key(&ty))
 						|| matches!(subtype, Type::Constant(_))
 						|| matches!(
 							ty,
