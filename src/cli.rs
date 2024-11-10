@@ -234,8 +234,9 @@ fn run_checker<T: crate::ReadFromFS>(
 
 	result
 }
+
 pub fn run_cli<
-	T: crate::ReadFromFS + Send + Sync,
+	T: crate::ReadFromFS,
 	U: crate::WriteToFS,
 	V: crate::CLIInputResolver,
 >(
@@ -525,6 +526,13 @@ pub fn run_cli<
 	}
 }
 
+// `glob` library does not work on WASM :(
+#[cfg(target_family = "wasm")]
+fn get_entry_points(input: String) -> Result<Vec<PathBuf>, ()> {
+	Ok(vec![input.into()])
+}
+
+#[cfg(not(target_family = "wasm"))]
 fn get_entry_points(input: String) -> Result<Vec<PathBuf>, ()> {
 	match glob::glob(&input) {
 		Ok(files) => {

@@ -21,7 +21,14 @@ pub fn prettifier(input: String) -> Result<String, ParseError> {
 	Ok(module.to_string(&ToStringOptions::default()))
 }
 
+#[cfg(target_family = "wasm")]
 pub trait ReadFromFS {
+	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String>;
+}
+
+// Not WASM require `Sync + Send` for watch mode
+#[cfg(not(target_family = "wasm"))]
+pub trait ReadFromFS: Sync + Send {
 	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String>;
 }
 
