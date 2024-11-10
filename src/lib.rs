@@ -34,7 +34,7 @@ pub trait ReadFromFS: Sync + Send {
 
 impl<T> ReadFromFS for T
 where
-	T: Fn(&std::path::Path) -> Option<String>,
+	T: Fn(&std::path::Path) -> Option<String> + Sync + Send,
 {
 	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String> {
 		(self)(path)
