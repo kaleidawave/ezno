@@ -3,7 +3,7 @@ import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 import { inspect } from "node:util";
 
-console.log(`Running ezno@${get_version()}*`)
+// console.log(`Running ezno@${get_version()}`)
 
 test("Type checking on code diagnostics", (t) => {
 	t.test("type check", () => {

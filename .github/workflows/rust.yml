@@ -174,16 +174,18 @@ jobs:
 
       - name: Build and test WASM
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        timeout-minutes: 5
         run: |
           # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
 
           rustup target add wasm32-unknown-unknown
           npm ci
           npm run build
-          npm run run-tests
 
           node ./dist/cli.cjs info
           deno run -A ./dist/cli.mjs info
+
+          npm run run-tests
 
           npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
           echo "debug checked with TSC"
@@ -361,10 +363,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: validity
     steps:
+      - uses: actions/checkout@v4
       - name: Kick off other workflow if the PR has a label
         if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: |
-          echo "head_ref: ${{ github.head_ref }}, ref_name: ${{ github.ref_name }}"
+          echo "head_ref: ${{ github.head_ref }}, ref_name: ${{ github.ref_name }}, ref: ${{ github.ref }}, ${{ github.event.head_commit.id }}"
           gh workflow run performance-and-size.yml --ref ${{ github.ref_name }}
         env:
           GH_TOKEN: ${{ github.token }}

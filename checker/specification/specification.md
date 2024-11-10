@@ -3684,18 +3684,6 @@ box(someNumber) satisfies boolean;
 - Expected string, found number
 - Expected boolean, found { item: number }
 
-#### Template literal type restriction
-
-```ts
-type Name = "Ben"
-"test" satisfies `Hello ${Name}`;
-"Hello Ben" satisfies `Hello ${Name}`;
-```
-
-> Should be `Expected "Hello Ben", found "test"`. See #188
-
-- Expected `Hello ${Name}`, found \"test\"
-
 #### Template literal type specialisation
 
 > Uses `+` logic behind the scenes

@@ -26,5 +26,5 @@ fn main() -> std::process::ExitCode {
 	let arguments = std::env::args().skip(1).collect::<Vec<_>>();
 	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
 
-	run_cli(&arguments, &read_from_file, write_to_file)
+	run_cli(&arguments, read_from_file, write_to_file)
 }

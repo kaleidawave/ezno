@@ -12,7 +12,7 @@ env:
     target/
 
 jobs:
-  publish:
+  run-and-commit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,14 +24,16 @@ jobs:
       - name: Run automated fixes
         run: |
           cargo clippy --fix
+          cargo clippy --fix --manifest-path ./checker/Cargo.toml
+          cargo clippy --fix --manifest-path ./parser/Cargo.toml
+
           cargo fmt
 
       - name: Commit
         run: |
-          git add .
-          git commit -m "Run clippy --fix & formatting"
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        
+
+          git add .
+          git commit -m "Run clippy --fix & formatting"
           git push

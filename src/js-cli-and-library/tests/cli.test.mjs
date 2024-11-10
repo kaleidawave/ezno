@@ -18,7 +18,7 @@ test("ast-explorer", async (t) => {
 
         const out = [];
 
-        const wait = (timeout = 500) => new Promise((res, rej) => setTimeout(res, timeout));
+        const wait = (timeout = 500) => new Promise((res, _rej) => setTimeout(res, timeout));
 
         await wait();
         write(child, "'Hello World'");
@@ -27,6 +27,7 @@ test("ast-explorer", async (t) => {
         await wait();
 
         const expected = `Entering ast-explorer\n> {\n  Ok: {\n    hashbang_comment: undefined,\n    items: [\n      {\n        Statement: {\n          Expression: {\n            Single: {\n              StringLiteral: [ 'Hello World', 'Single', { start: 0, end: 13 } ]\n            }\n          }\n        }\n      }\n    ],\n    span: { start: 0, end: 13 }\n  }\n}\n> `;
+
         // console.log(stripAnsi(out.join("")).replaceAll("\n", "\\n"));
 
         equal(stripAnsi(out.join("")), expected);
@@ -48,7 +49,7 @@ test("type checking repl", async (t) => {
 
         const out = [];
 
-        const wait = (timeout = 500) => new Promise((res, rej) => setTimeout(res, timeout));
+        const wait = (timeout = 500) => new Promise((res, _rej) => setTimeout(res, timeout));
 
         await wait();
         write(child, "const var1: string = 5 + 6;");
@@ -57,7 +58,9 @@ test("type checking repl", async (t) => {
         await wait();
 
         const expected = `Entering REPL\n> error: \n  ┌─ CLI.tsx:1:22\n  │\n1 │ const var1: string = 5 + 6;\n  │             ------   ^^^^^ Type 11 is not assignable to type string\n  │             │         \n  │             Variable declared with type string\n\n\n> `;
+
         // console.log(stripAnsi(out.join("")).replaceAll("\n", "\\n"));
+
         equal(stripAnsi(out.join("")), expected);
     });
 });

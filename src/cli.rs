@@ -267,9 +267,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			let type_check_options: TypeCheckOptions = if cfg!(target_family = "wasm") {
 				Default::default()
 			} else {
-				let mut options = TypeCheckOptions::default();
-				options.measure_time = timings;
-				options
+				TypeCheckOptions { measure_time: timings, ..TypeCheckOptions::default() }
 			};
 
 			let entry_points = match get_entry_points(input) {
@@ -303,7 +301,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 						&read_file,
 						timings,
 						definition_file.clone(),
-						max_diagnostics.clone(),
+						max_diagnostics,
 						type_check_options.clone(),
 						compact_diagnostics,
 					);
@@ -316,7 +314,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 									&read_file,
 									timings,
 									definition_file.clone(),
-									max_diagnostics.clone(),
+									max_diagnostics,
 									type_check_options.clone(),
 									compact_diagnostics,
 								);
@@ -325,8 +323,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 						}
 					}
 
-					// Infinite loop here so the compiler is satisfied that this never returns
-					loop {}
+					unreachable!()
 				}
 			} else {
 				run_checker(

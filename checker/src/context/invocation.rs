@@ -69,7 +69,7 @@ pub struct InvocationContext(Vec<InvocationKind>);
 
 /// TODO want to have type arguments on each of these
 pub(crate) enum InvocationKind {
-	Conditional(LocalInformation),
+	Conditional(Box<LocalInformation>),
 	/// *Unconditional*
 	///
 	/// TODO does this need [`LocalInformation`]??
@@ -89,15 +89,13 @@ impl CallCheckingBehavior for InvocationContext {
 		self.0
 			.iter_mut()
 			.rev()
-			.find_map(
-				|kind| {
-					if let InvocationKind::Conditional(info) = kind {
-						Some(info)
-					} else {
-						None
-					}
-				},
-			)
+			.find_map(|kind| -> Option<&mut LocalInformation> {
+				if let InvocationKind::Conditional(info) = kind {
+					Some(&mut *info)
+				} else {
+					None
+				}
+			})
 			.unwrap_or(&mut environment.info)
 	}
 
@@ -142,10 +140,10 @@ impl InvocationContext {
 		&mut self,
 		cb: impl for<'a> FnOnce(&'a mut InvocationContext) -> T,
 	) -> (LocalInformation, T) {
-		self.0.push(InvocationKind::Conditional(LocalInformation::default()));
+		self.0.push(InvocationKind::Conditional(Box::default()));
 		let result = cb(self);
 		if let Some(InvocationKind::Conditional(info)) = self.0.pop() {
-			(info, result)
+			(*info, result)
 		} else {
 			unreachable!()
 		}

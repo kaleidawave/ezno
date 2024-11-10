@@ -94,7 +94,7 @@ fn check_expected_diagnostics(
 	let result = checker::check_project::<_, EznoParser>(
 		vec![PathBuf::from("main.tsx")],
 		type_definition_files,
-		resolver,
+		&resolver,
 		type_check_options,
 		(),
 		None,

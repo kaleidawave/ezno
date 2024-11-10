@@ -19,7 +19,7 @@ fn do_fuzz(data: &str) -> Corpus {
 	let _result = check_project::<_, synthesis::EznoParser>(
 		vec![root.into()],
 		type_definition_files,
-		|_path: &std::path::Path| Some(input.to_owned()),
+		&|_path: &std::path::Path| Some(input.to_owned()),
 		options,
 		(),
 		None,
