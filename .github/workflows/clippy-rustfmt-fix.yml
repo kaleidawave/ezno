@@ -23,17 +23,19 @@ jobs:
       
       - name: Run automated fixes
         run: |
-          cargo clippy --fix
-          cargo clippy --fix --manifest-path ./checker/Cargo.toml
-          cargo clippy --fix --manifest-path ./parser/Cargo.toml
+          # Run clippy on projects
+          cargo clippy --fix --manifest-path ./parser/Cargo.toml --allow-dirty
+          cargo clippy --fix --manifest-path ./checker/Cargo.toml --allow-dirty
+          cargo clippy --fix --allow-dirty
 
+          # Format
           cargo fmt
 
-      - name: Commit
+      - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add .
-          git commit -m "Run clippy --fix & formatting"
+          git commit -m "Run clippy --fix & cargo fmt"
           git push

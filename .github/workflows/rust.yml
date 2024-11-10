@@ -368,7 +368,8 @@ jobs:
         if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: |
           COMMIT_ID=$(git rev-parse HEAD)
-          echo "head_ref: ${{ github.head_ref }}, ref_name: ${{ github.ref_name }}, ref: ${{ github.ref }}, ${{ github.event.head_commit.id }}, tree_id: ${{ github.event.head_commit.tree_id }}, commit: $COMMIT_ID"
-          gh workflow run performance-and-size.yml --ref "$COMMIT_ID"
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "head_ref: ${{ github.head_ref }}, ref_name: ${{ github.ref_name }}, ref: ${{ github.ref }}, ${{ github.event.head_commit.id }}, tree_id: ${{ github.event.head_commit.tree_id }}, commit: $COMMIT_ID, branch: $BRANCH"
+          gh workflow run performance-and-size.yml --ref "$BRANCH"
         env:
           GH_TOKEN: ${{ github.token }}
