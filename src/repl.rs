@@ -81,7 +81,7 @@ impl ReplSystem {
 
 		let options = Default::default();
 		let offset = Some(start as u32);
-		
+
 		// self.offset += input.len() as u32 + 1;
 
 		// Fix to remain consistent with other JS REPLs

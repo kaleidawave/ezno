@@ -182,8 +182,7 @@ fn run_checker<T: crate::ReadFromFS>(
 	type_check_options: TypeCheckOptions,
 	compact_diagnostics: bool,
 ) -> ExitCode {
-	let result =
-		check(entry_points, read_file, definition_file.as_deref(), type_check_options);
+	let result = check(entry_points, read_file, definition_file.as_deref(), type_check_options);
 
 	let CheckOutput { diagnostics, module_contents, chronometer, types, .. } = result;
 
@@ -287,7 +286,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 				type_check_options,
 				compact_diagnostics,
 			);
-			
+
 			if watch {
 				#[cfg(target_family = "wasm")]
 				panic!("'watch' mode not supported on WASM");

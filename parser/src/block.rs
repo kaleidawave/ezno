@@ -396,7 +396,8 @@ pub(crate) fn parse_statements_and_declarations(
 			if let TSXToken::EOS = kind {
 				1
 			} else {
-				let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
+				let lines =
+					state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
 				lines.saturating_sub(1)
 			}
 		} else {
