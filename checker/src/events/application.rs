@@ -88,6 +88,7 @@ pub(crate) fn apply_events(
 									top_environment,
 									*id,
 									Some(type_arguments),
+									types,
 								);
 								if let Some(ty) = value {
 									ty

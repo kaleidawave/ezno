@@ -340,7 +340,7 @@ pub fn get_range_and_mod_class(
 					range = Some(match range {
 						None => FloatRange::new_less_than(less_than),
 						Some(mut range) => {
-							range.ceiling.1 = range.ceiling.1.max(less_than);
+							range.ceiling.1 = range.ceiling.1.min(less_than);
 							range
 						}
 					});
@@ -372,12 +372,15 @@ pub fn get_range_and_mod_class(
 						}
 					}
 					if let Some(ref mut range) = range {
-						if !range.contains(num) {
-							return (None, None);
-						} else if range.floor.1 == num {
+						if range.floor.1 == num {
 							range.floor.0 = InclusiveExclusive::Inclusive;
 						} else if range.ceiling.1 == num {
 							range.ceiling.0 = InclusiveExclusive::Inclusive;
+						} else if !range.contains(num) {
+							crate::utilities::notify!(
+								"Here, number not contained in current range"
+							);
+							return (None, None);
 						}
 					}
 				}
@@ -397,6 +400,7 @@ pub fn get_range_and_mod_class(
 type BetterF64 = ordered_float::NotNan<f64>;
 
 /// Unit. No combinations at this point
+#[derive(Debug)]
 pub enum PureNumberIntrinsic {
 	GreaterThan(BetterF64),
 	LessThan(BetterF64),
@@ -454,7 +458,7 @@ impl PureNumberIntrinsic {
 				Err(())
 			}
 		} else {
-			crate::utilities::notify!("err here {:?}", ty);
+			// crate::utilities::notify!("err here {:?}", ty);
 			Err(())
 		}
 	}

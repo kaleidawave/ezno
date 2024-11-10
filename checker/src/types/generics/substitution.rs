@@ -237,8 +237,18 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_mathematical_operation(lhs, operator, rhs, environment, types, false)
-				{
+				// TODO
+				let advanced_number_intrinsics = false;
+
+				match evaluate_mathematical_operation(
+					lhs,
+					operator,
+					rhs,
+					environment,
+					types,
+					false,
+					advanced_number_intrinsics,
+				) {
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(

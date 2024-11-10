@@ -224,6 +224,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 		);
 	}
 
+	// Important that this goes below the condition above
+	let on = if let Type::Narrowed { narrowed_to, .. } = types.get_type_by_id(on) {
+		*narrowed_to
+	} else {
+		on
+	};
+
 	// IMPORTANT: THIS ALSO CAPTURES POLY CONSTRAINTS
 	let current_property =
 		get_property_unbound((on, None), (publicity, under, None), false, environment, types);
@@ -261,12 +268,16 @@ pub fn set_property<B: CallCheckingBehavior>(
 				types,
 			),
 		}
-	} else if get_constraint(on, types).is_some() {
-		Err(SetPropertyError::AssigningToNonExistent {
-			property: PropertyKeyRepresentation::new(under, environment, types),
-			position,
-		})
 	} else {
+		let on_type = types.get_type_by_id(on);
+		crate::utilities::notify!("{:?}", on_type);
+		if get_constraint(on, types).is_some() {
+			return Err(SetPropertyError::AssigningToNonExistent {
+				property: PropertyKeyRepresentation::new(under, environment, types),
+				position,
+			});
+		}
+
 		crate::utilities::notify!("No property on object, assigning anyway");
 		let info = behavior.get_latest_info(environment);
 		info.register_property(

@@ -113,11 +113,13 @@ pub fn types_are_disjoint(
 			args @ PartiallyAppliedGenerics { on: TypeId::MULTIPLE_OF, arguments: _ },
 		) = lhs_ty
 		{
+			// TODO also offset
 			number_modulo_disjoint(args, rhs, types)
 		} else if let Type::PartiallyAppliedGenerics(
 			args @ PartiallyAppliedGenerics { on: TypeId::MULTIPLE_OF, arguments: _ },
 		) = rhs_ty
 		{
+			// TODO also offset
 			number_modulo_disjoint(args, lhs, types)
 		} else if let Type::PartiallyAppliedGenerics(
 			args @ PartiallyAppliedGenerics {
@@ -221,18 +223,35 @@ fn number_modulo_disjoint(
 	other: TypeId,
 	types: &TypeStore,
 ) -> bool {
+	crate::utilities::notify!("Here number_modulo_disjoint");
 	let PartiallyAppliedGenerics { arguments, .. } = this;
-	let other = types.get_type_by_id(other);
+	let other_ty = types.get_type_by_id(other);
+	let argument =
+		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap());
+
+	let argument = if let Type::Constant(Constant::Number(argument)) = argument {
+		argument
+	} else {
+		crate::utilities::notify!("Gets complex here");
+		return false;
+	};
+
 	// Little bit complex here because dealing with decimal types, not integers
-	if let (Type::Constant(Constant::Number(other)), Type::Constant(Constant::Number(this))) = (
-		other,
-		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap()),
-	) {
-		let result = other % this != 0.;
+	if let Type::Constant(Constant::Number(other)) = other_ty {
+		let result = other % argument != 0.;
 		// crate::utilities::notify!("{:?} {:?}", lhs, rhs);
 		result
 	} else {
-		// crate::utilities::notify!("Here {:?}", lhs);
+		let (range, modulo_class) = super::intrinsics::get_range_and_mod_class(other, types);
+		crate::utilities::notify!("{:?}, {:?}", range, modulo_class);
+		if let Some(range) = range {
+			return !range.contains_multiple_of(*argument);
+		}
+		if let Some(_modulo_class) = modulo_class {
+			crate::utilities::notify!("todo");
+			return false;
+		}
+		crate::utilities::notify!("Here {:?}", other_ty);
 		true
 	}
 }

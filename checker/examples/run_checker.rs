@@ -20,6 +20,7 @@ fn main() {
 	let no_lib = args.iter().any(|item| item == "--no-lib");
 	let debug_dts = args.iter().any(|item| item == "--debug-dts");
 	let extras = args.iter().any(|item| item == "--extras");
+	let advanced_number_intrinsics = args.iter().any(|item| item == "--advanced-numbers");
 
 	let now = Instant::now();
 
@@ -46,6 +47,7 @@ fn main() {
 		max_inline_count: 600,
 		debug_dts,
 		extra_syntax: extras,
+		advanced_number_intrinsics,
 		..Default::default()
 	};
 

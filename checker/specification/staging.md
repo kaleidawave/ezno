@@ -27,18 +27,22 @@ function func3(p1: Not<string>, p2: Not<number>) {
 > TODO need to redo range to use interesection of less than and greater than
 
 ```ts
-function func(a: number, b: number) {
-  const condition = 31 < b && b < 37;
-  debug_type(condition);
-  if (condition) {
-    debug_type(b)
+function func1(a: number, b: number) {
+  if (a % 8 === 0 && 31 < b && b < 37) {
+    const x = a === b;
+  }
+  if (a % 10 === 0 && 31 < b && b < 37) {
+    const x = a === b;
+  }
+  if (a % 10 === 0 && 31 < b && b < 41) {
+    const x = a === b;
   }
 }
 ```
 
-- ?
+With advanced_number_intrinsics
 
-- The equality is always false as MultipleOf<8> and 2 have no overlap
+- This equality is always false as MultipleOf<10> and LessThan<37> & GreaterThan<31> have no overlap
 
 #### Modulo offsets
 
@@ -54,6 +58,8 @@ function func2(param: number) {
   print_type((param / 5) * 5);
 }
 ```
+
+With advanced_number_intrinsics
 
 - Hi
 
@@ -80,6 +86,30 @@ function func(x: number) {
 
 - This equality is always false
 
+#### Narrowing in for loop
+
+> Can't do modulo because post mutation
+
+```ts
+for (let i = 0; i < 3; i++) {
+  const x = i === 50;
+}
+```
+
+- This equality is always false as LessThan<3> and 50 have no overlap
+
+#### Transistivity
+
+```ts
+function func(a: number, b: number, c: number) {
+  if (a < b && b < c)  {
+    const cond = (a < c) satisfies 5;
+  }
+}
+```
+
+- Expected 5, found true
+
 ### Broken
 
 #### Template literal edge cases
@@ -90,4 +120,5 @@ const invalidNum2: `${1}` = "1";
 const invalidNum3: `${1}` = "2";
 ```
 
-- ?
+- Type 1 is not assignable to type "1"
+- Type \"2\" is not assignable to type "1"

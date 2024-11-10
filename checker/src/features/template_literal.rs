@@ -149,6 +149,7 @@ where
 				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
+				checking_data.options.advanced_number_intrinsics,
 			);
 			if let Ok(result) = result {
 				acc = result;
@@ -169,6 +170,7 @@ where
 				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
+				checking_data.options.advanced_number_intrinsics,
 			);
 			if let Ok(result) = result {
 				acc = result;
@@ -189,6 +191,7 @@ where
 				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
+				checking_data.options.advanced_number_intrinsics,
 			);
 			if let Ok(result) = result {
 				result

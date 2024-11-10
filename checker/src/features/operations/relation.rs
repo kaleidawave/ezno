@@ -1,6 +1,7 @@
 use super::MathematicalOrBitwiseOperation;
 use crate::types::{
-	cast_as_number, disjoint, helpers, intrinsics, Constant, Constructor, Type, TypeId,
+	cast_as_number, disjoint, get_constraint, helpers, intrinsics, Constant, Constructor,
+	PartiallyAppliedGenerics, Type, TypeId,
 };
 
 /// Not canonical / reducible form of [`CanonicalEqualityAndInequality`].
@@ -162,8 +163,8 @@ pub fn evaluate_equality_inequality_operation(
 				}
 
 				{
-					// let lhs = get_constraint(lhs, types).unwrap_or(lhs);
-					// let rhs = get_constraint(rhs, types).unwrap_or(rhs);
+					let lhs = get_constraint(lhs, types).unwrap_or(lhs);
+					let rhs = get_constraint(rhs, types).unwrap_or(rhs);
 
 					if !helpers::simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
 						|| !helpers::simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
@@ -184,6 +185,28 @@ pub fn evaluate_equality_inequality_operation(
 						}
 						if lhs_range.above(rhs_range) {
 							return Ok((TypeId::FALSE, EqualityAndInequalityResultKind::Disjoint));
+						}
+					}
+
+					// Transitivity
+					// TODO extra from &
+					if let (
+						Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+							on: TypeId::LESS_THAN,
+							arguments: larg,
+						}),
+						Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+							on: TypeId::GREATER_THAN,
+							arguments: rarg,
+						}),
+					) = (types.get_type_by_id(lhs), types.get_type_by_id(rhs))
+					{
+						crate::utilities::notify!("{:?} {:?}", larg, rarg);
+						// Only one level
+						let transitivity = larg.get_structure_restriction(TypeId::NUMBER_GENERIC)
+							== rarg.get_structure_restriction(TypeId::NUMBER_GENERIC);
+						if transitivity {
+							return Ok((TypeId::TRUE, EqualityAndInequalityResultKind::Constant));
 						}
 					}
 				}

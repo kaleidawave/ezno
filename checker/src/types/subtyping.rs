@@ -225,15 +225,15 @@ pub(crate) fn type_is_subtype_with_generics(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	// {
-	// 	let debug = true;
-	// 	crate::utilities::notify!(
-	// 		"Checking {} :>= {}, with {:?}",
-	// 		print_type(base_type, types, information, debug),
-	// 		print_type(ty, types, information, debug),
-	// 		base_type_arguments
-	// 	);
-	// }
+	{
+		let debug = true;
+		crate::utilities::notify!(
+			"Checking {} :>= {}, with {:?}",
+			print_type(base_type, types, information, debug),
+			print_type(ty, types, information, debug),
+			base_type_arguments
+		);
+	}
 
 	if base_type == TypeId::ANY_TYPE || ty == TypeId::NEVER_TYPE {
 		return SubTypeResult::IsSubType;
@@ -1139,6 +1139,7 @@ pub(crate) fn type_is_subtype_with_generics(
 			// For template literal types
 			Constructor::BinaryOperator {
 				operator: crate::types::MathematicalOrBitwiseOperation::Add,
+				result: TypeId::STRING_TYPE,
 				..
 			} => {
 				if let Type::Constant(Constant::String(rs)) = subtype {
@@ -1156,16 +1157,25 @@ pub(crate) fn type_is_subtype_with_generics(
 						// TODO clear contributions
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
+				} else if let Type::Constructor(Constructor::BinaryOperator {
+					operator: crate::types::MathematicalOrBitwiseOperation::Add,
+					result: TypeId::STRING_TYPE,
+					..
+				}) = subtype
+				{
+					crate::utilities::notify!("TODO test prefixes");
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				} else {
-					crate::utilities::notify!("RHS not string");
-					type_is_subtype_with_generics(
-						(TypeId::NUMBER_TYPE, base_type_arguments),
-						(ty, ty_structure_arguments),
-						state,
-						information,
-						types,
-					)
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
+			}
+			Constructor::BinaryOperator {
+				operator: crate::types::MathematicalOrBitwiseOperation::Add,
+				result: TypeId::NUMBER_TYPE,
+				..
+			} => {
+				crate::utilities::notify!("TODO here!");
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 			Constructor::BinaryOperator { .. } | Constructor::CanonicalRelationOperator { .. } => {
 				unreachable!("invalid constructor on LHS")
@@ -2869,6 +2879,14 @@ pub(crate) fn slice_matches_type(
 				}
 
 				true
+			} else {
+				false
+			}
+		}
+		Type::Constant(Constant::Number(base)) => {
+			crate::utilities::notify!("Here");
+			if let Ok(slice_as_float) = slice.parse::<f64>() {
+				*base == slice_as_float
 			} else {
 				false
 			}

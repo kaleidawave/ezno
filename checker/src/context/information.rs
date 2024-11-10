@@ -245,6 +245,31 @@ pub trait InformationChain {
 	fn get_narrowed(&self, for_ty: TypeId) -> Option<TypeId> {
 		self.get_chain_of_info().find_map(|info| info.narrowed_values.get(&for_ty).copied())
 	}
+
+	fn get_narrowed_or_object(&self, for_ty: TypeId, types: &TypeStore) -> Option<TypeId> {
+		let value = self.get_narrowed(for_ty);
+		if let Some(value) = value {
+			Some(value)
+		} else if let Type::Constructor(crate::types::Constructor::ConditionalResult {
+			condition,
+			truthy_result,
+			otherwise_result,
+			result_union: _,
+		}) = types.get_type_by_id(for_ty)
+		{
+			let narrowed_condition = self.get_narrowed(*condition)?;
+			if let crate::Decidable::Known(condition) =
+				crate::types::is_type_truthy_falsy(narrowed_condition, types)
+			{
+				let value = if condition { truthy_result } else { otherwise_result };
+				Some(*value)
+			} else {
+				None
+			}
+		} else {
+			value
+		}
+	}
 }
 
 pub struct ModuleInformation<'a> {
@@ -386,11 +411,24 @@ pub fn merge_info(
 			onto.variable_current_value.insert(var, new);
 		}
 
-		// TODO temp fix for `... ? { ... } : { ... }`. Breaks for the fact that property
-		// properties might be targeting something above the current condition (e.g. `x ? (y.a = 2) : false`);
-		onto.current_properties.extend(truthy.current_properties.drain());
-		if let Some(ref mut otherwise) = otherwise {
-			onto.current_properties.extend(otherwise.current_properties.drain());
+		// TODO temp fix for `... ? { ... } : { ... }`.
+		// TODO add undefineds to sides etc
+		for (on, properties) in truthy.current_properties.into_iter() {
+			if let Some(existing) = onto.current_properties.get_mut(&on) {
+				existing.extend(properties);
+			} else {
+				onto.current_properties.insert(on, properties);
+			}
+		}
+
+		if let Some(otherwise) = otherwise {
+			for (on, properties) in otherwise.current_properties.into_iter() {
+				if let Some(existing) = onto.current_properties.get_mut(&on) {
+					existing.extend(properties);
+				} else {
+					onto.current_properties.insert(on, properties);
+				}
+			}
 		}
 
 		// TODO set more information?

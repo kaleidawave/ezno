@@ -1,6 +1,6 @@
 use super::{
 	super::{conditional, narrowing},
-	equality::is_null_or_undefined,
+	relation::is_null_or_undefined,
 };
 use crate::{Type, TypeId};
 

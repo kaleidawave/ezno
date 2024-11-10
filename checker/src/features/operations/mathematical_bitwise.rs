@@ -28,6 +28,7 @@ pub fn evaluate_mathematical_operation(
 	info: &impl crate::context::InformationChain,
 	types: &mut crate::TypeStore,
 	strict_casts: bool,
+	operate_on_number_intrinsics: bool,
 ) -> Result<TypeId, ()> {
 	fn attempt_constant_math_operator(
 		lhs: TypeId,
@@ -48,7 +49,10 @@ pub fn evaluate_mathematical_operation(
 					first.push_str(&second);
 					Constant::String(first)
 				}
-				_ => return Err(()),
+				_ => {
+					crate::utilities::notify!("here");
+					return Err(());
+				}
 			};
 			Ok(types.new_constant_type(constant))
 		} else {
@@ -96,14 +100,17 @@ pub fn evaluate_mathematical_operation(
 		}
 	}
 
+	let lhs_ty = types.get_type_by_id(lhs);
+	let rhs_ty = types.get_type_by_id(rhs);
+
 	if lhs == TypeId::ERROR_TYPE || rhs == TypeId::ERROR_TYPE {
 		return Ok(TypeId::ERROR_TYPE);
 	}
 
-	let is_dependent =
-		types.get_type_by_id(lhs).is_dependent() || types.get_type_by_id(rhs).is_dependent();
+	crate::utilities::notify!("lhs={:?}, rhs={:?}", lhs_ty, rhs_ty);
+	let either_dependent = lhs_ty.is_dependent() || rhs_ty.is_dependent();
 
-	if is_dependent {
+	if either_dependent {
 		let can_be_string = if let MathematicalOrBitwiseOperation::Add = operator {
 			let left_is_string = helpers::simple_subtype(lhs, TypeId::STRING_TYPE, info, types);
 			let right_is_string = helpers::simple_subtype(lhs, TypeId::STRING_TYPE, info, types);
@@ -111,16 +118,17 @@ pub fn evaluate_mathematical_operation(
 				left_is_string || helpers::simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types);
 			let right_is_string_or_number =
 				right_is_string || helpers::simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types);
-
 			if !left_is_string_or_number || !right_is_string_or_number {
+				crate::utilities::notify!("Here");
 				return Err(());
 			}
 
 			left_is_string || right_is_string
 		} else {
-			let left_is_number = helpers::simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types);
-
-			if !left_is_number || !helpers::simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types) {
+			if !helpers::simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
+				|| !helpers::simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
+			{
+				crate::utilities::notify!("Here :/");
 				return Err(());
 			}
 
@@ -151,10 +159,12 @@ pub fn evaluate_mathematical_operation(
 			MathematicalOrBitwiseOperation::Add | MathematicalOrBitwiseOperation::Multiply,
 			(lhs_range, _lhs_modulo),
 			(rhs_range, _rhs_modulo),
+			true,
 		) = (
 			operator,
 			intrinsics::get_range_and_mod_class(lhs, types),
 			intrinsics::get_range_and_mod_class(rhs, types),
+			operate_on_number_intrinsics,
 		) {
 			crate::utilities::notify!(
 				"{:?} with {:?}",
@@ -174,6 +184,7 @@ pub fn evaluate_mathematical_operation(
 				TypeId::NUMBER_TYPE
 			}
 		} else {
+			// TODO if or of constant types
 			TypeId::NUMBER_TYPE
 		};
 

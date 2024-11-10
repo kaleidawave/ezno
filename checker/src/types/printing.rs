@@ -100,9 +100,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 		}
 		Type::Narrowed { narrowed_to, from } => {
 			if debug {
-				buf.push_str("(narrowed from ");
-				print_type_into_buf(*from, buf, cycles, args, types, info, debug);
-				buf.push_str(") ");
+				write!(buf, "(narrowed from {:?}) ", from).unwrap();
 			}
 			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
 		}

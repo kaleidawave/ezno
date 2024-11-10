@@ -2517,6 +2517,8 @@ function func(a: number) {
 }
 ```
 
+With advanced_number_intrinsics
+
 - Expected null, found InclusiveRange\<-5, 5>
 - Expected string, found InclusiveRange\<18, 22>
 
@@ -4306,22 +4308,22 @@ function buildObject(param: any) {
 
 ```ts
 function conditional(param: boolean) {
-	const obj1 = {}, obj2 = {};
-	const sum = param ? obj1 : obj2;
-	if (sum === obj1) {
-		sum.a = 2;
-	}
-	[obj1, obj2] satisfies string;
+    const obj1 = { b: 2 }, obj2 = { c: 6 };
+    const sum = param ? obj1 : obj2;
+    if (sum === obj1) {
+        sum.a = 3;
+    }
+    [obj1, obj2] satisfies string;
 }
 ```
 
-- Expected string, found [{ a: 2 }, {}]
+- Expected string, found [{ b: 2, a: 3 }, { c: 6 }]
 
 #### From condition equality
 
 ```ts
 function conditional(param: boolean) {
-	const obj1 = { a: 1 }, obj2 = {};
+	const obj1 = { a: 1 }, obj2 = { b: 2};
 	const sum = param ? obj1 : obj2;
 	if (param) {
 		sum satisfies string;

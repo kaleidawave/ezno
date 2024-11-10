@@ -14,7 +14,6 @@ use crate::{
 			AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
 		},
 		modules::Exported,
-		objects::SpecialObject,
 		operations::{evaluate_logical_operation_with_expression, MathematicalOrBitwiseOperation},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
@@ -300,6 +299,7 @@ impl<'a> Environment<'a> {
 							self,
 							&mut checking_data.types,
 							checking_data.options.strict_casts,
+							checking_data.options.advanced_number_intrinsics,
 						);
 						match result {
 							Ok(new) => {
@@ -363,6 +363,7 @@ impl<'a> Environment<'a> {
 							self,
 							&mut checking_data.types,
 							checking_data.options.strict_casts,
+							checking_data.options.advanced_number_intrinsics,
 						);
 						match result {
 							Ok(new) => {
@@ -944,37 +945,35 @@ impl<'a> Environment<'a> {
 							info.variable_current_value.get(&og_var.get_origin_variable_id())
 						})
 						.copied();
-					let narrowed = current_value.and_then(|cv| self.get_narrowed(cv));
+
+					// TODO WIP
+					let narrowed = current_value
+						.and_then(|cv| self.get_narrowed_or_object(cv, &checking_data.types));
 
 					if let Some(precise) = narrowed.or(current_value) {
-						let ty = checking_data.types.get_type_by_id(precise);
+						// let ty = checking_data.types.get_type_by_id(precise);
 
-						// TODO temp for function
-						if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
-							return Ok(VariableWithValue(og_var.clone(), precise));
-						} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
-							crate::utilities::notify!(
-								"Open poly type '{}' treated as immutable free variable",
-								name
-							);
-							return Ok(VariableWithValue(og_var.clone(), precise));
-						} else if let Type::Constant(_) = ty {
-							return Ok(VariableWithValue(og_var.clone(), precise));
-						}
+						// // TODO temp for function
+						// let value = if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
+						// 	return Ok(VariableWithValue(og_var.clone(), precise));
+						// } else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
+						// 	crate::utilities::notify!(
+						// 		"Open poly type '{}' treated as immutable free variable",
+						// 		name
+						// 	);
+						// 	return Ok(VariableWithValue(og_var.clone(), precise));
+						// } else if let Type::Constant(_) = ty {
+						// };
 
-						crate::utilities::notify!("Free variable with value!");
+						return Ok(VariableWithValue(og_var.clone(), precise));
 					} else {
 						crate::utilities::notify!("Free variable with no current value");
-					}
-
-					if let Some(narrowed) = narrowed {
-						narrowed
-					} else {
 						let constraint = checking_data
 							.local_type_mappings
 							.variables_to_constraints
 							.0
 							.get(&og_var.get_origin_variable_id());
+
 						if let Some(constraint) = constraint {
 							*constraint
 						} else {
@@ -994,12 +993,15 @@ impl<'a> Environment<'a> {
 					for ctx in self.parents_iter() {
 						if let GeneralContext::Syntax(s) = ctx {
 							if s.possibly_mutated_variables.contains(&variable_id) {
+								crate::utilities::notify!("Possibly mutated variables");
 								break;
 							}
-							if let Some(value) =
+
+							if let Some(current_value) =
 								get_on_ctx!(ctx.info.variable_current_value.get(&variable_id))
+									.copied()
 							{
-								return Ok(VariableWithValue(og_var.clone(), *value));
+								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
 							if s.context_type.scope.is_dynamic_boundary().is_some() {
@@ -1040,8 +1042,11 @@ impl<'a> Environment<'a> {
 				}
 			}
 
-			let ty = if let Some(value) = reused_reference {
-				value
+			let ty = if let Some(reused_reference) = reused_reference {
+				// TODO temp. I believe this can break type contracts because of mutations
+				// but needed here because of for loop narrowing
+				let narrowed = self.get_narrowed_or_object(reused_reference, &checking_data.types);
+				narrowed.unwrap_or(reused_reference)
 			} else {
 				// TODO dynamic ?
 				let ty = Type::RootPolyType(crate::types::PolyNature::FreeVariable {
@@ -1076,6 +1081,7 @@ impl<'a> Environment<'a> {
 					self,
 					of,
 					None::<&crate::types::generics::substitution::SubstitutionArguments<'static>>,
+					&checking_data.types,
 				)
 				.expect("import not assigned yet");
 				return Ok(VariableWithValue(og_var.clone(), current_value));
@@ -1085,7 +1091,9 @@ impl<'a> Environment<'a> {
 				self,
 				og_var.get_id(),
 				None::<&crate::types::generics::substitution::SubstitutionArguments<'static>>,
+				&checking_data.types,
 			);
+
 			if let Some(current_value) = current_value {
 				Ok(VariableWithValue(og_var.clone(), current_value))
 			} else {

@@ -1014,6 +1014,7 @@ pub(crate) fn get_value_of_variable(
 	info: &impl InformationChain,
 	on: VariableId,
 	closures: Option<&impl ClosureChain>,
+	types: &TypeStore,
 ) -> Option<TypeId> {
 	for fact in info.get_chain_of_info() {
 		let res = if let Some(closures) = closures {
@@ -1029,7 +1030,7 @@ pub(crate) fn get_value_of_variable(
 
 		// TODO in remaining info, don't loop again
 		if let Some(res) = res {
-			let narrowed = info.get_narrowed(res);
+			let narrowed = info.get_narrowed_or_object(res, types);
 			return Some(narrowed.unwrap_or(res));
 		}
 	}

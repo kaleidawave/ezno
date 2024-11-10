@@ -219,6 +219,7 @@ fn get_promise_value(constraint: TypeId, types: &TypeStore) -> Option<TypeId> {
 pub(crate) fn create_closed_over_references(
 	closed_over_references: &ClosedOverReferencesInScope,
 	current_environment: &Environment,
+	types: &TypeStore,
 ) -> ClosedOverVariables {
 	ClosedOverVariables(
 		closed_over_references
@@ -229,9 +230,9 @@ pub(crate) fn create_closed_over_references(
 						let c = None::<
 							&crate::types::generics::substitution::SubstitutionArguments<'static>,
 						>;
-						let get_value_of_variable =
-							get_value_of_variable(current_environment, *on, c);
-						let ty = if let Some(value) = get_value_of_variable {
+						let value = get_value_of_variable(current_environment, *on, c, types);
+
+						let ty = if let Some(value) = value {
 							value
 						} else {
 							// TODO think we are getting rid of this

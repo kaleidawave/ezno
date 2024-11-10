@@ -67,6 +67,7 @@ pub fn evaluate_unary_operator(
 						info,
 						types,
 						strict_casts,
+						false,
 					),
 					UnaryOperation::Negation => super::evaluate_mathematical_operation(
 						TypeId::ZERO,
@@ -75,6 +76,8 @@ pub fn evaluate_unary_operator(
 						info,
 						types,
 						strict_casts,
+						// TODO
+						true,
 					),
 					UnaryOperation::LogicalNot => unreachable!("handled above"),
 				}

@@ -822,6 +822,7 @@ where
 		let closes_over = create_closed_over_references(
 			&function_environment.context_type.closed_over_references,
 			&function_environment,
+			&checking_data.types,
 		);
 
 		let Syntax {

@@ -614,7 +614,6 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 			| Type::Constructor(_)
 			| Type::Interface { .. }
 			| Type::PartiallyAppliedGenerics(..)
-			| Type::Narrowed { .. }
 			| Type::Class { .. } => {
 				// TODO some of these case are known
 				Decidable::Unknown(id)
@@ -626,6 +625,7 @@ pub fn is_type_truthy_falsy(id: TypeId, types: &TypeStore) -> Decidable<bool> {
 				// TODO strict casts
 				Decidable::Known(cast_as_boolean(cst, false).unwrap())
 			}
+			Type::Narrowed { narrowed_to, .. } => is_type_truthy_falsy(*narrowed_to, types),
 		}
 	}
 }

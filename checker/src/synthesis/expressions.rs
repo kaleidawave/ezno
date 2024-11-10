@@ -400,6 +400,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					environment,
 					&mut checking_data.types,
 					checking_data.options.strict_casts,
+					checking_data.options.advanced_number_intrinsics,
 				);
 				match result {
 					Ok(value) => Instance::RValue(value),
