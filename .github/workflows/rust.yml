@@ -152,7 +152,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
-          node-version: 18
+          node-version: 23
       
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
@@ -367,7 +367,8 @@ jobs:
       - name: Kick off other workflow if the PR has a label
         if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: |
-          echo "head_ref: ${{ github.head_ref }}, ref_name: ${{ github.ref_name }}, ref: ${{ github.ref }}, ${{ github.event.head_commit.id }}"
-          gh workflow run performance-and-size.yml --ref ${{ github.ref_name }}
+          COMMIT_ID=$(git rev-parse HEAD)
+          echo "head_ref: ${{ github.head_ref }}, ref_name: ${{ github.ref_name }}, ref: ${{ github.ref }}, ${{ github.event.head_commit.id }}, tree_id: ${{ github.event.head_commit.tree_id }}, commit: $COMMIT_ID"
+          gh workflow run performance-and-size.yml --ref "$COMMIT_ID"
         env:
           GH_TOKEN: ${{ github.token }}
