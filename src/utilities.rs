@@ -89,7 +89,7 @@ pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
 	io::Write::flush(&mut io::stdout()).unwrap();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub(crate) enum MaxDiagnostics {
 	All,
 	FixedTo(u16),

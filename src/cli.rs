@@ -16,8 +16,6 @@ use crate::{
 };
 use argh::FromArgs;
 use checker::{CheckOutput, TypeCheckOptions};
-use notify::Watcher;
-use notify_debouncer_full::new_debouncer;
 use parser::ParseOptions;
 
 /// The Ezno type-checker & compiler
@@ -174,6 +172,7 @@ fn file_system_resolver(path: &Path) -> Option<String> {
 		Err(_) => None,
 	}
 }
+
 fn run_checker<T: crate::ReadFromFS>(
 	entry_points: Vec<PathBuf>,
 	read_file: &T,
@@ -281,40 +280,54 @@ pub fn run_cli<
 			};
 
 			if watch {
-				let (tx, rx) = std::sync::mpsc::channel();
-				let mut debouncer = new_debouncer(Duration::from_millis(200), None, tx).unwrap();
+				#[cfg(target_family = "wasm")]
+				panic!("'watch' mode not supported on WASM");
 
-				for e in &entry_points {
-					_ = debouncer.watcher().watch(e, notify::RecursiveMode::Recursive).unwrap();
-				}
-				run_checker(
-					entry_points.clone(),
-					read_file,
-					timings,
-					definition_file.clone(),
-					max_diagnostics.clone(),
-					type_check_options.clone(),
-					compact_diagnostics,
-				);
-				for res in rx {
-					match res {
-						Ok(_e) => {
-							run_checker(
-								entry_points.clone(),
-								read_file,
-								timings,
-								definition_file.clone(),
-								max_diagnostics.clone(),
-								type_check_options.clone(),
-								compact_diagnostics,
-							);
-						}
-						Err(error) => eprintln!("Error: {error:?}"),
+				#[cfg(not(target_family = "wasm"))]
+				{
+					use notify::Watcher;
+					use notify_debouncer_full::new_debouncer;
+
+					let (tx, rx) = std::sync::mpsc::channel();
+					let mut debouncer =
+						new_debouncer(Duration::from_millis(200), None, tx).unwrap();
+
+					for e in &entry_points {
+						_ = debouncer.watcher().watch(e, notify::RecursiveMode::Recursive).unwrap();
 					}
+
+					// Run once
+					run_checker(
+						entry_points.clone(),
+						read_file,
+						timings,
+						definition_file.clone(),
+						max_diagnostics.clone(),
+						type_check_options.clone(),
+						compact_diagnostics,
+					);
+
+					for res in rx {
+						match res {
+							Ok(_e) => {
+								run_checker(
+									entry_points.clone(),
+									read_file,
+									timings,
+									definition_file.clone(),
+									max_diagnostics.clone(),
+									type_check_options.clone(),
+									compact_diagnostics,
+								);
+							}
+							Err(error) => eprintln!("Error: {error:?}"),
+						}
+					}
+					// Infinite loop here so the compiler is satisfied that this never returns
+					loop {}
 				}
-				// Infinite loop here so the compiler is satisfied that this never returns
-				loop {}
 			}
+
 			run_checker(
 				entry_points,
 				read_file,
