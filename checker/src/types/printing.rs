@@ -57,6 +57,24 @@ pub fn print_type_with_type_arguments(
 	buf
 }
 
+pub fn print_inner_template_literal_type_into_buf<C: InformationChain>(
+	ty: TypeId,
+	buf: &mut String,
+	cycles: &mut HashSet<TypeId>,
+	args: GenericChain,
+	types: &TypeStore,
+	info: &C,
+	debug: bool,
+) {
+	if let Type::Constant(cst) = types.get_type_by_id(ty) {
+		buf.push_str(&cst.as_js_string());
+	} else {
+		buf.push_str("${");
+		print_type_into_buf(ty, buf, cycles, args, types, info, debug);
+		buf.push('}');
+	}
+}
+
 /// Recursion safe + reuses buffer
 pub fn print_type_into_buf<C: InformationChain>(
 	ty: TypeId,
@@ -469,7 +487,25 @@ pub fn print_type_into_buf<C: InformationChain>(
 					unreachable!()
 				}
 			},
-			_constructor => {
+			constructor => {
+				if let Constructor::BinaryOperator { result: result_ty, lhs, rhs, .. } = constructor
+				{
+					if *result_ty != TypeId::NUMBER_TYPE
+						&& !matches!(
+							types.get_type_by_id(*result_ty),
+							Type::PartiallyAppliedGenerics(_) | Type::RootPolyType(_)
+						) {
+						buf.push('`');
+						print_inner_template_literal_type_into_buf(
+							*lhs, buf, cycles, args, types, info, debug,
+						);
+						print_inner_template_literal_type_into_buf(
+							*rhs, buf, cycles, args, types, info, debug,
+						);
+						buf.push('`');
+						return;
+					}
+				}
 				let base = get_constraint(ty, types).unwrap();
 				print_type_into_buf(base, buf, cycles, args, types, info, debug);
 			}
