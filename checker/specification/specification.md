@@ -3758,11 +3758,11 @@ type Introduction = `Hello ${string}`;
 
 const first: Introduction = "Hello Ben";
 const second: Introduction = "Hi Ben";
-const third: Introduction = "Hi Ben";
+const third: `Hiya ${string}` = "Hello Ben";
 ```
 
 - Type "Hi Ben" is not assignable to type Introduction
-- Type "Hi Ben" is not assignable to type `Hi${string}`
+- Type "Hello Ben" is not assignable to type `Hiya ${string}`
 
 #### Assigning to types as keys
 
