@@ -459,13 +459,13 @@ impl<A: crate::ASTImplementation> CheckOutput<A> {
 pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	entry_points: Vec<PathBuf>,
 	type_definition_files: Vec<PathBuf>,
-	resolver: T,
+	resolver: &T,
 	options: TypeCheckOptions,
 	parser_requirements: A::ParserRequirements,
 	existing_files: Option<MapFileStore<WithPathMap>>,
 ) -> CheckOutput<A> {
 	let mut checking_data =
-		CheckingData::<T, A>::new(options, &resolver, existing_files, parser_requirements);
+		CheckingData::<T, A>::new(options, resolver, existing_files, parser_requirements);
 
 	let mut root = crate::context::RootContext::new_with_primitive_references();
 

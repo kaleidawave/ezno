@@ -236,9 +236,9 @@ fn run_checker<T: crate::ReadFromFS>(
 	result
 }
 
-pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputResolver>(
+pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 	cli_arguments: &[&str],
-	read_file: &T,
+	read_file: T,
 	write_file: U,
 ) -> ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
@@ -274,19 +274,13 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 
 			let entry_points = match get_entry_points(input) {
 				Ok(entry_points) => entry_points,
-				Err(_) => return ExitCode::FAILURE,
+				Err(_) => {
+					print_to_cli(format_args!("Entry point error"));
+					return ExitCode::FAILURE;
+				}
 			};
 
-			let result = run_checker(
-				entry_points,
-				read_file,
-				timings,
-				definition_file,
-				max_diagnostics,
-				type_check_options,
-				compact_diagnostics,
-			);
-
+			// run_checker is written three times because cloning
 			if watch {
 				#[cfg(target_family = "wasm")]
 				panic!("'watch' mode not supported on WASM");
@@ -304,12 +298,22 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 						_ = debouncer.watcher().watch(e, notify::RecursiveMode::Recursive).unwrap();
 					}
 
+					let _ = run_checker(
+						entry_points.clone(),
+						&read_file,
+						timings,
+						definition_file.clone(),
+						max_diagnostics.clone(),
+						type_check_options.clone(),
+						compact_diagnostics,
+					);
+
 					for res in rx {
 						match res {
 							Ok(_e) => {
-								run_checker(
+								let _out = run_checker(
 									entry_points.clone(),
-									read_file,
+									&read_file,
 									timings,
 									definition_file.clone(),
 									max_diagnostics.clone(),
@@ -320,12 +324,21 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 							Err(error) => eprintln!("Error: {error:?}"),
 						}
 					}
+
 					// Infinite loop here so the compiler is satisfied that this never returns
 					loop {}
 				}
+			} else {
+				run_checker(
+					entry_points,
+					&read_file,
+					timings,
+					definition_file,
+					max_diagnostics,
+					type_check_options,
+					compact_diagnostics,
+				)
 			}
-
-			result
 		}
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Build(build_config),
@@ -346,21 +359,26 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 
 			let entry_points = match get_entry_points(build_config.input) {
 				Ok(entry_points) => entry_points,
-				Err(_) => return ExitCode::FAILURE,
+				Err(_) => {
+					print_to_cli(format_args!("Entry point error"));
+					return ExitCode::FAILURE;
+				}
 			};
 
 			#[cfg(not(target_family = "wasm"))]
 			let start = build_config.timings.then(std::time::Instant::now);
 
+			let config = BuildConfig {
+				strip_whitespace: build_config.minify,
+				source_maps: build_config.source_maps,
+			};
+
 			let output = build(
 				entry_points,
-				read_file,
+				&read_file,
 				build_config.definition_file.as_deref(),
 				&output_path,
-				&BuildConfig {
-					strip_whitespace: build_config.minify,
-					source_maps: build_config.source_maps,
-				},
+				&config,
 				Some(default_builders),
 			);
 
@@ -470,7 +488,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS, V: crate::CLIInputReso
 			}
 		},
 		CompilerSubCommand::ASTExplorer(mut repl) => {
-			repl.run(read_file);
+			repl.run(&read_file);
 			// TODO not always true
 			ExitCode::SUCCESS
 		}

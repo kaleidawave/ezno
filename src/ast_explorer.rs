@@ -33,9 +33,9 @@ impl ExplorerArguments {
 	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn run<T: crate::ReadFromFS>(&mut self, fs_resolver: &T) {
 		if let Some(ref file) = self.file {
-			let content = fs_resolver.get_content_at_path(file);
+			let content = fs_resolver.read_file(file);
 			if let Some(content) = content {
-				self.nested.run(content, Some(file.to_owned()));
+				self.nested.run(String::from_utf8(content).unwrap(), Some(file.to_owned()));
 			} else {
 				eprintln!("Could not find file at {}", file.display());
 			}

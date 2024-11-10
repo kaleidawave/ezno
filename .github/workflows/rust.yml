@@ -359,6 +359,7 @@ jobs:
   performance-and-size:
     # WIP
     runs-on: ubuntu-latest
+    needs: validity
     steps:
       - name: Kick off other workflow if the PR has a label
         if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')

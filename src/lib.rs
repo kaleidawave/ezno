@@ -13,6 +13,7 @@ pub mod transformers;
 
 pub use build::build;
 pub use check::check;
+pub(crate) use checker::ReadFromFS;
 pub use checker::{Diagnostic, DiagnosticKind};
 
 pub use parser::{source_map, ASTNode, ToStringOptions};
