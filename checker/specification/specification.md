@@ -2441,7 +2441,7 @@ fakeRead(array1)
 #### Always known math
 
 ```ts
-// True regardless of 
+// True regardless of
 function func(a: number) { return a ** 0 }
 
 func satisfies string;
@@ -3363,8 +3363,13 @@ type X = string;
 	type X = number;
 	const a: X = "hello world";
 }
+
+function func<YEA>() {}
+
+type B = YEA;
 ```
 
+- Could not find type 'YEA'
 - Type "hello world" is not assignable to type X
 
 #### Type has no generics
@@ -3689,7 +3694,7 @@ type Name = "Ben"
 
 > Should be `Expected "Hello Ben", found "test"`. See #188
 
-- Expected string, found "test"
+- Expected `Hello ${Name}`, found \"test\"
 
 #### Template literal type specialisation
 
@@ -3746,14 +3751,18 @@ interface X {
 
 #### Template literal types
 
+> Last one tests printing
+
 ```ts
 type Introduction = `Hello ${string}`;
 
 const first: Introduction = "Hello Ben";
 const second: Introduction = "Hi Ben";
+const third: `Hiya ${string}` = "Hello Ben";
 ```
 
 - Type "Hi Ben" is not assignable to type Introduction
+- Type "Hello Ben" is not assignable to type `Hiya ${string}`
 
 #### Assigning to types as keys
 
@@ -4090,7 +4099,7 @@ x.property_a satisfies number;
 x.property_b
 ```
 
-- No property 'property_b' on { [string]: X[keyof X & string] }
+- No property 'property_b' on { [`property_${keyof X & string}`]: X[keyof X & string] }
 
 ### Readonly and `as const`
 

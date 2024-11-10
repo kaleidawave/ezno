@@ -23,19 +23,6 @@ pub fn prettifier(input: String) -> Result<String, ParseError> {
 	Ok(module.to_string(&ToStringOptions::default()))
 }
 
-pub trait ReadFromFS {
-	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String>;
-}
-
-impl<T> ReadFromFS for T
-where
-	T: Fn(&std::path::Path) -> Option<String>,
-{
-	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String> {
-		(self)(path)
-	}
-}
-
 pub trait WriteToFS: Fn(&std::path::Path, String) {}
 
 impl<T> WriteToFS for T where T: Fn(&std::path::Path, String) {}
