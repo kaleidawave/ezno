@@ -21,7 +21,8 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      new-ezno-version: ${{ steps.get-version.outputs.new-ezno-version }}
+      LATEST_EZNO_VERSION: ${{ steps.get-version.outputs.LATEST_EZNO_VERSION }}
+      LATEST_EZNO_VERSION_DASH: ${{ steps.get-version.outputs.LATEST_EZNO_VERSION_DASH }}
       SPONSORS: ${{ steps.get-sponsors-and-contributors.outputs.SPONSORS }}
       CONTRIBUTORS: ${{ steps.get-sponsors-and-contributors.outputs.CONTRIBUTORS }}
 
@@ -38,43 +39,32 @@ jobs:
             git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*'
             echo "::endgroup::"
 
-            TAG=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1)
-            echo "Building GH release for ${TAG:13}"
-            echo "new-ezno-version=${TAG:13}" >> $GITHUB_OUTPUT
+            TAG=$(git for-each-ref --sort=creatordate --format '%(refname:short)' 'refs/tags/release/ezno-[0-9]*' | tail -n 1 | cut -c 14-)
 
-            # Replace '.' with '-'
-            NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
+            echo "::notice::Releasing with found version $TAG"
+            echo "LATEST_EZNO_VERSION=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "LATEST_EZNO_VERSION_DASH=${TAG//./-}" >> "$GITHUB_OUTPUT"
           else
-            VERSION="${{ inputs.ezno-version }}"
-            echo "Building GH release for ${VERSION}"
-            echo "new-ezno-version=${VERSION}" >> $GITHUB_OUTPUT
+            TAG="${{ inputs.ezno-version }}"
 
-            # Replace '.' with '-'
-            NAME_VERSION=$(echo $VERSION | sed -e "s/\./-/g")
+            echo "::notice::Releasing with specific version $TAG"
+            echo "LATEST_EZNO_VERSION=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "LATEST_EZNO_VERSION_DASH=${TAG//./-}" >> "$GITHUB_OUTPUT"
           fi
 
-      - id: get-sponsors-and-contributors
+      - name: Get sponsors and contributors
+        id: get-sponsors-and-contributors
         run: |
-          SPONSORS=$(gh api graphql -f query='{
-            user(login: "kaleidawave") {
-                sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
-                edges {
-                    node {
-                    sponsor {
-                        name, login
-                    }
-                    }
-                }
-                }
-            }
-          }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",")')
+          SQP='.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",")'
+          GQL_SQ='{ user(login: "kaleidawave") { sponsorshipsAsMaintainer(first: 100, activeOnly: false) { edges { node { sponsor { name, login } } } } } }'
+          SPONSORS=$(gh api graphql -f query="$GQL_SQ" -q "$SQP")
 
-          CONTRIBUTORS=$(
-            gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
-          )
+          CQP='map(.author.name // .author.login) | unique | join(",")'
+          CONTRIBUTORS=$(gh pr list --state merged --json author | jq "$CQP" --raw-output)
             
-          echo "SPONSORS=$SPONSORS" # >> $GITHUB_OUTPUT
-          echo "CONTRIBUTORS=$CONTRIBUTORS"
+          echo "SPONSORS=$SPONSORS" >> "$GITHUB_OUTPUT"
+          echo "CONTRIBUTORS=$CONTRIBUTORS" >> "$GITHUB_OUTPUT"
+          echo "::notice::CONTRIBUTORS=$CONTRIBUTORS and SPONSORS=$SPONSORS"
 
         shell: bash
         env:
@@ -88,12 +78,15 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         include:
         - os: windows-latest
-          executable-extension: .exe
-          platform_name: x86_64-pc-windows
+          platform-name: x86_64-pc-windows
+          executable-extension: ".exe"
         - os: ubuntu-latest
-          platform_name: x86_64-unknown-linux
+          platform-name: x86_64-unknown-linux
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      LEVEL: release
 
     # Important that everything here works in all the above OSes!
     steps:
@@ -110,10 +103,10 @@ jobs:
           SPONSORS: ${{ needs.get-build-info.outputs.SPONSORS }}
           CONTRIBUTORS: ${{ needs.get-build-info.outputs.CONTRIBUTORS }}
 
-      - name: Rename and move release assets
+      - name: Rename and move ${{ env.LEVEL }} assets
         run: |
           mkdir artifacts
-          mv target/release/ezno${{ matrix.executable-extension }} "artifacts/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}-${{ matrix.platform_name }}${{ matrix.executable-extension }}"
+          mv "target/${{ env.LEVEL }}/ezno${{ matrix.executable-extension }}" "artifacts/ezno-${{ needs.get-build-info.outputs.LATEST_EZNO_VERSION_DASH }}-${{ matrix.platform-name }}${{ matrix.executable-extension }}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -144,8 +137,8 @@ jobs:
     - name: GitHub release
       uses: softprops/action-gh-release@v1
       with:
-        name: "Ezno ${{ needs.get-build-info.outputs.new-ezno-version }}"
-        tag_name: "release/ezno-${{ needs.get-build-info.outputs.new-ezno-version }}"
+        name: "Ezno ${{ needs.get-build-info.outputs.LATEST_EZNO_VERSION }}"
+        tag_name: "release/ezno-${{ needs.get-build-info.outputs.LATEST_EZNO_VERSION }}"
         body: "For @kaleidawave to update"
         files: |
           README.md

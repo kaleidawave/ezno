@@ -150,3 +150,46 @@ pub fn build<T: crate::ReadFromFS>(
 		Err(FailedBuildOutput(result))
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	#[ignore = "not fixed implemented"]
+	fn tree_shaking() {
+		let source = r#"
+	function make_observable(obj) {
+		return new Proxy(obj, {
+			get(on, prop: string, _rec) {
+				return on[prop]
+			},
+		})
+	}
+	function get_a() {
+		return 1
+	}
+	function get_b() {
+		return 1
+	}
+	const obj = {
+		a() { return get_a() },
+		b() { return get_b() },
+		c: 2
+	}
+	const value = make_observable(obj);
+	const a_value = value.a();
+	const c_value = value.c;
+		"#;
+
+		let cfg = BuildConfig { optimise: true, ..Default::default() };
+
+		let output =
+			build(vec!["index.tsx"], |_| Some(source.to_owned()), None, "out.tsx").unwrap();
+
+		let first_source = output.outputs.content;
+
+		// TODO assert equal
+		panic!("{first_source:?}");
+	}
+}

@@ -74,8 +74,9 @@
 		}
 	},
 	"devDependencies": {
+		"strip-ansi": "^7.1.0",
 		"unbuild": "^2.0.0",
 		"wasm-pack": "^0.13.0",
-		"strip-ansi": "^7.1.0"
+		"snapshot-fixtures": "^1.2.0"
 	}
 }

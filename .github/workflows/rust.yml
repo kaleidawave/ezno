@@ -208,6 +208,7 @@ jobs:
           retention-days: 3
 
   fuzzing_parser:
+    if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
     needs: validity
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -265,6 +266,7 @@ jobs:
         working-directory: parser/fuzz
 
   fuzzing_checker:
+    if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
     needs: validity
     runs-on: ubuntu-latest
     timeout-minutes: 15

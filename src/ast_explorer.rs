@@ -3,14 +3,10 @@
 use std::path::PathBuf;
 
 use argh::FromArgs;
-use console::style;
 use enum_variants_strings::EnumVariantsStrings;
 use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOptions};
 
-use crate::{
-	reporting::report_diagnostics_to_cli,
-	utilities::{print_to_cli, print_to_cli_without_newline},
-};
+use crate::{reporting::report_diagnostics_to_cli, utilities::print_to_cli};
 
 /// REPL for printing out AST from user input
 #[derive(FromArgs, Debug)]
@@ -82,7 +78,6 @@ pub(crate) enum ExplorerSubCommand {
 	FullAST(FullASTArgs),
 	Prettifier(PrettyArgs),
 	Uglifier(UglifierArgs),
-	Lexer(LexerArgs),
 }
 
 /// Prints AST for a given expression
@@ -115,11 +110,6 @@ pub(crate) struct PrettyArgs {}
 #[derive(FromArgs, Debug, Default)]
 #[argh(subcommand, name = "uglifier")]
 pub(crate) struct UglifierArgs {}
-
-/// Prints sources with tokens over
-#[derive(FromArgs, Debug, Default)]
-#[argh(subcommand, name = "lexer")]
-pub(crate) struct LexerArgs {}
 
 impl ExplorerSubCommand {
 	pub fn run(&self, input: String, path: Option<PathBuf>) {
@@ -207,28 +197,6 @@ impl ExplorerSubCommand {
 					)
 					.unwrap(),
 				}
-			}
-			ExplorerSubCommand::Lexer(_) => {
-				let mut color = console::Color::Red;
-				for (section, with) in parser::script_to_tokens(input) {
-					if with {
-						let value = style(section).bg(color);
-						// Cycle through colors
-						color = match color {
-							console::Color::Red => console::Color::Green,
-							console::Color::Green => console::Color::Yellow,
-							console::Color::Yellow => console::Color::Blue,
-							console::Color::Blue => console::Color::Magenta,
-							console::Color::Magenta => console::Color::Cyan,
-							console::Color::Cyan => console::Color::Red,
-							_ => unreachable!(),
-						};
-						print_to_cli_without_newline(format_args!("{value}"));
-					} else {
-						print_to_cli_without_newline(format_args!("{section}"));
-					}
-				}
-				print_to_cli(format_args!(""));
 			}
 		}
 	}

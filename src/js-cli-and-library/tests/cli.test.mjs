@@ -1,9 +1,11 @@
-import { equal } from "node:assert";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
+import { assertEqual } from "snapshot-fixtures";
 import stripAnsi from "strip-ansi";
 
-test("ast-explorer", async (t) => {
+const wait = (timeout = 500) => new Promise((res, rej) => setTimeout(res, timeout));
+
+test("ast-explorer", { timeout: 10000 }, async (t) => {
     await t.test("works", async () => {
         const decoder = new TextDecoder();
 
@@ -18,8 +20,6 @@ test("ast-explorer", async (t) => {
 
         const out = [];
 
-        const wait = (timeout = 500) => new Promise((res, _rej) => setTimeout(res, timeout));
-
         await wait();
         write(child, "'Hello World'");
         await wait();
@@ -30,11 +30,11 @@ test("ast-explorer", async (t) => {
 
         // console.log(stripAnsi(out.join("")).replaceAll("\n", "\\n"));
 
-        equal(stripAnsi(out.join("")), expected);
+        assertEqual(stripAnsi(out.join("")), expected);
     });
 });
 
-test("type checking repl", async (t) => {
+test("type checking repl", { timeout: 10000 }, async (t) => {
     await t.test("works", async () => {
         const decoder = new TextDecoder();
 
@@ -49,8 +49,6 @@ test("type checking repl", async (t) => {
 
         const out = [];
 
-        const wait = (timeout = 500) => new Promise((res, _rej) => setTimeout(res, timeout));
-
         await wait();
         write(child, "const var1: string = 5 + 6;");
         await wait();
@@ -61,6 +59,6 @@ test("type checking repl", async (t) => {
 
         // console.log(stripAnsi(out.join("")).replaceAll("\n", "\\n"));
 
-        equal(stripAnsi(out.join("")), expected);
+        assertEqual(stripAnsi(out.join("")), expected);
     });
 });

@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use argh::FromArgs;
-use parser::{visiting::VisitorsMut, ASTNode};
-use parser::{Expression, Module, Statement};
+use parser::{visiting::VisitorsMut, ASTNode, Expression, Module, SourceId, Statement};
 
 use crate::reporting::report_diagnostics_to_cli;
 
@@ -26,7 +25,7 @@ pub struct ReplArguments {
 #[cfg_attr(target_family = "wasm", wasm_bindgen)]
 pub struct ReplSystem {
 	arguments: ReplArguments,
-	source: parser::SourceId,
+	source: SourceId,
 	state: checker::synthesis::interactive::State<'static, crate::utilities::FSFunction>,
 }
 
@@ -46,10 +45,11 @@ impl ReplSystem {
 			std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
 		};
 
-		let state = checker::synthesis::interactive::State::new(
-			Box::leak(Box::new(file_system_resolver)),
-			definitions,
-		)?;
+		// TOOD
+		let static_file_system_resolver = Box::leak(Box::new(file_system_resolver));
+
+		let state =
+			checker::synthesis::interactive::State::new(static_file_system_resolver, definitions)?;
 		let source = state.get_source_id();
 
 		Ok(ReplSystem { arguments, source, state })
@@ -61,13 +61,13 @@ impl ReplSystem {
 	/// Not a constructor because returns result (can fail if can't find `d.ts` file)
 	/// Also `repl_arguments` rather than `arguments` otherwise breaks JS emit
 	#[cfg(target_family = "wasm")]
-	#[cfg_attr(target_family = "wasm", wasm_bindgen(js_name = "new_system"))]
+	#[wasm_bindgen(js_name = "new_system")]
 	pub fn new_js(
 		repl_arguments: wasm_bindgen::JsValue,
 		cb: &js_sys::Function,
 	) -> Option<ReplSystem> {
 		let repl_arguments: ReplArguments =
-			serde_wasm_bindgen::from_value(repl_arguments).expect("invalid TypeCheckOptions");
+			serde_wasm_bindgen::from_value(repl_arguments).expect("invalid ReplArguments");
 		let cb = crate::utilities::FSFunction(cb.clone());
 		Self::new(repl_arguments, cb).ok()
 	}
@@ -157,7 +157,7 @@ impl ReplSystem {
 #[cfg(target_family = "wasm")]
 pub(crate) fn run_repl(_arguments: ReplArguments) {
 	panic!(
-		"Cannot run Repl in WASM because of input callback. Consider reimplementing using library"
+		"Cannot run repl in WASM because of input callback. Consider reimplementing using library"
 	);
 }
 

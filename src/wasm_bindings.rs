@@ -76,8 +76,10 @@ pub fn check_wasm(
 #[wasm_bindgen(typescript_custom_section)]
 const TYPES_WASM_CHECK_OUTPUT: &str = r###"
 interface WASMBuildOutput {
-	readonly artifacts: Vec<Output>,
-	readonly check_output: WASMCheckOutput
+	readonly artifacts: Array<Output>,
+	readonly diagnostics: DiagnosticsContainer,
+	get_type_at_position(path: string, pos: number): string;
+	get_type_at_position_debug(path: string, pos: number): string;
 }
 "###;
 #[wasm_bindgen]

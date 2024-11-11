@@ -2,97 +2,81 @@ use std::fmt::Arguments;
 
 pub(crate) fn print_info() {
 	if let Some(run_id) = option_env!("GITHUB_RUN_ID") {
-		print_to_cli_with_break_after(format_args!(
-			"{}@{} (#{run_id})",
+		print_to_cli(format_args!(
+			"{}@{} (#{run_id})\n",
 			env!("CARGO_PKG_NAME"),
 			env!("CARGO_PKG_VERSION")
 		));
 	} else {
-		print_to_cli_with_break_after(format_args!(
-			"{}@{}",
-			env!("CARGO_PKG_NAME"),
-			env!("CARGO_PKG_VERSION")
-		));
+		print_to_cli(format_args!("{}@{}\n", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")));
 	}
 	print_to_cli(format_args!("{}", env!("CARGO_PKG_DESCRIPTION")));
-	print_to_cli_with_break_after(format_args!(
-		"Repository: {}, License: {}",
+	print_to_cli(format_args!(
+		"Repository: {}, License: {}\n",
 		env!("CARGO_PKG_REPOSITORY"),
 		env!("CARGO_PKG_LICENSE")
 	));
-	print_to_cli_with_break_after(format_args!("For help run --help"));
+	print_to_cli(format_args!("For help run --help\n"));
 	if let (Some(sponsors), Some(contributors)) =
 		(option_env!("SPONSORS"), option_env!("CONTRIBUTORS"))
 	{
 		const SPONSORS_URL: &str = "https://github.com/sponsors/kaleidawave";
 
-		print_to_cli_with_break_after(format_args!(
-			"With thanks to all supporters of the project including:"
-		));
+		print_to_cli(format_args!("With thanks to all supporters of the project including:"));
 		print_to_cli(format_args!(
 			"  Contributors (join them @ https://github.com/kaleidawave/ezno/issues):"
 		));
-		wrap_with_ident(contributors);
+		wrap_with_indent(contributors);
 		print_to_cli(format_args!("  Sponsors (join them @ {SPONSORS_URL}):"));
-		wrap_with_ident(sponsors);
+		wrap_with_indent(sponsors);
 	}
 }
 
-#[cfg(target_family = "windows")]
 pub(crate) fn cli_input_resolver(prompt: &str) -> String {
 	use std::io;
 	print!("{prompt}> ");
 	std::io::Write::flush(&mut io::stdout()).unwrap();
 	let mut input = String::new();
 	let std_in = &mut io::stdin();
+
+	// multiline_term_input only works on windows for now
+	#[cfg(target_family = "windows")]
 	let _n = multiline_term_input::read_string(std_in, &mut input);
-	input
-}
 
-#[cfg(target_family = "unix")]
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn cli_input_resolver(prompt: &str) -> String {
-	use std::io;
-	print!("{prompt}> ");
-	io::Write::flush(&mut io::stdout()).unwrap();
-	let mut input = String::new();
-	let std_in = &mut io::stdin();
+	#[cfg(target_family = "unix")]
 	let _n = std_in.read_line(&mut input).unwrap();
+
 	input
 }
 
-fn wrap_with_ident(input: &str) {
-	// Four spaces is stable across terminals (unlike tabs)
+fn wrap_with_indent(input: &str) {
+	// Four spaces is consitently rendered across terminals (unlike tabs)
 	const INDENT: &str = "    ";
+	const MAX_WIDTH: usize = 60;
+
 	let mut buf = String::new();
-	for part in input.split(',') {
-		buf.push_str(part);
-		buf.push_str(", ");
-		if buf.len() > 40 {
-			print_to_cli(format_args!("{INDENT}{buf}"));
-			buf.clear();
+	let mut iter = input.split(',').peekable();
+	while let Some(part) = iter.next() {
+		buf.push_str(part.trim());
+		if let Some(next) = iter.peek() {
+			if buf.len() + next.len() > MAX_WIDTH {
+				buf.push(',');
+				print_to_cli(format_args!("{INDENT}{buf}"));
+				buf.clear();
+			} else {
+				buf.push_str(", ");
+			}
 		}
 	}
-	if !buf.is_empty() {
-		print_to_cli_with_break_after(format_args!("{INDENT}{buf}"));
-	} else {
-		print_to_cli(format_args!("\n"))
-	}
-}
-
-/// Adds and extra new line afterwards
-fn print_to_cli_with_break_after(arguments: Arguments) {
-	print_to_cli(format_args!("{arguments}\n"));
+	// TODO double check whether there needs to be another new line?
+	print_to_cli(format_args!(
+		"{INDENT}{buf}\n",
+		INDENT = if buf.is_empty() { "" } else { INDENT }
+	));
 }
 
 #[cfg(target_family = "wasm")]
 pub(crate) fn print_to_cli(arguments: Arguments) {
-	super::wasm_bindings::log(&arguments.to_string());
-}
-
-#[cfg(target_family = "wasm")]
-pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
-	// TODO :(
 	super::wasm_bindings::log(&arguments.to_string());
 }
 
@@ -101,14 +85,6 @@ pub(crate) fn print_to_cli(arguments: Arguments) {
 	use std::io;
 
 	println!("{arguments}");
-	io::Write::flush(&mut io::stdout()).unwrap();
-}
-
-#[cfg(not(target_family = "wasm"))]
-pub(crate) fn print_to_cli_without_newline(arguments: Arguments) {
-	use std::io;
-
-	print!("{arguments}");
 	io::Write::flush(&mut io::stdout()).unwrap();
 }
 
