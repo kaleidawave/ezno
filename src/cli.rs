@@ -340,7 +340,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 		CompilerSubCommand::Experimental(ExperimentalArguments {
 			nested: ExperimentalSubcommand::Build(build_config),
 		}) => {
-			let output_path = build_config.output.unwrap_or("ezno_output.js".into());
+			let output_path = build_config.output.unwrap_or("ezno.out.js".into());
 
 			let entry_points = match get_entry_points(build_config.input) {
 				Ok(entry_points) => entry_points,
@@ -357,16 +357,14 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 				tree_shake: build_config.tree_shake,
 				strip_whitespace: build_config.minify,
 				source_maps: build_config.source_maps,
+				type_definition_module: build_config.definition_file,
+				// TODO not sure
+				output_path: PathBuf::from(output_path),
+				other_transformers: None,
+				lsp_mode: false,
 			};
 
-			let output = build(
-				entry_points,
-				&read_file,
-				build_config.definition_file.as_deref(),
-				&output_path,
-				&config,
-				None,
-			);
+			let output = build(entry_points, &read_file, config);
 
 			#[cfg(not(target_family = "wasm"))]
 			if let Some(start) = start {

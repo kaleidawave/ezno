@@ -1,8 +1,4 @@
-use std::{
-	collections::HashMap,
-	mem,
-	path::{Path, PathBuf},
-};
+use std::{collections::HashMap, mem, path::PathBuf};
 
 use checker::TypeCheckOptions;
 use parser::{
@@ -25,12 +21,32 @@ pub struct BuildOutput {
 
 pub struct FailedBuildOutput(pub checker::CheckOutput<checker::synthesis::EznoParser>);
 
-#[derive(Default)]
-#[cfg_attr(target_family = "wasm", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(serde::Deserialize, tsify::Tsify), serde(default))]
 pub struct BuildConfig {
 	pub tree_shake: bool,
 	pub strip_whitespace: bool,
 	pub source_maps: bool,
+	/// Run checker with partial syntax support
+	pub lsp_mode: bool,
+	pub output_path: PathBuf,
+	pub type_definition_module: Option<PathBuf>,
+	#[cfg_attr(target_family = "wasm", serde(skip))]
+	pub other_transformers: Option<EznoParsePostCheckVisitors>,
+}
+
+impl Default for BuildConfig {
+	fn default() -> BuildConfig {
+		BuildConfig {
+			tree_shake: false,
+			strip_whitespace: true,
+			source_maps: false,
+			lsp_mode: false,
+			type_definition_module: None,
+			// TODO not sure
+			output_path: PathBuf::from("out"),
+			other_transformers: None,
+		}
+	}
 }
 
 pub type EznoParsePostCheckVisitors =
@@ -57,16 +73,21 @@ impl CheckingOutputWithoutDiagnostics {
 pub fn build<T: crate::ReadFromFS>(
 	entry_points: Vec<PathBuf>,
 	fs_resolver: &T,
-	type_definition_module: Option<&Path>,
-	output_path: &Path,
-	config: &BuildConfig,
-	other_transformers: Option<EznoParsePostCheckVisitors>,
+	config: BuildConfig,
 ) -> Result<BuildOutput, FailedBuildOutput> {
 	// TODO parse options + non_standard_library & non_standard_syntax
-	let type_check_options = TypeCheckOptions { store_type_mappings: true, ..Default::default() };
+	let type_check_options = TypeCheckOptions {
+		store_type_mappings: true,
+		lsp_mode: config.lsp_mode,
+		..Default::default()
+	};
 
-	let result =
-		crate::check(entry_points, fs_resolver, type_definition_module, type_check_options);
+	let result = crate::check(
+		entry_points,
+		fs_resolver,
+		config.type_definition_module.as_deref(),
+		type_check_options,
+	);
 
 	if !result.diagnostics.contains_error() {
 		let checker::CheckOutput {
@@ -89,7 +110,7 @@ pub fn build<T: crate::ReadFromFS>(
 		};
 
 		let mut artifacts = Vec::new();
-		let mut transformers = other_transformers.unwrap_or_default();
+		let mut transformers = config.other_transformers.unwrap_or_default();
 
 		if config.tree_shake {
 			transformers
@@ -117,22 +138,27 @@ pub fn build<T: crate::ReadFromFS>(
 				source,
 			);
 
-			let to_string_options = if config.strip_whitespace {
+			let mut to_string_options = if config.strip_whitespace {
 				ToStringOptions::minified()
 			} else {
 				ToStringOptions::default()
 			};
 
-			// TODO under cfg
+			// TODO temp fix
+			if config.lsp_mode {
+				to_string_options.expect_markers = true;
+			}
+
+			// TODO source map creation not neccessary
 
 			let (content, mappings) =
 				module.to_string_with_source_map(&to_string_options, source, &data.module_contents);
 
 			artifacts.push(Output {
-				output_path: output_path.to_path_buf(),
+				output_path: config.output_path.to_path_buf(),
 				content,
 				mappings: mappings.unwrap(),
-			})
+			});
 		}
 
 		// Reconstruct
@@ -182,14 +208,18 @@ mod tests {
 	const c_value = value.c;
 		"#;
 
-		let cfg = BuildConfig { optimise: true, ..Default::default() };
+		let config = BuildConfig { tree_shake: true, ..Default::default() };
 
-		let output =
-			build(vec!["index.tsx"], |_| Some(source.to_owned()), None, "out.tsx").unwrap();
-
-		let first_source = output.outputs.content;
-
-		// TODO assert equal
-		panic!("{first_source:?}");
+		if let Ok(output) = build(
+			vec!["index.tsx".into()],
+			&|_path: &std::path::Path| Some(source.to_owned()),
+			config,
+		) {
+			let first_source = &output.artifacts[0].content;
+			// TODO assert output equal
+			panic!("{first_source:?}");
+		} else {
+			panic!("build failed")
+		}
 	}
 }

@@ -114,14 +114,14 @@ const TYPES_EXPERIMENTAL_BUILD: &str = r###"
 export function experimental_build(
 	entry_path: string, 
 	fs_resolve_js: (path: string) => string | undefined, 
-	minify: boolean
+	config: BuildConfig | undefined
 ): WASMBuildOutput
 "###;
 #[wasm_bindgen(js_name = experimental_build, skip_typescript)]
 pub fn experimental_build_wasm(
 	entry_path: String,
 	fs_resolver_js: &js_sys::Function,
-	minify: bool,
+	config: JsValue,
 ) -> WASMBuildOutput {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
@@ -131,18 +131,13 @@ pub fn experimental_build_wasm(
 		res.ok().and_then(|res| res.as_string())
 	};
 
-	let result = crate::build::build(
-		vec![entry_path.into()],
-		&fs_resolver,
-		None,
-		Path::new("out.js"),
-		&crate::build::BuildConfig {
-			tree_shake: minify,
-			strip_whitespace: minify,
-			source_maps: false,
-		},
-		None,
-	);
+	let config: crate::build::BuildConfig = if config.is_undefined() || config.is_null() {
+		Default::default()
+	} else {
+		serde_wasm_bindgen::from_value(config).expect("invalid BuildConfig")
+	};
+
+	let result = crate::build::build(vec![entry_path.into()], &fs_resolver, config);
 
 	match result {
 		Ok(crate::build::BuildOutput { artifacts, check_output }) => {
