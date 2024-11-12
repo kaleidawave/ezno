@@ -977,11 +977,11 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn get_prototype(&self, on: TypeId) -> TypeId {
-		if let Some(prototype) = self.info.prototypes.get(&on) {
+		if let Some(prototype) = self.get_chain_of_info().find_map(|info| info.prototypes.get(&on))
+		{
 			*prototype
-		} else if let Some(parent) = self.context_type.get_parent() {
-			get_on_ctx!(parent.get_prototype(on))
 		} else {
+			crate::utilities::notify!("Could not find prototype");
 			TypeId::OBJECT_TYPE
 		}
 	}

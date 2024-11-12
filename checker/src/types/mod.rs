@@ -763,9 +763,3 @@ impl TypeCombinable for TypeId {
 		TypeId::UNDEFINED_TYPE
 	}
 }
-
-/// Used for **both** inference and narrowing
-pub enum Confirmation {
-	HasProperty { on: (), property: () },
-	IsType { on: (), ty: () },
-}

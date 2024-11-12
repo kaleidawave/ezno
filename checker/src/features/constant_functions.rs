@@ -294,12 +294,16 @@ pub(crate) fn call_constant_function(
 		}
 		"setPrototypeOf" => {
 			if let [first, second] = arguments {
-				let _prototype = environment
-					.info
-					.prototypes
-					.insert(first.non_spread_type().unwrap(), second.non_spread_type().unwrap());
-				// TODO
-				Ok(ConstantOutput::Value(TypeId::UNDEFINED_TYPE))
+				if let (Ok(first), Ok(second)) = (first.non_spread_type(), second.non_spread_type())
+				{
+					let _prototype = environment.info.prototypes.insert(first, second);
+
+					crate::utilities::notify!("Set {:?} prototype to {:?}", first, second);
+
+					Ok(ConstantOutput::Value(first))
+				} else {
+					Err(ConstantFunctionError::CannotComputeConstant)
+				}
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}

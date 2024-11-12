@@ -614,7 +614,10 @@ fn call_logical<B: CallCheckingBehavior>(
 						|| is_independent_function
 						|| matches!(
 							const_fn_ident.as_str(),
-							"satisfies" | "is_dependent" | "bind" | "proxy:constructor"
+							"satisfies"
+								| "is_dependent" | "bind"
+								| "proxy:constructor" | "setPrototypeOf"
+								| "getPrototypeOf"
 						);
 
 					// {

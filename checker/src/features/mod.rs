@@ -28,7 +28,7 @@ use crate::{
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	types::{
-		get_constraint,
+		get_constraint, helpers,
 		logical::{Logical, LogicalOrValid},
 		properties, PartiallyAppliedGenerics, TypeStore,
 	},
@@ -431,58 +431,63 @@ pub(crate) fn has_property(
 	information: &impl InformationChain,
 	types: &mut TypeStore,
 ) -> TypeId {
-	match types.get_type_by_id(rhs) {
-		Type::Interface { .. }
-		| Type::Class { .. }
-		| Type::Constant(_)
-		| Type::FunctionReference(_)
-		| Type::Object(_)
-		| Type::PartiallyAppliedGenerics(_)
-		| Type::And(_, _)
-		| Type::SpecialObject(_)
-		| Type::Narrowed { .. }
-		| Type::AliasTo { .. } => {
-			let result = properties::get_property_unbound(
-				(rhs, None),
-				(publicity, key, None),
-				false,
-				information,
-				types,
-			);
-			match result {
-				Ok(LogicalOrValid::Logical(result)) => match result {
-					Logical::Pure(_) => TypeId::TRUE,
-					Logical::Or { .. } => {
-						crate::utilities::notify!("or or implies `in`");
+	if let Some((condition, truthy, falsy)) = helpers::get_type_as_conditional(rhs, types) {
+		let truthy_result = has_property((publicity, key), truthy, information, types);
+		let otherwise_result = has_property((publicity, key), falsy, information, types);
+		types.new_conditional_type(condition, truthy_result, otherwise_result)
+	} else {
+		match types.get_type_by_id(rhs) {
+			Type::Interface { .. }
+			| Type::Class { .. }
+			| Type::Constant(_)
+			| Type::FunctionReference(_)
+			| Type::Object(_)
+			| Type::PartiallyAppliedGenerics(_)
+			| Type::And(_, _)
+			| Type::SpecialObject(_)
+			| Type::Narrowed { .. }
+			| Type::AliasTo { .. } => {
+				let result = properties::get_property_unbound(
+					(rhs, None),
+					(publicity, key, None),
+					false,
+					information,
+					types,
+				);
+				match result {
+					Ok(LogicalOrValid::Logical(result)) => match result {
+						Logical::Pure(_) => TypeId::TRUE,
+						Logical::Or { .. } => {
+							crate::utilities::notify!("or or implies `in`");
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
+						}
+						Logical::Implies { .. } => {
+							crate::utilities::notify!("or or implies `in`");
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
+						}
+						Logical::BasedOnKey { .. } => {
+							crate::utilities::notify!("mapped in");
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
+						}
+					},
+					Ok(LogicalOrValid::NeedsCalculation(result)) => {
+						crate::utilities::notify!("TODO {:?}", result);
 						TypeId::UNIMPLEMENTED_ERROR_TYPE
 					}
-					Logical::Implies { .. } => {
-						crate::utilities::notify!("or or implies `in`");
-						TypeId::UNIMPLEMENTED_ERROR_TYPE
+					Err(err) => {
+						crate::utilities::notify!("TODO {:?}", err);
+						TypeId::FALSE
 					}
-					Logical::BasedOnKey { .. } => {
-						crate::utilities::notify!("mapped in");
-						TypeId::UNIMPLEMENTED_ERROR_TYPE
-					}
-				},
-				Ok(LogicalOrValid::NeedsCalculation(result)) => {
-					crate::utilities::notify!("TODO {:?}", result);
-					TypeId::UNIMPLEMENTED_ERROR_TYPE
-				}
-				Err(err) => {
-					crate::utilities::notify!("TODO {:?}", err);
-					TypeId::FALSE
 				}
 			}
-		}
-		Type::Or(_, _) => {
-			crate::utilities::notify!("Condtionally");
-			TypeId::UNIMPLEMENTED_ERROR_TYPE
-		}
-		Type::RootPolyType(_) | Type::Constructor(_) => {
-			crate::utilities::notify!("Queue event / create dependent");
-			let constraint = get_constraint(rhs, types).unwrap();
-			has_property((publicity, key), constraint, information, types)
+			Type::Or(_, _) => {
+				unreachable!()
+			}
+			Type::RootPolyType(_) | Type::Constructor(_) => {
+				crate::utilities::notify!("Queue event / create dependent");
+				let constraint = get_constraint(rhs, types).unwrap();
+				has_property((publicity, key), constraint, information, types)
+			}
 		}
 	}
 }

@@ -213,7 +213,7 @@ pub fn _type_is_error(ty: TypeId, types: &TypeStore) -> bool {
 
 /// TODO want to skip mapped generics because that would break subtyping
 #[must_use]
-pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
+pub fn get_type_as_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId, TypeId)> {
 	match types.get_type_by_id(ty) {
 		Type::Constructor(crate::types::Constructor::ConditionalResult {
 			condition,
@@ -226,7 +226,7 @@ pub fn get_conditional(ty: TypeId, types: &TypeStore) -> Option<(TypeId, TypeId,
 		Type::RootPolyType(PolyNature::MappedGeneric { .. }) => None,
 		_ => {
 			if let Some(constraint) = get_constraint(ty, types) {
-				get_conditional(constraint, types)
+				get_type_as_conditional(constraint, types)
 			} else {
 				None
 			}
@@ -324,28 +324,47 @@ pub struct AndCondition(pub TypeId);
 #[derive(Debug)]
 pub struct OrCase(pub Vec<AndCondition>);
 
-pub fn into_conditions(ty: TypeId, types: &TypeStore) -> Vec<AndCondition> {
-	// TODO aliases and such
-	if let Type::And(lhs, rhs) = types.get_type_by_id(ty) {
+pub fn into_conditions(id: TypeId, types: &TypeStore) -> Vec<AndCondition> {
+	let ty = types.get_type_by_id(id);
+	if let Type::And(lhs, rhs) = ty {
 		let mut buf = into_conditions(*lhs, types);
 		buf.append(&mut into_conditions(*rhs, types));
 		buf
-	} else if let Some(backing) = get_constraint_or_alias(ty, types) {
-		into_conditions(backing, types)
+	} else if let Type::RootPolyType(rpt) = ty {
+		into_conditions(rpt.get_constraint(), types)
+	} else if let Type::Narrowed { narrowed_to, .. } = ty {
+		into_conditions(*narrowed_to, types)
 	} else {
-		vec![AndCondition(ty)]
+		// Temp fix
+		if let Type::Constructor(Constructor::BinaryOperator { result, .. }) = ty {
+			if !matches!(*result, TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
+				return into_conditions(*result, types);
+			}
+		}
+
+		vec![AndCondition(id)]
 	}
+
+	// else if let Some(backing) = get_constraint_or_alias(ty, types) {
+	// 	// TODO temp to keep information
+	// 	let mut buf = vec![ty];
+	// 	buf.append(&mut into_conditions(*backing, types));
+	// 	buf
+	// }
 }
 
-pub fn into_cases(ty: TypeId, types: &TypeStore) -> Vec<OrCase> {
-	if let Type::Or(lhs, rhs) = types.get_type_by_id(ty) {
+pub fn into_cases(id: TypeId, types: &TypeStore) -> Vec<OrCase> {
+	let ty = types.get_type_by_id(id);
+	if let Type::Or(lhs, rhs) = ty {
 		let mut buf = into_cases(*lhs, types);
 		buf.append(&mut into_cases(*rhs, types));
 		buf
-	} else if let Some(backing) = get_constraint_or_alias(ty, types) {
-		into_cases(backing, types)
+	} else if let Type::RootPolyType(rpt) = ty {
+		into_cases(rpt.get_constraint(), types)
+	} else if let Type::Narrowed { narrowed_to, .. } = ty {
+		into_cases(*narrowed_to, types)
 	} else {
-		vec![OrCase(into_conditions(ty, types))]
+		vec![OrCase(into_conditions(id, types))]
 	}
 }
 
