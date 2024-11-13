@@ -42,28 +42,9 @@ function func1(a: number, b: number) {
 
 With advanced_number_intrinsics
 
-- This equality is always false as MultipleOf<10> and LessThan<37> & GreaterThan<31> have no overlap
+- This equality is always false as MultipleOf<10> and GreaterThan<31> & LessThan<37> have no overlap
 
-#### Modulo offsets
-
-```ts
-function func(param: Integer) {
-  print_type(param - 0.2);
-  print_type(param / 2);
-  print_type(2 / param);
-}
-
-function func2(param: number) {
-  print_type((param - 5) + 5);
-  print_type((param / 5) * 5);
-}
-```
-
-With advanced_number_intrinsics
-
-- Hi
-
-#### Narrowing: Implication by
+#### Narrowing: Implication from equality
 
 ```ts
 function func(a: boolean) {
@@ -84,11 +65,11 @@ function func(x: number) {
 }
 ```
 
-- This equality is always false
+- This equality is always false as ExclusiveRange<-5, 5> and 6 have no overlap
 
 #### Narrowing in for loop
 
-> Can't do modulo because post mutation
+> Can't do modulo because of post mutation
 
 ```ts
 for (let i = 0; i < 3; i++) {
@@ -110,6 +91,21 @@ function func(a: number, b: number, c: number) {
 
 - Expected 5, found true
 
+### Operators across conditions
+
+```ts
+function func(param: boolean) {
+    const value = param ? 1 : 2;
+    return value + 1;
+}
+
+func statisfies string;
+```
+
+With advanced_number_intrinsics
+
+- Expected string, found (param: boolean) => 2 | 3
+
 ### Broken
 
 #### Template literal edge cases
@@ -122,3 +118,17 @@ const invalidNum3: `${1}` = "2";
 
 - Type 1 is not assignable to type "1"
 - Type \"2\" is not assignable to type "1"
+
+#### Set prototype of conditional
+
+```ts
+const obj = Object.setPrototypeOf(
+  {}, 
+  Math.random() ? { a: 2 } : { get a() { return 0 } }
+);
+
+const result = 'a' in obj;
+result satisfies string;
+```
+
+- Expected string, found true

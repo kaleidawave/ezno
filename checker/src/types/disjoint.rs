@@ -175,6 +175,20 @@ pub fn types_are_disjoint(
 			} else {
 				false
 			}
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			operator: MathematicalOrBitwiseOperation::Add,
+			result: TypeId::STRING_TYPE,
+			..
+		}) = rhs_ty
+		{
+			todo!()
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			operator: MathematicalOrBitwiseOperation::Add,
+			result: TypeId::STRING_TYPE,
+			..
+		}) = lhs_ty
+		{
+			todo!()
 		} else if let Some(lhs) = super::get_constraint(lhs, types) {
 			// TODO not sure whether these should be here?
 			types_are_disjoint(lhs, rhs, already_checked, information, types)
@@ -236,23 +250,23 @@ fn number_modulo_disjoint(
 		return false;
 	};
 
+	let offset = 0f64.try_into().unwrap();
+	let this = crate::utilities::modulo_class::ModuloClass::new(*argument, offset);
+
 	// Little bit complex here because dealing with decimal types, not integers
 	if let Type::Constant(Constant::Number(other)) = other_ty {
-		let result = other % argument != 0.;
-		// crate::utilities::notify!("{:?} {:?}", lhs, rhs);
-		result
+		!this.contains(*other)
 	} else {
 		let (range, modulo_class) = super::intrinsics::get_range_and_mod_class(other, types);
-		crate::utilities::notify!("{:?}, {:?}", range, modulo_class);
+		crate::utilities::notify!("Disjoint with modulo, {:?}, {:?}", range, modulo_class);
 		if let Some(range) = range {
 			return !range.contains_multiple_of(*argument);
 		}
-		if let Some(_modulo_class) = modulo_class {
-			crate::utilities::notify!("todo");
-			return false;
+		if let Some(modulo_class) = modulo_class {
+			return this.disjoint(modulo_class);
 		}
 		crate::utilities::notify!("Here {:?}", other_ty);
-		true
+		false
 	}
 }
 
@@ -265,6 +279,7 @@ fn number_range_disjoint(
 	let greater_than = *on == TypeId::GREATER_THAN;
 	let this_ty =
 		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap());
+
 	if let Type::Constant(Constant::Number(this)) = this_ty {
 		let other_ty = types.get_type_by_id(other);
 		if let Type::Constant(Constant::Number(other)) = other_ty {

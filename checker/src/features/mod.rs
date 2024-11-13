@@ -457,9 +457,18 @@ pub(crate) fn has_property(
 				match result {
 					Ok(LogicalOrValid::Logical(result)) => match result {
 						Logical::Pure(_) => TypeId::TRUE,
-						Logical::Or { .. } => {
-							crate::utilities::notify!("or or implies `in`");
-							TypeId::UNIMPLEMENTED_ERROR_TYPE
+						Logical::Or { condition, left, right } => {
+							// TODO some problems here, need to recurse
+							let (left, right) = (*left, *right);
+							if let (LogicalOrValid::Logical(_), LogicalOrValid::Logical(_)) =
+								(&left, right)
+							{
+								TypeId::TRUE
+							} else if let LogicalOrValid::Logical(_) = left {
+								condition
+							} else {
+								types.new_logical_negation_type(condition)
+							}
 						}
 						Logical::Implies { .. } => {
 							crate::utilities::notify!("or or implies `in`");

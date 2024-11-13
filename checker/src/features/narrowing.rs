@@ -2,7 +2,7 @@ use crate::{
 	context::InformationChain,
 	types::{
 		self, as_logical_and, as_logical_not, as_logical_or,
-		helpers::{get_conditional, get_origin},
+		helpers::{get_origin, get_type_as_conditional},
 		properties, Constant, Constructor, PolyNature, TypeOperator, TypeStore,
 	},
 	Map, Type, TypeId,
@@ -18,7 +18,6 @@ pub fn narrow_based_on_expression_into_vec(
 ) -> Map<TypeId, TypeId> {
 	let mut into = Default::default();
 	narrow_based_on_expression(condition, negate, &mut into, information, types);
-	crate::utilities::notify!("{:?}", into);
 	into.iter_mut().for_each(|(on, value)| *value = types.new_narrowed(*on, *value));
 	into
 }
@@ -129,7 +128,7 @@ pub fn narrow_based_on_expression(
 
 					let result = if negate {
 						// TODO wip
-						let narrowed_to = if get_conditional(lhs, types).is_some() {
+						let narrowed_to = if get_type_as_conditional(lhs, types).is_some() {
 							let mut result = Vec::new();
 							build_union_from_filter(
 								lhs,
@@ -244,7 +243,7 @@ pub fn narrow_based_on_expression(
 					// TODO need to merge. This is very bad
 					let narrowed_to = if let Some(existing) = into.get(&rhs) {
 						crate::utilities::notify!("Here");
-						types.new_and_type(*existing, narrowed_to)
+						types.new_and_type(narrowed_to, *existing)
 					} else {
 						narrowed_to
 					};
@@ -515,7 +514,7 @@ pub(crate) fn build_union_from_filter(
 	} else if let TypeId::BOOLEAN_TYPE = on {
 		build_union_from_filter(TypeId::TRUE, filter, found, information, types);
 		build_union_from_filter(TypeId::FALSE, filter, found, information, types);
-	} else if let Some((_condition, lhs, rhs)) = get_conditional(on, types) {
+	} else if let Some((_condition, lhs, rhs)) = get_type_as_conditional(on, types) {
 		build_union_from_filter(lhs, filter, found, information, types);
 		build_union_from_filter(rhs, filter, found, information, types);
 	} else {

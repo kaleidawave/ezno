@@ -795,10 +795,13 @@ pub(crate) fn type_is_subtype_with_generics(
 				// Ezno intrinsic
 				TypeId::LITERAL_RESTRICTION => {
 					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
-					return if let Type::Constant(rhs_constant) = subtype {
+					return if let Type::Constant(_)
+					| Type::Object(ObjectNature::RealDeal)
+					| Type::SpecialObject(..) = subtype
+					{
 						type_is_subtype_with_generics(
 							(inner, base_type_arguments),
-							(rhs_constant.get_backing_type(), ty_structure_arguments),
+							(ty, ty_structure_arguments),
 							state,
 							information,
 							types,

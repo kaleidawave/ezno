@@ -1345,6 +1345,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							print_type(*truthy_result, &checking_data.types, environment, true),
 							print_type(*otherwise_result, &checking_data.types, environment, true)
 						);
+
 						// Concatenate some types here if they all have the same keys
 						// && matches!(
 						// 	(lv, rv),

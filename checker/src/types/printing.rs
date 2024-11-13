@@ -79,20 +79,20 @@ pub fn print_type_into_buf<C: InformationChain>(
 	let r#type = types.get_type_by_id(ty);
 	match r#type {
 		Type::And(a, b) => {
-			let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
-			if value.0.is_some() || value.1.is_some() {
-				crate::utilities::notify!("{:?}", value);
-			}
+			// let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
+			// if value.0.is_some() || value.1.is_some() {
+			// 	crate::utilities::notify!("{:?}", value);
+			// }
 
 			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
 			buf.push_str(" & ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
 		Type::Or(a, b) => {
-			let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
-			if value.0.is_some() || value.1.is_some() {
-				crate::utilities::notify!("{:?}", value);
-			}
+			// let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
+			// if value.0.is_some() || value.1.is_some() {
+			// 	crate::utilities::notify!("{:?}", value);
+			// }
 
 			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
 			buf.push_str(" | ");
@@ -416,6 +416,18 @@ pub fn print_type_into_buf<C: InformationChain>(
 						buf.push_str(") ");
 					}
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
+				}
+			}
+			Constructor::BinaryOperator {
+				lhs: _,
+				operator: crate::features::operations::MathematicalOrBitwiseOperation::Modulo,
+				rhs,
+				result: _,
+			} if matches!(types.get_type_by_id(*rhs), Type::Constant(_)) => {
+				if let Type::Constant(crate::Constant::Number(num)) = types.get_type_by_id(*rhs) {
+					write!(buf, "ExclusiveRange<-{num}, {num}>").unwrap();
+				} else {
+					unreachable!()
 				}
 			}
 			constructor if debug => match constructor {

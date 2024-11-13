@@ -1993,13 +1993,13 @@ stringIsHi(string) satisfies number;
 ```ts
 function func(param: boolean) {
 	let a = 2;
-    if (param) {
+	if (param) {
 		a = 3;
-        return a;
-    } else {
+		return a;
+	} else {
 		a = 7;
 	}
-    a satisfies string;
+	a satisfies string;
 }
 ```
 
@@ -2480,8 +2480,8 @@ getNumberBetweenFive() === 2.2;
 getNumberBetweenFive() === 7;
 ```
 
-- This equality is always false as InclusiveRange<0, 5> & Integer and 2.2 have no overlap
-- This equality is always false as InclusiveRange<0, 5> & Integer and 7 have no overlap
+- This equality is always false as GreaterThan<0> & LessThan<5> & Integer | 0 | 5 and 2.2 have no overlap
+- This equality is always false as GreaterThan<0> & LessThan<5> & Integer | 0 | 5 and 7 have no overlap
 
 #### Identity equality
 
@@ -2490,7 +2490,7 @@ getNumberBetweenFive() === 7;
 ```ts
 function func(a: string, b: number) {
 	(a === a) satisfies string;
-    (b === b) satisfies null;
+	(b === b) satisfies null;
 }
 ```
 
@@ -2519,8 +2519,8 @@ function func(a: number) {
 
 With advanced_number_intrinsics
 
-- Expected null, found InclusiveRange\<-5, 5>
-- Expected string, found InclusiveRange\<18, 22>
+- Expected null, found GreaterThan<-5> & LessThan<5> | -5 | 5
+- Expected string, found GreaterThan<18> & LessThan<22> | 18 | 22
 
 #### Not disjoint
 
@@ -2904,8 +2904,8 @@ let x: BoxString<string, number>;
 
 ```ts
 interface X {
-    a: string
-    b: string
+	a: string
+	b: string
 }
 
 function func(x: X | null) {
@@ -3273,11 +3273,11 @@ doThingWithX(new Y())
 
 ```ts
 class Box<T> {
-    value: T;
+	value: T;
 
-    constructor(value: T) {
-        this.value = value;
-    }
+	constructor(value: T) {
+		this.value = value;
+	}
 }
 
 const myBox = new Box<number>("hi");
@@ -4045,7 +4045,7 @@ x.property_b
 
 ```ts
 function x(p: { readonly a: string, b: string }) {
-    p.a = "hi";
+	p.a = "hi";
 	p.b = "hi";
 }
 ```
@@ -4231,10 +4231,10 @@ function logicNarrow(thing: any, other: any) {
 
 ```ts
 function func(param: boolean | string | number) {
-    if (typeof param === "boolean") {
-        return 5
-    }
-    param satisfies null;
+	if (typeof param === "boolean") {
+		return 5
+	}
+	param satisfies null;
 }
 ```
 
@@ -4244,9 +4244,9 @@ function func(param: boolean | string | number) {
 
 ```ts
 function func(param: Array<string> | string) {
-    if (param instanceof Array) {
+	if (param instanceof Array) {
 		param satisfies null;
-    }
+	}
 }
 ```
 
@@ -4256,9 +4256,9 @@ function func(param: Array<string> | string) {
 
 ```ts
 function func(param: any) {
-    if (param instanceof Array) {
+	if (param instanceof Array) {
 		param satisfies null;
-    }
+	}
 }
 ```
 
@@ -4268,10 +4268,10 @@ function func(param: any) {
 
 ```ts
 function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: number }) {
-    if (param.tag === "a") {
-        param.a satisfies string;
-        param satisfies null;
-    }
+	if (param.tag === "a") {
+		param.a satisfies string;
+		param satisfies null;
+	}
 }
 ```
 
@@ -4281,10 +4281,10 @@ function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: nu
 
 ```ts
 function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number }) {
-    if ("a" in param) {
-        param.a satisfies string;
-        param satisfies null;
-    }
+	if ("a" in param) {
+		param.a satisfies string;
+		param satisfies null;
+	}
 }
 ```
 
@@ -4296,9 +4296,9 @@ function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number })
 
 ```ts
 function buildObject(param: any) {
-    if ("a" in param) {
-        param satisfies null;
-    }
+	if ("a" in param) {
+		param satisfies null;
+	}
 }
 ```
 
@@ -4308,12 +4308,12 @@ function buildObject(param: any) {
 
 ```ts
 function conditional(param: boolean) {
-    const obj1 = { b: 2 }, obj2 = { c: 6 };
-    const sum = param ? obj1 : obj2;
-    if (sum === obj1) {
-        sum.a = 3;
-    }
-    [obj1, obj2] satisfies string;
+	const obj1 = { b: 2 }, obj2 = { c: 6 };
+	const sum = param ? obj1 : obj2;
+	if (sum === obj1) {
+		sum.a = 3;
+	}
+	[obj1, obj2] satisfies string;
 }
 ```
 
@@ -4353,19 +4353,19 @@ function conditional(param: boolean) {
 
 ```ts
 function func1(param: string | number) {
-    if (typeof param === "number" && param > 0) {
-        param satisfies number;
-    } else {
-        param satisfies null;
+	if (typeof param === "number" && param > 0) {
+		param satisfies number;
+	} else {
+		param satisfies null;
 	}
 }
 
 function func2(param: string | number | boolean) {
-    if (typeof param === "string" || !(typeof param === "number")) {
-        param satisfies undefined;
-    } else {
-        param satisfies number;
-    }
+	if (typeof param === "string" || !(typeof param === "number")) {
+		param satisfies undefined;
+	} else {
+		param satisfies number;
+	}
 }
 ```
 
@@ -4380,10 +4380,10 @@ function func2(param: string | number | boolean) {
 function func(param: boolean) {
 	let a = param;
 	const inner = (value: boolean) => a = value;
-    if (a) {
+	if (a) {
 		inner(false);
 		a satisfies null;
-    }
+	}
 }
 ```
 
@@ -4393,15 +4393,15 @@ function func(param: boolean) {
 
 ```ts
 function func1(param: any): asserts param is number {
-    if (typeof param !== "string") {
-        throw "bad"
-    }
+	if (typeof param !== "string") {
+		throw "bad"
+	}
 }
 
 function func2(param: any): asserts param is boolean {
-    if (typeof param !== "boolean") {
-        throw "bad"
-    }
+	if (typeof param !== "boolean") {
+		throw "bad"
+	}
 }
 ```
 
@@ -4986,9 +4986,16 @@ function register(a: Literal<string>) {
 
 register("something")
 // `document.title` is an unknown string, non-literal
-register(document.title)
+register(document.title);
+
+function func(param: object) {
+	const obj = { a: 2 };
+	const obj1: Literal<object> = obj;
+	const obj2: Literal<object> = param;
+}
 ```
 
+- Type object is not assignable to type Literal\<object>
 - Argument of type string is not assignable to parameter of type Literal\<string>
 
 #### Number intrinsics

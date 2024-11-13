@@ -326,31 +326,25 @@ pub struct OrCase(pub Vec<AndCondition>);
 
 pub fn into_conditions(id: TypeId, types: &TypeStore) -> Vec<AndCondition> {
 	let ty = types.get_type_by_id(id);
+
+	// Temp fix
+	if let Type::Constructor(Constructor::BinaryOperator { result, .. }) = ty {
+		return if matches!(*result, TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
+			vec![AndCondition(id)]
+		} else {
+			into_conditions(*result, types)
+		};
+	}
+
 	if let Type::And(lhs, rhs) = ty {
 		let mut buf = into_conditions(*lhs, types);
 		buf.append(&mut into_conditions(*rhs, types));
 		buf
-	} else if let Type::RootPolyType(rpt) = ty {
-		into_conditions(rpt.get_constraint(), types)
-	} else if let Type::Narrowed { narrowed_to, .. } = ty {
-		into_conditions(*narrowed_to, types)
+	} else if let Some(backing) = get_constraint_or_alias(id, types) {
+		into_conditions(backing, types)
 	} else {
-		// Temp fix
-		if let Type::Constructor(Constructor::BinaryOperator { result, .. }) = ty {
-			if !matches!(*result, TypeId::NUMBER_TYPE | TypeId::STRING_TYPE) {
-				return into_conditions(*result, types);
-			}
-		}
-
 		vec![AndCondition(id)]
 	}
-
-	// else if let Some(backing) = get_constraint_or_alias(ty, types) {
-	// 	// TODO temp to keep information
-	// 	let mut buf = vec![ty];
-	// 	buf.append(&mut into_conditions(*backing, types));
-	// 	buf
-	// }
 }
 
 pub fn into_cases(id: TypeId, types: &TypeStore) -> Vec<OrCase> {
@@ -359,10 +353,8 @@ pub fn into_cases(id: TypeId, types: &TypeStore) -> Vec<OrCase> {
 		let mut buf = into_cases(*lhs, types);
 		buf.append(&mut into_cases(*rhs, types));
 		buf
-	} else if let Type::RootPolyType(rpt) = ty {
-		into_cases(rpt.get_constraint(), types)
-	} else if let Type::Narrowed { narrowed_to, .. } = ty {
-		into_cases(*narrowed_to, types)
+	} else if let Some(backing) = get_constraint_or_alias(id, types) {
+		into_cases(backing, types)
 	} else {
 		vec![OrCase(into_conditions(id, types))]
 	}

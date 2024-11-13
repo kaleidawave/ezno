@@ -335,8 +335,6 @@ pub(crate) fn get_property_unbound(
 			}
 			Type::Constructor(crate::types::Constructor::ConditionalResult { .. })
 			| Type::Or(..) => {
-				crate::utilities::notify!("Here {:?}", on);
-
 				let (condition, truthy_result, otherwise_result) =
 					get_type_as_conditional(on, types)
 						.expect("case above != get_type_as_conditional");
@@ -738,9 +736,9 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		types,
 	);
 
-	{
-		crate::utilities::notify!("Access {:?} result {:?}", under, result);
-	}
+	// {
+	// 	crate::utilities::notify!("Access {:?} result {:?}", under, result);
+	// }
 
 	match result {
 		Ok(LogicalOrValid::Logical(logical)) => {

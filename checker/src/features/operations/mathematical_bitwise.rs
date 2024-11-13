@@ -38,23 +38,22 @@ pub fn evaluate_mathematical_operation(
 		strict_casts: bool,
 	) -> Result<TypeId, ()> {
 		if let MathematicalOrBitwiseOperation::Add = operator {
-			let constant = match (types.get_type_by_id(lhs), types.get_type_by_id(rhs)) {
+			match (types.get_type_by_id(lhs), types.get_type_by_id(rhs)) {
 				(Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) => {
-					Constant::Number(lhs + rhs)
+					Ok(types.new_constant_type(Constant::Number(lhs + rhs)))
 				}
 				(Type::Constant(lhs), Type::Constant(rhs)) => {
 					let mut first = cast_as_string(lhs, strict_casts)?;
 					let second = cast_as_string(rhs, strict_casts)?;
 					// Concatenate strings
 					first.push_str(&second);
-					Constant::String(first)
+					Ok(types.new_constant_type(Constant::String(first)))
 				}
-				_ => {
-					crate::utilities::notify!("here");
-					return Err(());
+				(lhs, rhs) => {
+					crate::utilities::notify!("here {:?} + {:?}", lhs, rhs);
+					Err(())
 				}
-			};
-			Ok(types.new_constant_type(constant))
+			}
 		} else {
 			match (types.get_type_by_id(lhs), types.get_type_by_id(rhs)) {
 				(Type::Constant(c1), Type::Constant(c2)) => {
@@ -95,7 +94,10 @@ pub fn evaluate_mathematical_operation(
 					};
 					Ok(ty)
 				}
-				_ => Err(()),
+				(lhs, rhs) => {
+					crate::utilities::notify!("here {:?} @ {:?}", lhs, rhs);
+					Err(())
+				}
 			}
 		}
 	}
@@ -153,12 +155,10 @@ pub fn evaluate_mathematical_operation(
 			return Ok(rhs);
 		}
 
-		let result = if can_be_string {
-			TypeId::STRING_TYPE
-		} else if let (
+		if let (
 			MathematicalOrBitwiseOperation::Add | MathematicalOrBitwiseOperation::Multiply,
-			(lhs_range, _lhs_modulo),
-			(rhs_range, _rhs_modulo),
+			(lhs_range, lhs_modulo),
+			(rhs_range, rhs_modulo),
 			true,
 		) = (
 			operator,
@@ -167,9 +167,11 @@ pub fn evaluate_mathematical_operation(
 			operate_on_number_intrinsics,
 		) {
 			crate::utilities::notify!(
-				"{:?} with {:?}",
-				(lhs_range, _lhs_modulo),
-				(rhs_range, _rhs_modulo)
+				"{:?} with {:?}. {:?} & {:?}",
+				(lhs_range, lhs_modulo),
+				(rhs_range, rhs_modulo),
+				rhs_range.and_then(crate::utilities::float_range::FloatRange::as_single),
+				lhs_range.and_then(crate::utilities::float_range::FloatRange::as_single)
 			);
 			if let (Some(lhs_range), Some(rhs_range)) = (lhs_range, rhs_range) {
 				let range = match operator {
@@ -179,17 +181,81 @@ pub fn evaluate_mathematical_operation(
 					}
 					_ => unreachable!(),
 				};
-				intrinsics::range_to_type(range, types)
-			} else {
-				TypeId::NUMBER_TYPE
+				// That is a lot types
+				let result = intrinsics::range_to_type(range, types);
+				let constructor =
+					crate::types::Constructor::BinaryOperator { lhs, operator, rhs, result };
+					
+				return Ok(types.register_type(crate::Type::Constructor(constructor)));
 			}
-		} else {
-			// TODO if or of constant types
-			TypeId::NUMBER_TYPE
-		};
 
-		let constructor = crate::types::Constructor::BinaryOperator { lhs, operator, rhs, result };
-		Ok(types.register_type(crate::Type::Constructor(constructor)))
+			// else if let (Some(lhs_modulo), Some(offset)) =
+			// 	(lhs_modulo, rhs_range.and_then(crate::utilities::float_range::FloatRange::as_single))
+			// {
+			// 	crate::utilities::notify!("Here");
+			// 	let mod_class = lhs_modulo.offset(offset);
+			// 	intrinsics::modulo_to_type(mod_class, types)
+			// } else if let (Some(rhs_modulo), Some(offset)) =
+			// 	(rhs_modulo, lhs_range.and_then(crate::utilities::float_range::FloatRange::as_single))
+			// {
+			// 	let mod_class = rhs_modulo.offset(offset);
+			// 	intrinsics::modulo_to_type(mod_class, types)
+			// }
+		}
+
+		if let (Some((condition, lhs_truthy_result, lhs_falsy_result)), true) =
+			(helpers::get_type_as_conditional(lhs, types), operate_on_number_intrinsics)
+		{
+			crate::utilities::notify!("Here lhs dependent");
+			let truthy_result = evaluate_mathematical_operation(
+				lhs_truthy_result,
+				operator,
+				rhs,
+				info,
+				types,
+				strict_casts,
+				operate_on_number_intrinsics,
+			)?;
+			let falsy_result = evaluate_mathematical_operation(
+				lhs_falsy_result,
+				operator,
+				rhs,
+				info,
+				types,
+				strict_casts,
+				operate_on_number_intrinsics,
+			)?;
+
+			Ok(types.new_conditional_type(condition, truthy_result, falsy_result))
+		} else if let (true, Some((condition, rhs_truthy_result, rhs_falsy_result))) =
+			(operate_on_number_intrinsics, helpers::get_type_as_conditional(rhs, types))
+		{
+			let truthy_result = evaluate_mathematical_operation(
+				lhs,
+				operator,
+				rhs_truthy_result,
+				info,
+				types,
+				strict_casts,
+				operate_on_number_intrinsics,
+			)?;
+			let falsy_result = evaluate_mathematical_operation(
+				lhs,
+				operator,
+				rhs_falsy_result,
+				info,
+				types,
+				strict_casts,
+				operate_on_number_intrinsics,
+			)?;
+
+			Ok(types.new_conditional_type(condition, truthy_result, falsy_result))
+		} else {
+			let result = if can_be_string { TypeId::STRING_TYPE } else { TypeId::NUMBER_TYPE };
+			let constructor =
+				crate::types::Constructor::BinaryOperator { lhs, operator, rhs, result };
+			Ok(types.register_type(crate::Type::Constructor(constructor)))
+		}
 	} else {
 		attempt_constant_math_operator(lhs, operator, rhs, types, strict_casts)
 	}

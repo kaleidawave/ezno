@@ -329,9 +329,11 @@ impl Type {
 			// Fine
 			Type::Narrowed { .. } | Type::Constructor(_) | Type::RootPolyType(_) => true,
 			// TODO what about if left or right
-			Type::And(_, _) | Type::Or(_, _) => false,
+			// TODO should not be true here
+			Type::And(_, _) | Type::Or(_, _) => true,
 			// TODO what about if it aliases dependent?
-			Type::AliasTo { .. } => false,
+			// TODO should not be true here
+			Type::AliasTo { .. } => true,
 			Type::Interface { .. } | Type::Class { .. } => false,
 			Type::Constant(_)
 			| Type::SpecialObject(_)

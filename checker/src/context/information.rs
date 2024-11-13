@@ -414,6 +414,24 @@ pub fn merge_info(
 		// TODO temp fix for `... ? { ... } : { ... }`.
 		// TODO add undefineds to sides etc
 		for (on, properties) in truthy.current_properties.into_iter() {
+			// let properties = properties
+			// 	.into_iter()
+			// 	.map(|(publicity, key, value)| {
+			// 		let falsy_environment_property = otherwise
+			// 			.as_mut()
+			// 			.and_then(|otherwise| {
+			// 				pick_out_property(&mut otherwise.current_properties, (publicity, key), onto, types)
+			// 			});
+
+			// 		if let Some(existing) = falsy_environment_property {
+			// 			// Merging more complex properties has lots of issues
+			// 			todo!()
+			// 		} else {
+			// 			(publicity, key, PropertyValue::ConditionallyExists { condition, value })
+			// 		}
+			// 	})
+			// 	.collect();
+
 			if let Some(existing) = onto.current_properties.get_mut(&on) {
 				existing.extend(properties);
 			} else {
@@ -433,4 +451,21 @@ pub fn merge_info(
 
 		// TODO set more information?
 	}
+}
+
+// `info_chain` and `types` are a bit excess, but `key_matches` requires it
+// TODO needs to delete afterwards, to block it out for subsequent
+fn _pick_out_property(
+	from: &mut Properties,
+	(want_publicity, want_key): (Publicity, &PropertyKey<'static>),
+	info_chain: &impl InformationChain,
+	types: &TypeStore,
+) -> Option<(Publicity, PropertyKey<'static>, PropertyValue)> {
+	from.iter()
+		.position(|(publicity, key, _)| {
+			*publicity == want_publicity
+				&& crate::types::key_matches((key, None), (want_key, None), info_chain, types).0
+		})
+		// TODO replace with deleted?
+		.map(|idx| from.remove(idx))
 }

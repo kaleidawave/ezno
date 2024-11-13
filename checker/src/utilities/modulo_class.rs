@@ -28,7 +28,8 @@ impl ModuloClass {
 	/// WIP
 	pub fn disjoint(self, other: Self) -> bool {
 		if let Ok(gcd) = gcd_of_float(self.modulo, other.modulo) {
-			(self.offset - other.offset) % gcd == 0.
+			crate::utilities::notify!("{:?}", gcd);
+			(self.offset - other.offset) % gcd != 0.
 		} else {
 			crate::utilities::notify!("Here");
 			true

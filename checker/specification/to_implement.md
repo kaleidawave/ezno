@@ -948,3 +948,16 @@ new RegExp("<string>x").group.string
 ```
 
 - ?
+
+### Properties
+
+#### Issue [#208](https://github.com/kaleidawave/ezno/issues/208)
+
+```ts
+let d = {};
+let e = 0;
+if (Math.random() > 0.2) { d.a = 0; }
+print_type('a' in d);
+```
+
+- Hmmm

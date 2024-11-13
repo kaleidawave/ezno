@@ -172,7 +172,6 @@ pub fn get_less_than(on: TypeId, types: &TypeStore) -> Option<(bool, TypeId)> {
 	}
 }
 
-// TODO also take into account mod range
 #[must_use]
 pub fn range_to_type(range: FloatRange, types: &mut TypeStore) -> TypeId {
 	// TODO skip if infinite
@@ -181,6 +180,7 @@ pub fn range_to_type(range: FloatRange, types: &mut TypeStore) -> TypeId {
 	let floor = range
 		.get_greater_than()
 		.map(|_number| new_intrinsic(&Intrinsic::GreaterThan, floor_ty, types));
+
 	let ceiling =
 		range.get_less_than().map(|_number| new_intrinsic(&Intrinsic::LessThan, ceiling_ty, types));
 
@@ -199,6 +199,24 @@ pub fn range_to_type(range: FloatRange, types: &mut TypeStore) -> TypeId {
 	ty
 }
 
+pub fn modulo_to_type(mod_class: ModuloClass, types: &mut TypeStore) -> TypeId {
+	// TODO skip if infinite
+	let modulo = types.new_constant_type(Constant::Number(mod_class.modulo));
+	let ty = new_intrinsic(&Intrinsic::MultipleOf, modulo, types);
+	if mod_class.offset != 0. {
+		let offset = types.new_constant_type(Constant::Number(mod_class.offset));
+		types.register_type(Type::Constructor(Constructor::BinaryOperator {
+			lhs: ty,
+			operator: MathematicalOrBitwiseOperation::Add,
+			rhs: offset,
+			result: TypeId::NUMBER_TYPE,
+		}))
+	} else {
+		ty
+	}
+}
+
+// TODO offsets as well
 #[must_use]
 pub fn get_multiple(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	let on = get_constraint(on, types).unwrap_or(on);
@@ -436,10 +454,12 @@ impl PureNumberIntrinsic {
 			..
 		}) = ty
 		{
+			let lhs_ty = types.get_type_by_id(super::get_constraint(*lhs, types).unwrap_or(*lhs));
+			crate::utilities::notify!("{:?}", lhs_ty);
 			let lhs_modulo = if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 				on: TypeId::MULTIPLE_OF,
 				arguments,
-			}) = types.get_type_by_id(*lhs)
+			}) = lhs_ty
 			{
 				let arg = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
 				if let Type::Constant(Constant::Number(number)) = types.get_type_by_id(arg) {
@@ -450,6 +470,7 @@ impl PureNumberIntrinsic {
 			} else {
 				None
 			};
+
 			if let (Some(modulo), Type::Constant(Constant::Number(offset))) =
 				(lhs_modulo, types.get_type_by_id(*rhs))
 			{
