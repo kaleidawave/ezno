@@ -121,6 +121,9 @@ pub(crate) struct CheckArguments {
 	/// compact diagnostics
 	#[argh(switch)]
 	pub compact_diagnostics: bool,
+	/// more behavior for numbers
+	#[argh(switch)]
+	pub advanced_numbers: bool,
 	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
 	#[argh(option, default = "MaxDiagnostics::default()")]
 	pub max_diagnostics: MaxDiagnostics,
@@ -262,12 +265,17 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 				timings,
 				compact_diagnostics,
 				max_diagnostics,
+				advanced_numbers,
 			} = check_arguments;
 
 			let type_check_options: TypeCheckOptions = if cfg!(target_family = "wasm") {
 				Default::default()
 			} else {
-				TypeCheckOptions { measure_time: timings, ..TypeCheckOptions::default() }
+				TypeCheckOptions {
+					measure_time: timings,
+					advanced_numbers,
+					..TypeCheckOptions::default()
+				}
 			};
 
 			let entry_points = match get_entry_points(input) {

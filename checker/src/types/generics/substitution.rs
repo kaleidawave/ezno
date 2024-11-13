@@ -238,7 +238,7 @@ pub(crate) fn substitute(
 				let rhs = substitute(rhs, arguments, environment, types);
 
 				// TODO
-				let advanced_number_intrinsics = false;
+				let advanced_numbers = false;
 
 				match evaluate_mathematical_operation(
 					lhs,
@@ -247,7 +247,7 @@ pub(crate) fn substitute(
 					environment,
 					types,
 					false,
-					advanced_number_intrinsics,
+					advanced_numbers,
 				) {
 					Ok(result) => result,
 					Err(()) => {

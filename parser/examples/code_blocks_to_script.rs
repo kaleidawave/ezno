@@ -104,7 +104,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
 		for (header, mut code) in blocks {
 			// TODO clone
-			let module = Module::from_string(code.clone(), Default::default()).map_err(Box::new)?;
+			let module = match Module::from_string(code.clone(), Default::default()) {
+				Ok(module) => module,
+				Err(err) => {
+					return Err(From::from(format!("Parse error on {code}: {err:?}")));
+				}
+			};
 
 			let mut names = HashSet::new();
 

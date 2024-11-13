@@ -299,7 +299,7 @@ impl<'a> Environment<'a> {
 							self,
 							&mut checking_data.types,
 							checking_data.options.strict_casts,
-							checking_data.options.advanced_number_intrinsics,
+							checking_data.options.advanced_numbers,
 						);
 						if let Ok(new) = result {
 							let assignment_position =
@@ -360,7 +360,7 @@ impl<'a> Environment<'a> {
 							self,
 							&mut checking_data.types,
 							checking_data.options.strict_casts,
-							checking_data.options.advanced_number_intrinsics,
+							checking_data.options.advanced_numbers,
 						);
 						if let Ok(new) = result {
 							let assignment_position =

@@ -2541,7 +2541,7 @@ function func(a: number) {
 }
 ```
 
-With advanced_number_intrinsics
+With advanced_numbers
 
 - Expected null, found GreaterThan<-5> & LessThan<5> | -5 | 5
 - Expected string, found GreaterThan<18> & LessThan<22> | 18 | 22
@@ -2564,7 +2564,7 @@ function func1(a: number, b: number) {
 }
 ```
 
-With advanced_number_intrinsics
+With advanced_numbers
 
 - This equality is always false as MultipleOf<10> and GreaterThan<31> & LessThan<37> have no overlap
 
@@ -2598,10 +2598,10 @@ function func(param: boolean) {
     return value + 1;
 }
 
-func statisfies string;
+func satisfies string;
 ```
 
-With advanced_number_intrinsics
+With advanced_numbers
 
 - Expected string, found (param: boolean) => 2 | 3
 
