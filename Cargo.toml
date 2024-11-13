@@ -14,7 +14,7 @@ members = [
 name = "ezno"
 description = "A fast and correct TypeScript type checker and compiler with additional experiments. For use as a library or through the CLI"
 authors = ["Ben <kaleidawave@gmail.com>"]
-version = "0.0.22"
+version = "0.0.23"
 edition = "2021"
 license = "MIT"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
@@ -64,13 +64,13 @@ glob = "0.3"
 
 [dependencies.checker]
 path = "./checker"
-version = "0.0.17"
+version = "0.0.18"
 features = ["ezno-parser", "serde-serialize"]
 package = "ezno-checker"
 
 [dependencies.parser]
 path = "./parser"
-version = "0.1.6"
+version = "0.1.7"
 features = ["extras"]
 package = "ezno-parser"
 
