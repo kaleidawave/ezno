@@ -185,7 +185,7 @@ pub fn evaluate_mathematical_operation(
 				let result = intrinsics::range_to_type(range, types);
 				let constructor =
 					crate::types::Constructor::BinaryOperator { lhs, operator, rhs, result };
-					
+
 				return Ok(types.register_type(crate::Type::Constructor(constructor)));
 			}
 

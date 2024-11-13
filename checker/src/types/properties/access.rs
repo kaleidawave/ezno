@@ -1096,7 +1096,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				)
 			}
 			BasedOnKey::Right(property_on) => {
-				crate::utilities::notify!("{:?}", generics);
+				crate::utilities::notify!("generics are {:?}", generics);
 				let result = property_on.get_on(generics, environment, types)?;
 
 				// {

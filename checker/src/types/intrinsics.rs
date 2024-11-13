@@ -410,7 +410,7 @@ pub fn get_range_and_mod_class(
 	} else if let Type::Constant(Constant::Number(num)) = types.get_type_by_id(ty) {
 		(Some(FloatRange::new_single(*num)), None)
 	} else {
-		crate::utilities::notify!("Not interesting or constant {:?}", ty);
+		// crate::utilities::notify!("Not interesting or constant {:?}", ty);
 		(None, None)
 	}
 }

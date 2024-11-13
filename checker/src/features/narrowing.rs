@@ -152,7 +152,6 @@ pub fn narrow_based_on_expression(
 						rhs
 					};
 
-					crate::utilities::notify!("Here {:?} {:?}", lhs, result);
 					into.insert(lhs, result);
 
 					// CONDITION NARROWING HERE ((x ? 1 : 2) == 1 => x)
@@ -304,7 +303,6 @@ pub fn narrow_based_on_expression(
 			}
 			constructor => {
 				if let Some(condition) = as_logical_not(constructor, types) {
-					crate::utilities::notify!("Here");
 					narrow_based_on_expression(condition, !negate, into, information, types);
 				} else if let Some((lhs, rhs)) = as_logical_and(constructor, types) {
 					// De Morgan's laws

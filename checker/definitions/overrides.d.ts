@@ -37,7 +37,7 @@ declare class Array<T> {
 
     // TODO this argument
     map<U>(cb: (t: T, i?: number) => U): Array<U> {
-        const { length } = this, mapped: Array<U> = [];
+        const { length } = this, mapped: U[] = [];
         let i: number = 0;
         while (i < length) {
             const value = this[i];
@@ -48,7 +48,7 @@ declare class Array<T> {
 
     // // TODO any is debatable
     filter(cb: (t: T, i?: number) => any): Array<T> {
-        const { length } = this, filtered: Array<T> = [];
+        const { length } = this, filtered: T[] = [];
         let i: number = 0;
         while (i < length) {
             const value = this[i];

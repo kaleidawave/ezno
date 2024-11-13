@@ -137,10 +137,10 @@ pub fn evaluate_equality_inequality_operation(
 				}
 			}
 
-			let is_dependent = types.get_type_by_id(lhs).is_dependent()
+			let either_is_dependent = types.get_type_by_id(lhs).is_dependent()
 				|| types.get_type_by_id(rhs).is_dependent();
 
-			if is_dependent {
+			if either_is_dependent {
 				{
 					if let Type::Constructor(Constructor::BinaryOperator {
 						lhs: op_lhs,
@@ -163,14 +163,14 @@ pub fn evaluate_equality_inequality_operation(
 				}
 
 				{
-					let lhs = get_constraint(lhs, types).unwrap_or(lhs);
-					let rhs = get_constraint(rhs, types).unwrap_or(rhs);
-
 					if !helpers::simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
 						|| !helpers::simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
 					{
 						return Err(());
 					}
+
+					let lhs = get_constraint(lhs, types).unwrap_or(lhs);
+					let rhs = get_constraint(rhs, types).unwrap_or(rhs);
 
 					// Tidies some things for counting loop iterations
 

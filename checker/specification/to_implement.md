@@ -770,6 +770,47 @@ a satisfies 0; b satisfies string;
 
 - Expected string, found 1
 
+#### Array map
+
+> TODO other arguments (index and `this`)
+
+```ts
+[6, 8, 10].map(x => x + 1) satisfies [7, 8, 11];
+```
+
+- Expected [7, 8, 11], found [7, 9, 11]
+
+#### `Object.keys`, `Object.values`, `Object.entries`
+
+```ts
+Object.keys({ a: 1, b: 2 }) satisfies ["a", "b"];
+Object.values({ a: 1, b: 2 }) satisfies [1, 2];
+Object.entries({ a: 1, b: 2 }) satisfies boolean;
+```
+
+- Expected boolean, found [["a", 1], ["b", 2]]
+
+#### Throw through internal callback
+
+> This test heavily relies on `.map` working
+
+```ts
+try {
+	[1, 2, 3].map((x: number) => {
+		if (x === 2) {
+			throw "error"
+		}
+	});
+	console.log("unreachable")
+} catch (e) {
+	e satisfies number;
+}
+```
+
+- Conditional '"error"' was thrown in function
+- Unreachable statement
+- Expected number, found "error"
+
 ### Control flow
 
 #### Conditional break

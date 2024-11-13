@@ -272,7 +272,6 @@ pub(crate) fn type_is_subtype_with_generics(
 			return if let (Type::Narrowed { from, .. }, _, true) =
 				(subtype, &result, super::helpers::is_not_of_constant(*right, types))
 			{
-				crate::utilities::notify!("Here");
 				type_is_subtype_with_generics(
 					(base_type, base_type_arguments),
 					(*from, ty_structure_arguments),
@@ -392,20 +391,20 @@ pub(crate) fn type_is_subtype_with_generics(
 
 			// If lhs is not operator unless argument is operator
 			// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
-			let right_arg = get_constraint(ty, types).unwrap();
+			let right_constraint = get_constraint(ty, types).unwrap();
 
 			// crate::utilities::notify!(
 			// 	"RHS is parameter, edge case results to {:?}",
 			// 	(
 			// 		types.get_type_by_id(ty),
-			// 		types.get_type_by_id(right_arg),
-			// 		types.get_type_by_id(right_arg).is_operator()
+			// 		types.get_type_by_id(right_constraint),
+			// 		types.get_type_by_id(right_constraint).is_operator()
 			// 	)
 			// );
 
 			// This is important that LHS is not operator
 			let left_is_operator_right_is_not =
-				supertype.is_operator() && !types.get_type_by_id(right_arg).is_operator();
+				supertype.is_operator() && !types.get_type_by_id(right_constraint).is_operator();
 
 			// edge cases on edge cases
 			// If any of these are true. Then do not perform constraint argument lookup
@@ -414,12 +413,14 @@ pub(crate) fn type_is_subtype_with_generics(
 					supertype,
 					Type::RootPolyType(rpt)
 					if rpt.is_substitutable()
-				) || matches!(supertype, Type::Constructor(..));
-
+				) || matches!(supertype, Type::Constructor(..))
+				|| base_type_arguments
+					.and_then(|args| args.get_argument_covariant(base_type))
+					.is_some();
 			if !edge_case {
 				let result = type_is_subtype_with_generics(
 					(base_type, base_type_arguments),
-					(right_arg, ty_structure_arguments),
+					(right_constraint, ty_structure_arguments),
 					state,
 					information,
 					types,
@@ -459,7 +460,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 			} else {
 				// TODO what about if LHS has inferred constraint
-				crate::utilities::notify!("Constant {:?} against RHS {:#?}", lhs, subtype);
+				// crate::utilities::notify!("Constant {:?} against RHS {:#?}", lhs, subtype);
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		}
@@ -1455,9 +1456,15 @@ pub(crate) fn type_is_subtype_with_generics(
 					if *prototype == base_type {
 						SubTypeResult::IsSubType
 					} else {
+						crate::utilities::notify!(
+							"Mismatched prototype {:?} != {:?}",
+							prototype,
+							base_type
+						);
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				} else {
+					crate::utilities::notify!("No prototype");
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			}

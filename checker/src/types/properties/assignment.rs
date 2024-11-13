@@ -130,7 +130,10 @@ pub fn set_property<B: CallCheckingBehavior>(
 					environment,
 					types,
 				);
+
 				if let SubTypeResult::IsNotSubType(reason) = result {
+					crate::utilities::notify!("Here {:?} {:?}", property_constraint, new);
+
 					let is_modifying_tuple_length = under.is_equal_to("length")
 						&& tuple_like(object_constraint, types, environment);
 
@@ -272,6 +275,12 @@ pub fn set_property<B: CallCheckingBehavior>(
 			),
 		}
 	} else {
+		if get_constraint(on, types).is_some() {
+			return Err(SetPropertyError::AssigningToNonExistent {
+				property: PropertyKeyRepresentation::new(under, environment, types),
+				position,
+			});
+		}
 		// Sealed & no extensions check for NEW property (frozen case covered above)
 		{
 			if object_protection.is_some() {

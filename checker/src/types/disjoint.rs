@@ -1,6 +1,6 @@
 use super::{
-	Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, Type, TypeId,
-	TypeStore,
+	helpers, Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, Type,
+	TypeId, TypeStore,
 };
 use crate::context::InformationChain;
 
@@ -181,14 +181,18 @@ pub fn types_are_disjoint(
 			..
 		}) = rhs_ty
 		{
-			todo!()
+			let lhs = helpers::TemplatelLiteralExpansion::from_type(lhs, types);
+			let rhs = helpers::TemplatelLiteralExpansion::from_type(rhs, types);
+			lhs.is_disjoint(&rhs)
 		} else if let Type::Constructor(Constructor::BinaryOperator {
 			operator: MathematicalOrBitwiseOperation::Add,
 			result: TypeId::STRING_TYPE,
 			..
 		}) = lhs_ty
 		{
-			todo!()
+			let lhs = helpers::TemplatelLiteralExpansion::from_type(lhs, types);
+			let rhs = helpers::TemplatelLiteralExpansion::from_type(rhs, types);
+			lhs.is_disjoint(&rhs)
 		} else if let Some(lhs) = super::get_constraint(lhs, types) {
 			// TODO not sure whether these should be here?
 			types_are_disjoint(lhs, rhs, already_checked, information, types)

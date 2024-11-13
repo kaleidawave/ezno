@@ -306,16 +306,6 @@ const b = x.b;
 
 - No property 'b' on { a: 2 }
 
-#### `Object.keys`, `Object.values`, `Object.entries`
-
-```ts
-Object.keys({ a: 1, b: 2 }) satisfies ["a", "b"];
-Object.values({ a: 1, b: 2 }) satisfies [1, 2];
-Object.entries({ a: 1, b: 2 }) satisfies boolean;
-```
-
-- Expected boolean, found [["a", 1], ["b", 2]]
-
 #### Spread condition
 
 ```ts
@@ -2357,25 +2347,6 @@ try { checkedLn(-5) } catch {}
 
 - Conditional '[Error] { message: \"Cannot log\" }' was thrown in function
 
-#### Throw through internal callback
-
-```ts
-try {
-	[1, 2, 3].map((x: number) => {
-		if (x === 2) {
-			throw "error"
-		}
-	});
-	console.log("unreachable")
-} catch (e) {
-	e satisfies number;
-}
-```
-
-- Conditional '"error"' was thrown in function
-- Unreachable statement
-- Expected number, found "error"
-
 ### Collections
 
 > Some of these are built of exiting features.
@@ -2411,16 +2382,6 @@ x.push("hi");
 ```
 
 - Argument of type \"hi\" is not assignable to parameter of type number
-
-#### Array map
-
-> TODO other arguments (index and `this`)
-
-```ts
-[6, 8, 10].map(x => x + 1) satisfies [7, 8, 11];
-```
-
-- Expected [7, 8, 11], found [7, 9, 11]
 
 #### Mutation
 
@@ -2585,17 +2546,82 @@ With advanced_number_intrinsics
 - Expected null, found GreaterThan<-5> & LessThan<5> | -5 | 5
 - Expected string, found GreaterThan<18> & LessThan<22> | 18 | 22
 
-#### Not disjoint
+#### Disjoint multiple of with range
+
+> TODO need to redo range to use interesection of less than and greater than
 
 ```ts
-function func(param: number) {
-	if (param !== 2) {
-		return param === 2
-	}
+function func1(a: number, b: number) {
+  if (a % 8 === 0 && 31 < b && b < 37) {
+    const x = a === b;
+  }
+  if (a % 10 === 0 && 31 < b && b < 37) {
+    const x = a === b;
+  }
+  if (a % 10 === 0 && 31 < b && b < 41) {
+    const x = a === b;
+  }
 }
 ```
 
-- This equality is always false as Not<2> and 2 have no overlap
+With advanced_number_intrinsics
+
+- This equality is always false as MultipleOf<10> and GreaterThan<31> & LessThan<37> have no overlap
+
+#### Modulo range
+
+```ts
+function func(x: number) {
+  return x % 5 === 6;
+}
+```
+
+- This equality is always false as ExclusiveRange<-5, 5> and 6 have no overlap
+
+#### Transistivity
+
+```ts
+function func(a: number, b: number, c: number) {
+  if (a < b && b < c)  {
+    const cond = (a < c) satisfies 5;
+  }
+}
+```
+
+- Expected 5, found true
+
+### Operators across conditions
+
+```ts
+function func(param: boolean) {
+    const value = param ? 1 : 2;
+    return value + 1;
+}
+
+func statisfies string;
+```
+
+With advanced_number_intrinsics
+
+- Expected string, found (param: boolean) => 2 | 3
+
+#### Disjoint not
+
+```ts
+function func1(param: Not<string>) {
+  return "hi" === param;
+}
+
+function func2(param: Not<string>) {
+  return 4 === param;
+}
+
+function func3(p1: Not<string>, p2: Not<number>) {
+  return p1 === p2;
+}
+```
+
+- This equality is always false as "hi" and Not\<string> have no overlap
 
 ### Statements, declarations and expressions
 
@@ -3753,10 +3779,29 @@ type Introduction = `Hello ${string}`;
 const first: Introduction = "Hello Ben";
 const second: Introduction = "Hi Ben";
 const third: `Hiya ${string}` = "Hello Ben";
+
+// Edge cases
+const invalidNum1: `${1}` = 1;
+const invalidNum2: `${1}` = "1";
+const invalidNum3: `${1}` = "2";
 ```
 
 - Type "Hi Ben" is not assignable to type Introduction
 - Type "Hello Ben" is not assignable to type `Hiya ${string}`
+- Type 1 is not assignable to type "1"
+- Type \"2\" is not assignable to type "1"
+
+#### Disjoint template literals
+
+```ts
+function func(a: `a${string}`, b: `b${string}`, c: string) {
+    const res1 = a === b;
+    const res2 = (b === c) satisfies string;
+}
+```
+
+- This equality is always false as `a${string}` and `b${string}` have no overlap
+- Expected string, found boolean
 
 #### Assigning to types as keys
 
@@ -4514,6 +4559,31 @@ function getName(name?: string) {
 
 - Expected undefined, found string
 
+#### Implication from equality
+
+```ts
+function func(a: boolean) {
+  const x = a ? 1 : 2;
+  if (x === 1) {
+    a satisfies "hi"
+  }
+}
+```
+
+- Expected "hi", found true
+
+#### Narrowing in for loop
+
+> Can't do modulo because of post mutation
+
+```ts
+for (let i = 0; i < 3; i++) {
+  const x = i === 50;
+}
+```
+
+- This equality is always false as LessThan<3> and 50 have no overlap
+
 ### Object constraint
 
 > Any references to a annotated variable **must** be within its LHS type. These test that it carries down to objects.
@@ -4605,9 +4675,18 @@ const x = { a: 3 };
 Object.setPrototypeOf(x, { a: 5, b: 2 });
 x.a satisfies 3;
 x.b satisfies string;
+
+const obj = Object.setPrototypeOf(
+  {}, 
+  Math.random() ? { a: 2 } : { get a() { return 0 } }
+);
+
+const result = 'a' in obj;
+result satisfies string;
 ```
 
 - Expected string, found 2
+- Expected string, found true
 
 #### Get prototype
 

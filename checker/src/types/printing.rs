@@ -58,24 +58,6 @@ pub fn print_type_with_type_arguments(
 	buf
 }
 
-pub fn print_inner_template_literal_type_into_buf<C: InformationChain>(
-	ty: TypeId,
-	buf: &mut String,
-	cycles: &mut HashSet<TypeId>,
-	args: GenericChain,
-	types: &TypeStore,
-	info: &C,
-	debug: bool,
-) {
-	if let Type::Constant(cst) = types.get_type_by_id(ty) {
-		buf.push_str(&cst.as_js_string());
-	} else {
-		buf.push_str("${");
-		print_type_into_buf(ty, buf, cycles, args, types, info, debug);
-		buf.push('}');
-	}
-}
-
 /// Recursion safe + reuses buffer
 pub fn print_type_into_buf<C: InformationChain>(
 	ty: TypeId,
@@ -125,7 +107,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::MappedGeneric { name, extends } => {
 				if debug {
-					write!(buf, "[mg {} {}] ", ty.0, name).unwrap();
+					write!(buf, "(mg {} {}) ", ty.0, name).unwrap();
 				}
 				crate::utilities::notify!("args={:?}", args);
 				if let Some(crate::types::CovariantContribution::String(property)) =
@@ -140,13 +122,13 @@ pub fn print_type_into_buf<C: InformationChain>(
 			| PolyNature::StructureGeneric { name, extends: _ } => {
 				if debug {
 					if let PolyNature::FunctionGeneric { .. } = nature {
-						write!(buf, "[fg {} {}] ", ty.0, name).unwrap();
+						write!(buf, "(fg {} {}) ", ty.0, name).unwrap();
 					}
 				}
 				if let Some(arg) = args.and_then(|args| args.get_argument_covariant(ty)) {
 					use crate::types::CovariantContribution;
 					if debug {
-						buf.push_str(" (specialised with) ");
+						buf.push_str("(specialised with) ");
 					}
 					match arg {
 						CovariantContribution::TypeId(id) => {
@@ -168,7 +150,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						if let PolyNature::FunctionGeneric { extends, .. } = nature {
 							print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
 						} else {
-							write!(buf, "[sg {}] ", ty.0).unwrap();
+							write!(buf, "(sg {})", ty.0).unwrap();
 						}
 					}
 					buf.push_str(name);
@@ -176,7 +158,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::InferGeneric { name, extends } => {
 				if debug {
-					write!(buf, "[IG {}] @ ", ty.0).unwrap();
+					write!(buf, "(IG {}) @ ", ty.0).unwrap();
 				}
 				buf.push_str("infer ");
 				buf.push_str(name);
@@ -188,19 +170,19 @@ pub fn print_type_into_buf<C: InformationChain>(
 			PolyNature::FreeVariable { based_on: to, .. } => {
 				if debug {
 					// FV = free variable
-					write!(buf, "[FV {}] @ ", ty.0).unwrap();
+					write!(buf, "(FV {}) @ ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
 			PolyNature::Parameter { fixed_to: to } => {
 				if debug {
-					write!(buf, "[param {}] @ ", ty.0).unwrap();
+					write!(buf, "(param {}) @ ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
 			PolyNature::Open(to) => {
 				if debug {
-					write!(buf, "[open {}] ", ty.0).unwrap();
+					write!(buf, "(open {}) ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
@@ -221,7 +203,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::CatchVariable(constraint) => {
 				if debug {
-					write!(buf, "[catch variable {ty:?}] ").unwrap();
+					write!(buf, "(CV {ty:?}) ").unwrap();
 				}
 				print_type_into_buf(*constraint, buf, cycles, args, types, info, debug);
 			}
@@ -476,7 +458,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				Constructor::Image { on: _, with: _, result } => {
 					// TODO arguments
-					write!(buf, "[func result {}] (*args*)", ty.0).unwrap();
+					write!(buf, "(func result {}) (*args*)", ty.0).unwrap();
 					buf.push_str(" -> ");
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}
@@ -508,21 +490,25 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 			},
 			constructor => {
-				if let Constructor::BinaryOperator { result: result_ty, lhs, rhs, .. } = constructor
-				{
-					if *result_ty != TypeId::NUMBER_TYPE
-						&& !matches!(
-							types.get_type_by_id(*result_ty),
-							Type::PartiallyAppliedGenerics(_) | Type::RootPolyType(_)
-						) {
-						buf.push('`');
-						print_inner_template_literal_type_into_buf(
-							*lhs, buf, cycles, args, types, info, debug,
-						);
-						print_inner_template_literal_type_into_buf(
-							*rhs, buf, cycles, args, types, info, debug,
-						);
-						buf.push('`');
+				if let Constructor::BinaryOperator { result: result_ty, .. } = constructor {
+					if let TypeId::STRING_TYPE = *result_ty {
+						let slice =
+							crate::types::helpers::TemplatelLiteralExpansion::from_type(ty, types);
+						if let Some(single) = slice.as_single_string() {
+							buf.push('"');
+							buf.push_str(single);
+							buf.push('"');
+						} else {
+							buf.push('`');
+							for (s, ty) in &slice.parts {
+								buf.push_str(&s);
+								buf.push_str("${");
+								print_type_into_buf(*ty, buf, cycles, args, types, info, debug);
+								buf.push('}');
+							}
+							buf.push_str(&slice.rest);
+							buf.push('`');
+						}
 						return;
 					}
 				}
@@ -534,12 +520,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 		| Type::Interface { name, parameters: _, .. }
 		| Type::AliasTo { to: _, name, parameters: _ }) => {
 			if debug {
-				write!(buf, "{name}#{}", ty.0).unwrap();
+				write!(buf, "{name}#{} ", ty.0).unwrap();
 				if let Type::AliasTo { to, .. } = t {
-					buf.push_str(" = ");
+					buf.push_str("= ");
 					print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 				} else if let Type::Class { .. } = t {
-					buf.push_str(" (class)");
+					buf.push_str("(class)");
 				}
 			} else {
 				buf.push_str(name);
@@ -587,7 +573,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 
 			if debug {
 				let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
-				write!(buf, "[func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
+				write!(buf, "(func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
 				if let FunctionEffect::SideEffects {
 					events: _,
 					free_variables,
@@ -605,7 +591,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					buf.push_str(", this ");
 					print_type_into_buf(*p, buf, cycles, args, types, info, debug);
 				}
-				buf.push_str("] = ");
+				buf.push_str(") = ");
 			}
 			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
@@ -659,9 +645,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 		Type::Object(kind) => {
 			if debug {
 				if let ObjectNature::RealDeal = kind {
-					write!(buf, "[obj {}] ", ty.0).unwrap();
+					write!(buf, "(obj {}) ", ty.0).unwrap();
 				} else {
-					write!(buf, "[aol {}] ", ty.0).unwrap();
+					write!(buf, "(anom {}) ", ty.0).unwrap();
 				}
 			}
 			let prototype =

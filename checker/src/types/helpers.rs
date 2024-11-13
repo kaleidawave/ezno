@@ -382,3 +382,84 @@ pub fn get_constraint_or_alias(on: TypeId, types: &TypeStore) -> Option<TypeId> 
 		_ => None,
 	}
 }
+
+#[derive(Debug)]
+pub struct TemplatelLiteralExpansion {
+	pub parts: Vec<(String, TypeId)>,
+	pub rest: String,
+}
+
+impl TemplatelLiteralExpansion {
+	// pub const EMPTY: TemplatelLiteralExpansion =
+	// TemplatelLiteralExpansion { parts: Vec::new(), rest: String::default() };
+
+	/// TODO more, maybe involving types
+	pub fn is_disjoint(&self, other: &Self) -> bool {
+		crate::utilities::notify!("{:?}", (self, other));
+		if let (Some((lhs, _)), Some((rhs, _))) = (self.parts.first(), other.parts.first()) {
+			let prefix_length = std::cmp::min(lhs.len(), rhs.len());
+			if &lhs[..prefix_length] != &rhs[..prefix_length] {
+				return true;
+			}
+		}
+
+		let postfix_len = std::cmp::min(self.rest.len(), other.rest.len());
+		if &self.rest[..postfix_len] != &other.rest[..postfix_len] {
+			true
+		} else {
+			false
+		}
+	}
+
+	pub fn as_single_string(&self) -> Option<&str> {
+		if self.parts.is_empty() {
+			Some(&self.rest)
+		} else {
+			None
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.parts.is_empty() && self.rest.is_empty()
+	}
+
+	pub fn concatenate(self, mut other: Self) -> Self {
+		let mut parts: Vec<(String, TypeId)> = self.parts;
+		let rest = if other.parts.is_empty() {
+			format!("{}{}", self.rest, other.rest)
+		} else {
+			other.parts[0].0.insert_str(0, &self.rest);
+			parts.append(&mut other.parts);
+			other.rest
+		};
+		Self { parts, rest }
+	}
+
+	/// Forms a TL no matter what
+	pub fn from_type(id: TypeId, types: &TypeStore) -> Self {
+		let ty = types.get_type_by_id(id);
+		if let Type::Constant(constant) = ty {
+			TemplatelLiteralExpansion {
+				parts: Default::default(),
+				rest: constant.as_js_string().into_owned(),
+			}
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			lhs,
+			operator: MathematicalOrBitwiseOperation::Add,
+			rhs,
+			result: TypeId::STRING_TYPE,
+		}) = ty
+		{
+			let lhs = Self::from_type(*lhs, types);
+			let rhs = Self::from_type(*rhs, types);
+			lhs.concatenate(rhs)
+		} else if let Some(base) = get_constraint_or_alias(id, types) {
+			Self::from_type(base, types)
+		} else {
+			TemplatelLiteralExpansion {
+				parts: vec![(Default::default(), id)],
+				rest: Default::default(),
+			}
+		}
+	}
+}

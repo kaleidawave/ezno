@@ -508,10 +508,10 @@ pub(crate) fn key_matches(
 			);
 
 			let contributions = state.contributions.unwrap();
-			crate::utilities::notify!(
-				"Here contributions {:?}",
-				&contributions.staging_contravariant
-			);
+			// crate::utilities::notify!(
+			// 	"Here contributions {:?}",
+			// 	&contributions.staging_contravariant
+			// );
 
 			(result.is_subtype(), contributions.staging_contravariant)
 		}
