@@ -247,9 +247,7 @@ fn number_modulo_disjoint(
 	let argument =
 		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap());
 
-	let argument = if let Type::Constant(Constant::Number(argument)) = argument {
-		argument
-	} else {
+	let Type::Constant(Constant::Number(argument)) = argument else {
 		crate::utilities::notify!("Gets complex here");
 		return false;
 	};

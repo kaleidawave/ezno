@@ -203,7 +203,9 @@ pub fn modulo_to_type(mod_class: ModuloClass, types: &mut TypeStore) -> TypeId {
 	// TODO skip if infinite
 	let modulo = types.new_constant_type(Constant::Number(mod_class.modulo));
 	let ty = new_intrinsic(&Intrinsic::MultipleOf, modulo, types);
-	if mod_class.offset != 0. {
+	if mod_class.offset == 0. {
+		ty
+	} else {
 		let offset = types.new_constant_type(Constant::Number(mod_class.offset));
 		types.register_type(Type::Constructor(Constructor::BinaryOperator {
 			lhs: ty,
@@ -211,8 +213,6 @@ pub fn modulo_to_type(mod_class: ModuloClass, types: &mut TypeStore) -> TypeId {
 			rhs: offset,
 			result: TypeId::NUMBER_TYPE,
 		}))
-	} else {
-		ty
 	}
 }
 
@@ -320,6 +320,7 @@ pub fn new_intrinsic(intrinsic: &Intrinsic, argument: TypeId, types: &mut TypeSt
 	types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }))
 }
 
+#[must_use]
 pub fn get_range_and_mod_class(
 	ty: TypeId,
 	types: &TypeStore,
@@ -364,12 +365,11 @@ pub fn get_range_and_mod_class(
 					});
 				}
 				PureNumberIntrinsic::Modulo { modulo, offset } => {
-					modulo_class = Some(match modulo_class {
-						None => ModuloClass::new(modulo, offset),
-						Some(_) => {
-							crate::utilities::notify!("TODO intersection");
-							return (None, None);
-						}
+					modulo_class = Some(if modulo_class.is_none() {
+						ModuloClass::new(modulo, offset)
+					} else {
+						crate::utilities::notify!("TODO intersection");
+						return (None, None);
 					});
 				}
 			}

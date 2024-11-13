@@ -100,7 +100,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 		}
 		Type::Narrowed { narrowed_to, from } => {
 			if debug {
-				write!(buf, "(narrowed from {:?}) ", from).unwrap();
+				write!(buf, "(narrowed from {from:?}) ").unwrap();
 			}
 			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
 		}
@@ -490,27 +490,26 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 			},
 			constructor => {
-				if let Constructor::BinaryOperator { result: result_ty, .. } = constructor {
-					if let TypeId::STRING_TYPE = *result_ty {
-						let slice =
-							crate::types::helpers::TemplatelLiteralExpansion::from_type(ty, types);
-						if let Some(single) = slice.as_single_string() {
-							buf.push('"');
-							buf.push_str(single);
-							buf.push('"');
-						} else {
-							buf.push('`');
-							for (s, ty) in &slice.parts {
-								buf.push_str(&s);
-								buf.push_str("${");
-								print_type_into_buf(*ty, buf, cycles, args, types, info, debug);
-								buf.push('}');
-							}
-							buf.push_str(&slice.rest);
-							buf.push('`');
+				if let Constructor::BinaryOperator { result: TypeId::STRING_TYPE, .. } = constructor
+				{
+					let slice =
+						crate::types::helpers::TemplatelLiteralExpansion::from_type(ty, types);
+					if let Some(single) = slice.as_single_string() {
+						buf.push('"');
+						buf.push_str(single);
+						buf.push('"');
+					} else {
+						buf.push('`');
+						for (s, ty) in &slice.parts {
+							buf.push_str(s);
+							buf.push_str("${");
+							print_type_into_buf(*ty, buf, cycles, args, types, info, debug);
+							buf.push('}');
 						}
-						return;
+						buf.push_str(&slice.rest);
+						buf.push('`');
 					}
+					return;
 				}
 				let base = get_constraint(ty, types).unwrap();
 				print_type_into_buf(base, buf, cycles, args, types, info, debug);

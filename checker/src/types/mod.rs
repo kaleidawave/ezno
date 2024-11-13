@@ -417,6 +417,7 @@ pub enum Constructor {
 }
 
 impl Constructor {
+	#[must_use]
 	pub fn get_constraint(&self) -> TypeId {
 		match self {
 			Constructor::BinaryOperator { result, .. }

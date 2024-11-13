@@ -293,7 +293,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 						new_debouncer(Duration::from_millis(200), None, tx).unwrap();
 
 					for e in &entry_points {
-						_ = debouncer.watcher().watch(e, notify::RecursiveMode::Recursive).unwrap();
+						debouncer.watcher().watch(e, notify::RecursiveMode::Recursive).unwrap();
 					}
 
 					let _ = run_checker(
@@ -359,7 +359,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 				source_maps: build_config.source_maps,
 				type_definition_module: build_config.definition_file,
 				// TODO not sure
-				output_path: PathBuf::from(output_path),
+				output_path,
 				other_transformers: None,
 				lsp_mode: false,
 			};

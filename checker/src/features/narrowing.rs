@@ -100,7 +100,9 @@ pub fn narrow_based_on_expression(
 					);
 
 					// TODO also from == x - 1 etc
-					let narrowed_to = if rhs != TypeId::ZERO {
+					let narrowed_to = if rhs == TypeId::ZERO {
+						narrowed_to
+					} else {
 						types.register_type(Type::Constructor(
 							crate::types::Constructor::BinaryOperator {
 								lhs: narrowed_to,
@@ -109,8 +111,6 @@ pub fn narrow_based_on_expression(
 								result: TypeId::NUMBER_TYPE,
 							},
 						))
-					} else {
-						narrowed_to
 					};
 					into.insert(operand, narrowed_to);
 				} else {

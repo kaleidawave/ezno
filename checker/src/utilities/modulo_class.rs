@@ -9,6 +9,7 @@ pub struct ModuloClass {
 
 // TODO more operations
 impl ModuloClass {
+	#[must_use]
 	pub fn new(modulo: BetterF64, offset: BetterF64) -> Self {
 		debug_assert!(modulo != 0.);
 		if modulo > 0f64.try_into().unwrap() {
@@ -20,12 +21,14 @@ impl ModuloClass {
 		}
 	}
 
+	#[must_use]
 	pub fn contains(self, value: BetterF64) -> bool {
 		// Note -0. = 0.
 		(value - self.offset) % self.modulo == 0.
 	}
 
 	/// WIP
+	#[must_use]
 	pub fn disjoint(self, other: Self) -> bool {
 		if let Ok(gcd) = gcd_of_float(self.modulo, other.modulo) {
 			crate::utilities::notify!("{:?}", gcd);
@@ -36,14 +39,17 @@ impl ModuloClass {
 		}
 	}
 
+	#[must_use]
 	pub fn intersection(self, _other: Self) -> Option<Self> {
 		todo!()
 	}
 
+	#[must_use]
 	pub fn get_cover(self, _other: Self) -> Option<Self> {
 		todo!()
 	}
 
+	#[must_use]
 	pub fn offset(self, offset: BetterF64) -> Self {
 		// TODO temp fix
 		if self.is_default() {
@@ -53,6 +59,7 @@ impl ModuloClass {
 		}
 	}
 
+	#[must_use]
 	pub fn multiply(self, multiple: BetterF64) -> Self {
 		// TODO temp fix
 		if self.is_default() {
@@ -62,6 +69,7 @@ impl ModuloClass {
 		}
 	}
 
+	#[must_use]
 	pub fn negate(self) -> Self {
 		// TODO temp fix
 		if self.is_default() {
@@ -71,6 +79,7 @@ impl ModuloClass {
 		}
 	}
 
+	#[must_use]
 	pub fn is_default(self) -> bool {
 		self.modulo == f64::EPSILON
 	}
@@ -92,17 +101,17 @@ fn try_get_numerator_denominator(input: BetterF64) -> Result<(i32, i32), ()> {
 	let (mut a, mut b, mut c, mut d) = (0, 1, 1, 1);
 
 	for _ in 0..STEPS {
-		let mediant_float = (a as f64 + b as f64) / (c as f64 + d as f64);
+		let mediant_float = (f64::from(a) + f64::from(b)) / (f64::from(c) + f64::from(d));
 		if (fractional_part - mediant_float).abs() < MARGIN {
 			let numerator = a + b + integer_part * (c + d);
 			let denominator = c + d;
 			return Ok((numerator, denominator));
 		} else if fractional_part > mediant_float {
-			a = a + b;
-			c = c + d;
+			a += b;
+			c += d;
 		} else {
-			b = a + b;
-			d = c + d;
+			b += a;
+			d += c;
 		}
 	}
 
@@ -128,7 +137,7 @@ fn gcd_of_float(n1: BetterF64, n2: BetterF64) -> Result<BetterF64, ()> {
 	let (c, d) = try_get_numerator_denominator(n2)?;
 
 	// gcd(a / b, c / d) = gcd(a, c) / lcm(b, d)
-	Ok(BetterF64::new(gcd(a, c) as f64 / lcm(b, d) as f64).unwrap())
+	Ok(BetterF64::new(f64::from(gcd(a, c)) / f64::from(lcm(b, d))).unwrap())
 }
 
 // hmmm
@@ -145,6 +154,9 @@ mod tests {
 	// TODO test negatives etc
 	#[test]
 	fn gcd() {
-		assert_eq!(gcd_of_float(1. / 3., 3. / 2.), Ok(3.));
+		assert_eq!(
+			gcd_of_float(BetterF64::new(1. / 3.).unwrap(), BetterF64::new(3. / 2.).unwrap()),
+			Ok(BetterF64::new(0.16666666666666666).unwrap())
+		);
 	}
 }

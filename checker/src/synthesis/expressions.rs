@@ -329,112 +329,106 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					}
 
 					return result;
-				} else {
-					let lhs_pos =
-						ASTNode::get_position(&**lhs).with_source(environment.get_source());
-					let rhs_pos =
-						ASTNode::get_position(&**rhs).with_source(environment.get_source());
-					let position = lhs_pos
-						.without_source()
-						.union(rhs_pos.without_source())
-						.with_source(environment.get_source());
-
-					checking_data.diagnostics_container.add_error(
-						crate::TypeCheckError::InvalidEqualityOperation {
-							operator,
-							lhs: TypeStringRepresentation::from_type_id(
-								lhs_ty,
-								environment,
-								&checking_data.types,
-								false,
-							),
-							rhs: TypeStringRepresentation::from_type_id(
-								rhs_ty,
-								environment,
-								&checking_data.types,
-								false,
-							),
-							position,
-						},
-					);
-
-					return TypeId::ERROR_TYPE;
 				}
-			} else {
-				let rhs_ty =
-					synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
-				let operator = match operator {
-					BinaryOperator::Add => MathematicalOrBitwiseOperation::Add,
-					BinaryOperator::Subtract => MathematicalOrBitwiseOperation::Subtract,
-					BinaryOperator::Multiply => MathematicalOrBitwiseOperation::Multiply,
-					BinaryOperator::Divide => MathematicalOrBitwiseOperation::Divide,
-					BinaryOperator::Modulo => MathematicalOrBitwiseOperation::Modulo,
-					BinaryOperator::Exponent => MathematicalOrBitwiseOperation::Exponent,
-					BinaryOperator::BitwiseShiftLeft => {
-						MathematicalOrBitwiseOperation::BitwiseShiftLeft
-					}
-					BinaryOperator::BitwiseShiftRight => {
-						MathematicalOrBitwiseOperation::BitwiseShiftRight
-					}
-					BinaryOperator::BitwiseShiftRightUnsigned => {
-						MathematicalOrBitwiseOperation::BitwiseShiftRightUnsigned
-					}
-					BinaryOperator::BitwiseAnd => MathematicalOrBitwiseOperation::BitwiseAnd,
-					BinaryOperator::BitwiseXOr => MathematicalOrBitwiseOperation::BitwiseXOr,
-					BinaryOperator::BitwiseOr => MathematicalOrBitwiseOperation::BitwiseOr,
-					BinaryOperator::Pipe | BinaryOperator::Compose => {
-						checking_data.raise_unimplemented_error(
-							"special operations",
-							position.with_source(environment.get_source()),
-						);
-						return TypeId::UNIMPLEMENTED_ERROR_TYPE;
-					}
-					_ => {
-						unreachable!()
-					}
-				};
-				let result = evaluate_mathematical_operation(
-					lhs_ty,
-					operator,
-					rhs_ty,
-					environment,
-					&mut checking_data.types,
-					checking_data.options.strict_casts,
-					checking_data.options.advanced_number_intrinsics,
+
+				let lhs_pos = ASTNode::get_position(&**lhs).with_source(environment.get_source());
+				let rhs_pos = ASTNode::get_position(&**rhs).with_source(environment.get_source());
+				let position = lhs_pos
+					.without_source()
+					.union(rhs_pos.without_source())
+					.with_source(environment.get_source());
+
+				checking_data.diagnostics_container.add_error(
+					crate::TypeCheckError::InvalidEqualityOperation {
+						operator,
+						lhs: TypeStringRepresentation::from_type_id(
+							lhs_ty,
+							environment,
+							&checking_data.types,
+							false,
+						),
+						rhs: TypeStringRepresentation::from_type_id(
+							rhs_ty,
+							environment,
+							&checking_data.types,
+							false,
+						),
+						position,
+					},
 				);
-				match result {
-					Ok(value) => Instance::RValue(value),
-					Err(()) => {
-						let lhs_pos =
-							ASTNode::get_position(&**lhs).with_source(environment.get_source());
-						let rhs_pos =
-							ASTNode::get_position(&**rhs).with_source(environment.get_source());
-						let position = lhs_pos
-							.without_source()
-							.union(rhs_pos.without_source())
-							.with_source(environment.get_source());
 
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::InvalidMathematicalOrBitwiseOperation {
-								operator,
-								lhs: TypeStringRepresentation::from_type_id(
-									lhs_ty,
-									environment,
-									&checking_data.types,
-									false,
-								),
-								rhs: TypeStringRepresentation::from_type_id(
-									rhs_ty,
-									environment,
-									&checking_data.types,
-									false,
-								),
-								position,
-							},
-						);
-						return TypeId::ERROR_TYPE;
-					}
+				return TypeId::ERROR_TYPE;
+			}
+
+			let rhs_ty = synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
+			let operator = match operator {
+				BinaryOperator::Add => MathematicalOrBitwiseOperation::Add,
+				BinaryOperator::Subtract => MathematicalOrBitwiseOperation::Subtract,
+				BinaryOperator::Multiply => MathematicalOrBitwiseOperation::Multiply,
+				BinaryOperator::Divide => MathematicalOrBitwiseOperation::Divide,
+				BinaryOperator::Modulo => MathematicalOrBitwiseOperation::Modulo,
+				BinaryOperator::Exponent => MathematicalOrBitwiseOperation::Exponent,
+				BinaryOperator::BitwiseShiftLeft => {
+					MathematicalOrBitwiseOperation::BitwiseShiftLeft
 				}
+				BinaryOperator::BitwiseShiftRight => {
+					MathematicalOrBitwiseOperation::BitwiseShiftRight
+				}
+				BinaryOperator::BitwiseShiftRightUnsigned => {
+					MathematicalOrBitwiseOperation::BitwiseShiftRightUnsigned
+				}
+				BinaryOperator::BitwiseAnd => MathematicalOrBitwiseOperation::BitwiseAnd,
+				BinaryOperator::BitwiseXOr => MathematicalOrBitwiseOperation::BitwiseXOr,
+				BinaryOperator::BitwiseOr => MathematicalOrBitwiseOperation::BitwiseOr,
+				BinaryOperator::Pipe | BinaryOperator::Compose => {
+					checking_data.raise_unimplemented_error(
+						"special operations",
+						position.with_source(environment.get_source()),
+					);
+					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+				}
+				_ => {
+					unreachable!()
+				}
+			};
+			let result = evaluate_mathematical_operation(
+				lhs_ty,
+				operator,
+				rhs_ty,
+				environment,
+				&mut checking_data.types,
+				checking_data.options.strict_casts,
+				checking_data.options.advanced_number_intrinsics,
+			);
+			if let Ok(value) = result {
+				Instance::RValue(value)
+			} else {
+				let lhs_pos = ASTNode::get_position(&**lhs).with_source(environment.get_source());
+				let rhs_pos = ASTNode::get_position(&**rhs).with_source(environment.get_source());
+				let position = lhs_pos
+					.without_source()
+					.union(rhs_pos.without_source())
+					.with_source(environment.get_source());
+
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+						operator,
+						lhs: TypeStringRepresentation::from_type_id(
+							lhs_ty,
+							environment,
+							&checking_data.types,
+							false,
+						),
+						rhs: TypeStringRepresentation::from_type_id(
+							rhs_ty,
+							environment,
+							&checking_data.types,
+							false,
+						),
+						position,
+					},
+				);
+				return TypeId::ERROR_TYPE;
 			}
 		}
 		Expression::UnaryOperation { operand, operator, position } => {

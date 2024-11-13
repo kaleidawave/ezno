@@ -282,6 +282,7 @@ pub fn simple_subtype(
 }
 
 // unfolds narrowing
+#[must_use]
 pub fn get_origin(ty: TypeId, types: &TypeStore) -> TypeId {
 	if let Type::Narrowed { from, .. } = types.get_type_by_id(ty) {
 		// Hopefully don't have a nested from
@@ -292,6 +293,7 @@ pub fn get_origin(ty: TypeId, types: &TypeStore) -> TypeId {
 }
 
 /// Temp fix for equality of narrowing stuff
+#[must_use]
 pub fn is_not_of_constant(ty: TypeId, types: &TypeStore) -> bool {
 	if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 		on: TypeId::NOT_RESTRICTION,
@@ -306,6 +308,7 @@ pub fn is_not_of_constant(ty: TypeId, types: &TypeStore) -> bool {
 }
 
 // TODO narrowed as well
+#[must_use]
 pub fn type_equal(lhs: TypeId, rhs: TypeId, types: &TypeStore) -> bool {
 	if lhs == rhs {
 		true
@@ -324,6 +327,7 @@ pub struct AndCondition(pub TypeId);
 #[derive(Debug)]
 pub struct OrCase(pub Vec<AndCondition>);
 
+#[must_use]
 pub fn into_conditions(id: TypeId, types: &TypeStore) -> Vec<AndCondition> {
 	let ty = types.get_type_by_id(id);
 
@@ -347,6 +351,7 @@ pub fn into_conditions(id: TypeId, types: &TypeStore) -> Vec<AndCondition> {
 	}
 }
 
+#[must_use]
 pub fn into_cases(id: TypeId, types: &TypeStore) -> Vec<OrCase> {
 	let ty = types.get_type_by_id(id);
 	if let Type::Or(lhs, rhs) = ty {
@@ -394,23 +399,21 @@ impl TemplatelLiteralExpansion {
 	// TemplatelLiteralExpansion { parts: Vec::new(), rest: String::default() };
 
 	/// TODO more, maybe involving types
+	#[must_use]
 	pub fn is_disjoint(&self, other: &Self) -> bool {
 		crate::utilities::notify!("{:?}", (self, other));
 		if let (Some((lhs, _)), Some((rhs, _))) = (self.parts.first(), other.parts.first()) {
 			let prefix_length = std::cmp::min(lhs.len(), rhs.len());
-			if &lhs[..prefix_length] != &rhs[..prefix_length] {
+			if lhs[..prefix_length] != rhs[..prefix_length] {
 				return true;
 			}
 		}
 
 		let postfix_len = std::cmp::min(self.rest.len(), other.rest.len());
-		if &self.rest[..postfix_len] != &other.rest[..postfix_len] {
-			true
-		} else {
-			false
-		}
+		self.rest[..postfix_len] != other.rest[..postfix_len]
 	}
 
+	#[must_use]
 	pub fn as_single_string(&self) -> Option<&str> {
 		if self.parts.is_empty() {
 			Some(&self.rest)
@@ -419,10 +422,12 @@ impl TemplatelLiteralExpansion {
 		}
 	}
 
+	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		self.parts.is_empty() && self.rest.is_empty()
 	}
 
+	#[must_use]
 	pub fn concatenate(self, mut other: Self) -> Self {
 		let mut parts: Vec<(String, TypeId)> = self.parts;
 		let rest = if other.parts.is_empty() {
@@ -436,6 +441,7 @@ impl TemplatelLiteralExpansion {
 	}
 
 	/// Forms a TL no matter what
+	#[must_use]
 	pub fn from_type(id: TypeId, types: &TypeStore) -> Self {
 		let ty = types.get_type_by_id(id);
 		if let Type::Constant(constant) = ty {

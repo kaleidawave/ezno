@@ -18,6 +18,7 @@ impl InclusiveExclusive {
 		}
 	}
 
+	#[must_use]
 	pub fn is_inclusive(self) -> bool {
 		matches!(self, Inclusive)
 	}
@@ -45,6 +46,7 @@ impl FloatRange {
 		Self { floor: (Inclusive, on), ceiling: (Inclusive, on) }
 	}
 
+	#[must_use]
 	pub fn as_single(self) -> Option<BetterF64> {
 		if let FloatRange { floor: (Inclusive, floor), ceiling: (Inclusive, ceiling) } = self {
 			(floor == ceiling).then_some(floor)
@@ -53,6 +55,7 @@ impl FloatRange {
 		}
 	}
 
+	#[must_use]
 	pub fn new_greater_than(greater_than: BetterF64) -> Self {
 		FloatRange {
 			floor: (Exclusive, greater_than),
@@ -60,10 +63,12 @@ impl FloatRange {
 		}
 	}
 
+	#[must_use]
 	pub fn get_greater_than(self) -> Option<BetterF64> {
 		(self.floor.1 != f64::NEG_INFINITY).then_some(self.floor.1)
 	}
 
+	#[must_use]
 	pub fn new_less_than(less_than: BetterF64) -> Self {
 		FloatRange {
 			floor: (Exclusive, f64::NEG_INFINITY.try_into().unwrap()),
@@ -71,10 +76,12 @@ impl FloatRange {
 		}
 	}
 
+	#[must_use]
 	pub fn get_less_than(self) -> Option<BetterF64> {
 		(self.ceiling.1 != f64::INFINITY).then_some(self.ceiling.1)
 	}
 
+	#[must_use]
 	pub fn contains(self, value: BetterF64) -> bool {
 		if self.floor.1 < value && value < self.ceiling.1 {
 			true
@@ -191,6 +198,7 @@ impl FloatRange {
 	// This will try to get cover
 	// A union like above might create gaps. aka if try_get_cover (0, 1) (3, 4) = (0, 4) then it implies 2
 	// exists is in one of the ranges. Thus in this case it returns None
+	#[must_use]
 	pub fn try_get_cover(self, other: Self) -> Option<Self> {
 		if self.contained_in(other) {
 			Some(other)

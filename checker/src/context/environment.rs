@@ -301,41 +301,38 @@ impl<'a> Environment<'a> {
 							checking_data.options.strict_casts,
 							checking_data.options.advanced_number_intrinsics,
 						);
-						match result {
-							Ok(new) => {
-								let assignment_position =
-									assignment_position.with_source(self.get_source());
+						if let Ok(new) = result {
+							let assignment_position =
+								assignment_position.with_source(self.get_source());
 
-								self.set_reference_handle_errors(
-									reference,
-									new,
-									assignment_position,
-									checking_data,
-								);
+							self.set_reference_handle_errors(
+								reference,
+								new,
+								assignment_position,
+								checking_data,
+							);
 
-								new
-							}
-							Err(()) => {
-								checking_data.diagnostics_container.add_error(
-									crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
-										operator,
-										lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-											existing,
-											self,
-											&checking_data.types,
-											false,
-										),
-										rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-											rhs,
-											self,
-											&checking_data.types,
-											false,
-										),
-										position: assignment_position.with_source(self.get_source()),
-									},
-								);
-								TypeId::ERROR_TYPE
-							}
+							new
+						} else {
+							checking_data.diagnostics_container.add_error(
+								crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+									operator,
+									lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										existing,
+										self,
+										&checking_data.types,
+										false,
+									),
+									rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										rhs,
+										self,
+										&checking_data.types,
+										false,
+									),
+									position: assignment_position.with_source(self.get_source()),
+								},
+							);
+							TypeId::ERROR_TYPE
 						}
 					}
 					AssignmentKind::IncrementOrDecrement(direction, return_kind) => {
@@ -365,44 +362,41 @@ impl<'a> Environment<'a> {
 							checking_data.options.strict_casts,
 							checking_data.options.advanced_number_intrinsics,
 						);
-						match result {
-							Ok(new) => {
-								let assignment_position =
-									assignment_position.with_source(self.get_source());
+						if let Ok(new) = result {
+							let assignment_position =
+								assignment_position.with_source(self.get_source());
 
-								self.set_reference_handle_errors(
-									reference,
-									new,
-									assignment_position,
-									checking_data,
-								);
+							self.set_reference_handle_errors(
+								reference,
+								new,
+								assignment_position,
+								checking_data,
+							);
 
-								match return_kind {
-									AssignmentReturnStatus::Previous => existing,
-									AssignmentReturnStatus::New => new,
-								}
+							match return_kind {
+								AssignmentReturnStatus::Previous => existing,
+								AssignmentReturnStatus::New => new,
 							}
-							Err(()) => {
-								checking_data.diagnostics_container.add_error(
-									crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
-										operator,
-										lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-											existing,
-											self,
-											&checking_data.types,
-											false,
-										),
-										rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-											TypeId::ONE,
-											self,
-											&checking_data.types,
-											false,
-										),
-										position,
-									},
-								);
-								TypeId::ERROR_TYPE
-							}
+						} else {
+							checking_data.diagnostics_container.add_error(
+								crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+									operator,
+									lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										existing,
+										self,
+										&checking_data.types,
+										false,
+									),
+									rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										TypeId::ONE,
+										self,
+										&checking_data.types,
+										false,
+									),
+									position,
+								},
+							);
+							TypeId::ERROR_TYPE
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {
@@ -966,22 +960,20 @@ impl<'a> Environment<'a> {
 						// };
 
 						return Ok(VariableWithValue(og_var.clone(), precise));
-					} else {
-						crate::utilities::notify!("Free variable with no current value");
-						let constraint = checking_data
-							.local_type_mappings
-							.variables_to_constraints
-							.0
-							.get(&og_var.get_origin_variable_id());
+					}
 
-						if let Some(constraint) = constraint {
-							*constraint
-						} else {
-							crate::utilities::notify!(
-								"TODO record that free variable is `any` here"
-							);
-							TypeId::ANY_TYPE
-						}
+					crate::utilities::notify!("Free variable with no current value");
+					let constraint = checking_data
+						.local_type_mappings
+						.variables_to_constraints
+						.0
+						.get(&og_var.get_origin_variable_id());
+
+					if let Some(constraint) = constraint {
+						*constraint
+					} else {
+						crate::utilities::notify!("TODO record that free variable is `any` here");
+						TypeId::ANY_TYPE
 					}
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {

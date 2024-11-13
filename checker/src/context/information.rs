@@ -420,7 +420,7 @@ pub fn merge_info(
 
 		// TODO temp fix for `... ? { ... } : { ... }`.
 		// TODO add undefineds to sides etc
-		for (on, properties) in truthy.current_properties.into_iter() {
+		for (on, properties) in truthy.current_properties {
 			// let properties = properties
 			// 	.into_iter()
 			// 	.map(|(publicity, key, value)| {
@@ -447,7 +447,7 @@ pub fn merge_info(
 		}
 
 		if let Some(otherwise) = otherwise {
-			for (on, properties) in otherwise.current_properties.into_iter() {
+			for (on, properties) in otherwise.current_properties {
 				if let Some(existing) = onto.current_properties.get_mut(&on) {
 					existing.extend(properties);
 				} else {
