@@ -11,13 +11,14 @@ use checker::{
 	diagnostics,
 	source_map::{Nullable, SourceId},
 	synthesis::EznoParser,
+	TypeCheckOptions,
 };
 
 // This is here as it is used in the included `/specification.rs`
 use parser::ASTNode;
 
 mod specification {
-	use super::check_errors;
+	use super::{check_expected_diagnostics, TypeCheckOptions};
 
 	// from build.rs
 	include!(concat!(env!("OUT_DIR"), "/specification.rs"));
@@ -37,12 +38,13 @@ const SIMPLE_DTS: Option<&str> = None;
 const IN_CI: bool = option_env!("CI").is_some();
 
 /// Called by each test
-fn check_errors(
+fn check_expected_diagnostics(
 	heading: &'static str,
-	_line: usize,
+	line: usize,
 	// (Path, Content)
 	code: &[(&'static str, &'static str)],
 	expected_diagnostics: &[&'static str],
+	type_check_options: Option<TypeCheckOptions>,
 ) {
 	// let global_buffer = Arc::new(Mutex::new(String::new()));
 	// let old_panic_hook = panic::take_hook();
@@ -59,10 +61,7 @@ fn check_errors(
 	// 	})
 	// });
 
-	// TODO could test these
-	let type_check_options = Default::default();
-
-	// eprintln!("{:?}", code);
+	let type_check_options = type_check_options.unwrap_or_default();
 
 	// let result = panic::catch_unwind(|| {
 
@@ -95,7 +94,7 @@ fn check_errors(
 	let result = checker::check_project::<_, EznoParser>(
 		vec![PathBuf::from("main.tsx")],
 		type_definition_files,
-		resolver,
+		&resolver,
 		type_check_options,
 		(),
 		None,
@@ -125,7 +124,7 @@ fn check_errors(
 
 	if diagnostics != expected_diagnostics {
 		panic!(
-			"{}",
+			"In '{heading}' on line {line}, found\n{}",
 			pretty_assertions::Comparison::new(expected_diagnostics, &diagnostics).to_string()
 		)
 	}

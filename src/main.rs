@@ -13,28 +13,6 @@
 #![warn(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
 use ezno_lib::cli::run_cli;
-use std::io;
-
-#[cfg(target_family = "windows")]
-pub(crate) fn cli_input_resolver(prompt: &str) -> String {
-	print!("{prompt}> ");
-	io::Write::flush(&mut io::stdout()).unwrap();
-	let mut input = String::new();
-	let std_in = &mut io::stdin();
-	let _n = multiline_term_input::read_string(std_in, &mut input);
-	input
-}
-
-#[cfg(target_family = "unix")]
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn cli_input_resolver(prompt: &str) -> String {
-	print!("{prompt}> ");
-	io::Write::flush(&mut io::stdout()).unwrap();
-	let mut input = String::new();
-	let std_in = &mut io::stdin();
-	let _n = std_in.read_line(&mut input).unwrap();
-	input
-}
 
 fn main() -> std::process::ExitCode {
 	fn read_from_file(path: &std::path::Path) -> Option<String> {
@@ -48,5 +26,5 @@ fn main() -> std::process::ExitCode {
 	let arguments = std::env::args().skip(1).collect::<Vec<_>>();
 	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
 
-	run_cli(&arguments, &read_from_file, write_to_file, |p| Some(cli_input_resolver(p)))
+	run_cli(&arguments, read_from_file, write_to_file)
 }

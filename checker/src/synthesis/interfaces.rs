@@ -58,7 +58,7 @@ pub(crate) enum InterfaceKey<'a> {
 }
 
 pub(crate) enum InterfaceValue {
-	Function(FunctionType, Option<GetterSetter>),
+	Function(Box<FunctionType>, Option<GetterSetter>),
 	Value(TypeId),
 }
 
@@ -90,16 +90,16 @@ fn register<T: crate::ReadFromFS>(
 	let value = match value {
 		InterfaceValue::Function(function, getter_setter) => match getter_setter {
 			Some(GetterSetter::Getter) => PropertyValue::Getter(Callable::new_from_function(
-				function,
+				*function,
 				&mut checking_data.types,
 			)),
 			Some(GetterSetter::Setter) => PropertyValue::Setter(Callable::new_from_function(
-				function,
+				*function,
 				&mut checking_data.types,
 			)),
 			None => {
 				let function_id = function.id;
-				checking_data.types.functions.insert(function.id, function);
+				checking_data.types.functions.insert(function.id, *function);
 				let ty = Type::FunctionReference(function_id);
 				PropertyValue::Value(checking_data.types.register_type(ty))
 			}
@@ -232,7 +232,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					interface_register_behavior.register(
 						InterfaceKey::ClassProperty(name),
 						(
-							InterfaceValue::Function(function, getter),
+							InterfaceValue::Function(Box::new(function), getter),
 							IsDefined::from_optionality(*is_optional),
 							Writable::from_readonly(false),
 						),

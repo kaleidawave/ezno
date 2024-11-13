@@ -28,21 +28,47 @@ jobs:
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
           packages: hyperfine
+      
+      - name: Install valgrind
+        run: sudo apt-get install valgrind
 
       - name: Build Ezno
         run: cargo build --release
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
+      - name: Get base ezno
+        if: github.ref_name != 'main'
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: latest-checker
+          path: previous-ezno
+
+      - name: Set compilers
+        id: compilers
+        shell: bash
+        run: |
+          if [ -d "previous-ezno" ]; then
+            echo "::notice::Comparing against previous"
+            echo "BINARIES=./target/release/ezno,./previous-ezno/ezno" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Running singularly"
+            echo "BINARIES=./target/release/ezno" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run checker performance
         shell: bash
         run: |
           # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser --example code_blocks_to_script ./checker/specification/specification.md --comment-headers --out ./demo.tsx
+          cargo run -p ezno-parser \
+           --example code_blocks_to_script ./checker/specification/specification.md \
+           --comment-headers \
+           --out ./demo.tsx
 
           echo "### Checking
           \`\`\`shell
-          $(hyperfine -i './target/release/ezno check demo.tsx')
+          $(hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check demo.tsx')
           \`\`\`" >> $GITHUB_STEP_SUMMARY
 
           echo "<details>
@@ -58,8 +84,8 @@ jobs:
           echo "::info::Wrote code to summary"
           
           command_output=$(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+          
           diagnostics=""; statistics=""; found_splitter=false;
-
           while IFS= read -r line; do
               if [[ "$line" == "---"* ]]; then found_splitter=true;
               elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
@@ -73,15 +99,34 @@ jobs:
           $diagnostics
           \`\`\`
           </details>
-
-          <details>
-          <summary>Statistics</summary>
-
-          \`\`\`
-          $statistics
-          \`\`\`
-          </details>
           " >> $GITHUB_STEP_SUMMARY
+
+          if [ -d "previous-ezno" ]; then
+            OUT=$(./previous-ezno/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+            $base_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
+            echo "
+            <details>
+            <summary>Statistics</summary>
+            
+            \`\`\`
+            $statistics
+            \`\`\`
+            against base
+            \`\`\`
+            $base_statistics
+            \`\`\`
+            against base
+            </details>
+            " >> $GITHUB_STEP_SUMMARY
+          else
+            echo "<details>
+            <summary>Statistics</summary>
+
+            \`\`\`
+            $statistics
+            \`\`\`
+            </details>" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Run checker performance w/staging
         shell: bash
@@ -93,7 +138,8 @@ jobs:
           cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./all.tsx
 
           ./target/release/ezno check all.tsx --timings || true
-          hyperfine -i './target/release/ezno check all.tsx'
+
+          hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check all.tsx'
           echo "::endgroup::"
             
       - name: Run checker performance on large file
@@ -109,23 +155,58 @@ jobs:
           done
 
           ./target/release/ezno check large.tsx --timings --max-diagnostics 0 || true
-           hyperfine -i './target/release/ezno check large.tsx'
+
+          hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check large.tsx'
           echo "::endgroup::"
+
+      - name: Valgrind and callgrind
+        shell: bash
+        continue-on-error: true
+        run: |
+          IFS=',' read -ra ITEMS <<< ${{ steps.compilers.outputs.BINARIES }}
+
+          for compiler in ${ITEMS[@]}; do
+            echo "::group::Running $compiler"
+            
+            echo "::group::Callgrind"
+            valgrind --tool=callgrind --callgrind-out-file=cpu-out $compiler check demo.tsx | true
+            echo "CPU usage:"
+            head -n100 cpu-out
+            echo "::endgroup::"
+  
+            echo "::group::Valgrind"
+            valgrind --log-file=memory-out $compiler check demo.tsx | true
+            echo "Memory usage:"
+            cat memory-out
+            echo "::endgroup::"
+
+            echo "::endgroup::"
+          done
 
       - name: Run parsing & stringing (minfied) benchmarks
         shell: bash
+        continue-on-error: true
         run: |
           strings=(
             "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
+            "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
           )
-          # Currently broken "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
 
           for url in "${strings[@]}"; do
-              curl -sS $url > input.js
-              echo "--- debug: $url ---"
-              cargo run -p ezno-parser --example parse input.js --timings --render-timings
-              echo "--- release: $url ---"
-              cargo run -p ezno-parser --release --example parse input.js --timings --render-timings
+            # TODO copy expression
+            curl -sS $url > input.js
 
-              hyperfine "./target/debug/examples/parse input.js" "./target/release/examples/parse input.js"
+            echo "::group::Comparison"
+            hyperfine \
+              -L compiler ${{ steps.compilers.outputs.BINARIES }} \
+              '{compiler} ast-explorer full input.js --timings'
+            echo "::endgroup::"
           done
+
+      - name: Upload checker
+        if: github.ref == 'main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-checker
+          path: target/release/ezno
+          retention-days: 90

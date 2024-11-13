@@ -1,12 +1,6 @@
-use std::io::Write;
-
 use codespan_reporting::{
 	diagnostic::{Diagnostic, Label, Severity},
-	term::{
-		emit,
-		termcolor::{BufferedStandardStream, ColorChoice},
-		Config, DisplayStyle,
-	},
+	term::{emit, Config, DisplayStyle},
 };
 
 use checker::source_map::{MapFileStore, PathMap, SourceId};
@@ -97,7 +91,9 @@ where
 	};
 
 	#[cfg(not(target_family = "wasm"))]
-	let mut writer = BufferedStandardStream::stderr(ColorChoice::Auto);
+	let mut writer = codespan_reporting::term::termcolor::BufferedStandardStream::stderr(
+		codespan_reporting::term::termcolor::ColorChoice::Auto,
+	);
 
 	let files = fs.into_code_span_store();
 	let diagnostics = diagnostics.into_iter();
@@ -121,11 +117,13 @@ where
 		}
 
 		#[cfg(not(target_family = "wasm"))]
-		emit(&mut writer, &config, &files, &diagnostic)?;
+		{
+			emit(&mut writer, &config, &files, &diagnostic)?;
+		}
 	}
 
 	#[cfg(not(target_family = "wasm"))]
-	writer.flush().unwrap();
+	std::io::Write::flush(&mut writer).unwrap();
 
 	if count > maximum {
 		crate::utilities::print_to_cli(format_args!(
