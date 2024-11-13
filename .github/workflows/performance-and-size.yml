@@ -50,10 +50,10 @@ jobs:
         shell: bash
         run: |
           if [ -d "previous-ezno" ]; then
-            echo "::debug::Comparing against previous"
+            echo "::notice::Comparing against previous"
             echo "BINARIES=./target/release/ezno,./previous-ezno/ezno" >> "$GITHUB_OUTPUT"
           else
-            echo "::debug::Running singularly"
+            echo "::notice::Running singularly"
             echo "BINARIES=./target/release/ezno" >> "$GITHUB_OUTPUT"
           fi
 
@@ -119,7 +119,7 @@ jobs:
             </details>
             " >> $GITHUB_STEP_SUMMARY
           else
-            "<details>
+            echo "<details>
             <summary>Statistics</summary>
 
             \`\`\`
