@@ -43,7 +43,7 @@ impl Default for BuildConfig {
 			lsp_mode: false,
 			type_definition_module: None,
 			// TODO not sure
-			output_path: PathBuf::from("out"),
+			output_path: PathBuf::from("out.js"),
 			other_transformers: None,
 		}
 	}
