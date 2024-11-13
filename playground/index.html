@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ezno Playground</title>
+    <!-- Vite doesn't rewrite them :( https://github.com/vitejs/vite/issues/7362 -->
+    <!-- Also maybe they should be in the parent directory? -->
+    <meta property="twitter:image" content="/ezno/playground/assets/banner.png">
+    <meta property="og:image" content="/ezno/playground/assets/banner.png">
+
+    <link rel="icon" href="/ezno/playground/assets/ezno-BGhwH-XY.svg">
+  <script type="module" crossorigin src="/ezno/playground/assets/index-Cw2h6niH.js"></script>
+  <link rel="stylesheet" crossorigin href="/ezno/playground/assets/index-6Sq3EUpO.css">
+</head>
+
+<body>
+    <header>
+        <img src="data:image/svg+xml,%3csvg%20width='853'%20height='150'%20viewBox='0%200%20853%20150'%20fill='none'%20xmlns='http://www.w3.org/2000/svg'%3e%3cpath%20fill-rule='evenodd'%20clip-rule='evenodd'%20d='M732.474%200C693.814%200%20662.474%2031.3401%20662.474%2070V80C662.474%20118.66%20693.814%20150%20732.474%20150H776C814.66%20150%20846%20118.66%20846%2080V70C846%2031.3401%20814.66%200%20776%200H732.474ZM748.856%2051.0221C735.049%2051.0221%20723.856%2062.2149%20723.856%2076.0221C723.856%2089.8292%20735.049%20101.022%20748.856%20101.022H761.398C775.205%20101.022%20786.398%2089.8292%20786.398%2076.0221C786.398%2062.2149%20775.205%2051.0221%20761.398%2051.0221H748.856Z'%20fill='white'/%3e%3cpath%20d='M431%20150V0H497.39L564.61%2074V0H631V150H564.61L497.39%2071.5V150H431Z'%20fill='white'/%3e%3cpath%20d='M204%2050V0H399V50L297.329%20100H399V150H204V100L308.899%2050H204Z'%20fill='white'/%3e%3cpath%20d='M173%200H0V150H173V110H71.7317V93H173V60H71.7317V40H173V0Z'%20fill='white'/%3e%3c/svg%3e" alt="EZNO" height="40px">
+        <p>
+            Playground for the Ezno type checker.
+            <a href="https://kaleidawave.github.io/posts/the-quest-continues/#there-is-a-new-web-based-playground">See
+                the announcement post for examples</a>
+            and see <a
+               href="https://github.com/kaleidawave/ezno/blob/main/checker/specification/specification.md">specification.md</a>
+            for what Ezno supports.
+            This playground uses the <a href="https://www.npmjs.com/package/ezno">WASM JS build of Ezno</a>. The native
+            CLI tool can be <a href="https://github.com/kaleidawave/ezno/releases">downloaded from the latest
+                release</a>.
+        </p>
+    </header>
+    <main>
+        <div id="editor"></div>
+        <div>
+            <h3>Diagnostics</h3>
+            <ol class="diagnostics">
+            </ol>
+        </div>
+        <button id="share">Share</button>
+        <details>
+            <summary>More:</summary>
+            <div id="version"></div>
+            <div id="time"></div>
+        </details>
+    </main>
+    <footer>
+        <hr>
+        <p>
+            If you encounter any issues, please document them <a href="https://github.com/kaleidawave/ezno/">on the GH
+                issue tracker</a>. If diagnostics don't update then a crash has occurred (check browser logs for
+            reason). Editor built with <a
+               href="https://codemirror.net/">codemirror</a>. Saving/sharing system <a
+               href="https://www.val.town/v/kaleidawave/savedNamedPlaygrounds">on val.town</a>.
+        </p>
+    </footer>
+</body>
+
+</html>
