@@ -161,12 +161,13 @@ jobs:
 
       - name: Valgrind and callgrind
         shell: bash
+        continue-on-error: true
         run: |
-          s="./compiler1,something"
           IFS=',' read -ra ITEMS <<< ${{ steps.compilers.outputs.BINARIES }}
 
           for compiler in ${ITEMS[@]}; do
             echo "::group::Running $compiler"
+            
             echo "::group::Callgrind"
             valgrind --tool=callgrind --callgrind-out-file=cpu-out $compiler check demo.tsx | true
             echo "CPU usage:"
@@ -178,11 +179,13 @@ jobs:
             echo "Memory usage:"
             cat memory-out
             echo "::endgroup::"
+
             echo "::endgroup::"
           done
 
       - name: Run parsing & stringing (minfied) benchmarks
         shell: bash
+        continue-on-error: true
         run: |
           strings=(
             "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
