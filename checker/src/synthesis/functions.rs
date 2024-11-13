@@ -856,7 +856,7 @@ pub(super) fn build_overloaded_function(
 		let func = types.new_hoisted_function_type(as_function);
 
 		// IMPORTANT THAT RESULT IS ON THE RIGHT OF AND TYPE
-		result = types.new_and_type(func, result).unwrap();
+		result = types.new_and_type(func, result);
 	}
 
 	result

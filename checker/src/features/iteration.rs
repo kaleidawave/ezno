@@ -138,8 +138,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			// }
 		}
 		IterationBehavior::DoWhile(condition) => {
-			// let is_do_while = matches!(behavior, IterationBehavior::DoWhile(..));
-
 			// Same as above but condition is evaluated at end. Don't know whether events should be evaluated once...?
 			let (condition, result, ..) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Iteration { label },
@@ -251,6 +249,20 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 									} else {
 										TypeId::TRUE
 									};
+
+									let values =
+										super::narrowing::narrow_based_on_expression_into_vec(
+											condition,
+											false,
+											environment,
+											&mut checking_data.types,
+										);
+
+									crate::utilities::notify!(
+										"Narrowed values in loop {:?}",
+										values
+									);
+									environment.info.narrowed_values = values;
 
 									// TODO not always needed
 									add_loop_described_break_event(
@@ -494,8 +506,9 @@ pub(crate) fn run_iteration_block(
 					let events_to_be_applied = iterations * events.len();
 
 					crate::utilities::notify!(
-						"count = {:?}. with",
-						(events_to_be_applied, input.max_inline)
+						"applying {:?} events (max {:?})",
+						events_to_be_applied,
+						input.max_inline
 					);
 					(events_to_be_applied < input.max_inline as usize).then_some(iterations)
 				});
@@ -507,20 +520,6 @@ pub(crate) fn run_iteration_block(
 				}
 
 				crate::utilities::notify!("Running {} times", iterations);
-
-				// crate::utilities::notify!(
-				// 	"Evaluating a constant amount of iterations {:?}",
-				// 	iterations
-				// );
-
-				// if let InitialVariablesInput::Calculated(initial) = initial {
-				// 	for (variable_id, initial_value) in initial.iter() {
-				// 		invocation_context
-				// 			.get_latest_info(top_environment)
-				// 			.variable_current_value
-				// 			.insert(*variable_id, *initial_value);
-				// 	}
-				// }
 
 				run_iteration_loop(
 					invocation_context,
@@ -672,7 +671,7 @@ fn evaluate_unknown_iteration_for_loop(
 	let initial = match initial {
 		RunBehavior::Run => ClosedOverVariables(Default::default()),
 		RunBehavior::References(v) => {
-			crate::features::create_closed_over_references(&v, top_environment)
+			crate::features::create_closed_over_references(&v, top_environment, types)
 		}
 	};
 
@@ -909,8 +908,9 @@ fn calculate_result_of_loop(
 					result: _,
 				}) = value_after_running_expressions_in_loop
 				{
+					let assignment = crate::types::helpers::get_origin(*assignment, types);
 					debug_assert!(
-						assignment == less_than_reference_type_id,
+						assignment == *less_than_reference_type_id,
 						"incrementor free variable type not the same as condition free variable type?"
 					);
 

@@ -920,9 +920,7 @@ impl<T: ContextType> Context<T> {
 		for (on, constraint) in object_constraints {
 			match self.info.object_constraints.entry(on) {
 				Entry::Occupied(mut existing) => {
-					let new = types
-						.new_and_type(*existing.get(), constraint)
-						.expect("creating impossible restriction");
+					let new = types.new_and_type(*existing.get(), constraint);
 					existing.insert(new);
 				}
 				Entry::Vacant(v) => {
@@ -980,11 +978,11 @@ impl<T: ContextType> Context<T> {
 	}
 
 	pub(crate) fn get_prototype(&self, on: TypeId) -> TypeId {
-		if let Some(prototype) = self.info.prototypes.get(&on) {
+		if let Some(prototype) = self.get_chain_of_info().find_map(|info| info.prototypes.get(&on))
+		{
 			*prototype
-		} else if let Some(parent) = self.context_type.get_parent() {
-			get_on_ctx!(parent.get_prototype(on))
 		} else {
+			crate::utilities::notify!("Could not find prototype");
 			TypeId::OBJECT_TYPE
 		}
 	}
@@ -1017,6 +1015,7 @@ pub(crate) fn get_value_of_variable(
 	info: &impl InformationChain,
 	on: VariableId,
 	closures: Option<&impl ClosureChain>,
+	types: &TypeStore,
 ) -> Option<TypeId> {
 	for fact in info.get_chain_of_info() {
 		let res = if let Some(closures) = closures {
@@ -1032,7 +1031,7 @@ pub(crate) fn get_value_of_variable(
 
 		// TODO in remaining info, don't loop again
 		if let Some(res) = res {
-			let narrowed = info.get_narrowed(res);
+			let narrowed = info.get_narrowed_or_object(res, types);
 			return Some(narrowed.unwrap_or(res));
 		}
 	}

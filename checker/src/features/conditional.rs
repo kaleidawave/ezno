@@ -47,6 +47,7 @@ where
 			&mut checking_data.types,
 		);
 
+		crate::utilities::notify!("Narrowed value {:?} in true branch", values);
 		truthy_environment.info.narrowed_values = values;
 
 		let result = then_evaluate(&mut truthy_environment, checking_data);
@@ -81,6 +82,7 @@ where
 			&mut checking_data.types,
 		);
 
+		crate::utilities::notify!("Narrowed value {:?} in false branch", values);
 		falsy_environment.info.narrowed_values = values;
 
 		let result = else_evaluate(&mut falsy_environment, checking_data);

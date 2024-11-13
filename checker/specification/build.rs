@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let out_path = Path::new(&std::env::var("OUT_DIR")?).join("specification.rs");
 	let mut out = File::create(out_path)?;
 
-	if cfg!(not(feature = "just-staging")) {
+	if cfg!(feature = "base") {
 		let specification = read_to_string("./specification.md")?;
 		markdown_lines_append_test_to_rust(specification.lines().enumerate(), &mut out)?;
 	}
@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		writeln!(&mut out, "}}").unwrap();
 	}
 
-	if cfg!(feature = "all") {
+	if cfg!(feature = "to_implement") {
 		let to_implement = read_to_string("./to_implement.md")?;
 		writeln!(&mut out, "mod to_implement {{ ").unwrap();
 		writeln!(&mut out, "use super::{{check_expected_diagnostics, TypeCheckOptions}}; ")

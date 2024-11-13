@@ -95,7 +95,7 @@ jobs:
 
       - name: Run checker specification
         if: (steps.changes.outputs.checker == 'true' && github.event_name != 'pull_request') || github.ref_name == 'main'
-        run: cargo test
+        run: cargo test -p ezno-checker-specification
       
       - name: Run checker specification (w/ staging)
         if: steps.changes.outputs.checker == 'true' && github.event_name == 'pull_request'

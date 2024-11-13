@@ -125,7 +125,7 @@ fn synthesise_class_declaration_extends_and_members<
 	let _name = P::as_option_str(&class.name).map_or_else(String::new, str::to_owned);
 	let class_prototype = class_type;
 
-	crate::utilities::notify!("At start {:?}", environment.context_type.free_variables);
+	// crate::utilities::notify!("At start {:?}", environment.context_type.free_variables);
 
 	let extends = class.extends.as_ref().map(|extends_expression| {
 		let extends =
@@ -192,8 +192,6 @@ fn synthesise_class_declaration_extends_and_members<
 					}
 				};
 
-				crate::utilities::notify!("{:?}", (getter_setter, is_async, is_generator));
-
 				let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
 					(is_declare, method.name.get_ast_ref())
 				{
@@ -209,6 +207,25 @@ fn synthesise_class_declaration_extends_and_members<
 				let internal = internal_marker.is_some();
 				let has_defined_this = method.parameters.leading.0.is_some();
 
+				let this_shape = if internal && !has_defined_this {
+					TypeId::ANY_TYPE
+				} else if let Type::Class { type_parameters: Some(type_parameters), .. } =
+					checking_data.types.get_type_by_id(class_prototype)
+				{
+					use source_map::Nullable;
+					let arguments = crate::types::GenericArguments::ExplicitRestrictions(
+						type_parameters
+							.iter()
+							.map(|id| (*id, (*id, crate::SpanWithSource::NULL)))
+							.collect(),
+					);
+					checking_data.types.register_type(Type::PartiallyAppliedGenerics(
+						crate::types::PartiallyAppliedGenerics { on: class_prototype, arguments },
+					))
+				} else {
+					class_prototype
+				};
+
 				let behavior = FunctionRegisterBehavior::ClassMethod {
 					is_async,
 					is_generator,
@@ -216,11 +233,7 @@ fn synthesise_class_declaration_extends_and_members<
 					super_type: None,
 					// TODO
 					expecting: TypeId::ANY_TYPE,
-					this_shape: if internal && !has_defined_this {
-						TypeId::ANY_TYPE
-					} else {
-						class_prototype
-					},
+					this_shape,
 					internal_marker,
 					name: key.into_name_type(&mut checking_data.types),
 				};
@@ -291,7 +304,13 @@ fn synthesise_class_declaration_extends_and_members<
 				);
 				static_property_keys.push(key);
 			}
-			ClassMember::Indexer { name, indexer_type, return_type, is_readonly, position } => {
+			ClassMember::Indexer {
+				name: _name,
+				indexer_type,
+				return_type,
+				is_readonly,
+				position,
+			} => {
 				// TODO this redoes work done at registration. Because the info gets overwritten
 				let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 				let value = synthesise_type_annotation(return_type, environment, checking_data);
@@ -306,7 +325,7 @@ fn synthesise_class_declaration_extends_and_members<
 				// TODO check declare
 
 				// TODO WIP
-				crate::utilities::notify!("Indexing (again) for  '{}'", name);
+				// crate::utilities::notify!("Indexing (again) for '{}' {:?}", name, value);
 				let value = PropertyValue::Value(value);
 				environment.info.register_property_on_type(
 					class_type,
@@ -366,8 +385,6 @@ fn synthesise_class_declaration_extends_and_members<
 	if let Some(variable) = class.name.get_variable_id(environment.get_source()) {
 		environment.info.variable_current_value.insert(variable, class_variable_type);
 	}
-
-	crate::utilities::notify!("At end {:?}", environment.context_type.free_variables);
 
 	{
 		// Static items and blocks
@@ -699,7 +716,13 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			ClassMember::Indexer { name, indexer_type, return_type, is_readonly, position } => {
+			ClassMember::Indexer {
+				name: _name,
+				indexer_type,
+				return_type,
+				is_readonly,
+				position,
+			} => {
 				// TODO think this is okay
 				let key = synthesise_type_annotation(indexer_type, environment, checking_data);
 				let value = synthesise_type_annotation(return_type, environment, checking_data);
@@ -714,9 +737,8 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				// TODO check declare
 
 				// TODO WIP
-				crate::utilities::notify!("Indexing for  '{}'", name);
+				// crate::utilities::notify!("Indexing for '{}' {:?}", name, class_type);
 				let value = PropertyValue::Value(value);
-				crate::utilities::notify!("{:?}", class_type);
 				environment.info.register_property_on_type(
 					class_type,
 					Publicity::Public,

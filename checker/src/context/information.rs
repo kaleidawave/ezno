@@ -252,6 +252,31 @@ pub trait InformationChain {
 	fn get_narrowed(&self, for_ty: TypeId) -> Option<TypeId> {
 		self.get_chain_of_info().find_map(|info| info.narrowed_values.get(&for_ty).copied())
 	}
+
+	fn get_narrowed_or_object(&self, for_ty: TypeId, types: &TypeStore) -> Option<TypeId> {
+		let value = self.get_narrowed(for_ty);
+		if let Some(value) = value {
+			Some(value)
+		} else if let Type::Constructor(crate::types::Constructor::ConditionalResult {
+			condition,
+			truthy_result,
+			otherwise_result,
+			result_union: _,
+		}) = types.get_type_by_id(for_ty)
+		{
+			let narrowed_condition = self.get_narrowed(*condition)?;
+			if let crate::Decidable::Known(condition) =
+				crate::types::is_type_truthy_falsy(narrowed_condition, types)
+			{
+				let value = if condition { truthy_result } else { otherwise_result };
+				Some(*value)
+			} else {
+				None
+			}
+		} else {
+			value
+		}
+	}
 }
 
 pub struct ModuleInformation<'a> {
@@ -393,13 +418,61 @@ pub fn merge_info(
 			onto.variable_current_value.insert(var, new);
 		}
 
-		// TODO temp fix for `... ? { ... } : { ... }`. Breaks for the fact that property
-		// properties might be targeting something above the current condition (e.g. `x ? (y.a = 2) : false`);
-		onto.current_properties.extend(truthy.current_properties.drain());
-		if let Some(ref mut otherwise) = otherwise {
-			onto.current_properties.extend(otherwise.current_properties.drain());
+		// TODO temp fix for `... ? { ... } : { ... }`.
+		// TODO add undefineds to sides etc
+		for (on, properties) in truthy.current_properties {
+			// let properties = properties
+			// 	.into_iter()
+			// 	.map(|(publicity, key, value)| {
+			// 		let falsy_environment_property = otherwise
+			// 			.as_mut()
+			// 			.and_then(|otherwise| {
+			// 				pick_out_property(&mut otherwise.current_properties, (publicity, key), onto, types)
+			// 			});
+
+			// 		if let Some(existing) = falsy_environment_property {
+			// 			// Merging more complex properties has lots of issues
+			// 			todo!()
+			// 		} else {
+			// 			(publicity, key, PropertyValue::ConditionallyExists { condition, value })
+			// 		}
+			// 	})
+			// 	.collect();
+
+			if let Some(existing) = onto.current_properties.get_mut(&on) {
+				existing.extend(properties);
+			} else {
+				onto.current_properties.insert(on, properties);
+			}
+		}
+
+		if let Some(otherwise) = otherwise {
+			for (on, properties) in otherwise.current_properties {
+				if let Some(existing) = onto.current_properties.get_mut(&on) {
+					existing.extend(properties);
+				} else {
+					onto.current_properties.insert(on, properties);
+				}
+			}
 		}
 
 		// TODO set more information?
 	}
+}
+
+// `info_chain` and `types` are a bit excess, but `key_matches` requires it
+// TODO needs to delete afterwards, to block it out for subsequent
+fn _pick_out_property(
+	from: &mut Properties,
+	(want_publicity, want_key): (Publicity, &PropertyKey<'static>),
+	info_chain: &impl InformationChain,
+	types: &TypeStore,
+) -> Option<(Publicity, PropertyKey<'static>, PropertyValue)> {
+	from.iter()
+		.position(|(publicity, key, _)| {
+			*publicity == want_publicity
+				&& crate::types::key_matches((key, None), (want_key, None), info_chain, types).0
+		})
+		// TODO replace with deleted?
+		.map(|idx| from.remove(idx))
 }

@@ -9,8 +9,9 @@ use crate::{
 	types::{
 		calling::{CallingDiagnostics, CallingOutput, SynthesisedArgument},
 		get_constraint,
+		helpers::tuple_like,
 		logical::{BasedOnKey, Logical, LogicalOrValid, NeedsCalculation},
-		tuple_like, Constructor, GenericChain, PartiallyAppliedGenerics, TypeStore,
+		Constructor, GenericChain, PartiallyAppliedGenerics, TypeStore,
 	},
 	Environment, Type, TypeId,
 };
@@ -129,7 +130,10 @@ pub fn set_property<B: CallCheckingBehavior>(
 					environment,
 					types,
 				);
+
 				if let SubTypeResult::IsNotSubType(reason) = result {
+					crate::utilities::notify!("Here {:?} {:?}", property_constraint, new);
+
 					let is_modifying_tuple_length = under.is_equal_to("length")
 						&& tuple_like(object_constraint, types, environment);
 
@@ -203,7 +207,7 @@ pub fn set_property<B: CallCheckingBehavior>(
 		result_union: _,
 	}) = types.get_type_by_id(on)
 	{
-		crate::utilities::notify!("Here");
+		crate::utilities::notify!("Cascading assigment bc of conditional result");
 		let truthy = *truthy_result;
 		let otherwise_result = *otherwise_result;
 
@@ -225,6 +229,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 			types,
 		);
 	}
+
+	// Important that this goes below the condition above
+	let on = if let Type::Narrowed { narrowed_to, .. } = types.get_type_by_id(on) {
+		*narrowed_to
+	} else {
+		on
+	};
 
 	// IMPORTANT: THIS ALSO CAPTURES POLY CONSTRAINTS
 	let current_property =
@@ -263,12 +274,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 				types,
 			),
 		}
-	} else if get_constraint(on, types).is_some() {
-		Err(SetPropertyError::AssigningToNonExistent {
-			property: PropertyKeyRepresentation::new(under, environment, types),
-			position,
-		})
 	} else {
+		if get_constraint(on, types).is_some() {
+			return Err(SetPropertyError::AssigningToNonExistent {
+				property: PropertyKeyRepresentation::new(under, environment, types),
+				position,
+			});
+		}
 		// Sealed & no extensions check for NEW property (frozen case covered above)
 		{
 			if object_protection.is_some() {

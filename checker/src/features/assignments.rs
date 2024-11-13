@@ -5,7 +5,7 @@ use crate::{
 	TypeId,
 };
 
-use super::operations::{LogicalOperator, MathematicalAndBitwise};
+use super::operations::{LogicalOperator, MathematicalOrBitwiseOperation};
 
 /// A single or multiple items to assign to
 pub enum Assignable<A: crate::ASTImplementation> {
@@ -50,7 +50,7 @@ pub enum AssignableArrayDestructuringField<A: crate::ASTImplementation> {
 /// Increment and decrement are are not binary add subtract as they cast their lhs to number
 pub enum AssignmentKind {
 	Assign,
-	PureUpdate(MathematicalAndBitwise),
+	PureUpdate(MathematicalOrBitwiseOperation),
 	ConditionalUpdate(LogicalOperator),
 	IncrementOrDecrement(IncrementOrDecrement, AssignmentReturnStatus),
 }

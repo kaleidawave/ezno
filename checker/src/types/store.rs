@@ -148,30 +148,20 @@ impl Default for TypeStore {
 				name: "T".into(),
 				extends: TypeId::NUMBER_TYPE,
 			}),
-			Type::RootPolyType(PolyNature::StructureGeneric {
-				name: "U".into(),
-				extends: TypeId::NUMBER_TYPE,
-			}),
 			Type::AliasTo {
+				name: "GreaterThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 				to: TypeId::NUMBER_TYPE,
-				name: "InclusiveRange".into(),
-				parameters: Some(vec![
-					TypeId::NUMBER_FLOOR_GENERIC,
-					TypeId::NUMBER_CEILING_GENERIC,
-				]),
 			},
 			Type::AliasTo {
+				name: "LessThan".into(),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
 				to: TypeId::NUMBER_TYPE,
-				name: "ExclusiveRange".into(),
-				parameters: Some(vec![
-					TypeId::NUMBER_FLOOR_GENERIC,
-					TypeId::NUMBER_CEILING_GENERIC,
-				]),
 			},
 			Type::AliasTo {
-				to: TypeId::NUMBER_TYPE,
 				name: "MultipleOf".into(),
-				parameters: Some(vec![TypeId::NUMBER_FLOOR_GENERIC]),
+				parameters: Some(vec![TypeId::NUMBER_GENERIC]),
+				to: TypeId::NUMBER_TYPE,
 			},
 			// Intermediate for the below
 			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
@@ -182,26 +172,25 @@ impl Default for TypeStore {
 				)])),
 			}),
 			Type::And(TypeId::NUMBER_TYPE, TypeId::NOT_NOT_A_NUMBER),
-			// TODO WIP
 			Type::AliasTo {
 				name: "Literal".into(),
-				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
+				to: TypeId::T_TYPE,
 			},
 			Type::AliasTo {
 				name: "Exclusive".into(),
-				to: TypeId::T_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
+				to: TypeId::T_TYPE,
 			},
 			Type::AliasTo {
 				name: "Not".into(),
-				to: TypeId::ANY_TYPE,
 				parameters: Some(vec![TypeId::T_TYPE]),
+				to: TypeId::ANY_TYPE,
 			},
 			Type::AliasTo {
 				name: "CaseInsensitive".into(),
-				to: TypeId::STRING_TYPE,
 				parameters: Some(vec![TypeId::STRING_GENERIC]),
+				to: TypeId::STRING_TYPE,
 			},
 			Type::RootPolyType(PolyNature::Open(TypeId::BOOLEAN_TYPE)),
 			Type::RootPolyType(PolyNature::Open(TypeId::NUMBER_TYPE)),
@@ -302,46 +291,39 @@ impl TypeStore {
 		iter.into_iter().reduce(|acc, n| self.new_or_type(acc, n)).unwrap_or(TypeId::NEVER_TYPE)
 	}
 
-	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> Result<TypeId, ()> {
+	// intersection. Does not calculate disjoint
+	pub fn new_and_type(&mut self, lhs: TypeId, rhs: TypeId) -> TypeId {
+		// string & string = string
 		if lhs == rhs {
-			return Ok(lhs);
+			return lhs;
 		}
 
-		let left_ty = self.get_type_by_id(lhs);
-		let right_ty = self.get_type_by_id(rhs);
-
-		// TODO more cases
-		if let (Type::Constant(l), Type::Constant(r)) = (left_ty, right_ty) {
-			if l != r {
-				return Err(());
-			}
-		} else if left_ty.is_nominal() && right_ty.is_nominal() {
-			return Err(());
-		}
-
-		// (left and right) distributivity.
-		let result = if let Type::Or(or_lhs, or_rhs) = left_ty {
+		// (left and right) distributivity & some other reductions on singleton types bc why not
+		// TODO sort intrinsics?
+		let lhs_type = self.get_type_by_id(lhs);
+		let rhs_type = self.get_type_by_id(rhs);
+		if let Type::Or(or_lhs, or_rhs) = lhs_type {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
-			let new_lhs = self.new_and_type(or_lhs, rhs)?;
-			let new_rhs = self.new_and_type(or_rhs, rhs)?;
+			let new_lhs = self.new_and_type(or_lhs, rhs);
+			let new_rhs = self.new_and_type(or_rhs, rhs);
 			self.new_or_type(new_lhs, new_rhs)
-		} else if let Type::Or(or_lhs, or_rhs) = right_ty {
+		} else if let Type::Or(or_lhs, or_rhs) = rhs_type {
 			let (or_lhs, or_rhs) = (*or_lhs, *or_rhs);
-			let new_lhs = self.new_and_type(lhs, or_lhs)?;
-			let new_rhs = self.new_and_type(lhs, or_rhs)?;
+			let new_lhs = self.new_and_type(lhs, or_lhs);
+			let new_rhs = self.new_and_type(lhs, or_rhs);
 			self.new_or_type(new_lhs, new_rhs)
+		} else if let Type::Constant(_) = lhs_type {
+			lhs
+		} else if let Type::Constant(_) = rhs_type {
+			rhs
+		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_type {
+			let (rhs_lhs, rhs_rhs) = (*rhs_lhs, *rhs_rhs);
+			let lhs = self.new_and_type(lhs, rhs_lhs);
+			self.new_and_type(lhs, rhs_rhs)
 		} else {
 			let ty = Type::And(lhs, rhs);
 			self.register_type(ty)
-		};
-
-		Ok(result)
-	}
-
-	/// TODO temp
-	#[must_use]
-	pub fn into_vec_temp(self) -> Vec<(TypeId, Type)> {
-		self.types.into_iter().enumerate().map(|(idx, ty)| (TypeId(idx as u16), ty)).collect()
+		}
 	}
 
 	/// From something like: let a: number => string. Rather than a actual function
@@ -554,7 +536,34 @@ impl TypeStore {
 		self.register_type(Type::RootPolyType(PolyNature::Open(base)))
 	}
 
+	/// Will provide origin rewriting as well
 	pub fn new_narrowed(&mut self, from: TypeId, narrowed_to: TypeId) -> TypeId {
+		let from_ty = self.get_type_by_id(from);
+		let new_constraint = self.get_type_by_id(narrowed_to);
+		let (from, existing) = if let Type::Narrowed { from, narrowed_to } = from_ty {
+			(*from, Some(*narrowed_to))
+		} else {
+			(from, None)
+		};
+		// temp fix for adding things.
+		let narrowed_to = if let (
+			Some(existing),
+			Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+				on:
+					TypeId::GREATER_THAN
+					| TypeId::LESS_THAN
+					| TypeId::MULTIPLE_OF
+					| TypeId::NOT_RESTRICTION,
+				arguments: _,
+			}),
+		) = (existing, new_constraint)
+		{
+			self.new_and_type(existing, narrowed_to)
+		} else {
+			// crate::utilities::notify!("{:?}", from_ty);
+			narrowed_to
+		};
+
 		self.register_type(Type::Narrowed { from, narrowed_to })
 	}
 
@@ -632,5 +641,14 @@ impl TypeStore {
 
 	pub(crate) fn new_key_of(&mut self, of: TypeId) -> TypeId {
 		self.register_type(Type::Constructor(Constructor::KeyOf(of)))
+	}
+
+	/// TODO temp for debugging
+	pub fn user_types(&self) -> impl Iterator<Item = (TypeId, &Type)> + '_ {
+		self.types
+			.iter()
+			.enumerate()
+			.skip(TypeId::INTERNAL_TYPE_COUNT)
+			.map(|(idx, ty)| (TypeId(idx as u16), ty))
 	}
 }

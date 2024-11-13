@@ -15,7 +15,8 @@ use crate::{
 	},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
-		get_larger_type, printing,
+		helpers::get_larger_type,
+		printing,
 		properties::{
 			get_properties_on_single_type, get_property_key_names_on_a_single_type, PropertyKey,
 			Publicity,

@@ -18,7 +18,7 @@ What Ezno is:
 
 What Ezno is not
 - **eNZo, the Z is in front of the N** (pronounce as 'Fresno' without the 'fr') 😀
-- Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC
+- Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC. [You can see a full comparison of emitted errors and warnings compared with TSC here](https://kaleidawave.github.io/ezno/comparison)
 - Faster as a means to serve large codebases. Cut out bloat and complex code first!
 - Smarter as a means to allow more *dynamic patterns*. Keep things simple!
 - A binary executable compiler. It takes in JavaScript (or a TypeScript or Ezno superset) and does similar processes to traditional compilers, but at the end emits JavaScript. However, in the future, it *could* generate a lower level format using its event (side-effect) representation.

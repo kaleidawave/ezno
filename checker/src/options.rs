@@ -54,6 +54,11 @@ pub struct TypeCheckOptions {
 
 	pub measure_time: bool,
 
+	/// Enables two things:
+	/// - range and modulo class inference
+	/// - modifications to ranges and classes based on operations
+	pub advanced_numbers: bool,
+
 	/// Printing internal diagnostics in dts
 	pub debug_dts: bool,
 }
@@ -79,6 +84,7 @@ impl Default for TypeCheckOptions {
 			measure_time: false,
 			debug_dts: false,
 			extra_syntax: true,
+			advanced_numbers: false,
 		}
 	}
 }

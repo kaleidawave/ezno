@@ -22,7 +22,7 @@ use crate::{
 	types::{
 		functions::{FunctionBehavior, FunctionEffect, FunctionType},
 		generics::substitution::SubstitutionArguments,
-		get_structure_arguments_based_on_object_constraint,
+		helpers::get_structure_arguments_based_on_object_constraint,
 		logical::{Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical},
 		properties::AccessMode,
 		substitute, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
@@ -474,7 +474,8 @@ fn get_logical_callable_from_type(
 	// }
 	if ty == TypeId::ANY_TYPE {
 		crate::utilities::notify!("Calling ANY");
-		return Ok(NeedsCalculation::Infer { on: from.unwrap() }.into());
+		// TODO temp
+		return Ok(NeedsCalculation::Infer { on: from.unwrap_or(TypeId::ERROR_TYPE) }.into());
 	}
 
 	let le_ty = types.get_type_by_id(ty);
@@ -613,7 +614,10 @@ fn call_logical<B: CallCheckingBehavior>(
 						|| is_independent_function
 						|| matches!(
 							const_fn_ident.as_str(),
-							"satisfies" | "is_dependent" | "bind" | "proxy:constructor"
+							"satisfies"
+								| "is_dependent" | "bind"
+								| "proxy:constructor" | "setPrototypeOf"
+								| "getPrototypeOf"
 						);
 
 					// {
@@ -862,6 +866,13 @@ fn call_logical<B: CallCheckingBehavior>(
 						call_site: input.call_site,
 						possibly_thrown,
 					});
+				} else {
+					// This fixes tree shaking of functions that are called within callbacks
+					// TODO this could be done under an option
+					let value = Event::Miscellaneous(
+						crate::events::MiscellaneousEvents::MarkFunctionAsCalled(function.function),
+					);
+					behavior.get_latest_info(top_environment).events.push(value);
 				}
 
 				Ok(result)
