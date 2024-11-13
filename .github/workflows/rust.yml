@@ -152,7 +152,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
-          node-version: 18
+          node-version: 23
       
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
@@ -174,16 +174,18 @@ jobs:
 
       - name: Build and test WASM
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        timeout-minutes: 5
         run: |
           # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
 
           rustup target add wasm32-unknown-unknown
           npm ci
           npm run build
-          npm run run-tests
 
           node ./dist/cli.cjs info
           deno run -A ./dist/cli.mjs info
+
+          npm run run-tests
 
           npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
           echo "debug checked with TSC"
@@ -206,6 +208,7 @@ jobs:
           retention-days: 3
 
   fuzzing_parser:
+    if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
     needs: validity
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -263,6 +266,7 @@ jobs:
         working-directory: parser/fuzz
 
   fuzzing_checker:
+    if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
     needs: validity
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -359,9 +363,11 @@ jobs:
   performance-and-size:
     # WIP
     runs-on: ubuntu-latest
+    needs: validity
     steps:
+      - uses: actions/checkout@v4
       - name: Kick off other workflow if the PR has a label
-        if: contains(github.event.pull_request.labels.*.name, 'compiler-performance')
-        run: |
-          echo ${{ github.event.after }}
-          gh workflow run performance-and-size.yml --ref ${{ github.event.after }}
+        if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
+        run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

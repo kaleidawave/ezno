@@ -370,7 +370,19 @@ declare class Object {
     static freeze(on: object): object;
 
     @Constant
+    static seal(on: object): object;
+
+    @Constant
+    static preventExtensions(on: object): object;
+
+    @Constant
     static isFrozen(on: object): boolean;
+
+    @Constant
+    static isSealed(on: object): boolean;
+
+    @Constant
+    static isExtensible(on: object): boolean;
 
     // TODO defineProperties via body (not constant)
     @Constant

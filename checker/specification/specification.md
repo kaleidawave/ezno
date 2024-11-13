@@ -529,22 +529,6 @@ keys satisfies boolean
 
 - Expected boolean, found "nbd"
 
-#### `Object.freeze`
-
-> TODO seal & preventExtensions
-
-```ts
-const obj = {}
-let result = Object.freeze(obj);
-(obj === result) satisfies true;
-obj.property = 2;
-Object.isFrozen(obj) satisfies true;
-```
-
-> TODO maybe error should say that whole object is frozen
-
-- Cannot write to property 'property'
-
 #### `Object.defineProperty` writable
 
 > TODO defineProperties
@@ -634,7 +618,86 @@ obj satisfies string;
 ```
 
 - Expected string, found { a: 1, b: 2, c: 3 }
-s
+
+#### `Object.freeze`
+
+> When `Object.freeze` is called, the object's `isSealed` is inferred as `true`
+
+```ts
+const obj = {}
+let result = Object.freeze(obj);
+(obj === result) satisfies true;
+obj.property = 2;
+Object.isSealed(obj) satisfies true;
+```
+
+- Cannot write to property 'property'
+
+#### `Object.seal`
+
+> When `Object.seal` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
+
+```ts
+const obj = { a: 2 }
+let result = Object.seal(obj);
+(obj === result) satisfies true;
+
+// Allowed
+obj.a = 4;
+// Not allowed
+obj.property = 2;
+
+Object.isSealed(obj) satisfies true;
+Object.isFrozen(obj) satisfies false;
+```
+
+- Cannot write to property 'property'
+
+#### `Object.preventExtensions`
+
+> When `Object.preventExtensions` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
+
+```ts
+const obj = { a: 2 }
+let result = Object.preventExtensions(obj);
+(obj === result) satisfies true;
+
+// Allowed
+obj.a = 4;
+// Not allowed
+obj.property = 2;
+
+Object.isFrozen(obj) satisfies false;
+Object.isSealed(obj) satisfies false;
+```
+
+- Cannot write to property 'property'
+
+#### `Object.isExtensible`
+
+> The object that has been applied `Object.seal`, `Object.freeze` and `Object.preventExtensions` returns `false` by `Object.isExtensible`, otherwise returns `true`
+
+```ts
+{
+	const obj = {}
+	Object.isExtensible(obj) satisfies true;
+	Object.preventExtensions(obj);
+	Object.isExtensible(obj) satisfies false;
+}
+{
+	const obj = {}
+	Object.seal(obj);
+	Object.isExtensible(obj) satisfies false;
+}
+{
+	const obj = {}
+	Object.freeze(obj);
+	Object.isExtensible(obj) satisfies 5;
+}
+```
+
+- Expected 5, found false
+
 ### Excess properties
 
 > The following work through the same mechanism as forward inference
@@ -2379,7 +2442,7 @@ fakeRead(array1)
 #### Always known math
 
 ```ts
-// True regardless of 
+// True regardless of
 function func(a: number) { return a ** 0 }
 
 func satisfies string;
@@ -3306,8 +3369,13 @@ type X = string;
 	type X = number;
 	const a: X = "hello world";
 }
+
+function func<YEA>() {}
+
+type B = YEA;
 ```
 
+- Could not find type 'YEA'
 - Type "hello world" is not assignable to type X
 
 #### Type has no generics
@@ -3622,18 +3690,6 @@ box(someNumber) satisfies boolean;
 - Expected string, found number
 - Expected boolean, found { item: number }
 
-#### Template literal type restriction
-
-```ts
-type Name = "Ben"
-"test" satisfies `Hello ${Name}`;
-"Hello Ben" satisfies `Hello ${Name}`;
-```
-
-> Should be `Expected "Hello Ben", found "test"`. See #188
-
-- Expected string, found "test"
-
 #### Template literal type specialisation
 
 > Uses `+` logic behind the scenes
@@ -3689,14 +3745,18 @@ interface X {
 
 #### Template literal types
 
+> Last one tests printing
+
 ```ts
 type Introduction = `Hello ${string}`;
 
 const first: Introduction = "Hello Ben";
 const second: Introduction = "Hi Ben";
+const third: `Hiya ${string}` = "Hello Ben";
 ```
 
 - Type "Hi Ben" is not assignable to type Introduction
+- Type "Hello Ben" is not assignable to type `Hiya ${string}`
 
 #### Assigning to types as keys
 
@@ -4035,7 +4095,7 @@ x.property_a satisfies number;
 x.property_b
 ```
 
-- No property 'property_b' on { [string]: X[keyof X & string] }
+- No property 'property_b' on { [`property_${keyof X & string}`]: X[keyof X & string] }
 
 ### Readonly and `as const`
 

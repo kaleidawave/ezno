@@ -393,10 +393,11 @@ pub(crate) fn parse_statements_and_declarations(
 			expect_semi_colon(reader, &state.line_starts, end, options)?
 		} else if options.retain_blank_lines {
 			let Token(kind, next) = reader.peek().ok_or_else(crate::parse_lexing_error)?;
-			let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
 			if let TSXToken::EOS = kind {
-				lines
+				1
 			} else {
+				let lines =
+					state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
 				lines.saturating_sub(1)
 			}
 		} else {

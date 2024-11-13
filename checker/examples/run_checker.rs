@@ -54,7 +54,7 @@ fn main() {
 	let result = check_project::<_, synthesis::EznoParser>(
 		entry_points,
 		type_definition_files,
-		resolver,
+		&resolver,
 		options,
 		(),
 		None,

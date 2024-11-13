@@ -1,5 +1,5 @@
 use source_map::SpanWithSource;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::{
 	events::{Event, RootReference},
@@ -32,8 +32,8 @@ pub struct LocalInformation {
 	/// `ContextId` is a mini context
 	pub(crate) closure_current_values: HashMap<(ClosureId, RootReference), TypeId>,
 
-	/// Not writeable, `TypeError: Cannot add property t, object is not extensible`. TODO conditional ?
-	pub(crate) frozen: HashSet<TypeId>,
+	/// Not writeable, `TypeError: Cannot add property, object is not extensible`. TODO conditional ?
+	pub(crate) frozen: HashMap<TypeId, ObjectProtectionState>,
 
 	/// Object type (LHS), must always be RHS
 	///
@@ -50,6 +50,13 @@ pub struct LocalInformation {
 	///
 	/// TODO not great that this has to be Option to satisfy Default
 	pub(crate) value_of_this: ThisValue,
+}
+
+#[derive(Debug, Clone, Copy, binary_serialize_derive::BinarySerializable)]
+pub enum ObjectProtectionState {
+	Frozen,
+	Sealed,
+	NoExtensions,
 }
 
 #[derive(Debug, Default, binary_serialize_derive::BinarySerializable, Clone)]
@@ -228,7 +235,7 @@ impl LocalInformation {
 			.extend(other.current_properties.iter().map(|(l, r)| (*l, r.clone())));
 		self.closure_current_values
 			.extend(other.closure_current_values.iter().map(|(l, r)| (l.clone(), *r)));
-		self.frozen.extend(other.frozen.iter().clone());
+		self.frozen.extend(other.frozen.clone());
 		self.narrowed_values.extend(other.narrowed_values.iter().copied());
 		self.state = other.state.clone();
 	}

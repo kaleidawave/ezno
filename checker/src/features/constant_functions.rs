@@ -2,7 +2,11 @@ use iterator_endiate::EndiateIteratorExt;
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{get_on_ctx, information::InformationChain, invocation::CheckThings},
+	context::{
+		get_on_ctx,
+		information::{InformationChain, ObjectProtectionState},
+		invocation::CheckThings,
+	},
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
@@ -321,7 +325,27 @@ pub(crate) fn call_constant_function(
 			if let Some(on) =
 				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
 			{
-				environment.info.frozen.insert(on);
+				environment.info.frozen.insert(on, ObjectProtectionState::Frozen);
+				Ok(ConstantOutput::Value(on))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
+		"seal" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				environment.info.frozen.insert(on, ObjectProtectionState::Sealed);
+				Ok(ConstantOutput::Value(on))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
+		"preventExtensions" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				environment.info.frozen.insert(on, ObjectProtectionState::NoExtensions);
 				Ok(ConstantOutput::Value(on))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
@@ -331,9 +355,50 @@ pub(crate) fn call_constant_function(
 			if let Some(on) =
 				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
 			{
-				let is_frozen =
-					environment.get_chain_of_info().any(|info| info.frozen.contains(&on));
-				Ok(ConstantOutput::Value(if is_frozen { TypeId::TRUE } else { TypeId::FALSE }))
+				let object_protection = environment.get_object_protection(on);
+				let result = if matches!(object_protection, Some(ObjectProtectionState::Frozen)) {
+					TypeId::TRUE
+				} else {
+					// TODO test properties here
+					TypeId::FALSE
+				};
+				Ok(ConstantOutput::Value(result))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
+		"isSealed" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				let object_protection = environment.get_object_protection(on);
+				let result = if matches!(
+					object_protection,
+					Some(ObjectProtectionState::Frozen | ObjectProtectionState::Sealed)
+				) {
+					TypeId::TRUE
+				} else {
+					// TODO test properties here
+					TypeId::FALSE
+				};
+				Ok(ConstantOutput::Value(result))
+			} else {
+				Err(ConstantFunctionError::CannotComputeConstant)
+			}
+		}
+		"isExtensible" => {
+			if let Some(on) =
+				(arguments.len() == 1).then(|| arguments[0].non_spread_type().ok()).flatten()
+			{
+				// Not this method returns an inverse result
+				let object_protection = environment.get_object_protection(on);
+				let result = if object_protection.is_some() {
+					TypeId::FALSE
+				} else {
+					TypeId::TRUE
+					// TODO test properties here
+				};
+				Ok(ConstantOutput::Value(result))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}

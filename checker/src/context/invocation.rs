@@ -89,9 +89,9 @@ impl CallCheckingBehavior for InvocationContext {
 		self.0
 			.iter_mut()
 			.rev()
-			.find_map(|kind| {
+			.find_map(|kind| -> Option<&mut LocalInformation> {
 				if let InvocationKind::Conditional(info) = kind {
-					Some(&mut **info)
+					Some(&mut *info)
 				} else {
 					None
 				}

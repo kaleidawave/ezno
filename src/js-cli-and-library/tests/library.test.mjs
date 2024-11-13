@@ -3,7 +3,7 @@ import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
 import { inspect } from "node:util";
 
-console.log(`Running ezno@${get_version()}*`)
+// console.log(`Running ezno@${get_version()}`)
 
 test("Type checking on code diagnostics", (t) => {
 	t.test("type check", () => {
@@ -32,14 +32,9 @@ test("Type checking on code diagnostics", (t) => {
 test("Compiling", (t) => {
 	t.test("Compile", () => {
 		const example = "const x: 4 = 2 + 2;"
-		const output = experimental_build("input.ts", (_path) => example, true);
-		deepStrictEqual(output, {
-			Ok: {
-				outputs: [{ output_path: 'out.js', content: 'const x=2+2', mappings: '' }],
-				diagnostics: []
-			}
-		});
-		// console.log(inspect(output, { depth: Infinity, colors: true }));
+		const output = experimental_build("input.ts", (_path) => example, { strip_whitespace: true });
+		deepStrictEqual(output.diagnostics, []);
+		deepStrictEqual(output.artifacts, [{ content: 'const x=2+2', output_path: 'out.js' }]);
 	})
 });
 
