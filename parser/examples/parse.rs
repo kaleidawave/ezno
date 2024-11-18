@@ -1,7 +1,9 @@
-use std::{collections::VecDeque, time::Instant};
+use std::{collections::VecDeque, path::Path, time::Instant};
 
 use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
+
+type Files = source_map::MapFileStore<source_map::WithPathMap>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut args: VecDeque<_> = std::env::args().skip(1).collect();
@@ -18,16 +20,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let display_keywords = args.iter().any(|item| item == "--keywords");
 	let extras = args.iter().any(|item| item == "--extras");
 	let partial_syntax = args.iter().any(|item| item == "--partial");
-	let source_maps = args.iter().any(|item| item == "--source-map");
+	let print_source_maps = args.iter().any(|item| item == "--source-map");
 	let timings = args.iter().any(|item| item == "--timings");
-	let render_timings = args.iter().any(|item| item == "--render-timings");
 	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
 	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
 	let top_level_html = args.iter().any(|item| item == "--top-level-html");
+	let parse_imports = args.iter().any(|item| item == "--parse-imports");
 
 	let print_ast = args.iter().any(|item| item == "--ast");
 
-	let render_output = args.iter().any(|item| item == "--render");
+	let to_string_output = args.iter().any(|item| item == "--to-string");
 	let pretty = args.iter().any(|item| item == "--pretty");
 
 	let now = Instant::now();
@@ -50,27 +52,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		..ParseOptions::default()
 	};
 
-	let mut fs = source_map::MapFileStore::<source_map::NoPathMap>::default();
+	let mut fs = Files::default();
 
-	let source = std::fs::read_to_string(path.clone())?;
+	let to_string_options = to_string_output.then(|| ToStringOptions {
+		expect_markers: true,
+		include_type_annotations: type_annotations,
+		pretty,
+		comments: if pretty { Comments::All } else { Comments::None },
+		// 60 is temp
+		max_line_length: if pretty { 60 } else { u8::MAX },
+		..Default::default()
+	});
 
-	eprintln!("parsing {:?} bytes ({})", source.len(), path);
+	parse_path(
+		path.as_ref(),
+		timings,
+		parse_imports,
+		&parse_options,
+		print_ast,
+		print_source_maps,
+		&to_string_options,
+		display_keywords,
+		&mut fs,
+	)
+}
 
+fn parse_path(
+	path: &Path,
+	timings: bool,
+	parse_imports: bool,
+	parse_options: &ParseOptions,
+	print_ast: bool,
+	print_source_maps: bool,
+	to_string_options: &Option<ToStringOptions>,
+	display_keywords: bool,
+	fs: &mut Files,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let source = std::fs::read_to_string(path)?;
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
-	// TODO temp
-	const STACK_SIZE_MB: usize = 16;
-	let thread =
-		std::thread::Builder::new().name("parsing".into()).stack_size(STACK_SIZE_MB * 1024 * 1024);
-
-	let handler = thread
-		.spawn(move || {
-			let result = Module::from_string_with_options(source.clone(), parse_options, None);
-			result
-		})
-		.unwrap();
-
-	let result = handler.join().unwrap();
+	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
+	let now = Instant::now();
+	let result = Module::from_string_with_options(source.clone(), parse_options.clone(), None);
 
 	match result {
 		Ok((module, state)) => {
@@ -81,45 +104,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			if print_ast {
 				println!("{module:#?}");
 			}
-			if source_maps || render_output || render_timings {
+
+			if let Some(to_string_options) = to_string_options {
 				let now = Instant::now();
 
-				let to_string_options = ToStringOptions {
-					expect_markers: true,
-					include_type_annotations: type_annotations,
-					pretty,
-					comments: if pretty { Comments::All } else { Comments::None },
-					// 60 is temp
-					max_line_length: if pretty { 60 } else { u8::MAX },
-					..Default::default()
-				};
-
 				let (output, source_map) =
-					module.to_string_with_source_map(&to_string_options, source_id, &fs);
+					module.to_string_with_source_map(to_string_options, source_id, fs);
 
-				if timings || render_timings {
+				if timings {
 					eprintln!("ToString'ed in: {:?}", now.elapsed());
 				}
-				if source_maps {
-					let sm = source_map.unwrap().to_json(&fs);
-					println!("{output}\n{sm}");
-				}
-				if render_output {
-					println!("{output}");
+
+				println!("{output}");
+				if print_source_maps {
+					let sm = source_map.unwrap().to_json(fs);
+					println!("{sm}");
 				}
 			}
 
 			if display_keywords {
-				println!("{:?}", state.keyword_positions.unwrap());
+				println!("{:?}", state.keyword_positions.as_ref());
 			}
 
+			if parse_imports {
+				for import in state.constant_imports.iter() {
+					// Don't reparse files (+ catches cycles)
+					let resolved_path = path.parent().unwrap().join(import);
+					if fs.get_paths().contains_key(&resolved_path) {
+						continue;
+					}
+					let _ = parse_path(
+						&resolved_path,
+						timings,
+						parse_imports,
+						parse_options,
+						print_ast,
+						print_source_maps,
+						to_string_options,
+						display_keywords,
+						fs,
+					)?;
+				}
+			}
 			Ok(())
 		}
 		Err(parse_err) => {
 			let mut line_column = parse_err
 				.position
 				.with_source(source_id)
-				.into_line_column_span::<source_map::encodings::Utf8>(&fs);
+				.into_line_column_span::<source_map::encodings::Utf8>(fs);
 			{
 				// Editor are one indexed
 				line_column.line_start += 1;

@@ -17,7 +17,7 @@ y()";
 	let result = check_project::<_, synthesis::EznoParser>(
 		vec![root.into()],
 		type_definition_files,
-		|_path: &std::path::Path| Some(text.to_owned()),
+		&|_path: &std::path::Path| Some(text.to_owned()),
 		options,
 		(),
 		None,

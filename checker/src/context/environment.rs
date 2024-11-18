@@ -14,11 +14,7 @@ use crate::{
 			AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
 		},
 		modules::Exported,
-		objects::SpecialObject,
-		operations::{
-			evaluate_logical_operation_with_expression,
-			evaluate_pure_binary_operation_handle_errors, MathematicalAndBitwise,
-		},
+		operations::{evaluate_logical_operation_with_expression, MathematicalOrBitwiseOperation},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
@@ -278,7 +274,7 @@ impl<'a> Environment<'a> {
 					}
 					AssignmentKind::PureUpdate(operator) => {
 						// Order matters here
-						let reference_position = reference.get_position();
+						// let reference_position = reference.get_position();
 						let existing = self.get_reference(
 							reference.clone(),
 							checking_data,
@@ -286,8 +282,9 @@ impl<'a> Environment<'a> {
 						);
 
 						let expression = expression.unwrap();
-						let expression_pos =
-							A::expression_position(expression).with_source(self.get_source());
+						// let expression_pos =
+						// 	A::expression_position(expression).with_source(self.get_source());
+
 						let rhs = A::synthesise_expression(
 							expression,
 							TypeId::ANY_TYPE,
@@ -295,22 +292,48 @@ impl<'a> Environment<'a> {
 							checking_data,
 						);
 
-						let new = evaluate_pure_binary_operation_handle_errors(
-							(existing, reference_position),
-							operator.into(),
-							(rhs, expression_pos),
-							checking_data,
+						let result = crate::features::operations::evaluate_mathematical_operation(
+							existing,
+							operator,
+							rhs,
 							self,
+							&mut checking_data.types,
+							checking_data.options.strict_casts,
+							checking_data.options.advanced_numbers,
 						);
-						let assignment_position =
-							assignment_position.with_source(self.get_source());
-						self.set_reference_handle_errors(
-							reference,
-							new,
-							assignment_position,
-							checking_data,
-						);
-						new
+						if let Ok(new) = result {
+							let assignment_position =
+								assignment_position.with_source(self.get_source());
+
+							self.set_reference_handle_errors(
+								reference,
+								new,
+								assignment_position,
+								checking_data,
+							);
+
+							new
+						} else {
+							checking_data.diagnostics_container.add_error(
+								crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+									operator,
+									lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										existing,
+										self,
+										&checking_data.types,
+										false,
+									),
+									rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										rhs,
+										self,
+										&checking_data.types,
+										false,
+									),
+									position: assignment_position.with_source(self.get_source()),
+								},
+							);
+							TypeId::ERROR_TYPE
+						}
 					}
 					AssignmentKind::IncrementOrDecrement(direction, return_kind) => {
 						// let value =
@@ -323,31 +346,57 @@ impl<'a> Environment<'a> {
 						);
 
 						// TODO existing needs to be cast to number!!
-
-						let new = evaluate_pure_binary_operation_handle_errors(
-							(existing, position),
-							match direction {
-								IncrementOrDecrement::Increment => MathematicalAndBitwise::Add,
-								IncrementOrDecrement::Decrement => MathematicalAndBitwise::Subtract,
+						let operator = match direction {
+							IncrementOrDecrement::Increment => MathematicalOrBitwiseOperation::Add,
+							IncrementOrDecrement::Decrement => {
+								MathematicalOrBitwiseOperation::Subtract
 							}
-							.into(),
-							(TypeId::ONE, source_map::Nullable::NULL),
-							checking_data,
+						};
+
+						let result = crate::features::operations::evaluate_mathematical_operation(
+							existing,
+							operator,
+							TypeId::ONE,
 							self,
+							&mut checking_data.types,
+							checking_data.options.strict_casts,
+							checking_data.options.advanced_numbers,
 						);
+						if let Ok(new) = result {
+							let assignment_position =
+								assignment_position.with_source(self.get_source());
 
-						let assignment_position =
-							assignment_position.with_source(self.get_source());
-						self.set_reference_handle_errors(
-							reference,
-							new,
-							assignment_position,
-							checking_data,
-						);
+							self.set_reference_handle_errors(
+								reference,
+								new,
+								assignment_position,
+								checking_data,
+							);
 
-						match return_kind {
-							AssignmentReturnStatus::Previous => existing,
-							AssignmentReturnStatus::New => new,
+							match return_kind {
+								AssignmentReturnStatus::Previous => existing,
+								AssignmentReturnStatus::New => new,
+							}
+						} else {
+							checking_data.diagnostics_container.add_error(
+								crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+									operator,
+									lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										existing,
+										self,
+										&checking_data.types,
+										false,
+									),
+									rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
+										TypeId::ONE,
+										self,
+										&checking_data.types,
+										false,
+									),
+									position,
+								},
+							);
+							TypeId::ERROR_TYPE
 						}
 					}
 					AssignmentKind::ConditionalUpdate(operator) => {
@@ -890,45 +939,41 @@ impl<'a> Environment<'a> {
 							info.variable_current_value.get(&og_var.get_origin_variable_id())
 						})
 						.copied();
-					let narrowed = current_value.and_then(|cv| self.get_narrowed(cv));
+
+					// TODO WIP
+					let narrowed = current_value
+						.and_then(|cv| self.get_narrowed_or_object(cv, &checking_data.types));
 
 					if let Some(precise) = narrowed.or(current_value) {
-						let ty = checking_data.types.get_type_by_id(precise);
+						// let ty = checking_data.types.get_type_by_id(precise);
 
-						// TODO temp for function
-						if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
-							return Ok(VariableWithValue(og_var.clone(), precise));
-						} else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
-							crate::utilities::notify!(
-								"Open poly type '{}' treated as immutable free variable",
-								name
-							);
-							return Ok(VariableWithValue(og_var.clone(), precise));
-						} else if let Type::Constant(_) = ty {
-							return Ok(VariableWithValue(og_var.clone(), precise));
-						}
+						// // TODO temp for function
+						// let value = if let Type::SpecialObject(SpecialObject::Function(..)) = ty {
+						// 	return Ok(VariableWithValue(og_var.clone(), precise));
+						// } else if let Type::RootPolyType(PolyNature::Open(_)) = ty {
+						// 	crate::utilities::notify!(
+						// 		"Open poly type '{}' treated as immutable free variable",
+						// 		name
+						// 	);
+						// 	return Ok(VariableWithValue(og_var.clone(), precise));
+						// } else if let Type::Constant(_) = ty {
+						// };
 
-						crate::utilities::notify!("Free variable with value!");
-					} else {
-						crate::utilities::notify!("Free variable with no current value");
+						return Ok(VariableWithValue(og_var.clone(), precise));
 					}
 
-					if let Some(narrowed) = narrowed {
-						narrowed
+					crate::utilities::notify!("Free variable with no current value");
+					let constraint = checking_data
+						.local_type_mappings
+						.variables_to_constraints
+						.0
+						.get(&og_var.get_origin_variable_id());
+
+					if let Some(constraint) = constraint {
+						*constraint
 					} else {
-						let constraint = checking_data
-							.local_type_mappings
-							.variables_to_constraints
-							.0
-							.get(&og_var.get_origin_variable_id());
-						if let Some(constraint) = constraint {
-							*constraint
-						} else {
-							crate::utilities::notify!(
-								"TODO record that free variable is `any` here"
-							);
-							TypeId::ANY_TYPE
-						}
+						crate::utilities::notify!("TODO record that free variable is `any` here");
+						TypeId::ANY_TYPE
 					}
 				}
 				VariableMutability::Mutable { reassignment_constraint } => {
@@ -940,12 +985,15 @@ impl<'a> Environment<'a> {
 					for ctx in self.parents_iter() {
 						if let GeneralContext::Syntax(s) = ctx {
 							if s.possibly_mutated_variables.contains(&variable_id) {
+								crate::utilities::notify!("Possibly mutated variables");
 								break;
 							}
-							if let Some(value) =
+
+							if let Some(current_value) =
 								get_on_ctx!(ctx.info.variable_current_value.get(&variable_id))
+									.copied()
 							{
-								return Ok(VariableWithValue(og_var.clone(), *value));
+								return Ok(VariableWithValue(og_var.clone(), current_value));
 							}
 
 							if s.context_type.scope.is_dynamic_boundary().is_some() {
@@ -986,8 +1034,11 @@ impl<'a> Environment<'a> {
 				}
 			}
 
-			let ty = if let Some(value) = reused_reference {
-				value
+			let ty = if let Some(reused_reference) = reused_reference {
+				// TODO temp. I believe this can break type contracts because of mutations
+				// but needed here because of for loop narrowing
+				let narrowed = self.get_narrowed_or_object(reused_reference, &checking_data.types);
+				narrowed.unwrap_or(reused_reference)
 			} else {
 				// TODO dynamic ?
 				let ty = Type::RootPolyType(crate::types::PolyNature::FreeVariable {
@@ -1022,6 +1073,7 @@ impl<'a> Environment<'a> {
 					self,
 					of,
 					None::<&crate::types::generics::substitution::SubstitutionArguments<'static>>,
+					&checking_data.types,
 				)
 				.expect("import not assigned yet");
 				return Ok(VariableWithValue(og_var.clone(), current_value));
@@ -1031,7 +1083,9 @@ impl<'a> Environment<'a> {
 				self,
 				og_var.get_id(),
 				None::<&crate::types::generics::substitution::SubstitutionArguments<'static>>,
+				&checking_data.types,
 			);
+
 			if let Some(current_value) = current_value {
 				Ok(VariableWithValue(og_var.clone(), current_value))
 			} else {

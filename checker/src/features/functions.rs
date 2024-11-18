@@ -822,6 +822,7 @@ where
 		let closes_over = create_closed_over_references(
 			&function_environment.context_type.closed_over_references,
 			&function_environment,
+			&checking_data.types,
 		);
 
 		let Syntax {
@@ -1112,7 +1113,7 @@ pub fn new_name_expected_object(
 		&mut environment.info,
 	);
 
-	types.new_and_type(expected, name_object.build_object()).unwrap()
+	types.new_and_type(expected, name_object.build_object()) // .unwrap()
 }
 
 /// Reverse of the above
@@ -1137,6 +1138,7 @@ pub fn extract_name(expecting: TypeId, types: &TypeStore, environment: &Environm
 	}
 }
 
+#[must_use]
 pub fn class_generics_to_function_generics(
 	prototype: TypeId,
 	types: &TypeStore,

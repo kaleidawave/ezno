@@ -58,30 +58,20 @@ jobs:
           echo "publish-json-args=$KEY_PAIR_ARGS_JSON" >> $GITHUB_OUTPUT
         shell: bash
 
-      - id: get-sponsors
+      # Needed for WASM
+      - name: Get sponsors and contributors
+        id: get-sponsors-and-contributors
         run: |
-          SPONSORS=$(
-              gh api graphql -f query='{
-                  user(login: "kaleidawave") {
-                      sponsorshipsAsMaintainer(first: 100, activeOnly: false) {
-                      edges {
-                          node {
-                          sponsor {
-                              name, login
-                          }
-                          }
-                      }
-                      }
-                  }
-              }' -q '.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",")'
-          )
+          SQP='.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",")'
+          GQL_SQ='{ user(login: "kaleidawave") { sponsorshipsAsMaintainer(first: 100, activeOnly: false) { edges { node { sponsor { name, login } } } } } }'
+          SPONSORS=$(gh api graphql -f query="$GQL_SQ" -q "$SQP")
 
-          CONTRIBUTORS=$(
-              gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
-          )
-
-          echo "SPONSORS=$SPONSORS" >> $GITHUB_OUTPUT
-          echo "CONTRIBUTORS=$CONTRIBUTORS" >> $GITHUB_OUTPUT
+          CQP='map(.author.name // .author.login) | unique | join(",")'
+          CONTRIBUTORS=$(gh pr list --state merged --json author | jq "$CQP" --raw-output)
+            
+          echo "SPONSORS=$SPONSORS" >> "$GITHUB_OUTPUT"
+          echo "CONTRIBUTORS=$CONTRIBUTORS" >> "$GITHUB_OUTPUT"
+          echo "::notice::CONTRIBUTORS=$CONTRIBUTORS and SPONSORS=$SPONSORS"
 
         shell: bash
         env:
@@ -94,17 +84,12 @@ jobs:
           version: ${{ steps.set-arguments.outputs.publish-json-args }}
           crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         env:
-          SPONSORS: ${{ steps.get-sponsors.outputs.SPONSORS }}
-          CONTRIBUTORS: ${{ steps.get-sponsors.outputs.CONTRIBUTORS }}
+          SPONSORS: ${{ steps.get-sponsors-and-contributors.outputs.SPONSORS }}
+          CONTRIBUTORS: ${{ steps.get-sponsors-and-contributors.outputs.CONTRIBUTORS }}
 
       - name: Add WASM to rustup
         if: ${{ inputs.ezno-version != 'none' }}
         run: rustup target add wasm32-unknown-unknown
-
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        if: ${{ inputs.ezno-version != 'none' }}
-        with:
-          packages: wasm-pack@0.13.0
 
       - name: Set NPM package version & build
         id: set-npm-version
@@ -120,7 +105,8 @@ jobs:
           ls dist
         working-directory: src/js-cli-and-library
         env:
-          SPONSORS: ${{ steps.get-sponsors.outputs.sponsors }}
+          SPONSORS: ${{ steps.get-sponsors-and-contributors.outputs.SPONSORS }}
+          CONTRIBUTORS: ${{ steps.get-sponsors-and-contributors.outputs.CONTRIBUTORS }}
 
       - name: NPM publish (CLI and library)
         if: ${{ inputs.ezno-version != 'none' }}

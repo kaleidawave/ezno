@@ -144,11 +144,12 @@ where
 				checking_data.types.new_constant_type(Constant::String(static_part.to_owned()));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
-				crate::features::operations::MathematicalAndBitwise::Add,
+				crate::features::operations::MathematicalOrBitwiseOperation::Add,
 				lhs,
 				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
+				checking_data.options.advanced_numbers,
 			);
 			if let Ok(result) = result {
 				acc = result;
@@ -164,11 +165,12 @@ where
 			);
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
-				crate::features::operations::MathematicalAndBitwise::Add,
+				crate::features::operations::MathematicalOrBitwiseOperation::Add,
 				rhs,
 				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
+				checking_data.options.advanced_numbers,
 			);
 			if let Ok(result) = result {
 				acc = result;
@@ -184,11 +186,12 @@ where
 				checking_data.types.new_constant_type(Constant::String(final_part.to_owned()));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
-				crate::features::operations::MathematicalAndBitwise::Add,
+				crate::features::operations::MathematicalOrBitwiseOperation::Add,
 				value,
 				environment,
 				&mut checking_data.types,
 				checking_data.options.strict_casts,
+				checking_data.options.advanced_numbers,
 			);
 			if let Ok(result) = result {
 				result

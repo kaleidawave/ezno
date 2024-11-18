@@ -12,12 +12,10 @@ jobs:
 
     - uses: actions/setup-node@v4
       with:
-        node-version: '20.11.1'
+        node-version: 22
 
-    - name: build
-      run: |
-        npm i
-        npm run build
+    - name: Install (inc latest Ezno) and build
+      run: npm i; npm i ezno@latest; npm run build;
       working-directory: src/playground
 
     - name: Deploy to GitHub Pages

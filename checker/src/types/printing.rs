@@ -9,7 +9,8 @@ use crate::{
 		calling::ThisValue,
 		functions::{FunctionBehavior, FunctionEffect},
 		generics::generic_type_arguments::GenericArguments,
-		get_array_length, get_constraint, get_simple_value,
+		get_constraint, get_simple_property_value,
+		helpers::get_array_length,
 		properties::{get_properties_on_single_type, AccessMode, PropertyKey, Publicity},
 		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, TypeExtends,
 	},
@@ -78,27 +79,35 @@ pub fn print_type_into_buf<C: InformationChain>(
 	let r#type = types.get_type_by_id(ty);
 	match r#type {
 		Type::And(a, b) => {
+			// let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
+			// if value.0.is_some() || value.1.is_some() {
+			// 	crate::utilities::notify!("{:?}", value);
+			// }
+
 			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
 			buf.push_str(" & ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
 		Type::Or(a, b) => {
+			// let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
+			// if value.0.is_some() || value.1.is_some() {
+			// 	crate::utilities::notify!("{:?}", value);
+			// }
+
 			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
 			buf.push_str(" | ");
 			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
 		}
 		Type::Narrowed { narrowed_to, from } => {
 			if debug {
-				buf.push_str("(narrowed from ");
-				print_type_into_buf(*from, buf, cycles, args, types, info, debug);
-				buf.push_str(") ");
+				write!(buf, "(narrowed from {from:?}) ").unwrap();
 			}
 			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
 		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::MappedGeneric { name, extends } => {
 				if debug {
-					write!(buf, "[mg {} {}] ", ty.0, name).unwrap();
+					write!(buf, "(mg {} {}) ", ty.0, name).unwrap();
 				}
 				crate::utilities::notify!("args={:?}", args);
 				if let Some(crate::types::CovariantContribution::String(property)) =
@@ -113,13 +122,13 @@ pub fn print_type_into_buf<C: InformationChain>(
 			| PolyNature::StructureGeneric { name, extends: _ } => {
 				if debug {
 					if let PolyNature::FunctionGeneric { .. } = nature {
-						write!(buf, "[fg {} {}] ", ty.0, name).unwrap();
+						write!(buf, "(fg {} {}) ", ty.0, name).unwrap();
 					}
 				}
 				if let Some(arg) = args.and_then(|args| args.get_argument_covariant(ty)) {
 					use crate::types::CovariantContribution;
 					if debug {
-						buf.push_str(" (specialised with) ");
+						buf.push_str("(specialised with) ");
 					}
 					match arg {
 						CovariantContribution::TypeId(id) => {
@@ -141,7 +150,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						if let PolyNature::FunctionGeneric { extends, .. } = nature {
 							print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
 						} else {
-							write!(buf, "[sg {}] ", ty.0).unwrap();
+							write!(buf, "(sg {})", ty.0).unwrap();
 						}
 					}
 					buf.push_str(name);
@@ -149,7 +158,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::InferGeneric { name, extends } => {
 				if debug {
-					write!(buf, "[IG {}] @ ", ty.0).unwrap();
+					write!(buf, "(IG {}) @ ", ty.0).unwrap();
 				}
 				buf.push_str("infer ");
 				buf.push_str(name);
@@ -161,19 +170,19 @@ pub fn print_type_into_buf<C: InformationChain>(
 			PolyNature::FreeVariable { based_on: to, .. } => {
 				if debug {
 					// FV = free variable
-					write!(buf, "[FV {}] @ ", ty.0).unwrap();
+					write!(buf, "(FV {}) @ ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
 			PolyNature::Parameter { fixed_to: to } => {
 				if debug {
-					write!(buf, "[param {}] @ ", ty.0).unwrap();
+					write!(buf, "(param {}) @ ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
 			PolyNature::Open(to) => {
 				if debug {
-					write!(buf, "[open {}] ", ty.0).unwrap();
+					write!(buf, "(open {}) ", ty.0).unwrap();
 				}
 				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 			}
@@ -194,31 +203,30 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			PolyNature::CatchVariable(constraint) => {
 				if debug {
-					write!(buf, "[catch variable {ty:?}] ").unwrap();
+					write!(buf, "(CV {ty:?}) ").unwrap();
 				}
 				print_type_into_buf(*constraint, buf, cycles, args, types, info, debug);
 			}
 		},
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
-			// TypeId::INCLUSIVE_RANGE |
-			if let TypeId::EXCLUSIVE_RANGE = *on {
-				// let inclusive = *on == TypeId::INCLUSIVE_RANGE;
-				let floor =
-					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
-				let ceiling =
-					arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap();
-				if let TypeId::NEG_INFINITY = floor {
-					buf.push_str("LessThan<");
-					print_type_into_buf(ceiling, buf, cycles, args, types, info, debug);
-					buf.push('>');
-					return;
-				} else if let TypeId::INFINITY = ceiling {
-					buf.push_str("GreaterThan<");
-					print_type_into_buf(floor, buf, cycles, args, types, info, debug);
-					buf.push('>');
-					return;
-				}
-			}
+			// if let TypeId::Great = *on {
+			// 	// let inclusive = *on == TypeId::INCLUSIVE_RANGE;
+			// 	let floor =
+			// 		arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+			// 	let ceiling =
+			// 		arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap();
+			// 	if let TypeId::NEG_INFINITY = floor {
+			// 		buf.push_str("LessThan<");
+			// 		print_type_into_buf(ceiling, buf, cycles, args, types, info, debug);
+			// 		buf.push('>');
+			// 		return;
+			// 	} else if let TypeId::INFINITY = ceiling {
+			// 		buf.push_str("GreaterThan<");
+			// 		print_type_into_buf(floor, buf, cycles, args, types, info, debug);
+			// 		buf.push('>');
+			// 		return;
+			// 	}
+			// }
 
 			if debug {
 				write!(buf, "SG({:?})(", ty.0).unwrap();
@@ -410,6 +418,18 @@ pub fn print_type_into_buf<C: InformationChain>(
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}
 			}
+			Constructor::BinaryOperator {
+				lhs: _,
+				operator: crate::features::operations::MathematicalOrBitwiseOperation::Modulo,
+				rhs,
+				result: _,
+			} if matches!(types.get_type_by_id(*rhs), Type::Constant(_)) => {
+				if let Type::Constant(crate::Constant::Number(num)) = types.get_type_by_id(*rhs) {
+					write!(buf, "ExclusiveRange<-{num}, {num}>").unwrap();
+				} else {
+					unreachable!()
+				}
+			}
 			constructor if debug => match constructor {
 				Constructor::BinaryOperator { lhs, operator, rhs, result: _ } => {
 					print_type_into_buf(*lhs, buf, cycles, args, types, info, debug);
@@ -438,7 +458,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 				Constructor::Image { on: _, with: _, result } => {
 					// TODO arguments
-					write!(buf, "[func result {}] (*args*)", ty.0).unwrap();
+					write!(buf, "(func result {}) (*args*)", ty.0).unwrap();
 					buf.push_str(" -> ");
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}
@@ -469,7 +489,28 @@ pub fn print_type_into_buf<C: InformationChain>(
 					unreachable!()
 				}
 			},
-			_constructor => {
+			constructor => {
+				if let Constructor::BinaryOperator { result: TypeId::STRING_TYPE, .. } = constructor
+				{
+					let slice =
+						crate::types::helpers::TemplatelLiteralExpansion::from_type(ty, types);
+					if let Some(single) = slice.as_single_string() {
+						buf.push('"');
+						buf.push_str(single);
+						buf.push('"');
+					} else {
+						buf.push('`');
+						for (s, ty) in &slice.parts {
+							buf.push_str(s);
+							buf.push_str("${");
+							print_type_into_buf(*ty, buf, cycles, args, types, info, debug);
+							buf.push('}');
+						}
+						buf.push_str(&slice.rest);
+						buf.push('`');
+					}
+					return;
+				}
 				let base = get_constraint(ty, types).unwrap();
 				print_type_into_buf(base, buf, cycles, args, types, info, debug);
 			}
@@ -478,12 +519,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 		| Type::Interface { name, parameters: _, .. }
 		| Type::AliasTo { to: _, name, parameters: _ }) => {
 			if debug {
-				write!(buf, "{name}#{}", ty.0).unwrap();
+				write!(buf, "{name}#{} ", ty.0).unwrap();
 				if let Type::AliasTo { to, .. } = t {
-					buf.push_str(" = ");
+					buf.push_str("= ");
 					print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 				} else if let Type::Class { .. } = t {
-					buf.push_str(" (class)");
+					buf.push_str("(class)");
 				}
 			} else {
 				buf.push_str(name);
@@ -531,7 +572,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 
 			if debug {
 				let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
-				write!(buf, "[func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
+				write!(buf, "(func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
 				if let FunctionEffect::SideEffects {
 					events: _,
 					free_variables,
@@ -549,7 +590,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					buf.push_str(", this ");
 					print_type_into_buf(*p, buf, cycles, args, types, info, debug);
 				}
-				buf.push_str("] = ");
+				buf.push_str(") = ");
 			}
 			if let Some(ref parameters) = func.type_parameters {
 				buf.push('<');
@@ -603,9 +644,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 		Type::Object(kind) => {
 			if debug {
 				if let ObjectNature::RealDeal = kind {
-					write!(buf, "[obj {}] ", ty.0).unwrap();
+					write!(buf, "(obj {}) ", ty.0).unwrap();
 				} else {
-					write!(buf, "[aol {}] ", ty.0).unwrap();
+					write!(buf, "(anom {}) ", ty.0).unwrap();
 				}
 			}
 			let prototype =
@@ -619,8 +660,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 							if i != 0 {
 								buf.push_str(", ");
 							}
-							let value =
-								get_simple_value(info, ty, &PropertyKey::from_usize(i), types);
+							let value = get_simple_property_value(
+								info,
+								ty,
+								&PropertyKey::from_usize(i),
+								types,
+							);
 
 							if let Some(value) = value {
 								print_type_into_buf(value, buf, cycles, args, types, info, debug);

@@ -635,86 +635,104 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> crate::features::functions::PartialFunction {
-	let type_parameters = function.type_parameters.as_ref().map(|type_parameters| {
-		super::functions::synthesise_type_parameters(type_parameters, environment, checking_data)
-	});
-
-	let parameters = function
-		.parameters
-		.parameters
-		.iter()
-		.map(|parameter| {
-			let parameter_constraint =
-				parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |ta| {
-					synthesise_type_annotation(ta, environment, checking_data)
+	environment
+		.new_lexical_environment_fold_into_parent(
+			Scope::FunctionAnnotation {},
+			checking_data,
+			|environment, checking_data| {
+				let type_parameters = function.type_parameters.as_ref().map(|type_parameters| {
+					super::functions::synthesise_type_parameters(
+						type_parameters,
+						environment,
+						checking_data,
+					)
 				});
 
-			// TODO I think this is correct
-			let is_optional = parameter.additionally.is_some();
-			let ty = if is_optional {
-				checking_data.types.new_or_type(parameter_constraint, TypeId::UNDEFINED_TYPE)
-			} else {
-				parameter_constraint
-			};
+				let parameters = function
+					.parameters
+					.parameters
+					.iter()
+					.map(|parameter| {
+						let parameter_constraint =
+							parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |ta| {
+								synthesise_type_annotation(ta, environment, checking_data)
+							});
 
-			SynthesisedParameter {
-				name: variable_field_to_string(parameter.name.get_ast_ref()),
-				is_optional,
-				ty,
-				position: parameter.position.with_source(environment.get_source()),
-			}
-		})
-		.collect();
+						// TODO I think this is correct
+						let is_optional = parameter.additionally.is_some();
+						let ty = if is_optional {
+							checking_data
+								.types
+								.new_or_type(parameter_constraint, TypeId::UNDEFINED_TYPE)
+						} else {
+							parameter_constraint
+						};
 
-	let rest_parameter = function.parameters.rest_parameter.as_ref().map(|rest_parameter| {
-		let parameter_constraint =
-			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
-				synthesise_type_annotation(annotation, environment, checking_data)
-			});
+						SynthesisedParameter {
+							name: variable_field_to_string(parameter.name.get_ast_ref()),
+							is_optional,
+							ty,
+							position: parameter.position.with_source(environment.get_source()),
+						}
+					})
+					.collect();
 
-		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
-			TypeId::ERROR_TYPE
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::ARRAY_TYPE,
-			arguments,
-		}) = checking_data.types.get_type_by_id(parameter_constraint)
-		{
-			if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE) {
-				item
-			} else {
-				unreachable!()
-			}
-		} else {
-			crate::utilities::notify!("rest parameter should be array error");
-			// checking_data.diagnostics_container.add_error(
-			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
-			// );
-			TypeId::ERROR_TYPE
-		};
+				let rest_parameter =
+					function.parameters.rest_parameter.as_ref().map(|rest_parameter| {
+						let parameter_constraint = rest_parameter.type_annotation.as_ref().map_or(
+							TypeId::ANY_TYPE,
+							|annotation| {
+								synthesise_type_annotation(annotation, environment, checking_data)
+							},
+						);
 
-		let name = variable_field_to_string(&rest_parameter.name);
+						let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
+							TypeId::ERROR_TYPE
+						} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+							on: TypeId::ARRAY_TYPE,
+							arguments,
+						}) = checking_data.types.get_type_by_id(parameter_constraint)
+						{
+							if let Some(item) = arguments.get_structure_restriction(TypeId::T_TYPE)
+							{
+								item
+							} else {
+								unreachable!()
+							}
+						} else {
+							crate::utilities::notify!("rest parameter should be array error");
+							// checking_data.diagnostics_container.add_error(
+							// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
+							// );
+							TypeId::ERROR_TYPE
+						};
 
-		SynthesisedRestParameter {
-			item_type,
-			// This will be overridden when actual synthesis
-			ty: parameter_constraint,
-			name,
-			position: rest_parameter.position.with_source(environment.get_source()),
-		}
-	});
+						let name = variable_field_to_string(&rest_parameter.name);
 
-	let return_type = function.return_type.as_ref().map(|annotation| {
-		ReturnType(
-			synthesise_type_annotation(annotation, environment, checking_data),
-			annotation.get_position().with_source(environment.get_source()),
+						SynthesisedRestParameter {
+							item_type,
+							// This will be overridden when actual synthesis
+							ty: parameter_constraint,
+							name,
+							position: rest_parameter.position.with_source(environment.get_source()),
+						}
+					});
+
+				let return_type = function.return_type.as_ref().map(|annotation| {
+					ReturnType(
+						synthesise_type_annotation(annotation, environment, checking_data),
+						annotation.get_position().with_source(environment.get_source()),
+					)
+				});
+
+				crate::features::functions::PartialFunction(
+					type_parameters,
+					SynthesisedParameters { parameters, rest_parameter },
+					return_type,
+				)
+			},
 		)
-	});
-
-	crate::features::functions::PartialFunction(
-		type_parameters,
-		SynthesisedParameters { parameters, rest_parameter },
-		return_type,
-	)
+		.0
 }
 
 /// TODO WIP
@@ -837,7 +855,7 @@ pub(super) fn build_overloaded_function(
 		let func = types.new_hoisted_function_type(as_function);
 
 		// IMPORTANT THAT RESULT IS ON THE RIGHT OF AND TYPE
-		result = types.new_and_type(func, result).unwrap();
+		result = types.new_and_type(func, result);
 	}
 
 	result

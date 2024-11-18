@@ -1,6 +1,6 @@
 {
 	"name": "ezno",
-	"version": "0.0.22",
+	"version": "0.0.23",
 	"description": "A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance",
 	"license": "MIT",
 	"repository": "https://github.com/kaleidawave/ezno",
@@ -20,13 +20,13 @@
 	},
 	"scripts": {
 		"clean": "rmdir dist && rmdir build",
-		"build": "wasm-pack build --dev --out-dir src/js-cli-and-library/build --target web --no-pack && npm run build-js",
-		"build-release": "wasm-pack build --release --out-dir src/js-cli-and-library/build --target web --no-pack && npm run build-js",
+		"build": "wasm-pack build --dev --target web --no-pack --out-dir src/js-cli-and-library/build && npm run build-js",
+		"build-release": "wasm-pack build --release --target web --no-pack --out-dir src/js-cli-and-library/build && npm run build-js",
 		"--": "Manually assembles the output",
 		"build-manual-bind": "cargo build --lib --target wasm32-unknown-unknown --profile debug && wasm-bindgen --out-dir build --target web ../../target/wasm32-unknown-unknown/debug/ezno_lib.wasm && npm run build-js",
 		"build-js": "unbuild && cp ./build/ezno_lib_bg.wasm dist/shared && cp src/cli_node.cjs dist/cli.cjs",
 		"test": "npm run build && npm run run-tests",
-		"run-tests": "node test.mjs && deno run -A test.mjs"
+		"run-tests": "node --test"
 	},
 	"keywords": [
 		"typescript",
@@ -74,6 +74,9 @@
 		}
 	},
 	"devDependencies": {
-		"unbuild": "^2.0.0"
+		"strip-ansi": "^7.1.0",
+		"unbuild": "^2.0.0",
+		"wasm-pack": "^0.13.0",
+		"snapshot-fixtures": "^1.2.0"
 	}
 }

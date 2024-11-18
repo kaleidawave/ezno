@@ -10,7 +10,7 @@ use crate::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
 		},
 		get_constraint,
-		helpers::{get_conditional, is_inferrable_type, is_pseudo_continous},
+		helpers::{get_type_as_conditional, is_inferrable_type, is_pseudo_continous},
 		logical::{
 			BasedOnKey, Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical,
 			PropertyOn,
@@ -336,7 +336,8 @@ pub(crate) fn get_property_unbound(
 			Type::Constructor(crate::types::Constructor::ConditionalResult { .. })
 			| Type::Or(..) => {
 				let (condition, truthy_result, otherwise_result) =
-					get_conditional(on, types).expect("case above != get_conditional");
+					get_type_as_conditional(on, types)
+						.expect("case above != get_type_as_conditional");
 
 				if require_both_logical {
 					let left = get_property_on_type_unbound(
@@ -372,14 +373,16 @@ pub(crate) fn get_property_unbound(
 						types,
 					);
 					if left.is_err() && right.is_err() {
+						crate::utilities::notify!(
+							"One side invalid {:?}",
+							(left.is_err(), right.is_err())
+						);
 						Err(Invalid(on))
 					} else {
-						let left = left.unwrap_or(LogicalOrValid::Logical(Logical::Pure(
-							PropertyValue::Deleted,
-						)));
-						let right = right.unwrap_or(LogicalOrValid::Logical(Logical::Pure(
-							PropertyValue::Deleted,
-						)));
+						const DELETED_PROPERTY: LogicalOrValid<PropertyValue> =
+							LogicalOrValid::Logical(Logical::Pure(PropertyValue::Deleted));
+						let left = left.unwrap_or(DELETED_PROPERTY);
+						let right = right.unwrap_or(DELETED_PROPERTY);
 						Ok(Logical::Or { condition, left: Box::new(left), right: Box::new(right) }
 							.into())
 					}
@@ -421,7 +424,7 @@ pub(crate) fn get_property_unbound(
 			}
 			Type::Object(ObjectNature::RealDeal) => {
 				let object_constraint_structure_generics =
-					crate::types::get_structure_arguments_based_on_object_constraint(
+					crate::types::helpers::get_structure_arguments_based_on_object_constraint(
 						on, info_chain, types,
 					);
 
@@ -430,17 +433,6 @@ pub(crate) fn get_property_unbound(
 					.find_map(|facts| facts.prototypes.get(&on))
 					.copied();
 
-				let generics = if let Some(generics) = object_constraint_structure_generics {
-					// TODO clone
-					Some(generics.clone())
-				} else if prototype
-					.is_some_and(|prototype| types.lookup_generic_map.contains_key(&prototype))
-				{
-					Some(GenericArguments::LookUp { on })
-				} else {
-					None
-				};
-
 				let on_self = resolver(
 					(on, on_type_arguments),
 					(publicity, under, under_type_arguments),
@@ -448,31 +440,39 @@ pub(crate) fn get_property_unbound(
 					types,
 				);
 
-				let result = if let (Some(prototype), None) = (prototype, &on_self) {
-					resolver(
+				if let Some(property) = on_self {
+					let generics = if let Some(generics) = object_constraint_structure_generics {
+						// TODO clone
+						Some(generics.clone())
+					} else if prototype
+						.is_some_and(|prototype| types.lookup_generic_map.contains_key(&prototype))
+					{
+						Some(GenericArguments::LookUp { on })
+					} else {
+						None
+					};
+
+					let property = wrap(property);
+					let property = if let Some(ref generics) = generics {
+						// TODO clone
+						Logical::Implies { on: Box::new(property), antecedent: generics.clone() }
+					} else {
+						property
+					};
+					Ok(LogicalOrValid::Logical(property))
+				} else if let Some(prototype) = prototype {
+					crate::utilities::notify!("{:?}", types.get_type_by_id(prototype));
+
+					get_property_on_type_unbound(
 						(prototype, on_type_arguments),
 						(publicity, under, under_type_arguments),
+						require_both_logical,
 						info_chain,
 						types,
 					)
 				} else {
-					on_self
-				};
-
-				// crate::utilities::notify!("result={:?}", result);
-
-				result
-					.map(wrap)
-					.map(|result| {
-						if let Some(ref generics) = generics {
-							// TODO clone
-							Logical::Implies { on: Box::new(result), antecedent: generics.clone() }
-						} else {
-							result
-						}
-					})
-					.map(LogicalOrValid::Logical)
-					.ok_or(Invalid(on))
+					Err(Invalid(on))
+				}
 			}
 			Type::Interface { extends, .. } => resolver(
 				(on, on_type_arguments),
@@ -543,14 +543,12 @@ pub(crate) fn get_property_unbound(
 				}
 			}
 			Type::Constant(Constant::String(s)) if under.is_equal_to("length") => {
-				// TODO temp TypeId::NUMBER_FLOOR_GENERIC for slice member
+				// TODO temp TypeId::NUMBER_GENERIC for slice member
 				let count = s.chars().count();
 				Ok(Logical::BasedOnKey(BasedOnKey::Left {
-					value: Box::new(Logical::Pure(PropertyValue::Value(
-						TypeId::NUMBER_FLOOR_GENERIC,
-					))),
+					value: Box::new(Logical::Pure(PropertyValue::Value(TypeId::NUMBER_GENERIC))),
 					key_arguments: crate::Map::from_iter([(
-						TypeId::NUMBER_FLOOR_GENERIC,
+						TypeId::NUMBER_GENERIC,
 						(CovariantContribution::Number(count as f64), 0),
 					)]),
 				})
@@ -604,7 +602,9 @@ pub(crate) fn get_property_unbound(
 		// if *key == TypeId::ERROR_TYPE {
 		// 	return Err(MissingOrToCalculate::Error);
 		// } else
-		if let Some((condition, truthy_result, otherwise_result)) = get_conditional(key, types) {
+		if let Some((condition, truthy_result, otherwise_result)) =
+			get_type_as_conditional(key, types)
+		{
 			let left = get_property_unbound(
 				(on, on_type_arguments),
 				(publicity, &PropertyKey::Type(truthy_result), under_type_arguments),
@@ -736,9 +736,9 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 		types,
 	);
 
-	{
-		crate::utilities::notify!("Access {:?} result {:?}", under, result);
-	}
+	// {
+	// 	crate::utilities::notify!("Access {:?} result {:?}", under, result);
+	// }
 
 	match result {
 		Ok(LogicalOrValid::Logical(logical)) => {
@@ -1096,7 +1096,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				)
 			}
 			BasedOnKey::Right(property_on) => {
-				crate::utilities::notify!("{:?}", generics);
+				crate::utilities::notify!("generics are {:?}", generics);
 				let result = property_on.get_on(generics, environment, types)?;
 
 				// {

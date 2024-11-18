@@ -41,7 +41,7 @@ console.log(obj2.proberly);
 	let result = check_project::<_, ezno_checker::synthesis::EznoParser>(
 		vec![root.into()],
 		type_definition_files,
-		resolver,
+		&resolver,
 		options,
 		(),
 		None,

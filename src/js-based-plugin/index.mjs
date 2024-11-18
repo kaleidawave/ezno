@@ -74,13 +74,12 @@ function plugin(options = {}) {
 			}
 
 			const output = build(path, readFile, false);
-			if (output.Ok) {
-				emitDiagnostics(code, output.Ok.diagnostics, this)
+			emitDiagnostics(code, output.diagnostics, this)
+			if (output.artifacts.length) {
 				return {
-					code: output.Ok.outputs[0].content
+					code: output.artifacts[0]
 				}
 			} else {
-				emitDiagnostics(code, output.Err.diagnostics, this)
 				this.warn("ezno had errors and did not transform");
 				return code;
 			}

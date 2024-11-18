@@ -3,6 +3,7 @@
 mod debugging;
 pub mod float_range;
 pub mod map;
+pub mod modulo_class;
 pub mod range_map;
 pub mod serialization;
 

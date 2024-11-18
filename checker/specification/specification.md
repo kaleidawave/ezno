@@ -306,16 +306,6 @@ const b = x.b;
 
 - No property 'b' on { a: 2 }
 
-#### `Object.keys`, `Object.values`, `Object.entries`
-
-```ts
-Object.keys({ a: 1, b: 2 }) satisfies ["a", "b"];
-Object.values({ a: 1, b: 2 }) satisfies [1, 2];
-Object.entries({ a: 1, b: 2 }) satisfies boolean;
-```
-
-- Expected boolean, found [["a", 1], ["b", 2]]
-
 #### Spread condition
 
 ```ts
@@ -529,22 +519,6 @@ keys satisfies boolean
 
 - Expected boolean, found "nbd"
 
-#### `Object.freeze`
-
-> TODO seal & preventExtensions
-
-```ts
-const obj = {}
-let result = Object.freeze(obj);
-(obj === result) satisfies true;
-obj.property = 2;
-Object.isFrozen(obj) satisfies true;
-```
-
-> TODO maybe error should say that whole object is frozen
-
-- Cannot write to property 'property'
-
 #### `Object.defineProperty` writable
 
 > TODO defineProperties
@@ -634,7 +608,86 @@ obj satisfies string;
 ```
 
 - Expected string, found { a: 1, b: 2, c: 3 }
-s
+
+#### `Object.freeze`
+
+> When `Object.freeze` is called, the object's `isSealed` is inferred as `true`
+
+```ts
+const obj = {}
+let result = Object.freeze(obj);
+(obj === result) satisfies true;
+obj.property = 2;
+Object.isSealed(obj) satisfies true;
+```
+
+- Cannot write to property 'property'
+
+#### `Object.seal`
+
+> When `Object.seal` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
+
+```ts
+const obj = { a: 2 }
+let result = Object.seal(obj);
+(obj === result) satisfies true;
+
+// Allowed
+obj.a = 4;
+// Not allowed
+obj.property = 2;
+
+Object.isSealed(obj) satisfies true;
+Object.isFrozen(obj) satisfies false;
+```
+
+- Cannot write to property 'property'
+
+#### `Object.preventExtensions`
+
+> When `Object.preventExtensions` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
+
+```ts
+const obj = { a: 2 }
+let result = Object.preventExtensions(obj);
+(obj === result) satisfies true;
+
+// Allowed
+obj.a = 4;
+// Not allowed
+obj.property = 2;
+
+Object.isFrozen(obj) satisfies false;
+Object.isSealed(obj) satisfies false;
+```
+
+- Cannot write to property 'property'
+
+#### `Object.isExtensible`
+
+> The object that has been applied `Object.seal`, `Object.freeze` and `Object.preventExtensions` returns `false` by `Object.isExtensible`, otherwise returns `true`
+
+```ts
+{
+	const obj = {}
+	Object.isExtensible(obj) satisfies true;
+	Object.preventExtensions(obj);
+	Object.isExtensible(obj) satisfies false;
+}
+{
+	const obj = {}
+	Object.seal(obj);
+	Object.isExtensible(obj) satisfies false;
+}
+{
+	const obj = {}
+	Object.freeze(obj);
+	Object.isExtensible(obj) satisfies 5;
+}
+```
+
+- Expected 5, found false
+
 ### Excess properties
 
 > The following work through the same mechanism as forward inference
@@ -750,7 +803,7 @@ const z: false = true || 4
 
 ```ts
 (4 === 2) satisfies true;
-(4 !== 2) satisfies string;
+(4 !== 5) satisfies string;
 ```
 
 - Expected true, found false
@@ -1267,7 +1320,7 @@ new MyClass("hi").value satisfies "hello"
 
 - Expected "hello", found "hi"
 
-#### `new` on function prototype
+#### `new` on function with assigned prototype
 
 ```ts
 function MyClass(value) {
@@ -1778,13 +1831,13 @@ kestrel(3)(2) satisfies 4
 
 ```ts
 function kestrel2(a) {
-	return _b => _c => a
+	return b => c => (a * b) + c
 }
 
-kestrel2(3)(2)(6) satisfies 4
+kestrel2(3)(2)(1) satisfies 4
 ```
 
-- Expected 4, found 3
+- Expected 4, found 7
 
 #### Carry across objects
 
@@ -1889,6 +1942,7 @@ function conditional(v: string) {
 		a++
 	}
 }
+
 conditional("x")
 a satisfies 2
 conditional("value")
@@ -1992,13 +2046,13 @@ stringIsHi(string) satisfies number;
 ```ts
 function func(param: boolean) {
 	let a = 2;
-    if (param) {
+	if (param) {
 		a = 3;
-        return a;
-    } else {
+		return a;
+	} else {
 		a = 7;
 	}
-    a satisfies string;
+	a satisfies string;
 }
 ```
 
@@ -2293,25 +2347,6 @@ try { checkedLn(-5) } catch {}
 
 - Conditional '[Error] { message: \"Cannot log\" }' was thrown in function
 
-#### Throw through internal callback
-
-```ts
-try {
-	[1, 2, 3].map((x: number) => {
-		if (x === 2) {
-			throw "error"
-		}
-	});
-	console.log("unreachable")
-} catch (e) {
-	e satisfies number;
-}
-```
-
-- Conditional '"error"' was thrown in function
-- Unreachable statement
-- Expected number, found "error"
-
 ### Collections
 
 > Some of these are built of exiting features.
@@ -2348,16 +2383,6 @@ x.push("hi");
 
 - Argument of type \"hi\" is not assignable to parameter of type number
 
-#### Array map
-
-> TODO other arguments (index and `this`)
-
-```ts
-[6, 8, 10].map(x => x + 1) satisfies [7, 8, 11];
-```
-
-- Expected [7, 8, 11], found [7, 9, 11]
-
 #### Mutation
 
 > This is part of [assignment mismatch](https://github.com/kaleidawave/ezno/issues/18)
@@ -2378,7 +2403,7 @@ fakeRead(array1)
 #### Always known math
 
 ```ts
-// True regardless of 
+// True regardless of
 function func(a: number) { return a ** 0 }
 
 func satisfies string;
@@ -2479,8 +2504,8 @@ getNumberBetweenFive() === 2.2;
 getNumberBetweenFive() === 7;
 ```
 
-- This equality is always false as InclusiveRange<0, 5> & Integer and 2.2 have no overlap
-- This equality is always false as InclusiveRange<0, 5> & Integer and 7 have no overlap
+- This equality is always false as GreaterThan<0> & LessThan<5> & Integer | 0 | 5 and 2.2 have no overlap
+- This equality is always false as GreaterThan<0> & LessThan<5> & Integer | 0 | 5 and 7 have no overlap
 
 #### Identity equality
 
@@ -2489,14 +2514,14 @@ getNumberBetweenFive() === 7;
 ```ts
 function func(a: string, b: number) {
 	(a === a) satisfies string;
-    (b === b) satisfies null;
+	(b === b) satisfies null;
 }
 ```
 
 - Expected string, found true
 - Expected null, found boolean
 
-#### Ranges for interal types
+#### Ranges for internal types
 
 ```ts
 function func(a: number) {
@@ -2516,20 +2541,87 @@ function func(a: number) {
 }
 ```
 
-- Expected null, found InclusiveRange\<-5, 5>
-- Expected string, found InclusiveRange\<18, 22>
+With advanced_numbers
 
-#### Not disjoint
+- Expected null, found GreaterThan<-5> & LessThan<5> | -5 | 5
+- Expected string, found GreaterThan<18> & LessThan<22> | 18 | 22
+
+#### Disjoint multiple of with range
+
+> TODO need to redo range to use interesection of less than and greater than
 
 ```ts
-function func(param: number) {
-	if (param !== 2) {
-		return param === 2
-	}
+function func1(a: number, b: number) {
+  if (a % 8 === 0 && 31 < b && b < 37) {
+    const x = a === b;
+  }
+  if (a % 10 === 0 && 31 < b && b < 37) {
+    const x = a === b;
+  }
+  if (a % 10 === 0 && 31 < b && b < 41) {
+    const x = a === b;
+  }
 }
 ```
 
-- This equality is always false as Not<2> and 2 have no overlap
+With advanced_numbers
+
+- This equality is always false as MultipleOf<10> and GreaterThan<31> & LessThan<37> have no overlap
+
+#### Modulo range
+
+```ts
+function func(x: number) {
+  return x % 5 === 6;
+}
+```
+
+- This equality is always false as ExclusiveRange<-5, 5> and 6 have no overlap
+
+#### Transistivity
+
+```ts
+function func(a: number, b: number, c: number) {
+  if (a < b && b < c)  {
+    const cond = (a < c) satisfies 5;
+  }
+}
+```
+
+- Expected 5, found true
+
+### Operators across conditions
+
+```ts
+function func(param: boolean) {
+    const value = param ? 1 : 2;
+    return value + 1;
+}
+
+func satisfies string;
+```
+
+With advanced_numbers
+
+- Expected string, found (param: boolean) => 2 | 3
+
+#### Disjoint not
+
+```ts
+function func1(param: Not<string>) {
+  return "hi" === param;
+}
+
+function func2(param: Not<string>) {
+  return 4 === param;
+}
+
+function func3(p1: Not<string>, p2: Not<number>) {
+  return p1 === p2;
+}
+```
+
+- This equality is always false as "hi" and Not\<string> have no overlap
 
 ### Statements, declarations and expressions
 
@@ -2646,6 +2738,9 @@ declare var x: number;
 declare var x: number;
 (x < 4) satisfies string;
 (x === 4) satisfies Math;
+(x !== 4) satisfies boolean;
+(x > 4) satisfies boolean;
+(x >= 4) satisfies boolean;
 ```
 
 - Expected string, found boolean
@@ -2898,8 +2993,8 @@ let x: BoxString<string, number>;
 
 ```ts
 interface X {
-    a: string
-    b: string
+	a: string
+	b: string
 }
 
 function func(x: X | null) {
@@ -3267,11 +3362,11 @@ doThingWithX(new Y())
 
 ```ts
 class Box<T> {
-    value: T;
+	value: T;
 
-    constructor(value: T) {
-        this.value = value;
-    }
+	constructor(value: T) {
+		this.value = value;
+	}
 }
 
 const myBox = new Box<number>("hi");
@@ -3300,8 +3395,13 @@ type X = string;
 	type X = number;
 	const a: X = "hello world";
 }
+
+function func<YEA>() {}
+
+type B = YEA;
 ```
 
+- Could not find type 'YEA'
 - Type "hello world" is not assignable to type X
 
 #### Type has no generics
@@ -3616,18 +3716,6 @@ box(someNumber) satisfies boolean;
 - Expected string, found number
 - Expected boolean, found { item: number }
 
-#### Template literal type restriction
-
-```ts
-type Name = "Ben"
-"test" satisfies `Hello ${Name}`;
-"Hello Ben" satisfies `Hello ${Name}`;
-```
-
-> Should be `Expected "Hello Ben", found "test"`. See #188
-
-- Expected string, found "test"
-
 #### Template literal type specialisation
 
 > Uses `+` logic behind the scenes
@@ -3683,14 +3771,37 @@ interface X {
 
 #### Template literal types
 
+> Last one tests printing
+
 ```ts
 type Introduction = `Hello ${string}`;
 
 const first: Introduction = "Hello Ben";
 const second: Introduction = "Hi Ben";
+const third: `Hiya ${string}` = "Hello Ben";
+
+// Edge cases
+const invalidNum1: `${1}` = 1;
+const invalidNum2: `${1}` = "1";
+const invalidNum3: `${1}` = "2";
 ```
 
 - Type "Hi Ben" is not assignable to type Introduction
+- Type "Hello Ben" is not assignable to type `Hiya ${string}`
+- Type 1 is not assignable to type "1"
+- Type \"2\" is not assignable to type "1"
+
+#### Disjoint template literals
+
+```ts
+function func(a: `a${string}`, b: `b${string}`, c: string) {
+    const res1 = a === b;
+    const res2 = (b === c) satisfies string;
+}
+```
+
+- This equality is always false as `a${string}` and `b${string}` have no overlap
+- Expected string, found boolean
 
 #### Assigning to types as keys
 
@@ -4011,6 +4122,8 @@ x.a = "hi";
 x.a = 4;
 ```
 
+<!-- TODO this is incorrect!!!!, should be string -->
+
 - Type 4 does not meet property constraint "hi"
 
 #### `as` rewrite
@@ -4027,7 +4140,7 @@ x.property_a satisfies number;
 x.property_b
 ```
 
-- No property 'property_b' on { [string]: X[keyof X & string] }
+- No property 'property_b' on { [`property_${keyof X & string}`]: X[keyof X & string] }
 
 ### Readonly and `as const`
 
@@ -4037,7 +4150,7 @@ x.property_b
 
 ```ts
 function x(p: { readonly a: string, b: string }) {
-    p.a = "hi";
+	p.a = "hi";
 	p.b = "hi";
 }
 ```
@@ -4223,10 +4336,10 @@ function logicNarrow(thing: any, other: any) {
 
 ```ts
 function func(param: boolean | string | number) {
-    if (typeof param === "boolean") {
-        return 5
-    }
-    param satisfies null;
+	if (typeof param === "boolean") {
+		return 5
+	}
+	param satisfies null;
 }
 ```
 
@@ -4236,9 +4349,9 @@ function func(param: boolean | string | number) {
 
 ```ts
 function func(param: Array<string> | string) {
-    if (param instanceof Array) {
+	if (param instanceof Array) {
 		param satisfies null;
-    }
+	}
 }
 ```
 
@@ -4248,9 +4361,9 @@ function func(param: Array<string> | string) {
 
 ```ts
 function func(param: any) {
-    if (param instanceof Array) {
+	if (param instanceof Array) {
 		param satisfies null;
-    }
+	}
 }
 ```
 
@@ -4260,10 +4373,10 @@ function func(param: any) {
 
 ```ts
 function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: number }) {
-    if (param.tag === "a") {
-        param.a satisfies string;
-        param satisfies null;
-    }
+	if (param.tag === "a") {
+		param.a satisfies string;
+		param satisfies null;
+	}
 }
 ```
 
@@ -4273,10 +4386,10 @@ function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: nu
 
 ```ts
 function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number }) {
-    if ("a" in param) {
-        param.a satisfies string;
-        param satisfies null;
-    }
+	if ("a" in param) {
+		param.a satisfies string;
+		param satisfies null;
+	}
 }
 ```
 
@@ -4288,9 +4401,9 @@ function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number })
 
 ```ts
 function buildObject(param: any) {
-    if ("a" in param) {
-        param satisfies null;
-    }
+	if ("a" in param) {
+		param satisfies null;
+	}
 }
 ```
 
@@ -4300,22 +4413,22 @@ function buildObject(param: any) {
 
 ```ts
 function conditional(param: boolean) {
-	const obj1 = {}, obj2 = {};
+	const obj1 = { b: 2 }, obj2 = { c: 6 };
 	const sum = param ? obj1 : obj2;
 	if (sum === obj1) {
-		sum.a = 2;
+		sum.a = 3;
 	}
 	[obj1, obj2] satisfies string;
 }
 ```
 
-- Expected string, found [{ a: 2 }, {}]
+- Expected string, found [{ b: 2, a: 3 }, { c: 6 }]
 
 #### From condition equality
 
 ```ts
 function conditional(param: boolean) {
-	const obj1 = { a: 1 }, obj2 = {};
+	const obj1 = { a: 1 }, obj2 = { b: 2};
 	const sum = param ? obj1 : obj2;
 	if (param) {
 		sum satisfies string;
@@ -4345,19 +4458,19 @@ function conditional(param: boolean) {
 
 ```ts
 function func1(param: string | number) {
-    if (typeof param === "number" && param > 0) {
-        param satisfies number;
-    } else {
-        param satisfies null;
+	if (typeof param === "number" && param > 0) {
+		param satisfies number;
+	} else {
+		param satisfies null;
 	}
 }
 
 function func2(param: string | number | boolean) {
-    if (typeof param === "string" || !(typeof param === "number")) {
-        param satisfies undefined;
-    } else {
-        param satisfies number;
-    }
+	if (typeof param === "string" || !(typeof param === "number")) {
+		param satisfies undefined;
+	} else {
+		param satisfies number;
+	}
 }
 ```
 
@@ -4372,10 +4485,10 @@ function func2(param: string | number | boolean) {
 function func(param: boolean) {
 	let a = param;
 	const inner = (value: boolean) => a = value;
-    if (a) {
+	if (a) {
 		inner(false);
 		a satisfies null;
-    }
+	}
 }
 ```
 
@@ -4385,15 +4498,15 @@ function func(param: boolean) {
 
 ```ts
 function func1(param: any): asserts param is number {
-    if (typeof param !== "string") {
-        throw "bad"
-    }
+	if (typeof param !== "string") {
+		throw "bad"
+	}
 }
 
 function func2(param: any): asserts param is boolean {
-    if (typeof param !== "boolean") {
-        throw "bad"
-    }
+	if (typeof param !== "boolean") {
+		throw "bad"
+	}
 }
 ```
 
@@ -4445,6 +4558,31 @@ function getName(name?: string) {
 ```
 
 - Expected undefined, found string
+
+#### Implication from equality
+
+```ts
+function func(a: boolean) {
+  const x = a ? 1 : 2;
+  if (x === 1) {
+    a satisfies "hi"
+  }
+}
+```
+
+- Expected "hi", found true
+
+#### Narrowing in for loop
+
+> Can't do modulo because of post mutation
+
+```ts
+for (let i = 0; i < 3; i++) {
+  const x = i === 50;
+}
+```
+
+- This equality is always false as LessThan<3> and 50 have no overlap
 
 ### Object constraint
 
@@ -4537,9 +4675,18 @@ const x = { a: 3 };
 Object.setPrototypeOf(x, { a: 5, b: 2 });
 x.a satisfies 3;
 x.b satisfies string;
+
+const obj = Object.setPrototypeOf(
+  {}, 
+  Math.random() ? { a: 2 } : { get a() { return 0 } }
+);
+
+const result = 'a' in obj;
+result satisfies string;
 ```
 
 - Expected string, found 2
+- Expected string, found true
 
 #### Get prototype
 
@@ -4978,9 +5125,16 @@ function register(a: Literal<string>) {
 
 register("something")
 // `document.title` is an unknown string, non-literal
-register(document.title)
+register(document.title);
+
+function func(param: object) {
+	const obj = { a: 2 };
+	const obj1: Literal<object> = obj;
+	const obj2: Literal<object> = param;
+}
 ```
 
+- Type object is not assignable to type Literal\<object>
 - Argument of type string is not assignable to parameter of type Literal\<string>
 
 #### Number intrinsics

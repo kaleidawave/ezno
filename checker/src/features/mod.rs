@@ -28,7 +28,7 @@ use crate::{
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	types::{
-		get_constraint,
+		get_constraint, helpers,
 		logical::{Logical, LogicalOrValid},
 		properties, PartiallyAppliedGenerics, TypeStore,
 	},
@@ -219,6 +219,7 @@ fn get_promise_value(constraint: TypeId, types: &TypeStore) -> Option<TypeId> {
 pub(crate) fn create_closed_over_references(
 	closed_over_references: &ClosedOverReferencesInScope,
 	current_environment: &Environment,
+	types: &TypeStore,
 ) -> ClosedOverVariables {
 	ClosedOverVariables(
 		closed_over_references
@@ -229,9 +230,9 @@ pub(crate) fn create_closed_over_references(
 						let c = None::<
 							&crate::types::generics::substitution::SubstitutionArguments<'static>,
 						>;
-						let get_value_of_variable =
-							get_value_of_variable(current_environment, *on, c);
-						let ty = if let Some(value) = get_value_of_variable {
+						let value = get_value_of_variable(current_environment, *on, c, types);
+
+						let ty = if let Some(value) = value {
 							value
 						} else {
 							// TODO think we are getting rid of this
@@ -430,58 +431,72 @@ pub(crate) fn has_property(
 	information: &impl InformationChain,
 	types: &mut TypeStore,
 ) -> TypeId {
-	match types.get_type_by_id(rhs) {
-		Type::Interface { .. }
-		| Type::Class { .. }
-		| Type::Constant(_)
-		| Type::FunctionReference(_)
-		| Type::Object(_)
-		| Type::PartiallyAppliedGenerics(_)
-		| Type::And(_, _)
-		| Type::SpecialObject(_)
-		| Type::Narrowed { .. }
-		| Type::AliasTo { .. } => {
-			let result = properties::get_property_unbound(
-				(rhs, None),
-				(publicity, key, None),
-				false,
-				information,
-				types,
-			);
-			match result {
-				Ok(LogicalOrValid::Logical(result)) => match result {
-					Logical::Pure(_) => TypeId::TRUE,
-					Logical::Or { .. } => {
-						crate::utilities::notify!("or or implies `in`");
+	if let Some((condition, truthy, falsy)) = helpers::get_type_as_conditional(rhs, types) {
+		let truthy_result = has_property((publicity, key), truthy, information, types);
+		let otherwise_result = has_property((publicity, key), falsy, information, types);
+		types.new_conditional_type(condition, truthy_result, otherwise_result)
+	} else {
+		match types.get_type_by_id(rhs) {
+			Type::Interface { .. }
+			| Type::Class { .. }
+			| Type::Constant(_)
+			| Type::FunctionReference(_)
+			| Type::Object(_)
+			| Type::PartiallyAppliedGenerics(_)
+			| Type::And(_, _)
+			| Type::SpecialObject(_)
+			| Type::Narrowed { .. }
+			| Type::AliasTo { .. } => {
+				let result = properties::get_property_unbound(
+					(rhs, None),
+					(publicity, key, None),
+					false,
+					information,
+					types,
+				);
+				match result {
+					Ok(LogicalOrValid::Logical(result)) => match result {
+						Logical::Pure(_) => TypeId::TRUE,
+						Logical::Or { condition, left, right } => {
+							// TODO some problems here, need to recurse
+							let (left, right) = (*left, *right);
+							if let (LogicalOrValid::Logical(_), LogicalOrValid::Logical(_)) =
+								(&left, right)
+							{
+								TypeId::TRUE
+							} else if let LogicalOrValid::Logical(_) = left {
+								condition
+							} else {
+								types.new_logical_negation_type(condition)
+							}
+						}
+						Logical::Implies { .. } => {
+							crate::utilities::notify!("or or implies `in`");
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
+						}
+						Logical::BasedOnKey { .. } => {
+							crate::utilities::notify!("mapped in");
+							TypeId::UNIMPLEMENTED_ERROR_TYPE
+						}
+					},
+					Ok(LogicalOrValid::NeedsCalculation(result)) => {
+						crate::utilities::notify!("TODO {:?}", result);
 						TypeId::UNIMPLEMENTED_ERROR_TYPE
 					}
-					Logical::Implies { .. } => {
-						crate::utilities::notify!("or or implies `in`");
-						TypeId::UNIMPLEMENTED_ERROR_TYPE
+					Err(err) => {
+						crate::utilities::notify!("TODO {:?}", err);
+						TypeId::FALSE
 					}
-					Logical::BasedOnKey { .. } => {
-						crate::utilities::notify!("mapped in");
-						TypeId::UNIMPLEMENTED_ERROR_TYPE
-					}
-				},
-				Ok(LogicalOrValid::NeedsCalculation(result)) => {
-					crate::utilities::notify!("TODO {:?}", result);
-					TypeId::UNIMPLEMENTED_ERROR_TYPE
-				}
-				Err(err) => {
-					crate::utilities::notify!("TODO {:?}", err);
-					TypeId::FALSE
 				}
 			}
-		}
-		Type::Or(_, _) => {
-			crate::utilities::notify!("Condtionally");
-			TypeId::UNIMPLEMENTED_ERROR_TYPE
-		}
-		Type::RootPolyType(_) | Type::Constructor(_) => {
-			crate::utilities::notify!("Queue event / create dependent");
-			let constraint = get_constraint(rhs, types).unwrap();
-			has_property((publicity, key), constraint, information, types)
+			Type::Or(_, _) => {
+				unreachable!()
+			}
+			Type::RootPolyType(_) | Type::Constructor(_) => {
+				crate::utilities::notify!("Queue event / create dependent");
+				let constraint = get_constraint(rhs, types).unwrap();
+				has_property((publicity, key), constraint, information, types)
+			}
 		}
 	}
 }

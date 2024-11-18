@@ -17,7 +17,7 @@ pub(crate) fn is_debug_mode() -> bool {
 			value
 		} else {
 			let new_value = std::env::var("EZNO_DEBUG")
-				.map(|value| !value.is_empty() || value == "0")
+				.map(|value| !(value.is_empty() || value == "0"))
 				.unwrap_or_default();
 			IS_DEBUG_MODE.set(Some(new_value));
 			new_value

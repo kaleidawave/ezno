@@ -146,7 +146,7 @@ pub(crate) fn substitute(
 			let generic_arguments = structure_arguments.clone();
 
 			// Fold intrinsic type
-			if intrinsics::tsc_string_intrinsic(on) {
+			if intrinsics::is_tsc_string_intrinsic(on) {
 				let arg =
 					structure_arguments.get_structure_restriction(TypeId::STRING_GENERIC).unwrap();
 				let value = substitute(arg, arguments, environment, types);
@@ -195,7 +195,7 @@ pub(crate) fn substitute(
 			let rhs = *rhs;
 			let lhs = substitute(*lhs, arguments, environment, types);
 			let rhs = substitute(rhs, arguments, environment, types);
-			types.new_and_type(lhs, rhs).unwrap_or(TypeId::NEVER_TYPE)
+			types.new_and_type(lhs, rhs) // .unwrap_or(TypeId::NEVER_TYPE)
 		}
 		Type::Or(lhs, rhs) => {
 			let rhs = *rhs;
@@ -237,8 +237,18 @@ pub(crate) fn substitute(
 				let lhs = substitute(lhs, arguments, environment, types);
 				let rhs = substitute(rhs, arguments, environment, types);
 
-				match evaluate_mathematical_operation(lhs, operator, rhs, environment, types, false)
-				{
+				// TODO
+				let advanced_numbers = false;
+
+				match evaluate_mathematical_operation(
+					lhs,
+					operator,
+					rhs,
+					environment,
+					types,
+					false,
+					advanced_numbers,
+				) {
 					Ok(result) => result,
 					Err(()) => {
 						unreachable!(

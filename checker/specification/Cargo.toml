@@ -7,9 +7,11 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-just-staging = []
+default = ["base"]
+base = []
 staging = []
-all = ["staging"]
+to_implement = []
+all = ["base", "staging", "to_implement"]
 
 [[test]]
 name = "specification_test"

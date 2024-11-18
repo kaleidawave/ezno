@@ -41,7 +41,8 @@ impl StatementOrDeclaration {
 						on: ExportDeclaration::Default { .. }
 							| ExportDeclaration::Item {
 								exported: Exportable::ImportAll { .. }
-									| Exportable::ImportParts { .. } | Exportable::Parts { .. },
+									| Exportable::ImportParts { .. }
+									| Exportable::Parts { .. },
 								..
 							},
 						..

@@ -114,18 +114,18 @@ pub struct DiagnosticsContainer {
 	diagnostics: Vec<Diagnostic>,
 	// Quick way to check whether a error was added
 	#[cfg_attr(feature = "serde-serialize", serde(skip_serializing))]
-	has_error: bool,
+	contains_error: bool,
 }
 
 // TODO the add methods are the same...
 impl DiagnosticsContainer {
 	#[must_use]
 	pub fn new() -> Self {
-		Self { diagnostics: Default::default(), has_error: false }
+		Self { diagnostics: Default::default(), contains_error: false }
 	}
 
 	pub fn add_error<T: Into<Diagnostic>>(&mut self, error: T) {
-		self.has_error = true;
+		self.contains_error = true;
 		self.diagnostics.push(error.into());
 	}
 
@@ -138,8 +138,8 @@ impl DiagnosticsContainer {
 	}
 
 	#[must_use]
-	pub fn has_error(&self) -> bool {
-		self.has_error
+	pub fn contains_error(&self) -> bool {
+		self.contains_error
 	}
 
 	pub fn sources(&self) -> impl Iterator<Item = SourceId> + '_ {
@@ -153,7 +153,7 @@ impl DiagnosticsContainer {
 	}
 
 	pub fn into_result(self) -> Result<Self, Self> {
-		if self.has_error {
+		if self.contains_error {
 			Err(self)
 		} else {
 			Ok(self)
@@ -423,7 +423,7 @@ pub(crate) enum TypeCheckError<'a> {
 	#[allow(clippy::upper_case_acronyms)]
 	VariableUsedInTDZ(VariableUsedInTDZ),
 	InvalidMathematicalOrBitwiseOperation {
-		operator: crate::features::operations::MathematicalAndBitwise,
+		operator: crate::features::operations::MathematicalOrBitwiseOperation,
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
 		position: SpanWithSource,
@@ -958,6 +958,7 @@ pub enum TypeCheckWarning {
 	DisjointEquality {
 		lhs: TypeStringRepresentation,
 		rhs: TypeStringRepresentation,
+		result: bool,
 		position: SpanWithSource,
 	},
 	ItemMustBeUsedWithFlag {
@@ -1039,11 +1040,15 @@ impl From<TypeCheckWarning> for Diagnostic {
 					kind,
 				}
 			}
-			TypeCheckWarning::DisjointEquality { lhs, rhs, position } => Diagnostic::Position {
-				reason: format!("This equality is always false as {lhs} and {rhs} have no overlap"),
-				position,
-				kind,
-			},
+			TypeCheckWarning::DisjointEquality { lhs, rhs, position, result } => {
+				Diagnostic::Position {
+					reason: format!(
+						"This equality is always {result} as {lhs} and {rhs} have no overlap"
+					),
+					position,
+					kind,
+				}
+			}
 		}
 	}
 }

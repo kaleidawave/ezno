@@ -1,3 +1,5 @@
+#![cfg_attr(target_family = "wasm", allow(unused))]
+
 mod ast_explorer;
 mod build;
 mod check;
@@ -11,6 +13,7 @@ pub mod transformers;
 
 pub use build::build;
 pub use check::check;
+pub(crate) use checker::ReadFromFS;
 pub use checker::{Diagnostic, DiagnosticKind};
 
 pub use parser::{source_map, ASTNode, ToStringOptions};
@@ -20,24 +23,6 @@ pub fn prettifier(input: String) -> Result<String, ParseError> {
 	let module = Module::from_string(input, Default::default())?;
 	Ok(module.to_string(&ToStringOptions::default()))
 }
-
-pub trait ReadFromFS {
-	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String>;
-}
-
-impl<T> ReadFromFS for T
-where
-	T: Fn(&std::path::Path) -> Option<String>,
-{
-	fn get_content_at_path(&self, path: &std::path::Path) -> Option<String> {
-		(self)(path)
-	}
-}
-
-/// prompt -> response
-pub trait CLIInputResolver: Fn(&str) -> Option<String> {}
-
-impl<T> CLIInputResolver for T where T: Fn(&str) -> Option<String> {}
 
 pub trait WriteToFS: Fn(&std::path::Path, String) {}
 

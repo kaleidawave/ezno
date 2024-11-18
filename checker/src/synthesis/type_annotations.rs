@@ -11,13 +11,11 @@ use crate::{
 	features::objects::ObjectBuilder,
 	types::{
 		generics::generic_type_arguments::GenericArguments,
+		generics::ExplicitTypeArguments,
+		helpers::{ArrayItem, Counter},
+		intrinsics::{self, distribute_tsc_string_intrinsic},
 		properties::{PropertyKey, PropertyValue, Publicity},
 		Constant, Constructor, PartiallyAppliedGenerics, PolyNature, Type, TypeId,
-	},
-	types::{
-		generics::ExplicitTypeArguments,
-		intrinsics::{self, distribute_tsc_string_intrinsic},
-		ArrayItem, Counter,
 	},
 	CheckingData, Map,
 };
@@ -248,10 +246,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							// crate::utilities::notify!(
 							// 	"{:?} and {:?}",
 							// 	inner_type_alias_id,
-							// 	inner_type_alias_id.is_some_and(intrinsics::tsc_string_intrinsic)
+							// 	inner_type_alias_id.is_some_and(intrinsics::is_tsc_string_intrinsic)
 							// );
 
-							if intrinsics::tsc_string_intrinsic(inner_type_id) {
+							if intrinsics::is_tsc_string_intrinsic(inner_type_id) {
 								distribute_tsc_string_intrinsic(
 									inner_type_id,
 									type_arguments.get(&TypeId::STRING_GENERIC).unwrap().0,
@@ -354,10 +352,15 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			let mut acc = iterator.next().expect("Empty intersection");
 			for right in iterator {
-				if let Ok(new_ty) = checking_data.types.new_and_type(acc, right) {
-					acc = new_ty;
-				} else {
-					checking_data.diagnostics_container.add_error(
+				let is_disjoint = crate::types::disjoint::types_are_disjoint(
+					acc,
+					right,
+					&mut Vec::new(),
+					environment,
+					&checking_data.types,
+				);
+				if is_disjoint {
+					checking_data.diagnostics_container.add_warning(
 						TypeCheckWarning::TypesDoNotIntersect {
 							left: TypeStringRepresentation::from_type_id(
 								acc,
@@ -374,8 +377,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 							position: position.with_source(environment.get_source()),
 						},
 					);
-					return TypeId::ERROR_TYPE;
+					return TypeId::NEVER_TYPE;
 				}
+
+				acc = checking_data.types.new_and_type(acc, right);
 			}
 			acc
 		}
@@ -483,7 +488,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						items.push((pos, ArrayItem::Optional(annotation_ty)));
 					}
 					TupleElementKind::Spread => {
-						let slice = crate::types::as_slice(
+						let slice = crate::types::helpers::as_slice(
 							annotation_ty,
 							&checking_data.types,
 							environment,
@@ -514,15 +519,15 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			);
 
 			for (ty_position, item) in items {
+				use crate::types::helpers::ArrayItem;
+
 				let value = match item {
-					crate::types::ArrayItem::Member(item_ty) => PropertyValue::Value(item_ty),
-					crate::types::ArrayItem::Optional(item_ty) => {
-						PropertyValue::ConditionallyExists {
-							condition: TypeId::OPEN_BOOLEAN_TYPE,
-							truthy: Box::new(PropertyValue::Value(item_ty)),
-						}
-					}
-					crate::types::ArrayItem::Wildcard(on) => {
+					ArrayItem::Member(item_ty) => PropertyValue::Value(item_ty),
+					ArrayItem::Optional(item_ty) => PropertyValue::ConditionallyExists {
+						condition: TypeId::OPEN_BOOLEAN_TYPE,
+						truthy: Box::new(PropertyValue::Value(item_ty)),
+					},
+					ArrayItem::Wildcard(on) => {
 						crate::utilities::notify!("found wildcard");
 						let after = idx.into_type(&mut checking_data.types);
 
@@ -716,7 +721,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					checking_data.types.register_type(Type::Constructor(
 						crate::types::Constructor::BinaryOperator {
 							lhs: acc,
-							operator: crate::features::operations::MathematicalAndBitwise::Add,
+							operator:
+								crate::features::operations::MathematicalOrBitwiseOperation::Add,
 							rhs: lhs,
 							result: TypeId::STRING_TYPE,
 						},
@@ -733,7 +739,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				};
 				let constructor = crate::types::Constructor::BinaryOperator {
 					lhs: acc,
-					operator: crate::features::operations::MathematicalAndBitwise::Add,
+					operator: crate::features::operations::MathematicalOrBitwiseOperation::Add,
 					rhs,
 					result: TypeId::STRING_TYPE,
 				};
@@ -749,7 +755,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					checking_data.types.register_type(Type::Constructor(
 						crate::types::Constructor::BinaryOperator {
 							lhs: acc,
-							operator: crate::features::operations::MathematicalAndBitwise::Add,
+							operator:
+								crate::features::operations::MathematicalOrBitwiseOperation::Add,
 							rhs: lhs,
 							result: TypeId::STRING_TYPE,
 						},

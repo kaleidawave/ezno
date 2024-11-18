@@ -183,6 +183,10 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				environment,
 				checking_data,
 				|environment, checking_data| {
+					crate::utilities::notify!(
+						"environment.info.narrowed_values={:?}",
+						environment.info.narrowed_values
+					);
 					synthesise_block_or_single_statement(&stmt.inner, environment, checking_data);
 				},
 				position.with_source(environment.get_source()),

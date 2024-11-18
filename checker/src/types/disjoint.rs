@@ -1,4 +1,7 @@
-use super::{Constant, PartiallyAppliedGenerics, Type, TypeId, TypeStore};
+use super::{
+	helpers, Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, Type,
+	TypeId, TypeStore,
+};
 use crate::context::InformationChain;
 
 /// For equality + [`crate::intrinsics::Intrinsics::Not`]
@@ -30,15 +33,9 @@ pub fn types_are_disjoint(
 		if let Type::Or(lhs_lhs, lhs_rhs) = lhs_ty {
 			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
 				&& types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
-		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
-			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
-				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
 		} else if let Type::Or(rhs_lhs, rhs_rhs) = rhs_ty {
 			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
 				&& types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
-		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_ty {
-			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
-				|| types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
 		} else if let Type::AliasTo { to, parameters: None, name: _ } = lhs_ty {
 			// TODO temp fix, need infer ANY
 			if matches!(*to, TypeId::ANY_TYPE) {
@@ -74,7 +71,7 @@ pub fn types_are_disjoint(
 		}) = lhs_ty
 		{
 			use super::subtyping;
-			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let lhs_inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 			let mut state = subtyping::State {
 				// TODO
 				already_checked: already_checked.clone(),
@@ -84,16 +81,16 @@ pub fn types_are_disjoint(
 				object_constraints: None,
 			};
 
-			crate::utilities::notify!("{:?}", (lhs, inner));
+			// crate::utilities::notify!("{:?}", (lhs, lhs_inner));
 
-			subtyping::type_is_subtype(rhs, inner, &mut state, information, types).is_subtype()
+			subtyping::type_is_subtype(lhs_inner, rhs, &mut state, information, types).is_subtype()
 		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,
 			arguments,
 		}) = rhs_ty
 		{
 			use super::subtyping;
-			let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
+			let rhs_inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
 			let mut state = subtyping::State {
 				// TODO
 				already_checked: already_checked.clone(),
@@ -103,75 +100,99 @@ pub fn types_are_disjoint(
 				object_constraints: None,
 			};
 
-			crate::utilities::notify!("{:?}", (lhs, inner));
+			crate::utilities::notify!("{:?}", (rhs, rhs_inner));
 
-			subtyping::type_is_subtype(lhs, inner, &mut state, information, types).is_subtype()
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
-			arguments: _,
+			subtyping::type_is_subtype(rhs_inner, lhs, &mut state, information, types).is_subtype()
+		} else if let Type::And(rhs_lhs, rhs_rhs) = rhs_ty {
+			types_are_disjoint(lhs, *rhs_lhs, already_checked, information, types)
+				|| types_are_disjoint(lhs, *rhs_rhs, already_checked, information, types)
+		} else if let Type::And(lhs_lhs, lhs_rhs) = lhs_ty {
+			types_are_disjoint(*lhs_lhs, rhs, already_checked, information, types)
+				|| types_are_disjoint(*lhs_rhs, rhs, already_checked, information, types)
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics { on: TypeId::MULTIPLE_OF, arguments: _ },
+		) = lhs_ty
+		{
+			// TODO also offset
+			number_modulo_disjoint(args, rhs, types)
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics { on: TypeId::MULTIPLE_OF, arguments: _ },
+		) = rhs_ty
+		{
+			// TODO also offset
+			number_modulo_disjoint(args, lhs, types)
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics {
+				on: TypeId::GREATER_THAN | TypeId::LESS_THAN,
+				arguments: _,
+			},
+		) = rhs_ty
+		{
+			number_range_disjoint(args, lhs, types)
+		} else if let Type::PartiallyAppliedGenerics(
+			args @ PartiallyAppliedGenerics {
+				on: TypeId::GREATER_THAN | TypeId::LESS_THAN,
+				arguments: _,
+			},
+		) = lhs_ty
+		{
+			number_range_disjoint(args, rhs, types)
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			lhs: _lhs,
+			operator: MathematicalOrBitwiseOperation::Modulo,
+			rhs,
+			result: _,
 		}) = lhs_ty
 		{
-			let range = super::intrinsics::get_range(lhs, types).unwrap();
-			if let Some(rhs_range) = super::intrinsics::get_range(rhs, types) {
-				let overlap = range.overlaps(rhs_range);
-				crate::utilities::notify!("{:?}", overlap);
-				!overlap
+			if let (
+				Type::Constant(Constant::Number(lhs_mod)),
+				Type::Constant(Constant::Number(num)),
+			) = (types.get_type_by_id(*rhs), rhs_ty)
+			{
+				crate::utilities::notify!("{:?}", (num, lhs_mod));
+				// Modulos return negative for negative number :(
+				// Checking whether out of range here
+				num.abs() > **lhs_mod
 			} else {
-				crate::utilities::notify!("Here");
-				true
+				false
 			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
-			arguments: _,
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			lhs: _lhs,
+			operator: MathematicalOrBitwiseOperation::Modulo,
+			rhs,
+			result: _,
 		}) = rhs_ty
 		{
-			let range = super::intrinsics::get_range(rhs, types).unwrap();
-			if let Some(lhs_range) = super::intrinsics::get_range(lhs, types) {
-				let overlap = range.overlaps(lhs_range);
-				crate::utilities::notify!("{:?}", overlap);
-				!overlap
+			if let (
+				Type::Constant(Constant::Number(num)),
+				Type::Constant(Constant::Number(rhs_mod)),
+			) = (types.get_type_by_id(*rhs), lhs_ty)
+			{
+				crate::utilities::notify!("{:?}", (num, rhs_mod));
+				// Modulos return negative for negative number :(
+				// Checking whether out of range here
+				num.abs() > **rhs_mod
 			} else {
-				crate::utilities::notify!("Here");
-				true
+				false
 			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF,
-			arguments,
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			operator: MathematicalOrBitwiseOperation::Add,
+			result: TypeId::STRING_TYPE,
+			..
+		}) = rhs_ty
+		{
+			let lhs = helpers::TemplatelLiteralExpansion::from_type(lhs, types);
+			let rhs = helpers::TemplatelLiteralExpansion::from_type(rhs, types);
+			lhs.is_disjoint(&rhs)
+		} else if let Type::Constructor(Constructor::BinaryOperator {
+			operator: MathematicalOrBitwiseOperation::Add,
+			result: TypeId::STRING_TYPE,
+			..
 		}) = lhs_ty
 		{
-			// Little bit complex here because dealing with decimal types, not integers
-			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
-				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
-				),
-				types.get_type_by_id(rhs),
-			) {
-				let result = rhs % lhs != 0.;
-				crate::utilities::notify!("{:?} {:?}", rhs, lhs);
-				result
-			} else {
-				crate::utilities::notify!("Here");
-				false
-			}
-		} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF,
-			arguments,
-		}) = rhs_ty
-		{
-			// Little bit complex here because dealing with decimal types, not integers
-			if let (Type::Constant(Constant::Number(lhs)), Type::Constant(Constant::Number(rhs))) = (
-				types.get_type_by_id(lhs),
-				types.get_type_by_id(
-					arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap(),
-				),
-			) {
-				let result = lhs % rhs != 0.;
-				crate::utilities::notify!("{:?} {:?}", lhs, rhs);
-				result
-			} else {
-				crate::utilities::notify!("Here");
-				false
-			}
+			let lhs = helpers::TemplatelLiteralExpansion::from_type(lhs, types);
+			let rhs = helpers::TemplatelLiteralExpansion::from_type(rhs, types);
+			lhs.is_disjoint(&rhs)
 		} else if let Some(lhs) = super::get_constraint(lhs, types) {
 			// TODO not sure whether these should be here?
 			types_are_disjoint(lhs, rhs, already_checked, information, types)
@@ -192,6 +213,18 @@ pub fn types_are_disjoint(
 			}
 		} else if let Type::Constant(rhs_cst) = rhs_ty {
 			types_are_disjoint(rhs_cst.get_backing_type(), lhs, already_checked, information, types)
+		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
+			_properties,
+		)) = lhs_ty
+		{
+			// TODO check properties
+			false
+		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
+			_properties,
+		)) = rhs_ty
+		{
+			// TODO check properties
+			false
 		} else {
 			crate::utilities::notify!(
 				"{:?} cap {:?} == empty ? cases. Might be missing, calling disjoint",
@@ -202,3 +235,100 @@ pub fn types_are_disjoint(
 		}
 	}
 }
+
+fn number_modulo_disjoint(
+	this: &PartiallyAppliedGenerics,
+	other: TypeId,
+	types: &TypeStore,
+) -> bool {
+	crate::utilities::notify!("Here number_modulo_disjoint");
+	let PartiallyAppliedGenerics { arguments, .. } = this;
+	let other_ty = types.get_type_by_id(other);
+	let argument =
+		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap());
+
+	let Type::Constant(Constant::Number(argument)) = argument else {
+		crate::utilities::notify!("Gets complex here");
+		return false;
+	};
+
+	let offset = 0f64.try_into().unwrap();
+	let this = crate::utilities::modulo_class::ModuloClass::new(*argument, offset);
+
+	// Little bit complex here because dealing with decimal types, not integers
+	if let Type::Constant(Constant::Number(other)) = other_ty {
+		!this.contains(*other)
+	} else {
+		let (range, modulo_class) = super::intrinsics::get_range_and_mod_class(other, types);
+		crate::utilities::notify!("Disjoint with modulo, {:?}, {:?}", range, modulo_class);
+		if let Some(range) = range {
+			return !range.contains_multiple_of(*argument);
+		}
+		if let Some(modulo_class) = modulo_class {
+			return this.disjoint(modulo_class);
+		}
+		crate::utilities::notify!("Here {:?}", other_ty);
+		false
+	}
+}
+
+fn number_range_disjoint(
+	this: &PartiallyAppliedGenerics,
+	other: TypeId,
+	types: &TypeStore,
+) -> bool {
+	let PartiallyAppliedGenerics { on, arguments, .. } = this;
+	let greater_than = *on == TypeId::GREATER_THAN;
+	let this_ty =
+		types.get_type_by_id(arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap());
+
+	if let Type::Constant(Constant::Number(this)) = this_ty {
+		let other_ty = types.get_type_by_id(other);
+		if let Type::Constant(Constant::Number(other)) = other_ty {
+			crate::utilities::notify!("{:?} {} {}", on, other, this);
+			if greater_than {
+				other < this
+			} else {
+				other > this
+			}
+		} else {
+			crate::utilities::notify!("Unsure here {:?}", (other_ty, this_ty));
+			false
+		}
+	} else {
+		crate::utilities::notify!("Unsure here");
+		false
+	}
+}
+
+// fn todo() {
+// 	// else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+// 	// 	on: TypeId::GREATER_THAN
+// 	// 	arguments: _,
+// 	// }) = lhs_ty
+// 	// {
+// 	// 	let range = super::intrinsics::get_range(lhs, types).unwrap();
+// 	// 	if let Some(rhs_range) = super::intrinsics::get_range(rhs, types) {
+// 	// 		let overlap = range.overlaps(rhs_range);
+// 	// 		crate::utilities::notify!("{:?}", overlap);
+// 	// 		!overlap
+// 	// 	} else {
+// 	// 		crate::utilities::notify!("Here");
+// 	// 		true
+// 	// 	}
+// 	// } else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+// 	// 	on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+// 	// 	arguments: _,
+// 	// }) = rhs_ty
+// 	// {
+// 	// 	let range = super::intrinsics::get_range(rhs, types).unwrap();
+// 	// 	if let Some(lhs_range) = super::intrinsics::get_range(lhs, types) {
+// 	// 		let overlap = range.overlaps(lhs_range);
+// 	// 		crate::utilities::notify!("{:?}", overlap);
+// 	// 		!overlap
+// 	// 	} else {
+// 	// 		crate::utilities::notify!("Here");
+// 	// 		true
+// 	// 	}
+// 	// }
+// }

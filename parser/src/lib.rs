@@ -199,10 +199,10 @@ pub fn lex_and_parse_script<T: ASTNode>(
 
 #[derive(Debug)]
 pub struct ParsingState {
-	pub(crate) line_starts: source_map::LineStarts,
-	pub(crate) length_of_source: u32,
+	pub line_starts: source_map::LineStarts,
+	pub length_of_source: u32,
 	/// TODO as multithreaded channel + record is dynamic exists
-	pub(crate) constant_imports: Vec<String>,
+	pub constant_imports: Vec<String>,
 	pub keyword_positions: Option<KeywordPositions>,
 	pub partial_points: Vec<source_map::Start>,
 }

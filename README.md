@@ -1,4 +1,4 @@
-A JavaScript compiler and TypeScript checker written in Rust with a focus on static analysis and runtime performance.
+A fast and correct TypeScript type checker and compiler with additional experiments
 
 > [!IMPORTANT]
 > Ezno is in active development and **does not currently support enough features to check existing projects** (see [blocking issues](https://github.com/kaleidawave/ezno/labels/blocking)). Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
@@ -18,7 +18,7 @@ What Ezno is:
 
 What Ezno is not
 - **eNZo, the Z is in front of the N** (pronounce as 'Fresno' without the 'fr') 😀
-- Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC
+- Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC. [You can see a full comparison of emitted errors and warnings compared with TSC here](https://kaleidawave.github.io/ezno/comparison)
 - Faster as a means to serve large codebases. Cut out bloat and complex code first!
 - Smarter as a means to allow more *dynamic patterns*. Keep things simple!
 - A binary executable compiler. It takes in JavaScript (or a TypeScript or Ezno superset) and does similar processes to traditional compilers, but at the end emits JavaScript. However, in the future, it *could* generate a lower level format using its event (side-effect) representation.
@@ -28,6 +28,7 @@ Read more about Ezno (in chronological order)
 - [Ezno in '23](https://kaleidawave.github.io/posts/ezno-23/)
 - [A preview of the checker](https://kaleidawave.github.io/posts/a-preview-of-the-checker/)
 - [The quest continues](https://kaleidawave.github.io/posts/the-quest-continues/)
+- [Sets, types and type checking](https://kaleidawave.github.io/posts/sets-types-and-type-checking/) (*general post*)
 
 ---
 

@@ -5,7 +5,7 @@ import { defaultKeymap, indentWithTab, toggleLineComment } from "@codemirror/com
 import { parser as jsParser } from "@lezer/javascript";
 import { tags } from "@lezer/highlight";
 import { HighlightStyle, syntaxHighlighting, LanguageSupport, LRLanguage } from "@codemirror/language";
-import { init as init_ezno, check_with_options, get_version } from "ezno";
+import { init as init_ezno, check, get_version } from "ezno";
 
 const diagnosticsEntry = document.querySelector(".diagnostics");
 const editorParent = document.querySelector("#editor");
@@ -65,6 +65,14 @@ if (id) {
 let currentState = null;
 
 const ROOT_PATH = "index.tsx";
+const options = {
+  // Allow partial syntax
+  lsp_mode: true,
+  // For hover
+  store_type_mappings: true,
+  // For showing off
+  number_intrinsics: true
+};
 
 async function setup() {
   await init_ezno();
@@ -74,7 +82,7 @@ async function setup() {
       text = args.state.doc.text.join("\n");
       try {
         const start = performance.now();
-        currentState = check_with_options(ROOT_PATH, (_) => text, { lsp_mode: true, store_type_mappings: true });
+        currentState = check(ROOT_PATH, (_) => text, options);
         const elapsed = performance.now() - start;
         timeOutput.innerText = `Parsed & checked in ${Math.trunc(elapsed)}ms`;
 

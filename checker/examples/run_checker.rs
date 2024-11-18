@@ -20,6 +20,7 @@ fn main() {
 	let no_lib = args.iter().any(|item| item == "--no-lib");
 	let debug_dts = args.iter().any(|item| item == "--debug-dts");
 	let extras = args.iter().any(|item| item == "--extras");
+	let advanced_numbers = args.iter().any(|item| item == "--advanced-numbers");
 
 	let now = Instant::now();
 
@@ -46,13 +47,14 @@ fn main() {
 		max_inline_count: 600,
 		debug_dts,
 		extra_syntax: extras,
+		advanced_numbers,
 		..Default::default()
 	};
 
 	let result = check_project::<_, synthesis::EznoParser>(
 		entry_points,
 		type_definition_files,
-		resolver,
+		&resolver,
 		options,
 		(),
 		None,
@@ -60,8 +62,7 @@ fn main() {
 
 	if args.iter().any(|arg| arg == "--types") {
 		eprintln!("Types:");
-		let types = result.types.into_vec_temp();
-		for (type_id, item) in &types[types.len().saturating_sub(60)..] {
+		for (type_id, item) in result.types.user_types() {
 			eprintln!("\t{type_id:?}: {item:?}");
 		}
 	}
@@ -72,6 +73,10 @@ fn main() {
 		for item in entry_module.info.get_events() {
 			eprintln!("\t{item:?}");
 		}
+	}
+
+	if args.iter().any(|arg| arg == "--called-functions") {
+		eprintln!("Called function: {:?}", result.types.called_functions);
 	}
 
 	if args.iter().any(|arg| arg == "--time") {

@@ -6,7 +6,7 @@ use crate::{
 	context::{GeneralContext, InformationChain},
 	features::{
 		objects::{self, SpecialObject},
-		operations::MathematicalAndBitwise,
+		operations::MathematicalOrBitwiseOperation,
 	},
 	Constant, Environment, PropertyValue, TypeId,
 };
@@ -267,12 +267,11 @@ pub(crate) fn type_is_subtype_with_generics(
 				types,
 			);
 			// Temp fix for narrowing constants
-			crate::utilities::notify!("{:?}", super::helpers::is_not_of_constant(*right, types));
+			// crate::utilities::notify!("{:?}", super::helpers::is_not_of_constant(*right, types));
 			// SubTypeResult::IsNotSubType(_)
 			return if let (Type::Narrowed { from, .. }, _, true) =
 				(subtype, &result, super::helpers::is_not_of_constant(*right, types))
 			{
-				crate::utilities::notify!("Here");
 				type_is_subtype_with_generics(
 					(base_type, base_type_arguments),
 					(*from, ty_structure_arguments),
@@ -308,61 +307,15 @@ pub(crate) fn type_is_subtype_with_generics(
 				left_result
 			};
 		}
-		// Type::And(left, right) => {
-		// 	let left_is_operator_right_is_not =
-		// 		supertype.is_operator();
-
-		// 	// edge cases on edge cases
-		// 	// If any of these are true. Then do not perform constraint argument lookup
-		// 	let edge_case = left_is_operator_right_is_not;
-
-		// 	if !edge_case {
-
-		// 	let right = *right;
-		// 	let left_result = type_is_subtype_with_generics(
-		// 		(base_type, base_type_arguments),
-		// 		(*left, ty_structure_arguments),
-		// 		state,
-		// 		information,
-		// 		types,
-		// 	);
-
-		// 	return if let SubTypeResult::IsSubType = left_result {
-		// 		left_result
-		// 	} else {
-		// 		type_is_subtype_with_generics(
-		// 			(base_type, base_type_arguments),
-		// 			(right, ty_structure_arguments),
-		// 			state,
-		// 			information,
-		// 			types,
-		// 		)
-		// 	};
-		// }
-		// }
-		// TODO others
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: on @ TypeId::NOT_RESTRICTION,
-			arguments,
+			arguments: _,
 		}) => {
 			match *on {
 				TypeId::NOT_RESTRICTION => {
-					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
-					// https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Set/Basic.html#Set.subset_compl_comm -> https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Set/Basic.html#Set.subset_compl_iff_disjoint_left
-
-					let result = super::disjoint::types_are_disjoint(
-						base_type,
-						inner,
-						&mut state.already_checked,
-						information,
-						types,
-					);
-					// crate::utilities::notify!("Here {:?}", (&result, inner));
-					return if result {
-						SubTypeResult::IsSubType
-					} else {
-						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-					};
+					// This only happens when subtype ∪ supertype = `any`. This is only true when
+					// one is `any`. `Not<any>` is already `never` and `supertype = any` is handled above
+					return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
 				}
 				_ => unreachable!(),
 			}
@@ -378,7 +331,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				};
 			}
 
-			crate::utilities::notify!("Looking for {:?} with {:?}", ty, ty_structure_arguments);
+			// crate::utilities::notify!("Looking for {:?} with {:?}", ty, ty_structure_arguments);
 
 			if let Some(arg) = ty_structure_arguments.and_then(|tas| tas.get_argument_covariant(ty))
 			{
@@ -438,20 +391,20 @@ pub(crate) fn type_is_subtype_with_generics(
 
 			// If lhs is not operator unless argument is operator
 			// if !T::INFER_GENERICS && ty_structure_arguments.is_none() {
-			let right_arg = get_constraint(ty, types).unwrap();
+			let right_constraint = get_constraint(ty, types).unwrap();
 
-			crate::utilities::notify!(
-				"edge case {:?}",
-				(
-					types.get_type_by_id(ty),
-					types.get_type_by_id(right_arg),
-					types.get_type_by_id(right_arg).is_operator()
-				)
-			);
+			// crate::utilities::notify!(
+			// 	"RHS is parameter, edge case results to {:?}",
+			// 	(
+			// 		types.get_type_by_id(ty),
+			// 		types.get_type_by_id(right_constraint),
+			// 		types.get_type_by_id(right_constraint).is_operator()
+			// 	)
+			// );
 
 			// This is important that LHS is not operator
 			let left_is_operator_right_is_not =
-				supertype.is_operator() && !types.get_type_by_id(right_arg).is_operator();
+				supertype.is_operator() && !types.get_type_by_id(right_constraint).is_operator();
 
 			// edge cases on edge cases
 			// If any of these are true. Then do not perform constraint argument lookup
@@ -460,12 +413,14 @@ pub(crate) fn type_is_subtype_with_generics(
 					supertype,
 					Type::RootPolyType(rpt)
 					if rpt.is_substitutable()
-				) || matches!(supertype, Type::Constructor(..));
-
+				) || matches!(supertype, Type::Constructor(..))
+				|| base_type_arguments
+					.and_then(|args| args.get_argument_covariant(base_type))
+					.is_some();
 			if !edge_case {
 				let result = type_is_subtype_with_generics(
 					(base_type, base_type_arguments),
-					(right_arg, ty_structure_arguments),
+					(right_constraint, ty_structure_arguments),
 					state,
 					information,
 					types,
@@ -505,7 +460,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 			} else {
 				// TODO what about if LHS has inferred constraint
-				crate::utilities::notify!("Constant {:?} against RHS {:#?}", lhs, subtype);
+				// crate::utilities::notify!("Constant {:?} against RHS {:#?}", lhs, subtype);
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		}
@@ -692,10 +647,8 @@ pub(crate) fn type_is_subtype_with_generics(
 				// TODO temp fix
 				if let Type::Constructor(c) = subtype {
 					crate::utilities::notify!("TODO right hand side maybe okay");
-					if let Some(to) = c.get_base() {
-						if to == base_type {
-							return SubTypeResult::IsSubType;
-						}
+					if c.get_constraint() == base_type {
+						return SubTypeResult::IsSubType;
 					}
 				}
 				if let PolyNature::FunctionGeneric { .. } = nature {
@@ -764,7 +717,9 @@ pub(crate) fn type_is_subtype_with_generics(
 							information,
 							types,
 						)
-					} else if information.get_chain_of_info().any(|info| info.frozen.contains(&ty))
+					} else if information
+						.get_chain_of_info()
+						.any(|info| info.frozen.contains_key(&ty))
 						|| matches!(subtype, Type::Constant(_))
 						|| matches!(
 							ty,
@@ -843,10 +798,13 @@ pub(crate) fn type_is_subtype_with_generics(
 				// Ezno intrinsic
 				TypeId::LITERAL_RESTRICTION => {
 					let inner = arguments.get_structure_restriction(TypeId::T_TYPE).unwrap();
-					return if let Type::Constant(rhs_constant) = subtype {
+					return if let Type::Constant(_)
+					| Type::Object(ObjectNature::RealDeal)
+					| Type::SpecialObject(..) = subtype
+					{
 						type_is_subtype_with_generics(
 							(inner, base_type_arguments),
-							(rhs_constant.get_backing_type(), ty_structure_arguments),
+							(ty, ty_structure_arguments),
 							state,
 							information,
 							types,
@@ -879,7 +837,7 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 				TypeId::MULTIPLE_OF => {
 					let argument =
-						arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
+						arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
 
 					let right_multiple = crate::types::intrinsics::get_multiple(ty, types);
 					return if let (
@@ -899,18 +857,93 @@ pub(crate) fn type_is_subtype_with_generics(
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					};
 				}
-				TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE => {
-					return if let (super_range, Some(sub_range)) = (
-						intrinsics::get_range(base_type, types).unwrap(),
-						intrinsics::get_range(ty, types),
-					) {
-						if sub_range.contained_in(super_range) {
+				TypeId::GREATER_THAN => {
+					let argument =
+						arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+					let argument_type = types.get_type_by_id(argument);
+					return if let (
+						Type::Constant(Constant::Number(value)),
+						Type::Constant(Constant::Number(subtype_number)),
+					) = (argument_type, subtype)
+					{
+						if subtype_number > value {
 							SubTypeResult::IsSubType
 						} else {
 							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 						}
+					} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on: TypeId::GREATER_THAN,
+						arguments,
+					}) = subtype
+					{
+						let subtype_argument =
+							arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+						// Transitivity
+						if argument == subtype_argument {
+							SubTypeResult::IsSubType
+						} else {
+							let subtype_argument = types.get_type_by_id(subtype_argument);
+							if let (
+								Type::Constant(Constant::Number(subtype_number)),
+								Type::Constant(Constant::Number(value)),
+							) = (argument_type, subtype_argument)
+							{
+								if subtype_number > value {
+									SubTypeResult::IsSubType
+								} else {
+									SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+								}
+							} else {
+								crate::utilities::notify!("Here");
+								SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+							}
+						}
 					} else {
-						crate::utilities::notify!("TODO");
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					};
+				}
+				TypeId::LESS_THAN => {
+					let argument =
+						arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+					let argument_type = types.get_type_by_id(argument);
+					return if let (
+						Type::Constant(Constant::Number(value)),
+						Type::Constant(Constant::Number(subtype_number)),
+					) = (argument_type, subtype)
+					{
+						if subtype_number < value {
+							SubTypeResult::IsSubType
+						} else {
+							SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+						}
+					} else if let Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on: TypeId::GREATER_THAN,
+						arguments,
+					}) = subtype
+					{
+						let subtype_argument =
+							arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
+						// Transitivity
+						if argument == subtype_argument {
+							SubTypeResult::IsSubType
+						} else {
+							let subtype_argument = types.get_type_by_id(subtype_argument);
+							if let (
+								Type::Constant(Constant::Number(subtype_number)),
+								Type::Constant(Constant::Number(value)),
+							) = (argument_type, subtype_argument)
+							{
+								if subtype_number < value {
+									SubTypeResult::IsSubType
+								} else {
+									SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+								}
+							} else {
+								crate::utilities::notify!("Here");
+								SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+							}
+						}
+					} else {
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					};
 				}
@@ -1111,7 +1144,8 @@ pub(crate) fn type_is_subtype_with_generics(
 		Type::Constructor(cst) => match cst {
 			// For template literal types
 			Constructor::BinaryOperator {
-				operator: crate::types::MathematicalAndBitwise::Add,
+				operator: crate::types::MathematicalOrBitwiseOperation::Add,
+				result: TypeId::STRING_TYPE,
 				..
 			} => {
 				if let Type::Constant(Constant::String(rs)) = subtype {
@@ -1129,16 +1163,25 @@ pub(crate) fn type_is_subtype_with_generics(
 						// TODO clear contributions
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
+				} else if let Type::Constructor(Constructor::BinaryOperator {
+					operator: crate::types::MathematicalOrBitwiseOperation::Add,
+					result: TypeId::STRING_TYPE,
+					..
+				}) = subtype
+				{
+					crate::utilities::notify!("TODO test prefixes");
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				} else {
-					crate::utilities::notify!("RHS not string");
-					type_is_subtype_with_generics(
-						(TypeId::NUMBER_TYPE, base_type_arguments),
-						(ty, ty_structure_arguments),
-						state,
-						information,
-						types,
-					)
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
+			}
+			Constructor::BinaryOperator {
+				operator: crate::types::MathematicalOrBitwiseOperation::Add,
+				result: TypeId::NUMBER_TYPE,
+				..
+			} => {
+				crate::utilities::notify!("TODO here!");
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 			Constructor::BinaryOperator { .. } | Constructor::CanonicalRelationOperator { .. } => {
 				unreachable!("invalid constructor on LHS")
@@ -1413,9 +1456,15 @@ pub(crate) fn type_is_subtype_with_generics(
 					if *prototype == base_type {
 						SubTypeResult::IsSubType
 					} else {
+						crate::utilities::notify!(
+							"Mismatched prototype {:?} != {:?}",
+							prototype,
+							base_type
+						);
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				} else {
+					crate::utilities::notify!("No prototype");
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			}
@@ -1431,13 +1480,26 @@ pub(crate) fn type_is_subtype_with_generics(
 					types,
 				)
 			}
-			Type::And(a, b) => {
-				// TODO more
-				crate::utilities::notify!("Here LHS class, RHS and");
-				if *a == base_type || *b == base_type {
-					SubTypeResult::IsSubType
+			Type::And(left, right) => {
+				// This only happens in predicate edge cases (with numbers)
+				let left_result = type_is_subtype_with_generics(
+					(base_type, base_type_arguments),
+					(*left, ty_structure_arguments),
+					state,
+					information,
+					types,
+				);
+
+				if let SubTypeResult::IsSubType = left_result {
+					left_result
 				} else {
-					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					type_is_subtype_with_generics(
+						(base_type, base_type_arguments),
+						(*right, ty_structure_arguments),
+						state,
+						information,
+						types,
+					)
 				}
 			}
 			Type::SpecialObject(SpecialObject::Function(..)) | Type::FunctionReference(..)
@@ -1445,8 +1507,8 @@ pub(crate) fn type_is_subtype_with_generics(
 			{
 				SubTypeResult::IsSubType
 			}
-			ty => {
-				crate::utilities::notify!("Does {:?} not match class", ty);
+			_ty => {
+				// crate::utilities::notify!("{:?} does not match class", base_type);
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 			}
 		},
@@ -2586,9 +2648,6 @@ pub(crate) fn slice_matches_type(
 					allow_casts,
 				)
 			} else if let Some(contributions) = contributions {
-				if !rpt.is_substitutable() {
-					eprintln!("{:?}", rpt);
-				}
 				// assert!(rpt.is_substitutable(), "{:?}", rpt);
 				let constraint = rpt.get_constraint();
 				let res = slice_matches_type(
@@ -2737,23 +2796,6 @@ pub(crate) fn slice_matches_type(
 			)
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::MULTIPLE_OF | TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
-			arguments: _,
-		}) if allow_casts => {
-			// Special behavior here to treat numerical property keys (which are strings) as numbers
-			if let Ok(value) = slice.parse::<f64>() {
-				number_matches_type(
-					(base, base_type_arguments),
-					value,
-					contributions,
-					information,
-					types,
-				)
-			} else {
-				false
-			}
-		}
-		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,
 			arguments,
 		}) => {
@@ -2770,6 +2812,22 @@ pub(crate) fn slice_matches_type(
 			);
 			// crate::utilities::notify!("negated slice arguments={:?}", _k);
 			!matches
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments: _ })
+			if allow_casts && intrinsics::is_ezno_number_intrinsic(*on) =>
+		{
+			// Special behavior here to treat numerical property keys (which are strings) as numbers
+			if let Ok(value) = slice.parse::<f64>() {
+				number_matches_type(
+					(base, base_type_arguments),
+					value,
+					contributions,
+					information,
+					types,
+				)
+			} else {
+				false
+			}
 		}
 		Type::Constructor(super::Constructor::KeyOf(on)) => {
 			let argument =
@@ -2837,10 +2895,18 @@ pub(crate) fn slice_matches_type(
 				false
 			}
 		}
+		Type::Constant(Constant::Number(base)) => {
+			crate::utilities::notify!("Here");
+			if let Ok(slice_as_float) = slice.parse::<f64>() {
+				*base == slice_as_float
+			} else {
+				false
+			}
+		}
 		Type::Constructor(super::Constructor::BinaryOperator {
 			lhs,
 			rhs,
-			operator: MathematicalAndBitwise::Add,
+			operator: MathematicalOrBitwiseOperation::Add,
 			result: _,
 		}) => {
 			let lhs = base_type_arguments
@@ -2923,8 +2989,7 @@ pub(crate) fn number_matches_type(
 			on: TypeId::MULTIPLE_OF,
 			arguments,
 		}) => {
-			let argument =
-				arguments.get_structure_restriction(TypeId::NUMBER_FLOOR_GENERIC).unwrap();
+			let argument = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
 			if let Type::Constant(Constant::Number(argument)) = types.get_type_by_id(argument) {
 				let number: ordered_float::NotNan<f64> = number.try_into().unwrap();
 				(number % argument) == 0.
@@ -2934,11 +2999,20 @@ pub(crate) fn number_matches_type(
 			}
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-			on: TypeId::INCLUSIVE_RANGE | TypeId::EXCLUSIVE_RANGE,
+			on: TypeId::LESS_THAN,
 			arguments: _,
 		}) => {
-			let lhs_range = intrinsics::get_range(base, types).unwrap();
-			intrinsics::FloatRange::single(number.try_into().unwrap()).contained_in(lhs_range)
+			todo!()
+			// let lhs_range = intrinsics::get_range(base, types).unwrap();
+			// intrinsics::FloatRange::new_single(number.try_into().unwrap()).contained_in(lhs_range)
+		}
+		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+			on: TypeId::GREATER_THAN,
+			arguments: _,
+		}) => {
+			todo!()
+			// let lhs_range = intrinsics::get_range(base, types).unwrap();
+			// intrinsics::FloatRange::new_single(number.try_into().unwrap()).contained_in(lhs_range)
 		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on: TypeId::NOT_RESTRICTION,

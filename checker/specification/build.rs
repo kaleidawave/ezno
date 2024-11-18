@@ -12,21 +12,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let out_path = Path::new(&std::env::var("OUT_DIR")?).join("specification.rs");
 	let mut out = File::create(out_path)?;
 
-	if cfg!(not(feature = "just-staging")) {
+	if cfg!(feature = "base") {
 		let specification = read_to_string("./specification.md")?;
 		markdown_lines_append_test_to_rust(specification.lines().enumerate(), &mut out)?;
 	}
 
 	if cfg!(feature = "staging") {
 		let staging = read_to_string("./staging.md")?;
-		writeln!(&mut out, "mod staging {{ use super::check_errors; ").unwrap();
+		writeln!(&mut out, "mod staging {{ ").unwrap();
+		writeln!(&mut out, "use super::{{check_expected_diagnostics, TypeCheckOptions}}; ")
+			.unwrap();
 		markdown_lines_append_test_to_rust(staging.lines().enumerate(), &mut out)?;
 		writeln!(&mut out, "}}").unwrap();
 	}
 
-	if cfg!(feature = "all") {
+	if cfg!(feature = "to_implement") {
 		let to_implement = read_to_string("./to_implement.md")?;
-		writeln!(&mut out, "mod to_implement {{ use super::check_errors; ").unwrap();
+		writeln!(&mut out, "mod to_implement {{ ").unwrap();
+		writeln!(&mut out, "use super::{{check_expected_diagnostics, TypeCheckOptions}}; ")
+			.unwrap();
 		markdown_lines_append_test_to_rust(to_implement.lines().enumerate(), &mut out)?;
 		writeln!(&mut out, "}}").unwrap();
 	}
@@ -60,8 +64,20 @@ fn markdown_lines_append_test_to_rust(
 		let heading = line.strip_prefix("####").unwrap().trim_start();
 		let test_title = heading_to_rust_identifier(heading);
 
-		let blocks = {
-			let mut blocks = Vec::new();
+		pub struct File<'a> {
+			path: &'a str,
+			code: String,
+		}
+
+		// pub struct Block {
+		// 	/// Vec for FS tests
+		// 	files: Vec<File>,
+		// 	expected_diagnostics: Vec<String>,
+		// 	options: Vec<String>
+		// }
+
+		let files = {
+			let mut files = Vec::<File>::new();
 			let mut current_filename = None;
 			for (_, line) in lines.by_ref() {
 				// Also handles TSX
@@ -74,10 +90,10 @@ fn markdown_lines_append_test_to_rust(
 			for (_, line) in lines.by_ref() {
 				if let Some(path) = line.strip_prefix("// in ") {
 					if !code.trim().is_empty() {
-						blocks.push((
-							current_filename.unwrap_or(DEFAULT_FILE_PATH),
-							mem::take(&mut code),
-						));
+						files.push(File {
+							path: current_filename.unwrap_or(DEFAULT_FILE_PATH),
+							code: mem::take(&mut code),
+						});
 					}
 					current_filename = Some(path);
 					continue;
@@ -88,40 +104,64 @@ fn markdown_lines_append_test_to_rust(
 				code.push_str(line);
 				code.push('\n')
 			}
-			blocks.push((current_filename.unwrap_or(DEFAULT_FILE_PATH), code));
-			blocks
+			files.push(File { path: current_filename.unwrap_or(DEFAULT_FILE_PATH), code });
+			files
 		};
-		let errors = {
-			let mut errors = Vec::new();
+
+		let (expected_diagnostics, options) = {
+			let mut expected_diagnostics = Vec::new();
+			let mut options = None::<Vec<&str>>;
 			for (_, line) in lines.by_ref() {
-				if line.starts_with("#") {
+				if let (Some(args), false) = (line.strip_prefix("With "), options.is_some()) {
+					options = Some(args.split(',').collect());
+				} else if line.starts_with("#") {
 					panic!("block with no diagnostics or break between in {test_title}")
-				} else if line.starts_with('-') {
-					let error =
-						line.strip_prefix("- ").unwrap().replace('\\', "").replace('"', "\\\"");
-					errors.push(format!("\"{}\"", error))
-				} else if !errors.is_empty() {
+				} else if let Some(diagnostic) = line.strip_prefix("-") {
+					let error = diagnostic.trim().replace('\\', "").replace('"', "\\\"");
+					expected_diagnostics.push(format!("\"{}\"", error))
+				} else if !expected_diagnostics.is_empty() {
 					break;
 				}
 			}
-			errors
+			(expected_diagnostics, options)
 		};
 
-		let errors = errors.join(", ");
+		let expected_diagnostics = expected_diagnostics.join(", ");
 
 		let heading_idx = heading_idx + 1;
-		let code = blocks
+		// TODO don't allocate
+		let code_as_list = files
 			.into_iter()
-			.map(|(path, content)| format!("(\"{path}\",r#\"{content}\"#),"))
-			.fold(String::new(), |mut acc, cur| {
-				acc.push_str(&cur);
+			.map(|File { path, code }| format!("(\"{path}\",r#\"{code}\"#),"))
+			.reduce(|mut acc, slice| {
+				acc.push_str(&slice);
 				acc
-			});
+			})
+			.unwrap();
+
+		let options = if let Some(options) = options {
+			let arguments = options
+				.into_iter()
+				.map(|value| format!("{value}: true"))
+				.reduce(|mut acc, slice| {
+					acc.push_str(&slice);
+					acc.push_str(", ");
+					acc
+				})
+				.unwrap();
+			format!("Some(super::TypeCheckOptions {{ {arguments}, ..super::TypeCheckOptions::default() }})")
+		} else {
+			format!("None")
+		};
 
 		writeln!(
 			out,
 			"#[test] fn {test_title}() {{ 
-                super::check_errors(\"{heading}\", {heading_idx}, &[{code}], &[{errors}])
+                super::check_expected_diagnostics(
+					\"{heading}\", {heading_idx}, 
+					&[{code_as_list}], &[{expected_diagnostics}], 
+					{options}
+				)
             }}",
 		)?;
 	}
@@ -136,6 +176,6 @@ fn heading_to_rust_identifier(heading: &str) -> String {
 	heading
 		.replace("...", "")
 		.replace([' ', '-', '/', '.', '+'], "_")
-		.replace(['*', '\'', '`', '"', '&', '!', '(', ')', ','], "")
+		.replace(['*', '\'', '`', '"', '&', '!', '(', ')', ',', ':'], "")
 		.to_lowercase()
 }
