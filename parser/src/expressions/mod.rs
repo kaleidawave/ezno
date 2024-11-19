@@ -220,9 +220,9 @@ impl Expression {
 		reader: &mut crate::new::Lexer,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
-		if reader.head % 1000 == 0 {
-			dbg!(reader.head);
-		}
+		// if reader.head % 1000 == 0 {
+		// 	dbg!(reader.head);
+		// }
 
 		// TODO WIP
 		if reader.get_options().partial_syntax {
