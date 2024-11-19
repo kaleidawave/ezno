@@ -19,7 +19,14 @@ impl ASTNode for TemplateLiteral {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let tag = if !reader.is_operator_advance("`") { todo!("tag") } else { None };
+		let tag = if reader.is_operator_advance("`") {
+			None
+		} else {
+			Some(Box::new(Expression::from_reader_with_precedence(
+				reader,
+				super::COMMA_PRECEDENCE,
+			)?))
+		};
 
 		let mut parts = Vec::new();
 		loop {

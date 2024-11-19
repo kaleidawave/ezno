@@ -200,7 +200,7 @@ impl ASTNode for ObjectLiteralMember {
 			} else {
 				start.with_length(4 + content.len())
 			};
-			return Ok(Self::Comment(content.to_owned(), false, position));
+			return Ok(Self::Comment(content.clone(), false, position));
 		}
 
 		if reader.is_operator_advance("...") {

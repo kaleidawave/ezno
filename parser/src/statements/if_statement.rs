@@ -70,7 +70,7 @@ impl ASTNode for IfStatement {
 				let value = ConditionalElseStatement {
 					condition,
 					position: start.union(inner.get_position()),
-					inner: inner,
+					inner,
 				};
 				else_conditions.push(value);
 			} else {

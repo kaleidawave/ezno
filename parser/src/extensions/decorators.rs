@@ -27,22 +27,19 @@ impl ASTNode for Decorator {
 		}
 
 		let arguments = if reader.starts_with('(') {
-			// let mut arguments = Vec::<_>::new();
-			// loop {
-			// 	if let Some(Token(TSXToken::CloseParentheses, _)) = reader.peek() {
-			// 		break;
-			// 	}
-			// 	arguments.push(Expression::from_reader(reader)?);
-			// 	match reader.peek() {
-			// 		Some(Token(TSXToken::Comma, _)) => {
-			// 			reader.next();
-			// 		}
-			// 		_ => break,
-			// 	}
-			// }
-			// let end = reader.expect_get_end(TSXToken::CloseParentheses)?;
-			// (Some(arguments), at_pos.union(end))
-			todo!()
+			let mut arguments = Vec::<_>::new();
+			// TODO could we use parse_bracketed
+			loop {
+				if reader.starts_with(')') {
+					break;
+				}
+				arguments.push(Expression::from_reader(reader)?);
+				if !reader.is_operator_advance(",") {
+					break;
+				}
+			}
+			let _ = reader.expect(')')?;
+			Some(arguments)
 		} else {
 			None
 		};

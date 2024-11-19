@@ -273,7 +273,7 @@ impl ASTNode for VariableDeclaration {
 
 			Ok(VariableDeclaration::ConstDeclaration { position, declarations })
 		} else {
-			todo!("token error")
+			Err(crate::lexer::utilities::expected_one_of_items(reader, &["const", "let"]))
 		}
 	}
 

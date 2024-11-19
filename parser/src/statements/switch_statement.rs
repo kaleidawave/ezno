@@ -54,7 +54,7 @@ impl ASTNode for SwitchStatement {
 				// Skip for now
 				continue;
 			} else {
-				return Err(crate::lexer::utilities::expected_one_of_keywords(
+				return Err(crate::lexer::utilities::expected_one_of_items(
 					reader,
 					&["default", "case", "}"],
 				));
@@ -124,7 +124,7 @@ impl ASTNode for SwitchStatement {
 						buf.push_new_line();
 					}
 					crate::block::statements_and_declarations_to_string(
-						&statements,
+						statements,
 						buf,
 						options,
 						local.next_level(),
@@ -138,7 +138,7 @@ impl ASTNode for SwitchStatement {
 						buf.push_new_line();
 					}
 					crate::block::statements_and_declarations_to_string(
-						&statements,
+						statements,
 						buf,
 						options,
 						local.next_level(),

@@ -42,7 +42,7 @@ impl ASTNode for EnumDeclaration {
 		}
 		reader.expect('}')?;
 		let position = start.union(reader.get_end());
-		Ok(EnumDeclaration { is_constant, name, position, members })
+		Ok(EnumDeclaration { is_constant, name, members, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

@@ -429,19 +429,19 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 			continue;
 		}
 
-		if reader.is_operator_advance(end) {
-			return Ok((nodes, None));
+		return if reader.is_operator_advance(end) {
+			Ok((nodes, None))
 		} else {
 			let current = reader.get_current();
 			let position = reader.get_start().with_length(1);
-			return Err(ParseError::new(
+			Err(ParseError::new(
 				ParseErrors::UnexpectedCharacter {
 					expected: &[','],
 					found: current.chars().next(),
 				},
 				position,
-			));
-		}
+			))
+		};
 	}
 }
 
@@ -495,11 +495,6 @@ pub enum VariableKeyword {
 }
 
 impl VariableKeyword {
-	// #[must_use]
-	// pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
-	// 	matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let | TSXKeyword::Var))
-	// }
-
 	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.is_keyword_advance("const") {
 			Ok(Self::Const)
@@ -508,8 +503,9 @@ impl VariableKeyword {
 		} else if reader.is_keyword_advance("var") {
 			Ok(Self::Var)
 		} else {
-			let current = reader.get_current();
-			todo!("error here {:?}", current.get(..20).unwrap_or(current));
+			let error =
+				crate::lexer::utilities::expected_one_of_items(reader, &["const", "let", "var"]);
+			Err(error)
 		}
 	}
 

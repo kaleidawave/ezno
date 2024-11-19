@@ -55,7 +55,7 @@ pub enum ParseErrors<'a> {
 	},
 	ExpectedNumberLiteral,
 	NonStandardSyntaxUsedWithoutEnabled,
-	ExpectRule,
+	ExpectedRule,
 	InvalidRegexFlag,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
@@ -66,7 +66,7 @@ pub enum ParseErrors<'a> {
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
 	UnexpectedEnd,
-	/// TODO this could be set to collect, rather than breaking (https://github.com/kaleidawave/ezno/issues/203)
+	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
 	TypeAnnotationUsed,
 }
 
@@ -169,7 +169,7 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::ExpectedNumberLiteral => {
 				write!(f, "Expected number literal")
 			}
-			ParseErrors::ExpectRule => {
+			ParseErrors::ExpectedRule => {
 				write!(f, "'-' must be followed by a readonly rule")
 			}
 			ParseErrors::InvalidRegexFlag => {

@@ -67,8 +67,16 @@ impl ASTNode for ClassMember {
 
 	#[allow(clippy::similar_names)]
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		if reader.starts_with_str("//") || reader.starts_with_str("/*") {
-			todo!("comment; return Ok(Self::Comment(comment, is_multiline, span));");
+		let is_multiline_comment = reader.starts_with_str("/*");
+		if is_multiline_comment || reader.starts_with_str("//") {
+			let start = reader.get_start();
+			let comment = reader.parse_comment_literal(is_multiline_comment)?;
+			let position = start.with_length(if is_multiline_comment {
+				comment.len() + 2
+			} else {
+				comment.len()
+			});
+			return Ok(Self::Comment(comment.to_owned(), is_multiline_comment, position));
 		}
 
 		// TODO temp fixes. Should be recorded
@@ -152,7 +160,7 @@ impl ASTNode for ClassMember {
 			let position = start.union(reader.get_end());
 
 			let property =
-				ClassProperty { is_readonly, is_optional, position, key, type_annotation, value };
+				ClassProperty { is_readonly, is_optional, key, type_annotation, value, position };
 
 			Ok(Self::Property(is_static, property))
 		}
@@ -252,7 +260,7 @@ impl FunctionBased for ClassFunctionBase {
 	type Body = FunctionBody;
 
 	fn has_body(body: &Self::Body) -> bool {
-		body.0.is_some()
+		body.has_body()
 	}
 
 	#[allow(clippy::similar_names)]

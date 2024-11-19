@@ -133,7 +133,7 @@ impl ASTNode for AnnotationWithBinder {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		if reader.after_identifier().starts_with(":") {
+		if reader.after_identifier().starts_with(':') {
 			let start = reader.get_start();
 			let name = reader.parse_identifier("type annotation binder")?.to_owned();
 			let _ = reader.expect(':')?;
@@ -831,7 +831,7 @@ impl TypeAnnotation {
 					*existing = position;
 					members.push(rhs);
 				} else {
-					reference = TypeAnnotation::Intersection(vec![reference, rhs], position)
+					reference = TypeAnnotation::Intersection(vec![reference, rhs], position);
 				}
 			} else if let "|" = operator {
 				let rhs = Self::from_reader_with_precedence(reader, parent_kind)?;
@@ -840,7 +840,7 @@ impl TypeAnnotation {
 					*existing = position;
 					members.push(rhs);
 				} else {
-					reference = TypeAnnotation::Union(vec![reference, rhs], position)
+					reference = TypeAnnotation::Union(vec![reference, rhs], position);
 				}
 			} else {
 				unreachable!("{operator}")
@@ -913,7 +913,6 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		// todo!("using from reader bracketed");
 		let start = reader.expect_start('(')?;
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
@@ -950,43 +949,41 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 					position,
 				}));
 				break;
-			} else {
-				// TODO is this a good feature
-				let after_identifier = reader.after_identifier();
-				let name =
-					if after_identifier.starts_with(":") || after_identifier.starts_with("?:") {
-						Some(WithComment::<VariableField>::from_reader(reader)?)
-					} else {
-						None
-					};
-
-				let is_optional = if name.is_some() {
-					if reader.is_operator_advance("?:") {
-						true
-					} else if reader.is_operator_advance(":") {
-						false
-					} else {
-						let position = reader.get_start().with_length(2);
-						let found = &reader.get_current()[..2];
-						let reason =
-							ParseErrors::ExpectedOneOfItems { expected: &["?:", ":"], found };
-						return Err(ParseError::new(reason, position));
-					}
-				} else {
-					false
-				};
-				let type_annotation = TypeAnnotation::from_reader(reader)?;
-				let position = start.union(type_annotation.get_position());
-
-				parameters.push(TypeAnnotationFunctionParameter {
-					// TODO
-					decorators: Default::default(),
-					name,
-					type_annotation,
-					is_optional,
-					position,
-				});
 			}
+
+			// TODO is this a good feature
+			let after_identifier = reader.after_identifier();
+			let name = if after_identifier.starts_with(':') || after_identifier.starts_with("?:") {
+				Some(WithComment::<VariableField>::from_reader(reader)?)
+			} else {
+				None
+			};
+
+			let is_optional = if name.is_some() {
+				if reader.is_operator_advance("?:") {
+					true
+				} else if reader.is_operator_advance(":") {
+					false
+				} else {
+					return Err(crate::lexer::utilities::expected_one_of_items(
+						reader,
+						&["?:", ":"],
+					));
+				}
+			} else {
+				false
+			};
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
+			let position = start.union(type_annotation.get_position());
+
+			parameters.push(TypeAnnotationFunctionParameter {
+				// TODO
+				decorators: Default::default(),
+				name,
+				type_annotation,
+				is_optional,
+				position,
+			});
 
 			if !reader.is_operator_advance(",") {
 				break;
@@ -994,7 +991,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		}
 		let close = reader.expect(')')?;
 		let position = start.union(close);
-		Ok(TypeAnnotationFunctionParameters { position, parameters, rest_parameter })
+		Ok(TypeAnnotationFunctionParameters { parameters, rest_parameter, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

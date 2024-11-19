@@ -32,23 +32,20 @@ impl ParameterVisibility for () {
 
 impl ParameterVisibility for Option<crate::types::Visibility> {
 	fn from_reader(reader: &mut crate::new::Lexer) -> Option<crate::types::Visibility> {
-		// TODO
-		None
-		// let _existing = r#"if !options.type_annotations {
-		// 	None
-		// } else if let Some(Token(TSXToken::Keyword(t), _)) =
-		// 	reader.conditional_next(crate::types::Visibility::token_is_visibility_specifier)
-		// {
-		// 	Some(match t {
-		// 		TSXKeyword::Private => crate::types::Visibility::Private,
-		// 		TSXKeyword::Public => crate::types::Visibility::Public,
-		// 		TSXKeyword::Protected => crate::types::Visibility::Protected,
-		// 		_ => unreachable!(),
-		// 	})
-		// } else {
-		// 	None
-		// }"#;
-		// todo!();
+		if let Some(Some(keyword)) = reader
+			.get_options()
+			.type_annotations
+			.then(|| reader.is_one_of_keywords_advance(&["private", "public", "protected"]))
+		{
+			Some(match keyword {
+				"private" => crate::types::Visibility::Private,
+				"public" => crate::types::Visibility::Public,
+				"protected" => crate::types::Visibility::Protected,
+				_ => unreachable!(),
+			})
+		} else {
+			None
+		}
 	}
 }
 
@@ -253,12 +250,11 @@ where
 				};
 
 				let additionally = match (is_optional, value) {
-					(true, Some(_)) => {
-						todo!()
-						// return Err(ParseError::new(
-						// 	crate::ParseErrors::FunctionParameterOptionalAndDefaultValue,
-						// 	token.get_span(),
-						// ));
+					(true, Some(value)) => {
+						return Err(ParseError::new(
+							crate::ParseErrors::FunctionParameterOptionalAndDefaultValue,
+							value.get_position(),
+						));
 					}
 					// =
 					(false, Some(value)) => Some(ParameterData::WithDefaultValue(value)),
@@ -279,10 +275,10 @@ where
 
 				parameters.push(Parameter {
 					visibility,
-					position,
 					name,
 					type_annotation,
 					additionally,
+					position,
 				});
 			}
 
@@ -293,7 +289,7 @@ where
 		let close = reader.expect(')')?;
 		let leading = L::try_make(this_type, super_type)?;
 		let position = start.union(close);
-		Ok(FunctionParameters { position, parameters, rest_parameter, leading })
+		Ok(FunctionParameters { leading, parameters, rest_parameter, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

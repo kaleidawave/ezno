@@ -81,7 +81,7 @@ impl ASTNode for Statement {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		if reader.after_identifier().starts_with(":") {
+		if reader.after_identifier().starts_with(':') {
 			let start = reader.get_start();
 			let name = reader.parse_identifier("statement label")?.to_owned();
 			let _ = reader.expect(':')?;
@@ -125,7 +125,7 @@ impl ASTNode for Statement {
 			}
 		} else if reader.is_keyword_advance("break") {
 			if reader.is_semi_colon() {
-				Ok(Statement::Break(None, start.with_length("break".len() as usize)))
+				Ok(Statement::Break(None, start.with_length("break".len())))
 			} else {
 				let start = reader.get_start();
 				let label = reader.parse_identifier("break identifier")?;
@@ -133,7 +133,7 @@ impl ASTNode for Statement {
 			}
 		} else if reader.is_keyword_advance("continue") {
 			if reader.is_semi_colon() {
-				Ok(Statement::Continue(None, start.with_length("continue".len() as usize)))
+				Ok(Statement::Continue(None, start.with_length("continue".len())))
 			} else {
 				let start = reader.get_start();
 				let label = reader.parse_identifier("continue identifier")?;
@@ -292,11 +292,10 @@ impl ASTNode for VarVariableStatement {
 			if value.expression.is_none()
 				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
 			{
-				todo!()
-				// return Err(crate::ParseError::new(
-				// 	crate::ParseErrors::DestructuringRequiresValue,
-				// 	value.name.get_ast_ref().get_position(),
-				// ));
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::DestructuringRequiresValue,
+					value.name.get_ast_ref().get_position(),
+				));
 			}
 			declarations.push(value);
 			if !reader.is_operator_advance(",") {
@@ -307,13 +306,12 @@ impl ASTNode for VarVariableStatement {
 		let position = if let Some(last) = declarations.last() {
 			start.union(last.get_position())
 		} else {
-			todo!();
-			// let position = start.with_length(3);
-			// if options.partial_syntax {
-			// 	position
-			// } else {
-			// 	return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
-			// }
+			let position = start.with_length(3);
+			if reader.get_options().partial_syntax {
+				position
+			} else {
+				return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+			}
 		};
 
 		Ok(VarVariableStatement { declarations, position })

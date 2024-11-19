@@ -182,7 +182,7 @@ impl ASTNode for ExportDeclaration {
 				position,
 			})
 		} else if reader.is_keyword("type") {
-			if reader.get_current()["type".len()..].trim_start().starts_with("{") {
+			if reader.get_current()["type".len()..].trim_start().starts_with('{') {
 				reader.advance("type".len() as u32);
 				let _ = reader.expect_operator("{");
 				let (parts, _) =
@@ -221,7 +221,7 @@ impl ASTNode for ExportDeclaration {
 			}
 
 			// TODO vary list on certain parameters
-			Err(crate::lexer::utilities::expected_one_of_keywords(
+			Err(crate::lexer::utilities::expected_one_of_items(
 				reader,
 				&["let", "const", "function", "class", "enum", "type", "interface", "{"],
 			))

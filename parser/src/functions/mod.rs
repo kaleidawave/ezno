@@ -627,6 +627,7 @@ impl ASTNode for FunctionBody {
 
 impl FunctionBody {
 	#[cfg(feature = "full-typescript")]
+	#[must_use]
 	pub fn has_body(&self) -> bool {
 		self.0.is_some()
 	}

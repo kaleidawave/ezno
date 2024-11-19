@@ -49,7 +49,7 @@ impl ASTNode for Module {
 		};
 		let items = statements_and_declarations_from_reader(reader)?;
 		if reader.is_finished() {
-			Ok(Module { items, hashbang_comment, span })
+			Ok(Module { hashbang_comment, items, span })
 		} else {
 			Err(crate::ParseError::new(
 				crate::ParseErrors::ExpectedEndOfSource { found: reader.get_current() },

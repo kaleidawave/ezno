@@ -91,7 +91,7 @@ impl ASTNode for JSXElement {
 						let position = start.with_length(content.len() + 2);
 						JSXAttribute::Static(key, content.to_owned(), position)
 					} else {
-						todo!()
+						return Err(todo!());
 					};
 					attributes.push(attribute);
 				} else {
@@ -137,7 +137,7 @@ impl ASTNode for JSXElement {
 				return Err(ParseError::new(
 					crate::ParseErrors::ClosingTagDoesNotMatch {
 						expected: &tag_name,
-						found: &closing_tag_name,
+						found: closing_tag_name,
 					},
 					start.with_length(closing_tag_name.len() + 2),
 				));

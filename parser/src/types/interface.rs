@@ -292,8 +292,7 @@ impl ASTNode for InterfaceMember {
 					position,
 				})
 			} else {
-				// todo!()
-				Err(crate::ParseError::new(ParseErrors::ExpectRule, start.with_length(1)))
+				Err(crate::ParseError::new(ParseErrors::ExpectedRule, start.with_length(1)))
 			}
 		} else if let Some(comment_prefix) = reader.is_one_of(&["//", "/*"]) {
 			let start = reader.get_start();
@@ -362,7 +361,10 @@ impl ASTNode for InterfaceMember {
 						} else if reader.is_operator_advance(":") {
 							Optionality::Default
 						} else {
-							todo!("error {:?}", reader.get_current());
+							return Err(crate::lexer::utilities::expected_one_of_items(
+								reader,
+								&["?:", "-?:", ":"],
+							));
 						};
 
 						let output_type = TypeAnnotation::from_reader(reader)?;
@@ -385,7 +387,10 @@ impl ASTNode for InterfaceMember {
 							as_type,
 						});
 					} else {
-						todo!("error")
+						return Err(crate::lexer::utilities::expected_one_of_items(
+							reader,
+							&[":", ".", "in"],
+						));
 					}
 				}
 			} else {
@@ -403,6 +408,9 @@ impl ASTNode for InterfaceMember {
 				.map(|(tp, _)| tp);
 
 			if let Some(seperator) = reader.is_one_of_operators(&["?:", ":"]) {
+				// if let Some(header) = header {
+				// 	Err(crate::ParseError::new(ParseErrors::UnexpectedHeader, header.get_position()))
+				// } else {
 				let is_optional = "?:" == seperator;
 				reader.advance(if is_optional { 2 } else { 1 });
 				let type_annotation = TypeAnnotation::from_reader(reader)?;
@@ -414,11 +422,7 @@ impl ASTNode for InterfaceMember {
 					is_optional,
 					is_readonly,
 				})
-			// if header.is_none() {
-			// } else {
-			// 	todo!()
-			// 	// throw_unexpected_token_with_token(t, &[TSXToken::OpenParentheses])
-			// }
+				// }
 			} else if reader.is_operator("(") || reader.is_operator("?") {
 				let is_optional = reader.is_operator_advance("?");
 				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
@@ -441,18 +445,7 @@ impl ASTNode for InterfaceMember {
 					position,
 				})
 			} else {
-				todo!("{:?}", reader.get_current().get(..40))
-				// 	}
-				// 	token => throw_unexpected_token_with_token(
-				// 		token,
-				// 		&[
-				// 			TSXToken::OpenParentheses,
-				// 			TSXToken::QuestionMark,
-				// 			TSXToken::Colon,
-				// 			TSXToken::OptionalMember,
-				// 		],
-				// 	),
-				// }
+				Err(crate::lexer::utilities::expected_one_of_items(reader, &["(", "?", ":", "?:"]))
 			}
 		}
 	}
@@ -603,18 +596,13 @@ pub(crate) fn interface_members_from_reader(
 		if reader.is_operator("}") {
 			members.push(decorated_member);
 			break;
-		} else {
-			let comma = reader.is_keyword_advance(",");
-			let semi_colon_like = comma
-				|| reader.last_was_from_new_line() > 0
-				|| reader.is_operator("}")
-				|| reader.is_operator_advance(";");
-
-			if !semi_colon_like {
-				todo!("error {:?}", &reader.get_current()[..10]);
-			}
-			members.push(decorated_member);
 		}
+
+		let comma = reader.is_keyword_advance(",");
+		if !comma {
+			reader.expect_semi_colon()?;
+		}
+		members.push(decorated_member);
 	}
 	Ok(members)
 }

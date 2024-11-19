@@ -181,7 +181,7 @@ impl crate::ASTNode for Declaration {
 					return Ok(Declaration::Namespace(namespace));
 				}
 
-				Err(crate::lexer::utilities::expected_one_of_keywords(
+				Err(crate::lexer::utilities::expected_one_of_items(
 					reader,
 					&["let", "const", "var", "class", "type", "async", "function", "namespace"],
 				))
@@ -209,7 +209,7 @@ impl crate::ASTNode for Declaration {
 			// }
 
 			// TODO vary list on certain parameters
-			Err(crate::lexer::utilities::expected_one_of_keywords(
+			Err(crate::lexer::utilities::expected_one_of_items(
 				reader,
 				&[
 					"let",
@@ -498,7 +498,7 @@ impl ImportLocation {
 
 		let start = reader.get_start();
 		let (content, quoted) = reader.parse_string_literal()?;
-		Ok((ImportLocation::Quoted(content.to_owned(), quoted)))
+		Ok(ImportLocation::Quoted(content.to_owned(), quoted))
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {

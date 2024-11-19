@@ -376,7 +376,12 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 
 			Ok(Self::Name(standard, annotation, default_value, position))
 		} else {
-			todo!("expect colon error")
+			let current = reader.get_current();
+			let until_empty = crate::lexer::utilities::next_empty_occurance(current);
+			let position = reader.get_start().with_length(until_empty);
+			let error =
+				ParseErrors::ExpectedOperator { expected: ";", found: &current[..until_empty] };
+			Err(ParseError::new(error, position))
 		}
 	}
 

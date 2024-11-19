@@ -162,16 +162,16 @@ impl ASTNode for ForLoopCondition {
 			};
 
 			let _semi_colon_one = reader.expect(';')?;
-			let condition = if !reader.is_operator(";") {
-				Some(MultipleExpression::from_reader(reader)?)
-			} else {
+			let condition = if reader.is_operator(";") {
 				None
+			} else {
+				Some(MultipleExpression::from_reader(reader)?)
 			};
 			let semi_colon_two = reader.expect(';')?;
-			let afterthought = if !reader.is_operator(")") {
-				Some(MultipleExpression::from_reader(reader)?)
-			} else {
+			let afterthought = if reader.is_operator(")") {
 				None
+			} else {
+				Some(MultipleExpression::from_reader(reader)?)
 			};
 
 			let position = start.union(reader.get_end());

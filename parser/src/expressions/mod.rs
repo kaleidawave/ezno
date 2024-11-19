@@ -215,6 +215,18 @@ impl ASTNode for Expression {
 	}
 }
 
+static SPECIAL_OPERATORS: &[&str] = {
+	if cfg!(feature = "full-typescript") && cfg!(feature = "extras") {
+		&["as", "is", "satisfies"]
+	} else if cfg!(feature = "full-typescript") {
+		&["as", "satisfies"]
+	} else if cfg!(feature = "extras") {
+		&["is"]
+	} else {
+		&[]
+	}
+};
+
 impl Expression {
 	pub fn from_reader_with_precedence(
 		reader: &mut crate::new::Lexer,
@@ -224,7 +236,6 @@ impl Expression {
 		// 	dbg!(reader.head);
 		// }
 
-		// TODO WIP
 		if reader.get_options().partial_syntax {
 			let start = reader.get_start();
 			reader.skip();
@@ -276,7 +287,7 @@ impl Expression {
 				}
 			} else if reader.starts_with('/') {
 				let (pattern, flags, length) = reader.parse_regex_literal()?;
-				let position = start.with_length(length as usize);
+				let position = start.with_length(length);
 				Expression::RegexLiteral {
 					pattern: pattern.to_owned(),
 					flags: flags.map(ToOwned::to_owned),
@@ -306,7 +317,7 @@ impl Expression {
 					)
 				}
 			} else if reader.starts_with('<') {
-				let is_generic_arguments = reader.after_brackets().starts_with("(");
+				let is_generic_arguments = reader.after_brackets().starts_with('(');
 				if is_generic_arguments {
 					let arrow_function = ArrowFunction::from_reader(reader)?;
 					Expression::ArrowFunction(arrow_function)
@@ -319,12 +330,12 @@ impl Expression {
 				// TODO more cases here
 				let mut current = reader.get_current();
 				if current.starts_with("async") {
-					current = &current["async".len()..].trim_start();
+					current = current["async".len()..].trim_start();
 				}
 				if current.starts_with("server") {
-					current = &current["server".len()..].trim_start();
+					current = current["server".len()..].trim_start();
 				} else if current.starts_with("worker") {
-					current = &current["worker".len()..].trim_start();
+					current = current["worker".len()..].trim_start();
 				}
 				if current.starts_with("function") {
 					Expression::ExpressionFunction(ExpressionFunction::from_reader(reader)?)
@@ -451,7 +462,7 @@ impl Expression {
 					reader.expect(']')?;
 					SuperReference::Index { indexer: Box::new(indexer) }
 				} else {
-					return Err(crate::lexer::utilities::expected_one_of_keywords(
+					return Err(crate::lexer::utilities::expected_one_of_items(
 						reader,
 						&[".", "(", "["],
 					));
@@ -542,7 +553,7 @@ impl Expression {
 			// Do this before `.skip` call as `<` needs to be immediate
 			if reader.parse_type_annotations()
 				&& reader.starts_with('<')
-				&& reader.after_brackets().starts_with("(")
+				&& reader.after_brackets().starts_with('(')
 			{
 				if AssociativityDirection::LeftToRight
 					.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
@@ -606,7 +617,7 @@ impl Expression {
 				{
 					return Ok(top);
 				}
-				let token = reader.advance(operator_str.len() as u32);
+				reader.advance(operator_str.len() as u32);
 				let position = top.get_position().union(reader.get_end());
 				// Increment and decrement are the only two postfix operations
 				top = Expression::UnaryPostfixAssignmentOperation {
@@ -622,8 +633,6 @@ impl Expression {
 					"-" => BinaryOperator::Subtract,
 					"*" => BinaryOperator::Multiply,
 					"+" => BinaryOperator::Add,
-					"-" => BinaryOperator::Subtract,
-					"*" => BinaryOperator::Multiply,
 					"/" => BinaryOperator::Divide,
 					"**" => BinaryOperator::Exponent,
 					"<" => BinaryOperator::LessThan,
@@ -651,7 +660,7 @@ impl Expression {
 				};
 
 				// TODO double check whitespace inbetween
-				let is_equal_after = reader.get_current()[operator_str.len()..].starts_with("=");
+				let is_equal_after = reader.get_current()[operator_str.len()..].starts_with('=');
 				if let (true, Ok(operator)) =
 					(is_equal_after, BinaryAssignmentOperator::try_from(operator))
 				{
@@ -713,6 +722,13 @@ impl Expression {
 				let position = position.union(new_rhs.get_position());
 				top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
 			} else if reader.is_operator("`") {
+				todo!("precedence here");
+				// if AssociativityDirection::RightToLeft
+				// 	.should_return(return_precedence, ASSIGNMENT_PRECEDENCE)
+				// {
+				// 	return Ok(top);
+				// }
+
 				let mut template_literal = TemplateLiteral::from_reader(reader)?;
 				// TODO check expression here
 				template_literal.position.start = top.get_position().start;
@@ -856,7 +872,7 @@ impl Expression {
 					truthy_result,
 					falsy_result,
 				};
-			} else if let Some(keyword) = reader.is_one_of_keywords(&["as", "is", "satisfies"]) {
+			} else if let Some(keyword) = reader.is_one_of_keywords(SPECIAL_OPERATORS) {
 				if AssociativityDirection::LeftToRight
 					.should_return(return_precedence, RELATION_PRECEDENCE)
 				{
@@ -875,7 +891,7 @@ impl Expression {
 
 				let top_position = top.get_position();
 
-				let (special_operators, rhs_position) = match keyword {
+				let (special_operators, rhs_position): (SpecialOperators, Span) = match keyword {
 					#[cfg(feature = "full-typescript")]
 					"as" => {
 						let start = reader.get_start();
@@ -923,7 +939,7 @@ impl Expression {
 						)
 					}
 					_ => {
-						todo!("error")
+						unreachable!()
 					}
 				};
 

@@ -76,7 +76,7 @@ impl ASTNode for TryCatchStatement {
 			// Parse error if neither catch nor finally clause is present
 			return Err(ParseError::new(
 				ParseErrors::ExpectedCatchOrFinally,
-				todo!(), // reader.next().unwrap().get_span(),
+				start.union(try_inner.get_position()),
 			));
 		};
 

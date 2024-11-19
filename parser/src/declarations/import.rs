@@ -15,6 +15,7 @@ pub enum ImportedItems {
 }
 
 impl ImportedItems {
+	#[must_use]
 	pub fn is_some(&self) -> bool {
 		match self {
 			Self::Parts(None) => false,
@@ -218,7 +219,7 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 	} else if reader.starts_with_string_delimeter() || reader.is_keyword("from") {
 		ImportedItems::Parts(None)
 	} else {
-		return Err(crate::lexer::utilities::expected_one_of_keywords(reader, &["*", "["]));
+		return Err(crate::lexer::utilities::expected_one_of_items(reader, &["*", "["]));
 	};
 
 	Ok(PartsResult {
