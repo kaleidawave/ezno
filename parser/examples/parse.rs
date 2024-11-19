@@ -32,8 +32,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let to_string_output = args.iter().any(|item| item == "--to-string");
 	let pretty = args.iter().any(|item| item == "--pretty");
 
-	let now = Instant::now();
-
 	let parse_options = ParseOptions {
 		comments,
 		record_keyword_positions: display_keywords,
@@ -77,6 +75,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	)
 }
 
+const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
+
 fn parse_path(
 	path: &Path,
 	timings: bool,
@@ -93,7 +93,18 @@ fn parse_path(
 
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
-	let result = Module::from_string_with_options(source.clone(), parse_options.clone(), None);
+	let mut local_parse_options = *parse_options;
+	if path.extension().and_then(std::ffi::OsStr::to_str).is_some_and(|ext| ext.ends_with("js")) {
+		local_parse_options.type_annotations = false;
+	}
+
+	let on = source.clone();
+	let result = std::thread::Builder::new()
+		.stack_size(EIGHT_MEGA_BYTES)
+		.spawn(move || Module::from_string_with_options(on, local_parse_options, None))
+		.unwrap()
+		.join()
+		.unwrap();
 
 	match result {
 		Ok((module, state)) => {
@@ -127,13 +138,13 @@ fn parse_path(
 			}
 
 			if parse_imports {
-				for import in state.constant_imports.iter() {
+				for import in &state.constant_imports {
 					// Don't reparse files (+ catches cycles)
 					let resolved_path = path.parent().unwrap().join(import);
 					if fs.get_paths().contains_key(&resolved_path) {
 						continue;
 					}
-					let _ = parse_path(
+					let () = parse_path(
 						&resolved_path,
 						timings,
 						parse_imports,
@@ -160,7 +171,7 @@ fn parse_path(
 				line_column.column_start += 1;
 				line_column.column_end += 1;
 			}
-			eprintln!("error on {:?}", line_column);
+			eprintln!("error on {line_column:?}");
 
 			Err(Box::<dyn std::error::Error>::from(parse_err))
 		}

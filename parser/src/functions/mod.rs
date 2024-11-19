@@ -400,6 +400,7 @@ impl ASTNode for FunctionHeader {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		#[cfg(feature = "extras")]
 		fn parse_location(reader: &mut crate::new::Lexer) -> Option<FunctionLocationModifier> {
 			if reader.is_keyword_advance("server") {
 				Some(FunctionLocationModifier::Server)
@@ -413,26 +414,28 @@ impl ASTNode for FunctionHeader {
 		let start = reader.get_start();
 		let is_async = reader.is_operator_advance("async");
 
+		#[cfg(feature = "extras")]
 		if reader.is_keyword_advance("generator") {
 			let location = parse_location(reader);
 			let _ = reader.expect_keyword("function")?;
-			Ok(Self::ChadFunctionHeader {
+			return Ok(Self::ChadFunctionHeader {
 				is_async,
 				location,
-				// is_generator: true,
 				position: start.union(reader.get_end()),
-			})
-		} else {
-			let location = parse_location(reader);
-			let _ = reader.expect_keyword("function")?;
-			let is_generator = reader.is_operator_advance("*");
-			Ok(Self::VirginFunctionHeader {
-				is_async,
-				location,
-				is_generator,
-				position: start.union(reader.get_end()),
-			})
+			});
 		}
+
+		#[cfg(feature = "extras")]
+		let location = parse_location(reader);
+		let _ = reader.expect_keyword("function")?;
+		let is_generator = reader.is_operator_advance("*");
+		Ok(Self::VirginFunctionHeader {
+			is_async,
+			is_generator,
+			position: start.union(reader.get_end()),
+			#[cfg(feature = "extras")]
+			location,
+		})
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -570,11 +573,11 @@ pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
 	reader: &mut crate::new::Lexer,
 ) -> Result<(MethodHeader, WithComment<PropertyKey<T>>), crate::ParseError> {
 	let after = reader.after_identifier();
-	let function_header = if after.starts_with("<")
-		|| after.starts_with("(")
-		|| after.starts_with("}")
-		|| after.starts_with(",")
-		|| after.starts_with(":")
+	let function_header = if after.starts_with('<')
+		|| after.starts_with('(')
+		|| after.starts_with('}')
+		|| after.starts_with(',')
+		|| after.starts_with(':')
 	{
 		MethodHeader::default()
 	} else {
@@ -619,5 +622,17 @@ impl ASTNode for FunctionBody {
 		if let Some(ref b) = self.0 {
 			b.to_string_from_buffer(buf, options, local);
 		}
+	}
+}
+
+impl FunctionBody {
+	#[cfg(feature = "full-typescript")]
+	pub fn has_body(&self) {
+		self.0.is_some()
+	}
+
+	#[cfg(not(feature = "full-typescript"))]
+	pub fn has_body(&self) {
+		true
 	}
 }

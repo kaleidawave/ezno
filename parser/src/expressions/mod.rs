@@ -220,9 +220,9 @@ impl Expression {
 		reader: &mut crate::new::Lexer,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
-		// if reader.head % 1000 == 0 {
-		// 	dbg!(reader.head);
-		// }
+		if reader.head % 1000 == 0 {
+			dbg!(reader.head);
+		}
 
 		// TODO WIP
 		if reader.get_options().partial_syntax {
@@ -950,14 +950,18 @@ impl Expression {
 					slice => unreachable!("{slice:?}"),
 				};
 				top = Self::SpecialOperators(operation, position);
-			} else if reader.is_operator_advance("!") {
-				// if options.type_annotations
-				let position = top.get_position().union(reader.get_end());
-				top = Self::SpecialOperators(
-					SpecialOperators::NonNullAssertion(Box::new(top)),
-					position,
-				);
 			} else {
+				#[cfg(feature = "extras")]
+				if reader.is_operator_advance("!") {
+					// if options.type_annotations
+					let position = top.get_position().union(reader.get_end());
+					top = Self::SpecialOperators(
+						SpecialOperators::NonNullAssertion(Box::new(top)),
+						position,
+					);
+					continue;
+				}
+
 				return Ok(top);
 			}
 

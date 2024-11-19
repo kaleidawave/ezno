@@ -173,6 +173,7 @@ impl crate::ASTNode for Declaration {
 				alias.position.start = start.0;
 				Ok(Declaration::TypeAlias(alias))
 			} else {
+				#[cfg(feature = "extras")]
 				if reader.is_keyword("namespace") {
 					let mut namespace = crate::types::namespace::Namespace::from_reader(reader)?;
 					namespace.is_declare = true;

@@ -3,7 +3,7 @@ use ezno_parser::{
 	visiting::{Chain, ImmutableVariableOrProperty, VisitOptions, Visitor, Visitors},
 	ASTNode, Declaration, Expression, Module, StatementOrDeclaration, VariableField,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 struct Offsets {
 	pub offsets: Vec<u32>,
@@ -16,7 +16,7 @@ struct Offsets {
 /// TODO abstract to library
 /// TODO do for funtions and types
 fn get_top_level_identifiers(m: &Module) -> (HashSet<String>, HashSet<String>) {
-	let (mut variables, mut types): (HashSet<_>, HashSet<_>) = Default::default();
+	let (mut variables, types): (HashSet<_>, HashSet<_>) = Default::default();
 	for item in &m.items {
 		match item {
 			StatementOrDeclaration::Declaration(Declaration::Variable(variable)) => {
@@ -98,7 +98,7 @@ let z = 6;
 	total.reserve(rest.len() * (SIZE - 1));
 
 	for i in 1..SIZE {
-		let name = format!("{:03}", i);
+		let name = format!("{i:03}");
 		for offset in offsets.offsets.iter().copied() {
 			let range = offset as usize..(offset as usize + 3);
 			rest.replace_range(range, &name);
@@ -107,7 +107,7 @@ let z = 6;
 		total.push_str(&rest);
 	}
 
-	eprintln!("{}", total);
+	eprintln!("{total}");
 }
 
 /// TODO this could be collected in the same process as above

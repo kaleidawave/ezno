@@ -316,7 +316,7 @@ impl FunctionBased for ClassConstructorBase {
 	// }
 
 	fn has_body(body: &Self::Body) -> bool {
-		body.0.is_some()
+		body.has_body()
 	}
 
 	fn header_and_name_from_reader(

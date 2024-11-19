@@ -341,7 +341,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	}
 
 	fn has_function_body(body: &Self::FunctionBody) -> bool {
-		body.0.is_some()
+		body.has_body()
 	}
 
 	fn is_declare(&self) -> bool {

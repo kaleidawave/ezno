@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	});
 
-	let content = std::fs::read_to_string(&path)?;
+	let content = std::fs::read_to_string(path)?;
 
 	let filters: Vec<&str> = vec!["import", "export"];
 
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					String::new(),
 					|mut a, s| {
 						a.push_str(s);
-						a.push_str("\n");
+						a.push('\n');
 						a
 					},
 				);
@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let under = PathBuf::from(under);
 		for (header, code) in blocks {
 			let mut name = heading_to_rust_identifier(&header);
-			name.push_str(".");
+			name.push('.');
 			name.push_str(&extension);
 			let mut file = std::fs::File::create(under.join(name))?;
 			// Fix for FLow
@@ -247,7 +247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 				for line in code.lines() {
 					block.push_str("\n\t");
-					block.push_str(&line);
+					block.push_str(line);
 				}
 				// If the block is not terminated, it can change the parsing of the next one
 				if block.ends_with(')') {
@@ -262,7 +262,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 				for line in code.lines() {
 					block.push_str("\n\t");
-					block.push_str(&line);
+					block.push_str(line);
 				}
 				block.push('\n');
 				final_blocks.push((names, block));
