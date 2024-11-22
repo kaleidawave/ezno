@@ -60,7 +60,7 @@ impl FunctionBased for ArrowFunctionBase {
 			FunctionParameters::from_reader(reader)
 		} else {
 			let start = reader.get_start();
-			let name = reader.parse_identifier("arrow function parameter").unwrap();
+			let name = reader.parse_identifier("arrow function parameter", true).unwrap();
 			let position = start.with_length(name.len());
 			let parameters = vec![Parameter {
 				visibility: (),

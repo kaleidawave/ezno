@@ -5,8 +5,11 @@ use crate::{
 };
 
 use super::{
-	variable::VariableDeclaration, ClassDeclaration, ImportExportPart, ImportLocation,
-	InterfaceDeclaration, StatementFunction, TypeAlias,
+	super::{
+		variable::VariableDeclaration, ClassDeclaration, InterfaceDeclaration, StatementFunction,
+		TypeAlias,
+	},
+	ImportExportPart, ImportLocation,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -51,8 +54,7 @@ pub enum Exportable {
 		from: ImportLocation,
 	},
 	ImportParts {
-		// yah `super::ImportDeclaration` here
-		parts: Vec<ImportExportPart<super::ImportDeclaration>>,
+		parts: Vec<ImportExportPart<super::import::ImportDeclaration>>,
 		from: ImportLocation,
 		type_definitions_only: bool,
 	},

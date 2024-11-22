@@ -48,7 +48,7 @@ impl ASTNode for JSXElement {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('<')?;
-		let tag_name = reader.parse_identifier("JSX element name").unwrap().to_owned();
+		let tag_name = reader.parse_identifier("JSX element name", false).unwrap().to_owned();
 		let mut attributes = Vec::new();
 		// TODO spread attributes
 		// Kind of weird / not clear conditions for breaking out of while loop
@@ -79,7 +79,8 @@ impl ASTNode for JSXElement {
 			} else {
 				// TODO extras here @ etc
 				let start = reader.get_start();
-				let key = reader.parse_identifier("JSX element attribute").unwrap().to_owned();
+				let key =
+					reader.parse_identifier("JSX element attribute", false).unwrap().to_owned();
 				let attribute = if reader.is_operator_advance("=") {
 					let start = reader.get_start();
 					if reader.is_operator_advance("{") {
@@ -125,7 +126,7 @@ impl ASTNode for JSXElement {
 					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 				})?
 				.to_owned();
-			let closing_tag_name = reader.parse_identifier("JSX closing tag")?;
+			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?;
 			let end = reader.expect('>')?;
 			return Ok(JSXElement {
 				tag_name,
@@ -137,7 +138,7 @@ impl ASTNode for JSXElement {
 
 		let children = jsx_children_from_reader(reader)?;
 		if reader.is_operator_advance("</") {
-			let closing_tag_name = reader.parse_identifier("JSX closing tag")?;
+			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?;
 			let end = reader.expect('>')?;
 			if closing_tag_name != tag_name {
 				return Err(ParseError::new(
@@ -217,7 +218,7 @@ impl ASTNode for JSXAttribute {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let key = reader.parse_identifier("JSX element attribute").unwrap().to_owned();
+		let key = reader.parse_identifier("JSX element attribute", false).unwrap().to_owned();
 		if reader.is_operator_advance("=") {
 			let start = reader.get_start();
 			if reader.is_operator_advance("{") {

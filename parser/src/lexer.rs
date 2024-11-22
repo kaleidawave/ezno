@@ -344,7 +344,11 @@ impl<'a> Lexer<'a> {
 		self.head += count;
 	}
 
-	pub fn parse_identifier(&mut self, location: &'static str) -> Result<&'a str, ParseError> {
+	pub fn parse_identifier(
+		&mut self,
+		location: &'static str,
+		check_reserved: bool,
+	) -> Result<&'a str, ParseError> {
 		self.skip();
 		let current = self.get_current();
 		let start = self.get_start();
@@ -370,14 +374,23 @@ impl<'a> Lexer<'a> {
 			let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
 			if !is_valid {
 				let value = &current[..idx];
-				self.head += idx as u32;
-				// TODO check value isn't `const` etc
-				return Ok(value);
+				let result = if !check_reserved
+					|| crate::lexer::utilities::is_valid_variable_identifier(value)
+				{
+					self.head += idx as u32;
+					Ok(value)
+				} else {
+					Err(ParseError::new(
+						ParseErrors::ReservedIdentifier,
+						start.with_length(value.len()),
+					))
+				};
+				return result;
 			}
 		}
 
+		// If left over
 		self.head += current.len() as u32;
-
 		Ok(current)
 	}
 
@@ -712,17 +725,20 @@ impl<'a> Lexer<'a> {
 		let mut escaped = false;
 		let mut after_last_slash = false;
 		let mut in_set = false;
+		self.skip();
 		let current = self.get_current();
 		let mut chars = current.char_indices();
-
 		assert!(chars.next().is_some_and(|(idx, chr)| chr == '/'));
+		let start = self.get_start();
 
 		let mut regex_content = 1;
+		let mut found_end_slash = false;
 
 		for (idx, chr) in chars.by_ref() {
 			match chr {
 				'/' if !escaped && !in_set => {
 					regex_content = idx;
+					found_end_slash = true;
 					break;
 				}
 				'\\' if !escaped => {
@@ -737,13 +753,20 @@ impl<'a> Lexer<'a> {
 				'\n' => {
 					return Err(ParseError::new(
 						ParseErrors::InvalidRegularExpression,
-						self.get_start().with_length(idx),
+						start.with_length(idx),
 					));
 				}
 				_ => {
 					escaped = false;
 				}
 			}
+		}
+
+		if !found_end_slash {
+			return Err(ParseError::new(
+				ParseErrors::InvalidRegularExpression,
+				start.with_length(current.len()),
+			));
 		}
 
 		let regex = &current[1..regex_content];

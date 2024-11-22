@@ -21,7 +21,7 @@ impl ASTNode for EnumDeclaration {
 		let start = reader.get_start();
 		let is_constant = reader.is_keyword_advance("const");
 		reader.expect_keyword("enum")?;
-		let name = reader.parse_identifier("enum name")?.to_owned();
+		let name = reader.parse_identifier("enum name", true)?.to_owned();
 		reader.expect('{')?;
 		let mut members = Vec::new();
 		loop {
@@ -92,7 +92,7 @@ impl ASTNode for EnumMember {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.get_start();
-		let name = reader.parse_identifier("enum member name")?.to_owned();
+		let name = reader.parse_identifier("enum member name", true)?.to_owned();
 		let (position, value) = if reader.is_operator_advance("=") {
 			let expression = Expression::from_reader(reader)?;
 			(start.union(expression.get_position()), Some(expression))

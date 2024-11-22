@@ -36,7 +36,7 @@ impl ASTNode for VariableIdentifier {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let identifier = reader.parse_identifier("variable identifier")?;
+		let identifier = reader.parse_identifier("variable identifier", true)?;
 		let position = start.with_length(identifier.len());
 		// TODO
 		if identifier == "let" {

@@ -34,10 +34,6 @@ pub enum ParseErrors<'a> {
 		found: &'a str,
 	},
 	FunctionParameterOptionalAndDefaultValue,
-	ExpectedIdent {
-		found: &'a str,
-		at_location: &'a str,
-	},
 	ParameterCannotHaveDefaultValueHere,
 	InvalidLHSAssignment,
 	LexingFailed,
@@ -129,9 +125,6 @@ impl<'a> Display for ParseErrors<'a> {
 			ParseErrors::FunctionParameterOptionalAndDefaultValue => {
 				f.write_str("Function parameter cannot be optional *and* have default expression")
 			}
-			ParseErrors::ExpectedIdent { found, at_location } => {
-				write!(f, "Expected identifier at {at_location}, found {found:?}")
-			}
 			ParseErrors::ParameterCannotHaveDefaultValueHere => {
 				f.write_str("Function parameter cannot be have default value here")
 			}
@@ -168,7 +161,11 @@ impl<'a> Display for ParseErrors<'a> {
 				write!(f, "Cannot write this constraint in this kind of function")
 			}
 			ParseErrors::ExpectedIdentifier { location } => {
-				write!(f, "Expected variable identifier at {location}")
+				if *location == "variable identifier" {
+					write!(f, "Expected variable identifier")
+				} else {
+					write!(f, "Expected variable identifier at {location}")
+				}
 			}
 			ParseErrors::ExpectedNumberLiteral => {
 				write!(f, "Expected number literal")

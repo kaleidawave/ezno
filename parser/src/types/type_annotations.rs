@@ -135,7 +135,7 @@ impl ASTNode for AnnotationWithBinder {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.after_identifier().starts_with(':') {
 			let start = reader.get_start();
-			let name = reader.parse_identifier("type annotation binder")?.to_owned();
+			let name = reader.parse_identifier("type annotation binder", false)?.to_owned();
 			let _ = reader.expect(':')?;
 			let ty = TypeAnnotation::from_reader(reader)?;
 			Ok(AnnotationWithBinder::Annotated {
@@ -500,7 +500,7 @@ impl TypeAnnotation {
 		} else if reader.is_keyword_advance("this") {
 			TypeAnnotation::This(start.with_length(4))
 		} else if reader.is_keyword_advance("infer") {
-			let name = reader.parse_identifier("infer name")?;
+			let name = reader.parse_identifier("infer name", false)?;
 			let (position, extends) = if reader.is_keyword_advance("extends") {
 				let extends =
 					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
@@ -668,14 +668,14 @@ impl TypeAnnotation {
 			}
 			result
 		} else {
-			let name = reader.parse_identifier("type name")?;
+			let name = reader.parse_identifier("type name", false)?;
 			let position = start.with_length(name.len());
 			let name = name.to_owned();
 
 			let name = if reader.is_operator(".") {
 				let mut namespace = vec![name];
 				while reader.is_operator_advance(".") {
-					let name = reader.parse_identifier("type name")?;
+					let name = reader.parse_identifier("type name", false)?;
 					namespace.push(name.to_owned());
 				}
 				let position = position.union(reader.get_end());
@@ -928,7 +928,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			let start = reader.get_start();
 
 			if reader.is_operator_advance("...") {
-				let name = reader.parse_identifier("spread parameter name")?.to_owned();
+				let name = reader.parse_identifier("spread parameter name", true)?.to_owned();
 				// // TODO is this a good feature
 				// let name = if reader.after_identifier().starts_with(":") {
 				// 	Some(WithComment::<VariableField>::from_reader(reader)?)

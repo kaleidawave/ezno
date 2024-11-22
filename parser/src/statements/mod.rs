@@ -83,7 +83,7 @@ impl ASTNode for Statement {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		if reader.after_identifier().starts_with(':') {
 			let start = reader.get_start();
-			let name = reader.parse_identifier("statement label")?.to_owned();
+			let name = reader.parse_identifier("statement label", true)?.to_owned();
 			let _ = reader.expect(':')?;
 			let statement = Statement::from_reader(reader).map(Box::new)?;
 			if statement.requires_semi_colon() {
@@ -128,7 +128,7 @@ impl ASTNode for Statement {
 				Ok(Statement::Break(None, start.with_length("break".len())))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier("break identifier")?;
+				let label = reader.parse_identifier("break identifier", true)?;
 				Ok(Statement::Break(Some(label.to_owned()), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("continue") {
@@ -136,13 +136,15 @@ impl ASTNode for Statement {
 				Ok(Statement::Continue(None, start.with_length("continue".len())))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier("continue identifier")?;
+				let label = reader.parse_identifier("continue identifier", true)?;
 				Ok(Statement::Continue(Some(label.to_owned()), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("throw") {
 			let expression = MultipleExpression::from_reader(reader)?;
 			let position = start.union(expression.get_position());
 			Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
+		} else if reader.is_keyword_advance("with") {
+			todo!()
 		} else if reader.is_operator_advance(";") {
 			Ok(Statement::AestheticSemiColon(start.with_length(1)))
 		} else if reader.is_operator_advance("//") {
@@ -325,5 +327,42 @@ impl ASTNode for VarVariableStatement {
 	) {
 		buf.push_str("var ");
 		declarations_to_string(&self.declarations, buf, options, local, false);
+	}
+}
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
+pub struct WithStatement {
+	pub expression: MultipleExpression,
+	pub inner: crate::block::BlockOrSingleStatement,
+	pub position: Span,
+}
+
+impl ASTNode for WithStatement {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let start = reader.expect_keyword("with")?;
+		reader.expect_operator("(")?;
+		let expression = MultipleExpression::from_reader(reader)?;
+		reader.expect_operator(")")?;
+		let inner = crate::block::BlockOrSingleStatement::from_reader(reader)?;
+		let position = start.union(reader.get_end());
+		Ok(Self { expression, inner, position })
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		buf.push_str("with (");
+		self.expression.to_string_from_buffer(buf, options, local);
+		buf.push_str(")");
+		self.inner.to_string_from_buffer(buf, options, local);
 	}
 }

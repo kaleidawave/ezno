@@ -343,7 +343,7 @@ impl Expression {
 					Expression::ArrowFunction(ArrowFunction::from_reader(reader)?)
 				}
 			} else if reader.is_operator_advance("#") {
-				let property_name = reader.parse_identifier("property name")?.to_owned();
+				let property_name = reader.parse_identifier("property name", false)?.to_owned();
 				let _ = reader.expect_keyword("in")?;
 				let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
 				let position = start.union(rhs.get_position());
@@ -450,7 +450,7 @@ impl Expression {
 				}
 			} else if reader.is_keyword_advance("super") {
 				let inner = if reader.is_operator_advance(".") {
-					let property = reader.parse_identifier("property identifier")?.to_owned();
+					let property = reader.parse_identifier("property identifier", true)?.to_owned();
 					SuperReference::PropertyAccess { property }
 				// TODO PropertyReference::Standard { property, is_private }
 				} else if reader.is_operator_advance("(") {
@@ -506,13 +506,7 @@ impl Expression {
 					Default::default()
 				}
 
-				let name = reader.parse_identifier("variable reference expression")?;
-				if !crate::lexer::utilities::is_valid_variable_identifier(name) {
-					return Err(ParseError::new(
-						ParseErrors::ReservedIdentifier,
-						start.with_length(name.len()),
-					));
-				}
+				let name = reader.parse_identifier("variable reference expression", true)?;
 
 				if reader.get_options().interpolation_points && name == crate::marker::MARKER {
 					let position = start.with_length(0);
@@ -819,40 +813,64 @@ impl Expression {
 					is_optional,
 				};
 			} else if reader.starts_with_str("?.") || reader.starts_with('.') {
+				/// Looks to see if next is not like a property identifier, returns how many characters
+				/// it skipped over for position information
+				fn get_not_identifier_length(on: &str) -> Option<usize> {
+					for (idx, c) in on.char_indices() {
+						if c == '#' || crate::lexer::utilities::is_valid_identifier(c) {
+							return None;
+						} else if !c.is_whitespace() {
+							let after = &on[idx..];
+							return if after.starts_with("//") || after.starts_with("/*") {
+								None
+							} else {
+								Some(idx)
+							};
+						}
+					}
+
+					// Else nothing exists
+					Some(0)
+				}
+
 				if AssociativityDirection::LeftToRight
 					.should_return(return_precedence, MEMBER_ACCESS_PRECEDENCE)
 				{
 					return Ok(top);
 				}
+
 				let (is_optional, length) =
 					if reader.starts_with('?') { (true, 2) } else { (false, 1) };
+
 				reader.advance(length);
 
 				// TODO not sure
-				// if matches!(top, Self::ObjectLiteral(..)) {
-				// 	return Err(ParseError::new(
-				// 		ParseErrors::CannotAccessObjectLiteralDirectly,
-				// 		accessor_position.with_length(1),
-				// 	));
-				// }
+				if let Expression::ObjectLiteral(..) = top {
+					return Err(ParseError::new(
+						ParseErrors::CannotAccessObjectLiteralDirectly,
+						source_map::Start(top.get_position().get_end().0).with_length(1),
+					));
+				}
 
-				// let Token(peek, at) = reader.peek().ok_or_else(parse_lexing_error)?;
-				// let is_next_not_identifier = peek.is_expression_delimiter()
-				// 	|| (peek.is_statement_or_declaration_start()
-				// 		&& state.line_starts.byte_indexes_on_different_lines(
-				// 			accessor_position.0 as usize,
-				// 			at.0 as usize,
-				// 		));
-
-				let property = if false {
-					//  if options.partial_syntax && is_next_not_identifier {
-					// let marker = state.new_partial_point_marker(accessor_position);
-					// let position = accessor_position.union(source_map::End(at.0));
-					// (PropertyReference::Marker(marker), position)
-					todo!("TODO partial syntax else error")
+				let property = if let Some(Some(length)) = reader
+					.get_options()
+					.partial_syntax
+					.then(|| get_not_identifier_length(reader.get_current()))
+				{
+					let position =
+						source_map::Start(top.get_position().get_end().0).with_length(length);
+					let marker = reader.new_partial_point_marker(position);
+					PropertyReference::Marker(marker)
 				} else {
+					reader.skip();
+					while reader.is_one_of(&["//", "/*"]).is_some() {
+						let is_multiline = reader.starts_with_str("/*");
+						reader.advance(2);
+						let _content = reader.parse_comment_literal(is_multiline)?;
+					}
+
 					let is_private = reader.is_operator_advance("#");
-					let property = reader.parse_identifier("property name")?.to_owned();
+					let property = reader.parse_identifier("property name", false)?.to_owned();
 					PropertyReference::Standard { property, is_private }
 				};
 				let position = top.get_position().union(reader.get_end());

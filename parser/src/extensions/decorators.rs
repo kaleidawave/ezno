@@ -21,9 +21,9 @@ impl ASTNode for Decorator {
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		reader.expect('@')?;
-		let mut name = vec![reader.parse_identifier("decorator name").unwrap().to_owned()];
+		let mut name = vec![reader.parse_identifier("decorator name", false).unwrap().to_owned()];
 		while reader.is_operator_advance(".") {
-			name.push(reader.parse_identifier("decorator name").unwrap().to_owned());
+			name.push(reader.parse_identifier("decorator name", false).unwrap().to_owned());
 		}
 
 		let arguments = if reader.starts_with('(') {
