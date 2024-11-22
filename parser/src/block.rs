@@ -61,20 +61,18 @@ impl ASTNode for StatementOrDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		// if options.interpolation_points
-		// 	&& matches!(reader.peek(), Some(Token(TSXToken::Identifier(i), _)) if i == MARKER)
-		// {
-		// 	let Token(_, position) = reader.next().unwrap();
-		// 	let marker_id = state.new_partial_point_marker(position);
-		// 	return Ok(Self::Marker(marker_id, position.with_length(0)));
-		// }
-
-		if Declaration::is_declaration_start(reader) {
+		if reader.get_options().interpolation_points && reader.is_keyword_advance(MARKER) {
+			// TODO Start::reverse
+			let start = source_map::Start(reader.get_start().0 - MARKER.len() as u32);
+			let span = start.with_length(0);
+			let marker_id = reader.new_partial_point_marker(span);
+			Ok(Self::Marker(marker_id, span))
+		} else if Declaration::is_declaration_start(reader) {
 			let dec = Declaration::from_reader(reader)?;
-			Ok(StatementOrDeclaration::Declaration(dec))
+			Ok(Self::Declaration(dec))
 		} else {
 			let stmt = Statement::from_reader(reader)?;
-			Ok(StatementOrDeclaration::Statement(stmt))
+			Ok(Self::Statement(stmt))
 		}
 	}
 

@@ -38,15 +38,15 @@ impl ASTNode for VariableIdentifier {
 		let start = reader.get_start();
 		let identifier = reader.parse_identifier("variable identifier")?;
 		let position = start.with_length(identifier.len());
-		Ok(Self::Standard(identifier.to_owned(), position))
 		// TODO
-		// if ident == "let" {
-		// 	return Err(ParseError::new(ParseErrors::ReservedIdentifier, span));
-		// }
-		// Ok(if options.interpolation_points && ident == crate::marker::MARKER {
-		// 	Self::Marker(state.new_partial_point_marker(span.get_start()), span)
-		// } else {
-		// })
+		if identifier == "let" {
+			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(3)))
+		} else if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
+			let span = start.with_length(0);
+			Ok(Self::Marker(reader.new_partial_point_marker(span), span))
+		} else {
+			Ok(Self::Standard(identifier.to_owned(), position))
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

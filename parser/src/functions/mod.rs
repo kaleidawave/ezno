@@ -500,6 +500,7 @@ impl Default for MethodHeader {
 	}
 }
 
+// Not ASTNode as no position
 impl MethodHeader {
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
 		match self {
@@ -517,7 +518,10 @@ impl MethodHeader {
 	}
 
 	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> Self {
-		if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
+		let after = reader.after_identifier();
+		if let Some('<' | '(' | '}' | ',' | ':') = after.chars().next() {
+			MethodHeader::default()
+		} else if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
 			match kind {
 				"get" => MethodHeader::Get,
 				"set" => MethodHeader::Set,
@@ -566,26 +570,6 @@ impl GeneratorSpecifier {
 		// 	#[cfg(feature = "extras")]
 		// 	Some(Token(TSXToken::Keyword(TSXKeyword::Generator), _)) => Some(GeneratorSpecifier::Keyword),
 	}
-}
-
-/// Accounts for methods named `get` and `set` etc
-pub(crate) fn get_method_name<T: PropertyKeyKind + 'static>(
-	reader: &mut crate::new::Lexer,
-) -> Result<(MethodHeader, WithComment<PropertyKey<T>>), crate::ParseError> {
-	let after = reader.after_identifier();
-	let function_header = if after.starts_with('<')
-		|| after.starts_with('(')
-		|| after.starts_with('}')
-		|| after.starts_with(',')
-		|| after.starts_with(':')
-	{
-		MethodHeader::default()
-	} else {
-		MethodHeader::from_reader(reader)
-	};
-
-	let key = WithComment::from_reader(reader)?;
-	Ok((function_header, key))
 }
 
 /// None if overloaded (declaration only)

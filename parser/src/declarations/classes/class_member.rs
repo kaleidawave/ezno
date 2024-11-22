@@ -130,7 +130,9 @@ impl ASTNode for ClassMember {
 		reader.skip();
 		let start = reader.get_start();
 
-		let (header, key) = crate::functions::get_method_name(reader)?;
+		let header = MethodHeader::from_reader(reader);
+		let key =
+			WithComment::<PropertyKey<crate::property_key::PublicOrPrivate>>::from_reader(reader)?;
 		reader.skip();
 
 		if reader.starts_with('(') || reader.starts_with('<') {

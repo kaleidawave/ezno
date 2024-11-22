@@ -56,6 +56,7 @@ pub enum ParseErrors<'a> {
 	ExpectedNumberLiteral,
 	NonStandardSyntaxUsedWithoutEnabled,
 	ExpectedRule,
+	ExpectedJSXAttribute,
 	InvalidRegexFlag,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
@@ -98,6 +99,9 @@ impl<'a> Display for ParseErrors<'a> {
 			}
 			ParseErrors::InvalidNumber => {
 				write!(f, "Invalid number")
+			}
+			ParseErrors::ExpectedJSXAttribute => {
+				write!(f, "Invalid JSX attribute")
 			}
 			ParseErrors::InvalidRegularExpression => {
 				write!(f, "Invalid regular expression")

@@ -9,7 +9,6 @@ members = [
   # "lsp/server",
 ]
 
-
 [package]
 name = "ezno"
 description = "A fast and correct TypeScript type checker and compiler with additional experiments. For use as a library or through the CLI"

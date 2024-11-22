@@ -302,8 +302,7 @@ impl ASTNode for InterfaceMember {
 			let position = start.union(reader.get_end());
 			Ok(InterfaceMember::Comment(content, is_multiline, position))
 		} else {
-			// TODO
-			let header = Some(MethodHeader::default());
+			let header = MethodHeader::from_reader(reader);
 
 			let name = if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
@@ -330,7 +329,7 @@ impl ASTNode for InterfaceMember {
 							Expression::from_reader_after_first_expression(reader, 0, top)?;
 						let end = reader.expect(']')?;
 						PropertyKey::Computed(Box::new(expression), start.union(end))
-					} else if reader.is_operator_advance(":") {
+					} else if reader.is_operator_advance(":") && header.is_no_modifiers() {
 						// Indexed type
 						let indexer_type = TypeAnnotation::from_reader(reader)?;
 						reader.expect(']')?;
@@ -343,7 +342,7 @@ impl ASTNode for InterfaceMember {
 							position: start.union(return_type.get_position()),
 							return_type,
 						});
-					} else if reader.is_keyword_advance("in") {
+					} else if reader.is_keyword_advance("in") && header.is_no_modifiers() {
 						// For mapped types
 						let matching_type = TypeAnnotation::from_reader(reader)?;
 
@@ -387,10 +386,14 @@ impl ASTNode for InterfaceMember {
 							as_type,
 						});
 					} else {
-						return Err(crate::lexer::utilities::expected_one_of_items(
-							reader,
-							&[":", ".", "in"],
-						));
+						return Err(if header.is_no_modifiers() {
+							crate::lexer::utilities::expected_one_of_items(
+								reader,
+								&[".", ":", "in"],
+							)
+						} else {
+							crate::lexer::utilities::expected_one_of_items(reader, &["."])
+						});
 					}
 				}
 			} else {
@@ -407,7 +410,29 @@ impl ASTNode for InterfaceMember {
 				.transpose()?
 				.map(|(tp, _)| tp);
 
-			if let Some(seperator) = reader.is_one_of_operators(&["?:", ":"]) {
+			if !header.is_no_modifiers() || reader.is_operator("(") || reader.is_operator("?(") {
+				let is_optional = reader.is_operator_advance("?");
+				// This will eat the first parenthesis, thus not eating above
+				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+				let mut position = start.union(parameters.position);
+				let return_type = if reader.is_operator_advance(":") {
+					let type_annotation = TypeAnnotation::from_reader(reader)?;
+					position = position.union(type_annotation.get_position());
+					Some(type_annotation)
+				} else {
+					None
+				};
+
+				Ok(InterfaceMember::Method {
+					header,
+					name,
+					parameters,
+					type_parameters,
+					return_type,
+					is_optional,
+					position,
+				})
+			} else if let Some(seperator) = reader.is_one_of_operators(&["?:", ":"]) {
 				// if let Some(header) = header {
 				// 	Err(crate::ParseError::new(ParseErrors::UnexpectedHeader, header.get_position()))
 				// } else {
@@ -423,27 +448,6 @@ impl ASTNode for InterfaceMember {
 					is_readonly,
 				})
 				// }
-			} else if reader.is_operator("(") || reader.is_operator("?") {
-				let is_optional = reader.is_operator_advance("?");
-				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
-				let mut position = start.union(parameters.position);
-				let return_type = if reader.is_operator_advance(":") {
-					let type_annotation = TypeAnnotation::from_reader(reader)?;
-					position = position.union(type_annotation.get_position());
-					Some(type_annotation)
-				} else {
-					None
-				};
-
-				Ok(InterfaceMember::Method {
-					header: header.unwrap_or_default(),
-					name,
-					parameters,
-					type_parameters,
-					return_type,
-					is_optional,
-					position,
-				})
 			} else {
 				Err(crate::lexer::utilities::expected_one_of_items(reader, &["(", "?", ":", "?:"]))
 			}

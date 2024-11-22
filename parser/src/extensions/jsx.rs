@@ -1,6 +1,6 @@
 use crate::{
-	ast::FunctionArgument, derive_ASTNode, ASTNode, Expression, ParseError, ParseOptions,
-	ParseResult, Span,
+	ast::FunctionArgument, derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors,
+	ParseOptions, ParseResult, Span,
 };
 use visitable_derive::Visitable;
 
@@ -80,25 +80,31 @@ impl ASTNode for JSXElement {
 				// TODO extras here @ etc
 				let start = reader.get_start();
 				let key = reader.parse_identifier("JSX element attribute").unwrap().to_owned();
-				if reader.is_operator_advance("=") {
+				let attribute = if reader.is_operator_advance("=") {
 					let start = reader.get_start();
-					let attribute = if reader.is_operator_advance("{") {
+					if reader.is_operator_advance("{") {
 						let expression = Expression::from_reader(reader)?;
 						let end = reader.expect('}')?;
 						JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
 					} else if reader.starts_with_string_delimeter() {
-						let (content, quoted) = reader.parse_string_literal().expect("TODO");
+						let (content, quoted) = reader.parse_string_literal()?;
 						let position = start.with_length(content.len() + 2);
 						JSXAttribute::Static(key, content.to_owned(), position)
 					} else {
-						return Err(todo!());
-					};
-					attributes.push(attribute);
+						let error_position = start.with_length(
+							crate::lexer::utilities::next_empty_occurance(reader.get_current()),
+						);
+						return Err(ParseError::new(
+							ParseErrors::ExpectedJSXAttribute,
+							error_position,
+						));
+					}
 				} else {
 					// Boolean attributes
 					let position = start.with_length(key.len());
-					attributes.push(JSXAttribute::BooleanAttribute(key, position));
-				}
+					JSXAttribute::BooleanAttribute(key, position)
+				};
+				attributes.push(attribute);
 			}
 		}
 
@@ -210,8 +216,29 @@ impl ASTNode for JSXAttribute {
 	}
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
-		let _existing = r#"todo!("this is currently done in `JSXElement::from_reader`")"#;
-		todo!();
+		let start = reader.get_start();
+		let key = reader.parse_identifier("JSX element attribute").unwrap().to_owned();
+		if reader.is_operator_advance("=") {
+			let start = reader.get_start();
+			if reader.is_operator_advance("{") {
+				let expression = Expression::from_reader(reader)?;
+				let end = reader.expect('}')?;
+				Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
+			} else if reader.starts_with_string_delimeter() {
+				let (content, quoted) = reader.parse_string_literal()?;
+				let position = start.with_length(content.len() + 2);
+				Ok(JSXAttribute::Static(key, content.to_owned(), position))
+			} else {
+				let error_position = start.with_length(
+					crate::lexer::utilities::next_empty_occurance(reader.get_current()),
+				);
+				Err(ParseError::new(ParseErrors::ExpectedJSXAttribute, error_position))
+			}
+		} else {
+			// Boolean attributes
+			let position = start.with_length(key.len());
+			Ok(JSXAttribute::BooleanAttribute(key, position))
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

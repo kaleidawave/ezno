@@ -72,7 +72,6 @@ impl ParseOptions {
 			retain_blank_lines: true,
 			reversed_imports: true,
 			top_level_html: false,
-			..Default::default()
 		}
 	}
 }

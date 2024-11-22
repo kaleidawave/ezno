@@ -9,6 +9,7 @@ struct Offsets {
 	pub offsets: Vec<u32>,
 	/// TODO use &str references
 	pub top_level_variables: HashSet<String>,
+	#[allow(unused, reason = "Want to do this in the future")]
 	pub top_level_types: HashSet<String>,
 }
 

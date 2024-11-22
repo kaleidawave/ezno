@@ -210,7 +210,9 @@ impl ASTNode for ObjectLiteralMember {
 			return Ok(Self::Spread(expression, position));
 		};
 
-		let (header, key) = crate::functions::get_method_name(reader)?;
+		let header = MethodHeader::from_reader(reader);
+		let key =
+			WithComment::<PropertyKey<crate::property_key::AlwaysPublic>>::from_reader(reader)?;
 
 		if reader.is_operator("(") || reader.is_operator("<") {
 			let method: ObjectLiteralMethod =

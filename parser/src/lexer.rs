@@ -974,8 +974,8 @@ pub(crate) mod utilities {
 	}
 
 	// TODO move
-	pub fn next_empty_occurance(str: &str) -> usize {
-		let mut chars = str.char_indices();
+	pub fn next_empty_occurance(on: &str) -> usize {
+		let mut chars = on.char_indices();
 		let is_text = chars.next().is_some_and(|(_, chr)| chr.is_alphabetic());
 		for (idx, chr) in chars {
 			let should_break = chr.is_whitespace()

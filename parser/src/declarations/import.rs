@@ -17,10 +17,7 @@ pub enum ImportedItems {
 impl ImportedItems {
 	#[must_use]
 	pub fn is_some(&self) -> bool {
-		match self {
-			Self::Parts(None) => false,
-			_ => true,
-		}
+		!matches!(self, Self::Parts(None))
 	}
 }
 

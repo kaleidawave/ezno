@@ -497,23 +497,6 @@ impl Expression {
 					// );
 				}
 			} else {
-				let name = reader.parse_identifier("variable reference expression")?;
-				let position = start.with_length(name.len());
-				// if keyword.is_invalid_identifier() {
-				// 	return Err(ParseError::new(
-				// 		ParseErrors::ReservedIdentifier,
-				// 		token.get_span(),
-				// 	));
-				// }
-				// if options.interpolation_points && name == crate::marker::MARKER {
-				// 	let marker_id = state.new_partial_point_marker(position.get_start());
-				// 	Expression::Marker { marker_id, position }
-				// } else if {
-				// TODO if next is arrrow
-				// } else {
-
-				// Use this method to also not advance
-				// `trim` but without newlines
 				fn after_spaces_or_tabs(slices: &str) -> &str {
 					for (idx, chr) in slices.char_indices() {
 						if !matches!(chr, ' ' | '\t') {
@@ -523,13 +506,34 @@ impl Expression {
 					Default::default()
 				}
 
-				if after_spaces_or_tabs(reader.get_current()).starts_with("=>") {
-					let identifier = crate::VariableIdentifier::Standard(name.to_owned(), position);
-					let is_async = false;
-					ArrowFunction::from_reader_with_first_parameter(reader, is_async, identifier)
-						.map(Expression::ArrowFunction)?
+				let name = reader.parse_identifier("variable reference expression")?;
+				// if keyword.is_invalid_identifier() {
+				// 	return Err(ParseError::new(
+				// 		ParseErrors::ReservedIdentifier,
+				// 		token.get_span(),
+				// 	));
+				// }
+
+				if reader.get_options().interpolation_points && name == crate::marker::MARKER {
+					let position = start.with_length(0);
+					let marker_id = reader.new_partial_point_marker(position);
+					Expression::Marker { marker_id, position }
 				} else {
-					Expression::VariableReference(name.to_owned(), position)
+					let position = start.with_length(name.len());
+
+					// Use this method to also not advance
+					// `trim` but without newlines
+					if after_spaces_or_tabs(reader.get_current()).starts_with("=>") {
+						let identifier =
+							crate::VariableIdentifier::Standard(name.to_owned(), position);
+						let is_async = false;
+						ArrowFunction::from_reader_with_first_parameter(
+							reader, is_async, identifier,
+						)
+						.map(Expression::ArrowFunction)?
+					} else {
+						Expression::VariableReference(name.to_owned(), position)
+					}
 				}
 			}
 		};
@@ -632,7 +636,6 @@ impl Expression {
 					"+" => BinaryOperator::Add,
 					"-" => BinaryOperator::Subtract,
 					"*" => BinaryOperator::Multiply,
-					"+" => BinaryOperator::Add,
 					"/" => BinaryOperator::Divide,
 					"**" => BinaryOperator::Exponent,
 					"<" => BinaryOperator::LessThan,
@@ -722,12 +725,11 @@ impl Expression {
 				let position = position.union(new_rhs.get_position());
 				top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
 			} else if reader.is_operator("`") {
-				todo!("precedence here");
-				// if AssociativityDirection::RightToLeft
-				// 	.should_return(return_precedence, ASSIGNMENT_PRECEDENCE)
-				// {
-				// 	return Ok(top);
-				// }
+				if AssociativityDirection::RightToLeft
+					.should_return(return_precedence, COMMA_PRECEDENCE)
+				{
+					return Ok(top);
+				}
 
 				let mut template_literal = TemplateLiteral::from_reader(reader)?;
 				// TODO check expression here
@@ -980,70 +982,6 @@ impl Expression {
 
 				return Ok(top);
 			}
-
-			// let Token(peeked_token, _peeked_pos) = &reader.peek().unwrap();
-
-			// 		if reader.is_no_move(',') {
-			// 			return Ok(top);
-			// 			// TODO need a reader.is_a_or_b for the optional-ness
-			// 			// }
-			// 			else if reader.is_and_move("//") {
-			// 				// TODO while not comment
-			// 				if reader.peek_n(1).is_some_and(|t| t.0.is_expression_postfix()) {
-			// 					let (content, is_multiline, position) =
-			// 						TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-			// 					top = Expression::Comment {
-			// 						content,
-			// 						on: Box::new(top),
-			// 						position,
-			// 						is_multiline,
-			// 						prefix: false,
-			// 					};
-			// 				} else {
-			// 					return Ok(top);
-			// 				}
-			// 			}
-			// 			else if reader.is_and_move("/*") {
-			// 				let (content, is_multiline, position) =
-			// 					TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-			// 				top = Expression::Comment {
-			// 					content,
-			// 					on: Box::new(top),
-			// 					position,
-			// 					is_multiline,
-			// 					prefix: false,
-			// 				};
-			// 			}
-			// 			token => {
-			// 				// Splitting here side-steps some complaints the borrow checker has with passing
-			// 				// a mutable reader here
-			// 				let token = if let TSXToken::OpenChevron = token {
-			// 					if is_generic_arguments(reader) {
-			// 						let _ = reader.next();
-			// 						let (type_arguments, _) = generic_arguments_from_reader_sub_open_angle(
-			// 							reader, None,
-			// 						)?;
-			// 						let (arguments, _, end) = bracketed_items_from_reader(
-			// 							reader,
-			// 							state,
-			// 							options,
-			// 							Some(TSXToken::OpenParentheses),
-			// 							TSXToken::CloseParentheses,
-			// 						)?;
-			// 						top = Expression::FunctionCall {
-			// 							position: top.get_position().union(end),
-			// 							function: Box::new(top),
-			// 							type_arguments: Some(type_arguments),
-			// 							arguments,
-			// 							is_optional: false,
-			// 						};
-			// 						continue;
-			// 					}
-			// 					&TSXToken::OpenChevron
-			// 				} else {
-			// 					token
-			// 				};
-			// 	}
 		}
 
 		Ok(top)
