@@ -86,7 +86,7 @@ jobs:
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true' || github.ref_name == 'main'
         run: |
-          cargo test
+          cargo test --no-fail-fast
           
           # TODO more
           curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js

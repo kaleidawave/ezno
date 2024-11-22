@@ -189,7 +189,7 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          strings=(
+          urls=(
             "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
             "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
           )

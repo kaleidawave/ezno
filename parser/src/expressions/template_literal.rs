@@ -1,9 +1,5 @@
 use super::{Expression, MultipleExpression};
-use crate::{
-	derive_ASTNode, errors::parse_lexing_error, ASTNode, ParseOptions, ParseResult, Span, TSXToken,
-	Token, TokenReader,
-};
-use tokenizer_lib::sized_tokens::TokenStart;
+use crate::{derive_ASTNode, ASTNode, ParseOptions, ParseResult, Span};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -21,13 +17,37 @@ impl ASTNode for TemplateLiteral {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::TemplateLiteralStart)?;
-		Self::from_reader_sub_start_with_tag(reader, state, options, None, start)
+	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		let tag = if reader.is_operator_advance("`") {
+			None
+		} else {
+			Some(Box::new(Expression::from_reader_with_precedence(
+				reader,
+				super::COMMA_PRECEDENCE,
+			)?))
+		};
+
+		let mut parts = Vec::new();
+		loop {
+			let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
+				// TODO might be a problem
+				let position = reader.get_start().with_length(reader.get_current().len());
+				crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
+			})?;
+			if let "${" = found {
+				let expression = MultipleExpression::from_reader(reader)?;
+				reader.expect('}')?;
+				parts.push((content.to_owned(), expression));
+			} else {
+				return Ok(Self {
+					parts,
+					last: content.to_owned(),
+					tag,
+					position: start.union(reader.get_end()),
+				});
+			}
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -49,35 +69,5 @@ impl ASTNode for TemplateLiteral {
 		}
 		buf.push_str_contains_new_line(self.last.as_str());
 		buf.push('`');
-	}
-}
-
-impl TemplateLiteral {
-	pub(crate) fn from_reader_sub_start_with_tag(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		tag: Option<Box<Expression>>,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let mut parts = Vec::new();
-		let mut last = String::new();
-		loop {
-			match reader.next().ok_or_else(parse_lexing_error)? {
-				Token(TSXToken::TemplateLiteralChunk(chunk), _) => {
-					last = chunk;
-				}
-				Token(TSXToken::TemplateLiteralExpressionStart, _) => {
-					let expression = MultipleExpression::from_reader(reader, state, options)?;
-					parts.push((std::mem::take(&mut last), expression));
-					reader.expect_next(TSXToken::TemplateLiteralExpressionEnd)?;
-				}
-				t @ Token(TSXToken::TemplateLiteralEnd, _) => {
-					return Ok(Self { parts, last, tag, position: start.union(t.get_end()) });
-				}
-				Token(TSXToken::EOS, _) => return Err(parse_lexing_error()),
-				t => unreachable!("Token {:?}", t),
-			}
-		}
 	}
 }
