@@ -94,8 +94,9 @@ fn parse_path(
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
 	let mut local_parse_options = *parse_options;
-	if path.extension().and_then(std::ffi::OsStr::to_str).is_some_and(|ext| ext.ends_with("js")) {
-		local_parse_options.type_annotations = false;
+	if let Some(extension) = path.extension().and_then(std::ffi::OsStr::to_str) {
+		local_parse_options.type_annotations = extension.contains("ts");
+		local_parse_options.jsx = extension.contains('x');
 	}
 
 	let on = source.clone();

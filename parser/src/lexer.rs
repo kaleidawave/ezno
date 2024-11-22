@@ -423,7 +423,7 @@ impl<'a> Lexer<'a> {
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
 		let current = self.get_current();
-		for i in 0.. {
+		for i in 0..current.len() {
 			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
 				self.head += (i + until.len()) as u32;
 				return Ok((&current[..i], until));
@@ -437,7 +437,7 @@ impl<'a> Lexer<'a> {
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
 		let current = self.get_current();
-		for i in 0.. {
+		for i in 0..current.len() {
 			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
 				self.head += i as u32;
 				let content = &current[..i];
@@ -915,7 +915,10 @@ impl<'a> Lexer<'a> {
 
 	pub fn is_semi_colon(&mut self) -> bool {
 		self.skip();
-		self.starts_with('}') || self.starts_with(';') || self.last_was_from_new_line() > 0
+		self.starts_with('}')
+			|| self.starts_with(';')
+			|| self.last_was_from_new_line() > 0
+			|| self.get_current().is_empty()
 	}
 
 	pub fn is_arrow_function(&mut self) -> (bool, Option<crate::types::TypeAnnotation>) {
@@ -971,6 +974,29 @@ impl<'a> Lexer<'a> {
 pub(crate) mod utilities {
 	pub fn is_valid_identifier(chr: char) -> bool {
 		chr.is_alphanumeric() || chr == '_' || chr == '$'
+	}
+
+	pub fn is_valid_variable_identifier(identifier: &str) -> bool {
+		!matches!(
+			identifier,
+			"const"
+				| "var" | "if"
+				| "else" | "for"
+				| "while" | "do"
+				| "switch" | "class"
+				| "function" | "new"
+				| "super" | "case"
+				| "return" | "continue"
+				| "break" | "import"
+				| "export" | "default"
+				| "in" | "typeof"
+				| "instanceof"
+				| "void" | "delete"
+				| "debugger" | "try"
+				| "catch" | "finally"
+				| "throw" | "extends"
+				| "enum"
+		)
 	}
 
 	// TODO move

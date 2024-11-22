@@ -507,12 +507,12 @@ impl Expression {
 				}
 
 				let name = reader.parse_identifier("variable reference expression")?;
-				// if keyword.is_invalid_identifier() {
-				// 	return Err(ParseError::new(
-				// 		ParseErrors::ReservedIdentifier,
-				// 		token.get_span(),
-				// 	));
-				// }
+				if !crate::lexer::utilities::is_valid_variable_identifier(name) {
+					return Err(ParseError::new(
+						ParseErrors::ReservedIdentifier,
+						start.with_length(name.len()),
+					));
+				}
 
 				if reader.get_options().interpolation_points && name == crate::marker::MARKER {
 					let position = start.with_length(0);
@@ -578,6 +578,17 @@ impl Expression {
 					is_optional: false,
 				};
 				continue;
+			} else if reader.is_operator_advance("//") {
+				let content = reader.parse_comment_literal(false)?.to_owned();
+				let position = top.get_position().union(reader.get_end());
+				top = Expression::Comment {
+					is_multiline: false,
+					content,
+					position,
+					on: Box::new(top),
+					prefix: false,
+				};
+				continue;
 			}
 
 			reader.skip();
@@ -596,14 +607,11 @@ impl Expression {
 				return Ok(top);
 			}
 
-			// This does `eat` comments that could be statements, oh well
-			if reader.starts_with_str("//") || reader.starts_with_str("/*") {
-				let is_multiline = reader.starts_with_str("/*");
-				reader.advance(2);
-				let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+			if reader.is_operator_advance("/*") {
+				let content = reader.parse_comment_literal(true)?.to_owned();
 				let position = top.get_position().union(reader.get_end());
 				top = Expression::Comment {
-					is_multiline,
+					is_multiline: true,
 					content,
 					position,
 					on: Box::new(top),

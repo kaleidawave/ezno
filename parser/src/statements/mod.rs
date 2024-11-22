@@ -23,7 +23,7 @@ pub use try_catch_statement::TryCatchStatement;
 use visitable_derive::Visitable;
 pub use while_statement::{DoWhileStatement, WhileStatement};
 
-/// A statement. See [Declaration]s and [StatementAndDeclaration] for more
+/// A statement. See [Declaration]s and [StatementOrDeclaration] for more
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
