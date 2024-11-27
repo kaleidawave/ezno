@@ -4098,12 +4098,12 @@ type Required<T> = {
 #### Readonly
 
 ```ts
-type Mutable<T> = {
+type Immutable<T> = {
 	readonly [P in keyof T]: T[P];
 };
 
 interface Y { a: string }
-declare let x: Mutable<Y>;
+declare let x: Immutable<Y>;
 x.a = "hi";
 ```
 
@@ -4122,7 +4122,7 @@ x.a = "hi";
 x.a = 4;
 ```
 
-<!-- TODO this is incorrect!!!!, should be string -->
+> TODO this message is incorrect!!!!, should be string
 
 - Type 4 does not meet property constraint "hi"
 

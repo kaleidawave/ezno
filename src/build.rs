@@ -182,7 +182,6 @@ mod tests {
 	use super::*;
 
 	#[test]
-	#[ignore = "not fixed implemented"]
 	fn tree_shaking() {
 		let source = r#"
 	function make_observable(obj) {
