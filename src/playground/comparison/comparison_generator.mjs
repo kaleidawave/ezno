@@ -9,6 +9,17 @@ const { compressToEncodedURIComponent } = lz;
 
 const dirname = import.meta.dirname;
 
+function escapeHTML(code) {
+    const lookup = {
+        '&': "&amp;",
+        '"': "&quot;",
+        '\'': "&apos;",
+        '<': "&lt;",
+        '>': "&gt;"
+    };
+    return s.replace(/[&"'<>]/g, c => lookup[c]);
+}
+
 function getSpecificationSections() {
     const content = readFileSync(join(dirname, "../../../checker/specification/specification.md")).toString();
     const output = lexer(content);
@@ -85,7 +96,7 @@ async function renderDifferences(sections) {
             const tscPlaygroundLink = `https://www.typescriptlang.org/play?#code/${codeCompressed}`;
 
             acc += `<li>
-                <h3 id="${href}">${title}</h3>
+                <h3 id="${href}">${escapeHTML(title)}</h3>
                 <div>
                     ${highlightedCode}
                     <div>
@@ -94,14 +105,14 @@ async function renderDifferences(sections) {
                                 <img src="./assets/ezno.svg" alt="ezno" height="14px">
                                 <a href="${eznoPlaygroundLink}">(Playground)</a>
                             </div>
-                            <ul>${row.ezno.map(msg => `<li>${msg}</li>`).join("")}</ul>
+                            <ul>${row.ezno.map(msg => `<li>${escapeHTML(msg)}</li>`).join("")}</ul>
                         </div>
                         <div class="tsc-diagnostics">
                             <div class="checker-name">
                                 <img src="./assets/typescript.svg" alt="typescript" height="20px">
                                 <a href="${tscPlaygroundLink}">(Playground)</a>
                             </div>
-                            <ul>${row.tsc.map(msg => `<li>${msg}</li>`).join("")}</ul>
+                            <ul>${row.tsc.map(msg => `<li>${escapeHTML(msg)}</li>`).join("")}</ul>
                         </div>
                     </div>
                 </div>

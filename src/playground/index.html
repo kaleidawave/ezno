@@ -7,16 +7,16 @@
     <title>Ezno Playground</title>
     <!-- Vite doesn't rewrite them :( https://github.com/vitejs/vite/issues/7362 -->
     <!-- Also maybe they should be in the parent directory? -->
-    <meta property="twitter:image" content="/ezno/playground/assets/banner.png">
-    <meta property="og:image" content="/ezno/playground/assets/banner.png">
+    <meta property="twitter:image" content="assets/banner.png">
+    <meta property="og:image" content="assets/banner.png">
 
-    <link rel="stylesheet" href="assets/index.css">
-    <link rel="icon" href="assets/ezno.svg">
+    <link rel="stylesheet" href="/assets/index.css">
+    <link rel="icon" href="/assets/ezno.svg">
 </head>
 
 <body>
     <header>
-        <img src="assets/ezno.svg" alt="EZNO" height="40px">
+        <img src="/assets/ezno.svg" alt="EZNO" height="40px">
         <p>
             Playground for the Ezno type checker.
             <a href="https://kaleidawave.github.io/posts/the-quest-continues/#there-is-a-new-web-based-playground">See
@@ -37,11 +37,21 @@
             </ol>
         </div>
         <button id="share">Share</button>
+        <button id="build">Compile</button>
         <details>
             <summary>More:</summary>
             <div id="version"></div>
             <div id="time"></div>
+            <form action="">
+                <label for="">Whitespace minify</label>
+                <input type="checkbox" name="" id="">
+                <label for="">Tree shake</label>
+                <input type="checkbox" name="" id="">
+                <label for="">Run linter</label>
+                <input type="checkbox" name="" id="">
+            </form>
         </details>
+        <pre id="build-output"></pre>
     </main>
     <footer>
         <hr>

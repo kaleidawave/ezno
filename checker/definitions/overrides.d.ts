@@ -359,6 +359,8 @@ interface PropertyDescriptor {
     enumerable?: boolean;
 }
 
+declare class Date { }
+
 declare class Object {
     @Constant
     static setPrototypeOf(on: object, to: object): object;

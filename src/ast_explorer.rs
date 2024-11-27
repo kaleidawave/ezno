@@ -36,13 +36,13 @@ impl ExplorerArguments {
 				eprintln!("Could not find file at {}", file.display());
 			}
 		} else {
-			print_to_cli(format_args!("ezno ast-explorer\nUse #exit to leave. Also #switch-mode *mode name* and #load-file *path*"));
+			print_to_cli(format_args!("ezno ast-explorer\nUse #exist, .exit or close() to leave. Also #switch-mode *mode name* and #load-file *path*"));
 			loop {
 				let input = crate::utilities::cli_input_resolver(self.nested.to_str());
 
 				if input.is_empty() {
 					continue;
-				} else if input.trim() == "#exit" {
+				} else if let "#exit" | ".exit" | "close()" = input.trim() {
 					break;
 				} else if let Some(new_mode) = input.strip_prefix("#switch-mode ") {
 					self.nested = match ExplorerSubCommand::from_str(new_mode.trim()) {
