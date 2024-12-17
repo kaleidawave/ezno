@@ -4749,13 +4749,13 @@ proxy1.a satisfies string;
 #### Proxy subtyping
 
 ```ts
-const proxy1 = new Proxy({}, { get(_target, prop, _receiver) { return prop } });
+const proxy1 = new Proxy({}, { get(_target, prop, receiver) { return prop } });
 
 proxy1 satisfies { a: "a", b: "b" };
 proxy1 satisfies { c: "d" };
 ```
 
-- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _receiver: any) => any } ]
+- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, receiver: any) => any } ]
 
 #### Proxy across functions
 

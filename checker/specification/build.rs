@@ -1,4 +1,9 @@
-use std::{error::Error, fs::{read_to_string, File}, io::Write, path::Path};
+use std::{
+	error::Error,
+	fs::{read_to_string, File},
+	io::Write,
+	path::Path,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
 	println!("cargo:rerun-if-changed=specification.md");
@@ -34,8 +39,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
-use simple_markdown_parser;
-
 fn specification_to_tests(source: &str, out: &mut File) -> Result<(), Box<dyn Error>> {
 	let mut current_unit = Unit::empty();
 	let mut current_section = "";
@@ -43,21 +46,33 @@ fn specification_to_tests(source: &str, out: &mut File) -> Result<(), Box<dyn Er
 	// Using the fact that it is linear, we don't need the heading chain
 	let _ = simple_markdown_parser::parse(source, |item| {
 		if let simple_markdown_parser::MarkdownElement::Heading { level: 3, text } = item {
+			let existing = std::mem::replace(&mut current_unit, Unit::empty());
+			if !existing.is_empty() {
+				let _ = existing.to_rust(out);
+			}
+
 			if !current_section.is_empty() {
 				writeln!(out, "}}").unwrap();
 			}
 			current_section = text.0;
-			writeln!(out, "mod {current_section} {{").unwrap();
+			writeln!(
+				out,
+				"mod {rust_name} {{",
+				rust_name = heading_to_rust_identifier(current_section)
+			)
+			.unwrap();
 		} else if let simple_markdown_parser::MarkdownElement::Heading { level: 4, text } = item {
-			current_unit.to_rust(out);
-			current_unit = Unit::empty();
+			let existing = std::mem::replace(&mut current_unit, Unit::empty());
+			if !existing.is_empty() {
+				let _ = existing.to_rust(out);
+			}
 			current_unit.name = text.0;
 		} else if let simple_markdown_parser::MarkdownElement::CodeBlock { language: _, content } =
 			item
 		{
 			current_unit.modules = code_to_modules(content);
 		} else if let simple_markdown_parser::MarkdownElement::Paragraph(item) = item {
-			if let Some(options) = item.strip_prefix("With") {
+			if let Some(options) = item.0.strip_prefix("With") {
 				current_unit.options = options.split(',').collect();
 			}
 		} else if let simple_markdown_parser::MarkdownElement::ListItem { level: _, text } = item {
@@ -65,8 +80,12 @@ fn specification_to_tests(source: &str, out: &mut File) -> Result<(), Box<dyn Er
 		}
 	});
 
+	if !current_unit.is_empty() {
+		current_unit.to_rust(out)?;
+	}
+
 	if !current_section.is_empty() {
-		writeln!(out, "}}").unwrap();
+		writeln!(out, "}}")?;
 	}
 
 	Ok(())
@@ -98,9 +117,7 @@ impl Unit<'_> {
 		self.name.is_empty()
 	}
 
-	pub fn to_rust(self, out: &mut impl std::io::Write) {
-		assert!(!self.is_empty());
-
+	pub fn to_rust(self, out: &mut impl std::io::Write) -> Result<(), Box<dyn Error>> {
 		let heading_idx = 0;
 
 		// &[{code_as_list}],
@@ -110,9 +127,7 @@ impl Unit<'_> {
 			out,
 			"#[test] fn {rust_name}() {{ 
 				super::check_expected_diagnostics(
-					\"{heading}\", {heading_idx},
-				)
-			}}",
+					\"{heading}\", {heading_idx},",
 			rust_name = heading_to_rust_identifier(self.name),
 			heading = self.name,
 		)
@@ -120,34 +135,35 @@ impl Unit<'_> {
 
 		// Code
 		{
-			write!(out, "&[").unwrap();
+			write!(out, "&[")?;
 			for Module { path, code } in self.modules {
-				write!(out, "(\"{path}\",r#\"{code}\"#),");
+				write!(out, "(\"{path}\",r#\"{code}\"#),")?;
 			}
-			write!(out, "],").unwrap();
+			write!(out, "],")?;
 		}
 
 		// Diagnostics
 		{
-			write!(out, "&[").unwrap();
+			write!(out, "&[")?;
 			for diagnostic in self.expected_diagnostics {
-				write!(out, "r#\"{diagnostic}\"#,");
+				write!(out, "r#\"{diagnostic}\"#,", diagnostic = diagnostic.replace('\\', ""))?;
 			}
-			write!(out, "],").unwrap();
+			write!(out, "],")?;
 		}
 
 		// Options
 		if !self.options.is_empty() {
-			write!(out, "Some(super::TypeCheckOptions {{").unwrap();
+			write!(out, "Some(super::TypeCheckOptions {{")?;
 			for option in self.options {
-				write!(out, "{option}: true, ").unwrap();
+				write!(out, "{option}: true, ")?;
 			}
-			write!(out, "..super::TypeCheckOptions::default() }})").unwrap();
+			write!(out, "..super::TypeCheckOptions::default() }})")?;
 		} else {
-			write!(out, "None").unwrap();
+			write!(out, "None")?;
 		}
 
-		writeln!(out, ")}}").unwrap();
+		writeln!(out, ")}}")?;
+		Ok(())
 	}
 }
 
@@ -176,7 +192,7 @@ fn code_to_modules(code: &str) -> Vec<Module> {
 				modules.push(Module { path, code });
 			}
 			current_module_name = Some(path);
-			start = offset;
+			start = offset + line.len();
 		}
 	}
 
