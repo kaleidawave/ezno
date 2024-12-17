@@ -32,8 +32,7 @@ pub use errors::{ParseError, ParseErrors, ParseResult};
 pub use expressions::{Expression, PropertyReference};
 pub use extensions::{
 	decorators::{Decorated, Decorator},
-	is_expression,
-	jsx::*,
+	is_expression, jsx,
 };
 pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;

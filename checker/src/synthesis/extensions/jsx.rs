@@ -2,7 +2,10 @@
 
 use std::borrow::Cow;
 
-use parser::{ASTNode, Expression, JSXAttribute, JSXElement, JSXNode, JSXRoot};
+use parser::{
+	jsx::{JSXAttribute, JSXElement, JSXElementChildren, JSXNode, JSXRoot},
+	ASTNode, Expression,
+};
 
 use crate::{
 	context::invocation::CheckThings,
@@ -140,7 +143,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 	);
 	// }
 
-	let child_nodes = if let parser::JSXElementChildren::Children(ref children) = element.children {
+	let child_nodes = if let JSXElementChildren::Children(ref children) = element.children {
 		// fn get_children() {
 		let mut synthesised_child_nodes = ObjectBuilder::new(
 			Some(TypeId::ARRAY_TYPE),

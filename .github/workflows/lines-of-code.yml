@@ -38,7 +38,6 @@ jobs:
               --header "Content-Type: application/json" \
               --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
               --data "{\"project\":\"$name\",\"language\":\"rust\",\"loc\":$lines_of_code}" \
-              -w "\nUpdated-project: \n" \
               https://kaleidawave-projectinformation.web.val.run/update-project;
           }
           
