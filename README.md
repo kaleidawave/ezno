@@ -3,7 +3,7 @@ A fast and correct TypeScript type checker and compiler with additional experime
 > [!IMPORTANT]
 > Ezno is in active development and **does not currently support enough features to check existing projects** (see [blocking issues](https://github.com/kaleidawave/ezno/labels/blocking)). Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
 
-<!-- ![project lines of code](https://projects.kaleidawave.workers.dev/project/ezno/badge) -->
+<!-- ![project lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno/badge) -->
 
 What Ezno is:
 - A type checker for JavaScript usable through a CLI ([with a LSP also in the works](https://github.com/kaleidawave/ezno/issues/22))
@@ -29,6 +29,8 @@ Read more about Ezno (in chronological order)
 - [A preview of the checker](https://kaleidawave.github.io/posts/a-preview-of-the-checker/)
 - [The quest continues](https://kaleidawave.github.io/posts/the-quest-continues/)
 - [Sets, types and type checking](https://kaleidawave.github.io/posts/sets-types-and-type-checking/) (*general post*)
+- [Experimental types](https://kaleidawave.github.io/posts/experimental-types/)
+- [Mapped types and properties](https://kaleidawave.github.io/posts/mapped-types/)
 
 ---
 
@@ -36,10 +38,10 @@ This project is a workspace consisting of a few crates:
 
 | Crate | Lines Of Code | Contains |
 |---|---|---|
-| checker | ![checker lines of code](https://projects.kaleidawave.workers.dev/project/ezno-checker/badge) | Stores for types and contexts, type checking logic and optional synthesis over the parser AST |
-| parser | ![parser lines of code](https://projects.kaleidawave.workers.dev/project/ezno-parser/badge) | AST definitions, logic for parsing, AST to string and visiting |
-<!-- | ezno-web-framework | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
-<!-- | ezno-lsp | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
+| checker | ![checker lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno-checker/badge) | Stores for types and contexts, type checking logic and optional synthesis over the parser AST |
+| parser | ![parser lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno-parser/badge) | AST definitions, logic for parsing, AST to string and visiting |
+<!-- | ezno-web-framework | ![](https://kaleidawave-projectinformation.web.val.run/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
+<!-- | ezno-lsp | ![](https://kaleidawave-projectinformation.web.val.run/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
 
 ## Help contribute
 

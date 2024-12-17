@@ -187,7 +187,7 @@ pub(crate) fn run_repl(arguments: ReplArguments) {
 			continue;
 		} else if let "#exit" | ".exit" | "close()" = input.trim() {
 			break;
-		} 
+		}
 		system.execute_statement(input)
 	}
 }

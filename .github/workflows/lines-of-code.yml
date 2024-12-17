@@ -23,23 +23,23 @@ jobs:
       - name: Run update script
         run: |
           function record {
-            cratePath=$1
+            crate_path=$1
             name=$2
         
-            if [ -d "$cratePath/src" ] ; then
-                linesOfRustCode=$(scc -c --no-cocomo -f json -i rs "$cratePath/src" | jq '.[] | .Code');
+            if [ -d "$crate_path/src" ] ; then
+                lines_of_code=$(scc -c --no-cocomo -f json -i rs "$crate_path/src" | jq '.[] | .Code');
             else
-                linesOfRustCode=$(scc -c --no-cocomo -f json -i rs "$cratePath" | jq '.[] | .Code');
+                lines_of_code=$(scc -c --no-cocomo -f json -i rs "$crate_path" | jq '.[] | .Code');
             fi
         
-            echo "\`$name\` has $linesOfRustCode lines of code" >> $GITHUB_STEP_SUMMARY;
+            echo "\`$name\` has $lines_of_code lines of code" >> $GITHUB_STEP_SUMMARY;
 
             curl \
               --header "Content-Type: application/json" \
               --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
-              --data "{\"project\":\"$name\",\"language\":\"rust\",\"loc\":$linesOfRustCode}" \
+              --data "{\"project\":\"$name\",\"language\":\"rust\",\"loc\":$lines_of_code}" \
               -w "\nUpdated-project: \n" \
-              https://projects.kaleidawave.workers.dev/update-project;
+              https://kaleidawave-projectinformation.web.val.run/update-project;
           }
           
           record "parser" "ezno-parser"
