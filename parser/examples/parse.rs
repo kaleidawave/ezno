@@ -93,7 +93,7 @@ fn parse_path(
 
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
-	let result = Module::from_string_with_options(source.clone(), parse_options.clone(), None);
+	let result = Module::from_string_with_options(source.clone(), *parse_options, None);
 
 	match result {
 		Ok((module, state)) => {
@@ -127,13 +127,13 @@ fn parse_path(
 			}
 
 			if parse_imports {
-				for import in state.constant_imports.iter() {
+				for import in &state.constant_imports {
 					// Don't reparse files (+ catches cycles)
 					let resolved_path = path.parent().unwrap().join(import);
 					if fs.get_paths().contains_key(&resolved_path) {
 						continue;
 					}
-					let _ = parse_path(
+					let () = parse_path(
 						&resolved_path,
 						timings,
 						parse_imports,
@@ -160,7 +160,7 @@ fn parse_path(
 				line_column.column_start += 1;
 				line_column.column_end += 1;
 			}
-			eprintln!("error on {:?}", line_column);
+			eprintln!("error on {line_column:?}");
 
 			Err(Box::<dyn std::error::Error>::from(parse_err))
 		}

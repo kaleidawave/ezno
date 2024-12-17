@@ -35,7 +35,7 @@ fn lex_and_print_tokens(script: String, print_tokens: bool, top_level_html: bool
 		}
 	} else {
 		// Drain anyway
-		while let Some(_) = receiver.next() {}
+		while receiver.next().is_some() {}
 	}
 	// println!("{count} tokens");
 

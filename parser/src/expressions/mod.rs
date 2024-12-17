@@ -18,8 +18,8 @@ use self::{
 };
 
 use super::{
-	tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError, ParseOptions,
-	Span, TSXToken, Token, TokenReader, TypeAnnotation,
+	jsx::JSXRoot, tokens::token_as_identifier, ASTNode, Block, FunctionBase, ParseError,
+	ParseOptions, Span, TSXToken, Token, TokenReader, TypeAnnotation,
 };
 
 #[cfg(feature = "extras")]

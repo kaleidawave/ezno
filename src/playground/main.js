@@ -39,17 +39,19 @@ const theme = EditorView.theme({
 
 const STORE = "https://kaleidawave-savednamedplaygrounds.web.val.run"
 
-let text = "const x: 2 = 3;";
-let initialText = text;
+const defaultCode = "const x: string = 5;"
+let text = defaultCode;
 
 const { searchParams } = new URL(location);
 const id = searchParams.get("id");
 const raw = searchParams.get("raw");
 
+const LOCAL_STORAGE_KEY = "code";
+
 if (id) {
   fetch(STORE + `?id=${id}`, { method: "GET" }).then(res => res.json()).then((result) => {
     if (result.content) {
-      initialText = text = result.content
+      text = result.content;
       setup()
     } else if (result.error) {
       alert(`Error getting code for id '${result.error}'`)
@@ -57,10 +59,15 @@ if (id) {
   })
 } else {
   if (raw) {
-    initialText = text = raw;
+    text = raw;
+  } else {
+    text = window.localStorage.getItem(LOCAL_STORAGE_KEY) ?? defaultCode;
   }
   setup()
 }
+
+/** Used for not resharing same code, Mutable as set after sharing */
+let initialText = text;
 
 let currentState = null;
 
@@ -71,15 +78,16 @@ const options = {
   // For hover
   store_type_mappings: true,
   // For showing off
-  number_intrinsics: true
+  advanced_numbers: true
 };
 
 async function setup() {
   await init_ezno();
 
-  function getLinter() {
+  function runChecker() {
     return linter((args) => {
       text = args.state.doc.text.join("\n");
+      localStorage.setItem(LOCAL_STORAGE_KEY, text);
       try {
         const start = performance.now();
         currentState = check(ROOT_PATH, (_) => text, options);
@@ -149,13 +157,18 @@ async function setup() {
     return [cursor, cursorTooltipBaseTheme]
   }
 
+  const tsLanguage = LRLanguage.define({
+    parser: jsParser.configure({ dialect: "ts" }),
+    languageData: { commentTokens: { line: "// " } }
+  });
+
   const _editor = new EditorView({
     state: EditorState.create({
       doc: Text.of([text]),
       extensions: [
         keymap.of([...defaultKeymap, indentWithTab, toggleLineComment]),
         EditorState.tabSize.of(4),
-        new LanguageSupport(LRLanguage.define({ parser: jsParser.configure({ dialect: "ts" }), languageData: { commentTokens: { line: "// " } } }), [getLinter()]),
+        new LanguageSupport(tsLanguage, [runChecker()]),
         syntaxHighlighting(myHighlightStyle),
         getHover(),
         theme,
@@ -178,18 +191,22 @@ async function setup() {
       fetch(STORE, {
         method: "POST",
         body: JSON.stringify({ content: text })
-      }).then(res => res.json()).then((result) => {
-        if (result.id) {
-          url.searchParams.set("id", result.id);
-          url.searchParams.delete("raw");
-          history.pushState({}, "", url);
-          navigator.clipboard.writeText(url.toString()).then(() => {
-            alert("Share URL copied to clipboard")
-          });
-        } else if (result.error) {
-          alert(`Error sharing code '${result.error}'`)
-        }
       })
+        .then(res => res.json())
+        .then((result) => {
+          if (result.id) {
+            url.searchParams.set("id", result.id);
+            url.searchParams.delete("raw");
+            history.pushState({}, "", url);
+            navigator.clipboard
+              .writeText(url.toString())
+              .then(() => {
+                alert("Share URL copied to clipboard")
+              });
+          } else if (result.error) {
+            alert(`Error sharing code '${result.error}'`)
+          }
+        })
     } else {
       alert("Sharing existing code")
     }

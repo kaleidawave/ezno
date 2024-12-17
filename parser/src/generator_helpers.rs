@@ -19,13 +19,13 @@ impl<'a> From<&'a str> for Ident<'a> {
 	}
 }
 
-impl<'a> IntoAST<Expression> for Ident<'a> {
+impl IntoAST<Expression> for Ident<'_> {
 	fn into_ast(self) -> Expression {
 		Expression::VariableReference(self.0.to_owned(), source_map::Nullable::NULL)
 	}
 }
 
-impl<'a> IntoAST<Expression> for &'a str {
+impl IntoAST<Expression> for &str {
 	fn into_ast(self) -> Expression {
 		Expression::StringLiteral(
 			self.to_owned(),
@@ -35,13 +35,13 @@ impl<'a> IntoAST<Expression> for &'a str {
 	}
 }
 
-impl<'a> IntoAST<PropertyReference> for &'a str {
+impl IntoAST<PropertyReference> for &str {
 	fn into_ast(self) -> PropertyReference {
 		PropertyReference::Standard { property: self.to_owned(), is_private: false }
 	}
 }
 
-impl<'a> IntoAST<VariableIdentifier> for &'a str {
+impl IntoAST<VariableIdentifier> for &str {
 	fn into_ast(self) -> VariableIdentifier {
 		VariableIdentifier::Standard(self.to_owned(), source_map::Nullable::NULL)
 	}

@@ -6,8 +6,9 @@
 
 use super::{Span, TSXToken};
 use crate::{
-	errors::LexingErrors, html_tag_contains_literal_content, html_tag_is_self_closing, Comments,
-	Quoted,
+	errors::LexingErrors,
+	jsx::{html_tag_contains_literal_content, html_tag_is_self_closing},
+	Comments, Quoted,
 };
 use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
 

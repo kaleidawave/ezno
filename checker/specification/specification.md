@@ -4098,12 +4098,12 @@ type Required<T> = {
 #### Readonly
 
 ```ts
-type Mutable<T> = {
+type Immutable<T> = {
 	readonly [P in keyof T]: T[P];
 };
 
 interface Y { a: string }
-declare let x: Mutable<Y>;
+declare let x: Immutable<Y>;
 x.a = "hi";
 ```
 
@@ -4122,7 +4122,7 @@ x.a = "hi";
 x.a = 4;
 ```
 
-<!-- TODO this is incorrect!!!!, should be string -->
+> TODO this message is incorrect!!!!, should be string
 
 - Type 4 does not meet property constraint "hi"
 
@@ -4749,13 +4749,13 @@ proxy1.a satisfies string;
 #### Proxy subtyping
 
 ```ts
-const proxy1 = new Proxy({}, { get(_target, prop, _receiver) { return prop } });
+const proxy1 = new Proxy({}, { get(_target, prop, receiver) { return prop } });
 
 proxy1 satisfies { a: "a", b: "b" };
 proxy1 satisfies { c: "d" };
 ```
 
-- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _receiver: any) => any } ]
+- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, receiver: any) => any } ]
 
 #### Proxy across functions
 
