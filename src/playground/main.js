@@ -1,17 +1,18 @@
-import { EditorView, keymap, hoverTooltip } from "@codemirror/view";
-import { EditorState, Text } from "@codemirror/state";
+import { EditorView, keymap, hoverTooltip, lineNumbers } from "@codemirror/view";
+import { EditorState, Text, EditorSelection } from "@codemirror/state";
 import { linter } from "@codemirror/lint";
 import { defaultKeymap, indentWithTab, toggleLineComment } from "@codemirror/commands";
 import { parser as jsParser } from "@lezer/javascript";
 import { tags } from "@lezer/highlight";
 import { HighlightStyle, syntaxHighlighting, LanguageSupport, LRLanguage } from "@codemirror/language";
-import { init as init_ezno, check, get_version } from "ezno";
+import { init as init_ezno, check, get_version, experimental_build } from "ezno";
 
-const diagnosticsEntry = document.querySelector(".diagnostics");
-const editorParent = document.querySelector("#editor");
-const shareButton = document.querySelector("#share");
-
-const timeOutput = document.querySelector("#time");
+const body = document.body;
+const diagnosticsEntry = body.querySelector(".diagnostics"),
+  editorParent = body.querySelector("#editor"),
+  shareButton = body.querySelector("#share"),
+  buildButton = body.querySelector("#build"),
+  timeOutput = body.querySelector("#time");
 
 const myHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#C792EA' },
@@ -26,16 +27,39 @@ const theme = EditorView.theme({
   "&": {
     backgroundColor: "#101010",
     padding: "20px",
-    fontSize: "18px",
-    borderRadius: "8px"
+    borderRadius: "8px",
+    fontSize: "14px",
+    fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace"
+  },
+  ".cm-scroller": {
+    fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace"
   },
   ".cm-content": {
     caretColor: "white"
   },
-  ".cm-diagnostic": {
-    color: "black"
+  ".cm-diagnostic-error": {
+    borderLeft: "5px solid #52050b",
+    padding: "4px 6px",
+  },
+  ".cm-tooltip-hover": {
+    color: "#bebebe",
+    backgroundColor: "black",
+    borderRadius: "4px",
+  },
+  ".cm-diagnosticSource": {
+    display: "inline",
+    position: "relative",
+    top: "-2px",
+    marginLeft: "10px",
+  },
+  ".cm-tooltip-section:not(.cm-tooltip-lint)": {
+    padding: "4px 6px"
+  },
+  ".cm-gutters": {
+    background: "none",
+    paddingRight: "10px"
   }
-});
+}, { dark: true });
 
 const STORE = "https://kaleidawave-savednamedplaygrounds.web.val.run"
 
@@ -84,6 +108,8 @@ const options = {
 async function setup() {
   await init_ezno();
 
+  const checkerNameAndVersion = `ezno@${get_version()}`;
+
   function runChecker() {
     return linter((args) => {
       text = args.state.doc.text.join("\n");
@@ -97,6 +123,7 @@ async function setup() {
         diagnosticsEntry.innerHTML = "";
         for (const diagnostic of currentState.diagnostics) {
           const entry = document.createElement("li");
+          entry.setAttribute("data-range", `${diagnostic.position.start}-${diagnostic.position.end}`)
           entry.innerText = diagnostic.reason;
           diagnosticsEntry.appendChild(entry);
         }
@@ -106,6 +133,20 @@ async function setup() {
           to: position.end,
           message: reason,
           severity: kind.toLowerCase(),
+          source: checkerNameAndVersion
+          // renderMessage(_view) {
+          //   console.log("here");
+          //   const dom = document.createElement("div")
+          //   const s1 = document.createElement("span");
+          //   s1.textContent = reason;
+          //   dom.append(s1);
+          //   const s2 = document.createElement("span");
+          //   s2.classList.add("from");
+          //   s2.textContent = reason;
+          //   dom.append(s2);
+          //   // setTimeout(() => { debugger; }, 2000);
+          //   return { dom }
+          // }
         }));
       } catch (err) {
         alert(`Error: ${err}`)
@@ -114,8 +155,9 @@ async function setup() {
   }
 
   function getHover() {
-    const cursor = hoverTooltip((_view, pos, _side) => {
+    function showHover(_view, pos, _side) {
       if (currentState) {
+        // TODO with position information so highlights item
         const type = currentState.get_type_at_position(ROOT_PATH, pos);
         if (typeof type !== "undefined") {
           return {
@@ -123,12 +165,10 @@ async function setup() {
             end: pos,
             above: true,
             create(_view) {
-              let dom = document.createElement("div")
-              dom.textContent = type
-              // TODO!
-              dom.style.color = "black";
+              const dom = document.createElement("span")
+              dom.textContent = type;
               return { dom }
-            }
+            },
           }
         } else {
           return null
@@ -136,25 +176,9 @@ async function setup() {
       } else {
         return null
       }
-    });
+    }
 
-    const cursorTooltipBaseTheme = EditorView.baseTheme({
-      ".cm-tooltip.cm-tooltip-cursor": {
-        backgroundColor: "#66b",
-        color: "black",
-        border: "2px solid red",
-        padding: "2px 7px",
-        borderRadius: "4px",
-        "& .cm-tooltip-arrow:before": {
-          borderTopColor: "#66b"
-        },
-        "& .cm-tooltip-arrow:after": {
-          borderTopColor: "transparent"
-        }
-      }
-    })
-
-    return [cursor, cursorTooltipBaseTheme]
+    return hoverTooltip(showHover)
   }
 
   const tsLanguage = LRLanguage.define({
@@ -162,10 +186,11 @@ async function setup() {
     languageData: { commentTokens: { line: "// " } }
   });
 
-  const _editor = new EditorView({
+  const editor = new EditorView({
     state: EditorState.create({
-      doc: Text.of([text]),
+      doc: Text.of(text.split("\n")),
       extensions: [
+        lineNumbers(),
         keymap.of([...defaultKeymap, indentWithTab, toggleLineComment]),
         EditorState.tabSize.of(4),
         new LanguageSupport(tsLanguage, [runChecker()]),
@@ -177,9 +202,15 @@ async function setup() {
     parent: editorParent,
   });
 
-  console.log("Editor ready")
-  console.log(`Running ezno@${get_version()}`)
-  document.querySelector("#version").innerText = `Running ezno@${get_version()}`;
+  console.debug(`Editor ready. Running ${checkerNameAndVersion}`);
+  document.querySelector("#version").innerText = `Running ${checkerNameAndVersion}`;
+
+  document.querySelector(".diagnostics").addEventListener("click", (ev) => {
+    const li = ev.target;
+    const [start, end] = li.getAttribute("data-range").split("-");
+    // TODO doesn't do what expected to do
+    const _response = editor.dispatch({ selection: EditorSelection.range(start, end), scrollIntoView: true });
+  });
 
   shareButton.addEventListener("click", () => {
     const url = new URL(location);
@@ -210,5 +241,16 @@ async function setup() {
     } else {
       alert("Sharing existing code")
     }
-  })
+  });
+
+  buildButton.addEventListener("click", () => {
+    const strip_whitespace = body.querySelector("#strip_whitespace").checked;
+    const tree_shake = body.querySelector("#tree_shake").checked;
+    const results = experimental_build("index.tsx", (_) => text, { strip_whitespace, tree_shake });
+    let s = "// Build output:\n";
+    for (const artifact of results.artifacts) {
+      s += `// ${artifact.output_path}\n${artifact.content}`;
+    }
+    body.querySelector("#build-output").innerHTML = s;
+  });
 }

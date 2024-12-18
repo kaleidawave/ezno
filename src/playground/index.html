@@ -36,22 +36,27 @@
             <ol class="diagnostics">
             </ol>
         </div>
-        <button id="share">Share</button>
-        <button id="build">Compile</button>
-        <details>
-            <summary>More:</summary>
-            <div id="version"></div>
-            <div id="time"></div>
-            <form action="">
-                <label for="">Whitespace minify</label>
-                <input type="checkbox" name="" id="">
-                <label for="">Tree shake</label>
-                <input type="checkbox" name="" id="">
-                <label for="">Run linter</label>
-                <input type="checkbox" name="" id="">
-            </form>
-        </details>
-        <pre id="build-output"></pre>
+        <div class="extras">
+            <button id="share">Share</button>
+            <button id="build">Build</button>
+            <details>
+                <summary>More:</summary>
+                <div id="version"></div>
+                <div id="time"></div>
+            </details>
+            <details>
+                <summary>Build config:</summary>
+                <form id="build-config">
+                    <label for="">Strip whitespace</label>
+                    <input type="checkbox" name="strip_whitespace" id="strip_whitespace">
+                    <label for="">Tree shake</label>
+                    <input type="checkbox" name="tree_shake" id="tree_shake">
+                    <!-- <label for="">Run linter</label>
+                    <input type="checkbox" name="run-linter" id="run-linter"> -->
+                </form>
+            </details>
+            <pre id="build-output"></pre>
+        </div>
     </main>
     <footer>
         <hr>
