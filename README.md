@@ -12,7 +12,7 @@ What Ezno is:
 - A *imperative* type system that tracks and evaluates the side effects of functions and control flow structures. It is similar to an interpreter, but acts with types instead of *values* and does not run IO, side effects, etc.
 - A collection of experiments of types. Many are being worked out and are in the prototype stage. Some of the new behaviors benefit JavaScript specifically and others could be applied to other languages
 - Written in Rust
-- [Fast](https://github.com/kaleidawave/ezno/actions/workflows/performance-and-size.yml) and [Small](https://github.com/kaleidawave/ezno/actions/workflows/lines-of-code.yml)
+- [Fast](https://kaleidawave-getlatestgithubrun.web.val.run/kaleidawave/ezno/main?workflow=performance) and [Small](https://kaleidawave-getlatestgithubrun.web.val.run/kaleidawave/ezno/main?workflow=lines-of-code)
 - Open source! [You can help build Ezno!](https://github.com/kaleidawave/ezno/issues?q=is%3Aopen+label%3Agood-first-issue%2Cfeedback-needed)
 - A challenge to the status quo of type checking, optimisations and compilation through deeper static analysis beyond syntax analysis!
 

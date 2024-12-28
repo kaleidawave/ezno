@@ -37,15 +37,25 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-      # TODO need to lookup existing workflow on main
-      # even if this worked, it might have issues with newer features added in this run
-      # - name: Get base ezno
-      #   if: github.ref_name != 'main'
-      #   uses: actions/download-artifact@v4
-      #   continue-on-error: true
-      #   with:
-      #     name: latest-checker
-      #     path: previous-ezno
+      - name: Get last run
+        id: get-last-run
+        run: >
+          # First result should come up within 10 runs from main
+          id=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            '/repos/kaleidawave/ezno/actions/runs?branch=main&per_page=10' \
+            --jq '[.workflow_runs[] | select(.path == ".github/workflows/examples.yml")][0].id')
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Get base ezno
+        if: github.ref_name != 'main'
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: latest-checker
+          path: previous-ezno
+          run-id: ${{ steps.get-last-run.outputs.run_id }}
 
       - name: Set compilers
         id: compilers
@@ -134,14 +144,14 @@ jobs:
         shell: bash
         if: github.ref_name != 'main'
         run: |
-          echo "::group::Running all"
+          echo "::group::Running with staging"
           
-          cat ./checker/specification/specification.md ./checker/specification/staging.md > all.md
-          cargo run -p ezno-parser --example code_blocks_to_script all.md --comment-headers --out ./all.tsx
+          cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
+          cargo run -p ezno-parser --example code_blocks_to_script with-staging.md --comment-headers --out ./with-staging.tsx
 
-          ./target/release/ezno check all.tsx --timings || true
+          ./target/release/ezno check with-staging.tsx --timings || true
+          ./target/release/ezno check with-staging.tsx --timings || true
 
-          hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check all.tsx'
           echo "::endgroup::"
             
       - name: Run checker performance on large file
@@ -171,13 +181,13 @@ jobs:
             echo "::group::Running $compiler"
             
             echo "::group::Callgrind"
-            valgrind --tool=callgrind --callgrind-out-file=cpu-out $compiler check demo.tsx | true
+            valgrind --tool=callgrind --callgrind-out-file=cpu-out $compiler check demo.tsx --max-diagnostics 0 | true
             echo "CPU usage:"
             head -n100 cpu-out
             echo "::endgroup::"
   
             echo "::group::Valgrind"
-            valgrind --log-file=memory-out $compiler check demo.tsx | true
+            valgrind --log-file=memory-out $compiler check demo.tsx --max-diagnostics 0 | true
             echo "Memory usage:"
             cat memory-out
             echo "::endgroup::"
@@ -205,10 +215,10 @@ jobs:
             echo "::endgroup::"
           done
 
-      # - name: Upload checker
-      #   if: github.ref == 'main'
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: latest-checker
-      #     path: target/release/ezno
-      #     retention-days: 90
+      - name: Upload checker
+        if: github.ref == 'main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-checker
+          path: target/release/ezno
+          retention-days: 90

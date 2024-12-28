@@ -31,7 +31,7 @@ pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync 
 pub struct AlwaysPublic;
 
 // #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-#[allow(dead_code)]
+// #[allow(dead_code)]
 // const TYPES_ALWAYS_PUBLIC: &str = r"
 // 	export type AlwaysPublic = false;
 // ";
@@ -62,7 +62,7 @@ pub enum PublicOrPrivate {
 }
 
 // #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
-#[allow(dead_code)]
+// #[allow(dead_code)]
 // const TYPES_PUBLIC_OR_PRIVATE: &str = r"
 // 	export type PublicOrPrivate = boolean;
 // ";

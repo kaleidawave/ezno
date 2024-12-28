@@ -34,6 +34,14 @@ impl WASMCheckOutput {
 		self.0.get_type_at_position(path, pos, true)
 	}
 
+	pub fn get_type_at_position_with_span(
+		&self,
+		path: &str,
+		pos: u32,
+	) -> Option<(String, SpanWithSource)> {
+		self.0.get_type_at_position_with_span(path, pos)
+	}
+
 	pub fn get_module_ast(&self, path: &str) -> JsValue {
 		self.0.get_module(path).map_or(JsValue::NULL, |m| {
 			serde_wasm_bindgen::to_value(m).expect("cannot turn Module into `JsValue`")
@@ -77,9 +85,7 @@ pub fn check_wasm(
 const TYPES_WASM_CHECK_OUTPUT: &str = r###"
 interface WASMBuildOutput {
 	readonly artifacts: Array<Output>,
-	readonly diagnostics: DiagnosticsContainer,
-	get_type_at_position(path: string, pos: number): string;
-	get_type_at_position_debug(path: string, pos: number): string;
+	readonly check_output: WASMCheckOutput,
 }
 "###;
 #[wasm_bindgen]
@@ -95,17 +101,9 @@ impl WASMBuildOutput {
 		serde_wasm_bindgen::to_value(&self.artifacts).unwrap()
 	}
 
-	#[wasm_bindgen(js_name = diagnostics, getter, skip_typescript)]
-	pub fn get_diagnostics(&self) -> JsValue {
-		self.check_output.get_diagnostics()
-	}
-
-	pub fn get_type_at_position(&self, path: &str, pos: u32) -> Option<String> {
-		self.check_output.get_type_at_position(path, pos)
-	}
-
-	pub fn get_type_at_position_debug(&self, path: &str, pos: u32) -> Option<String> {
-		self.check_output.get_type_at_position_debug(path, pos)
+	#[wasm_bindgen(js_name = check_output, getter, skip_typescript)]
+	pub fn get_diagnostics(&self) -> WASMCheckOutput {
+		self.check_output
 	}
 }
 
