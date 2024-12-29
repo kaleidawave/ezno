@@ -70,6 +70,7 @@ impl ASTNode for ClassMember {
 		let is_multiline_comment = reader.starts_with_str("/*");
 		if is_multiline_comment || reader.starts_with_str("//") {
 			let start = reader.get_start();
+			reader.advance(2);
 			let comment = reader.parse_comment_literal(is_multiline_comment)?;
 			let position = start.with_length(if is_multiline_comment {
 				comment.len() + 2

@@ -932,15 +932,13 @@ impl<'a> Lexer<'a> {
 	}
 
 	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
-	///
-	/// TODO Also returns the line difference
 	pub fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
 		let last = self.state.last_new_lines;
 		// TODO order
 		let semi_colon_like = self.starts_with_str("//")
+			|| self.is_operator_advance(";")
 			|| self.last_was_from_new_line() > 0
 			|| self.is_operator("}")
-			|| self.is_operator_advance(";")
 			// TODO what about spaces
 			|| self.starts_with_str("\n")
 			|| self.is_finished();

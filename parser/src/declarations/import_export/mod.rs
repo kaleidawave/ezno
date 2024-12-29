@@ -194,7 +194,7 @@ impl ImportExportName {
 			let marker = reader.new_partial_point_marker(position);
 			Ok((ImportExportName::Marker(marker), position))
 		} else {
-			let identifier = reader.parse_identifier("import alias", true)?.to_owned();
+			let identifier = reader.parse_identifier("import alias", false)?.to_owned();
 			if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
 				let position = start.with_length(0);
 				Ok((ImportExportName::Marker(reader.new_partial_point_marker(position)), position))
