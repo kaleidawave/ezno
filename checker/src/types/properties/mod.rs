@@ -83,7 +83,7 @@ impl crate::BinarySerializable for PropertyKey<'static> {
 	}
 }
 
-impl<'a> PropertyKey<'a> {
+impl PropertyKey<'_> {
 	#[must_use]
 	pub fn into_owned(&self) -> PropertyKey<'static> {
 		match self {
@@ -214,7 +214,7 @@ pub(crate) fn get_simple_property_value(
 // WIP quick hack for static property keys under < 10
 static NUMBERS: &str = "0123456789";
 
-impl<'a> PropertyKey<'a> {
+impl PropertyKey<'_> {
 	/// For small array indexes
 	#[must_use]
 	pub fn from_usize(a: usize) -> Self {

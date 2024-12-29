@@ -407,7 +407,7 @@ pub(crate) static NOT_NULL_OR_UNDEFINED: Filter<'static> = Filter::Not(&NULL_OR_
 pub(crate) static FASLY: Filter<'static> = Filter::Falsy;
 pub(crate) static NOT_FASLY: Filter<'static> = Filter::Not(&FASLY);
 
-impl<'a> Filter<'a> {
+impl Filter<'_> {
 	// Returns `true` if `value` passes filter
 	pub(crate) fn type_matches_filter(
 		&self,

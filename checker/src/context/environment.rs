@@ -79,9 +79,9 @@ impl DynamicBoundaryKind {
 	}
 }
 
-impl<'a> ContextType for Syntax<'a> {
-	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
-		GeneralContext::Syntax(et)
+impl ContextType for Syntax<'_> {
+	fn as_general_context(context: &Context<Self>) -> GeneralContext<'_> {
+		GeneralContext::Syntax(context)
 	}
 
 	fn get_parent(&self) -> Option<&GeneralContext<'_>> {
@@ -238,7 +238,7 @@ impl Scope {
 	}
 }
 
-impl<'a> Environment<'a> {
+impl Environment<'_> {
 	/// Handles all assignments, including updates and destructuring
 	///
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
