@@ -246,7 +246,6 @@ impl ASTNode for BlockOrSingleStatement {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		let stmt = Statement::from_reader(reader)?;
-		// dbg!(&stmt, reader.get_current());
 		Ok(match stmt {
 			Statement::Block(blk) => Self::Braced(blk),
 			stmt => {

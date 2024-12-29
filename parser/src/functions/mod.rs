@@ -89,8 +89,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 	fn parameters_from_reader(
 		reader: &mut crate::new::Lexer,
 	) -> ParseResult<FunctionParameters<Self::LeadingParameter, Self::ParameterVisibility>> {
-		todo!()
-		// FunctionParameters::from_reader(reader)
+		FunctionParameters::from_reader(reader)
 	}
 
 	/// For [`crate::ArrowFunction`]
@@ -211,7 +210,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 		} else {
 			None
 		};
-		let parameters = FunctionParameters::from_reader(reader)?;
+		let parameters = T::parameters_from_reader(reader)?;
 		let return_type = if reader.is_operator_advance(":") {
 			let precedence = if let Some("=>") = T::get_parameter_body_boundary_slice() {
 				crate::types::type_annotations::TypeOperatorKind::ReturnType

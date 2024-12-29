@@ -398,7 +398,7 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 ) -> ParseResult<(Vec<T>, Option<T::LAST>)> {
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if (T::allow_empty() || nodes.len() == 0) && reader.is_operator_advance(end) {
+		if (T::allow_empty() || nodes.is_empty()) && reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		}
 

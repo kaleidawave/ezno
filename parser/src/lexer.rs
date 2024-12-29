@@ -851,7 +851,6 @@ impl<'a> Lexer<'a> {
 
 				bracket_count = bracket_count.saturating_sub(1);
 				if bracket_count == 0 {
-					// dbg!(&current[..idx]);
 					return current[(idx + 1)..].trim_start();
 				}
 			}

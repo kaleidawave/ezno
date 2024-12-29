@@ -89,10 +89,7 @@ function y(c: ) {
 
 #[test]
 fn property_access() {
-	let input = r"console.log(x., 2)
-"
-	.trim_start()
-	.replace("    ", "\t");
+	let input = r"console.log(x., 2)".trim_start().replace("    ", "\t");
 
 	let module = Module::from_string(
 		input.clone(),
