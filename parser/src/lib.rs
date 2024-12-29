@@ -182,21 +182,6 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	T::from_reader(&mut lexer).map(|ok| (ok, state))
 }
 
-// pub(crate) fn throw_unexpected_token<T>(
-// 	reader: &mut impl TokenReader<TSXToken, TokenStart>,
-// 	expected: &[TSXToken],
-// ) -> ParseResult<T> {
-// 	throw_unexpected_token_with_token(reader.next().unwrap(), expected)
-// }
-
-// pub(crate) fn throw_unexpected_token_with_token<T>(
-// 	token: Token<TSXToken, TokenStart>,
-// 	expected: &[TSXToken],
-// ) -> ParseResult<T> {
-// 	let position = token.get_span();
-// 	Err(ParseError::new(ParseErrors::UnexpectedToken { expected, found: token.0 }, position))
-// }
-
 #[derive(Debug)]
 pub struct ParsingState {
 	pub line_starts: source_map::LineStarts,

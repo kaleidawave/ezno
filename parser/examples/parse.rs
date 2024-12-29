@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, path::Path, time::Instant};
+use std::{path::Path, time::Instant};
 
 use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
@@ -6,8 +6,8 @@ use source_map::FileSystem;
 type Files = source_map::MapFileStore<source_map::WithPathMap>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let mut args: VecDeque<_> = std::env::args().skip(1).collect();
-	let path = args.pop_front().ok_or("expected argument")?;
+	let mut args: std::collections::VecDeque<_> = std::env::args().skip(1).collect();
+	let path = args.pop_front().ok_or("expected path argument")?;
 
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None

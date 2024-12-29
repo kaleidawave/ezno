@@ -46,9 +46,8 @@ impl ASTNode for WhileStatement {
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct DoWhileStatement {
-	pub condition: MultipleExpression,
-	// TODO unsure about true here
 	pub inner: BlockOrSingleStatement,
+	pub condition: MultipleExpression,
 	pub position: Span,
 }
 
@@ -64,7 +63,7 @@ impl ASTNode for DoWhileStatement {
 		let _ = reader.expect('(')?;
 		let condition = MultipleExpression::from_reader(reader)?;
 		let position = start.union(reader.expect(')')?);
-		Ok(Self { condition, inner, position })
+		Ok(Self { inner, condition, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

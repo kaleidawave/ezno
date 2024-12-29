@@ -58,6 +58,8 @@ pub enum Statement {
 		statement: Box<Statement>,
 	},
 	VarVariable(VarVariableStatement),
+	/// FUTURE under cfg?
+	WithStatement(WithStatement),
 	Empty(Span),
 	/// Lol
 	AestheticSemiColon(Span),
@@ -97,9 +99,7 @@ impl ASTNode for Statement {
 		reader.skip();
 		let start = reader.get_start();
 
-		if reader.is_keyword("var") {
-			VarVariableStatement::from_reader(reader).map(Statement::VarVariable)
-		} else if reader.is_keyword("if") {
+		if reader.is_keyword("if") {
 			IfStatement::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("for") {
 			ForLoopStatement::from_reader(reader).map(Into::into)
@@ -111,6 +111,10 @@ impl ASTNode for Statement {
 			DoWhileStatement::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("try") {
 			TryCatchStatement::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword("var") {
+			VarVariableStatement::from_reader(reader).map(Statement::VarVariable)
+		} else if reader.is_keyword("with") {
+			WithStatement::from_reader(reader).map(Statement::WithStatement)
 		} else if reader.starts_with('{') {
 			Block::from_reader(reader).map(Statement::Block)
 		} else if reader.is_keyword_advance("debugger") {
@@ -143,8 +147,6 @@ impl ASTNode for Statement {
 			let expression = MultipleExpression::from_reader(reader)?;
 			let position = start.union(expression.get_position());
 			Ok(Statement::Throw(ThrowStatement(Box::new(expression), position)))
-		} else if reader.is_keyword_advance("with") {
-			todo!()
 		} else if reader.is_operator_advance(";") {
 			Ok(Statement::AestheticSemiColon(start.with_length(1)))
 		} else if reader.is_operator_advance("//") {
@@ -157,7 +159,8 @@ impl ASTNode for Statement {
 				start.with_length(4 + content.len()),
 			))
 		} else {
-			MultipleExpression::from_reader(reader).map(Statement::Expression)
+			let expression = MultipleExpression::from_reader(reader)?;
+			Ok(Statement::Expression(expression))
 		}
 	}
 
@@ -170,6 +173,14 @@ impl ASTNode for Statement {
 		match self {
 			Statement::Empty(..) => {}
 			Statement::AestheticSemiColon(..) => buf.push(';'),
+			Statement::If(is) => is.to_string_from_buffer(buf, options, local),
+			Statement::ForLoop(fl) => fl.to_string_from_buffer(buf, options, local),
+			Statement::Switch(ss) => ss.to_string_from_buffer(buf, options, local),
+			Statement::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, local),
+			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, local),
+			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, local),
+			Statement::VarVariable(stmt) => stmt.to_string_from_buffer(buf, options, local),
+			Statement::WithStatement(stmt) => stmt.to_string_from_buffer(buf, options, local),
 			Statement::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
 				if let Some(expression) = expression {
@@ -177,12 +188,6 @@ impl ASTNode for Statement {
 					expression.to_string_from_buffer(buf, options, local);
 				}
 			}
-			Statement::If(is) => is.to_string_from_buffer(buf, options, local),
-			Statement::ForLoop(fl) => fl.to_string_from_buffer(buf, options, local),
-			Statement::Switch(ss) => ss.to_string_from_buffer(buf, options, local),
-			Statement::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, local),
-			Statement::DoWhileLoop(dws) => dws.to_string_from_buffer(buf, options, local),
-			Statement::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, local),
 			Statement::Comment(comment, _) => {
 				if options.should_add_comment(comment.as_str()) {
 					buf.push_str("//");
@@ -246,7 +251,6 @@ impl ASTNode for Statement {
 				buf.push_str("throw ");
 				thrown_expression.to_string_from_buffer(buf, options, local);
 			}
-			Statement::VarVariable(var_stmt) => var_stmt.to_string_from_buffer(buf, options, local),
 		}
 	}
 }
@@ -263,7 +267,7 @@ impl Statement {
 			self,
 			Statement::VarVariable(_)
 				| Statement::Expression(_)
-				// | Statement::DoWhileLoop(_)
+				| Statement::DoWhileLoop(_)
 				| Statement::Continue(..)
 				| Statement::Break(..)
 				| Statement::Return(..)

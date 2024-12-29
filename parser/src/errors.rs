@@ -67,7 +67,7 @@ pub enum ParseErrors<'a> {
 	TypeAnnotationUsed,
 }
 
-impl<'a> Display for ParseErrors<'a> {
+impl Display for ParseErrors<'_> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			ParseErrors::UnexpectedCharacter { expected, found } => {
@@ -219,7 +219,7 @@ mod utilities {
 
 pub trait ParserErrorReason: Display {}
 
-impl<'a> ParserErrorReason for ParseErrors<'a> {}
+impl ParserErrorReason for ParseErrors<'_> {}
 
 /// A error for not parsing
 #[derive(Debug)]

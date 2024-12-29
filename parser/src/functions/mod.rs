@@ -412,7 +412,7 @@ impl ASTNode for FunctionHeader {
 		}
 
 		let start = reader.get_start();
-		let is_async = reader.is_operator_advance("async");
+		let is_async = reader.is_keyword_advance("async");
 
 		#[cfg(feature = "extras")]
 		if reader.is_keyword_advance("generator") {

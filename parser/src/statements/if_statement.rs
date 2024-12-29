@@ -49,6 +49,7 @@ impl ASTNode for IfStatement {
 		reader.expect(')')?;
 
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
+
 		let (mut else_conditions, mut trailing_else) =
 			(Vec::<ConditionalElseStatement>::new(), None::<UnconditionalElseStatement>);
 

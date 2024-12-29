@@ -30,24 +30,38 @@ impl ASTNode for TemplateLiteral {
 
 		let mut parts = Vec::new();
 		loop {
-			let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
-				// TODO might be a problem
-				let position = reader.get_start().with_length(reader.get_current().len());
-				crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
-			})?;
-			if let "${" = found {
-				let expression = MultipleExpression::from_reader(reader)?;
-				reader.expect('}')?;
-				parts.push((content.to_owned(), expression));
-			} else {
-				return Ok(Self {
-					parts,
-					last: content.to_owned(),
-					tag,
-					position: start.union(reader.get_end()),
-				});
+			let current = reader.get_current();
+			let mut escaped = false;
+			for (idx, chr) in current.char_indices() {
+				if escaped {
+					escaped = false;
+					continue;
+				} else if let '\\' = chr {
+					escaped = true;
+					continue;
+				}
+
+				if let '`' = chr {
+					let start = reader.get_start();
+					reader.advance((idx + '`'.len_utf8()) as u32);
+					return Ok(Self {
+						parts,
+						last: current[..idx].to_owned(),
+						tag,
+						position: start.union(reader.get_end()),
+					});
+				} else if current[idx..].starts_with("${") {
+					let content = current[..idx].to_owned();
+					reader.advance((idx + "${".len()) as u32);
+					let expression = MultipleExpression::from_reader(reader)?;
+					reader.expect('}')?;
+					parts.push((content, expression));
+					break;
+				}
 			}
 		}
+		let position = reader.get_start().with_length(reader.get_current().len());
+		Err(crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

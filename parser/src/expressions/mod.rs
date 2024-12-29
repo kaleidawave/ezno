@@ -545,6 +545,13 @@ impl Expression {
 		return_precedence: u8,
 		first_expression: Expression,
 	) -> ParseResult<Self> {
+		// Order is important here
+		// TODO "<@>", "|>", disable
+		static POSTFIX_BINARY_OPERATORS: &[&str] = &[
+			"**", "+", "-", "*", "+", "-", "*", "/", "<@>", "|>", ">>>", "<<", ">>", "<=", ">=",
+			"<", ">", "===", "==", "!==", "!=", "%", "??", "&&", "||", "&", "|", "^",
+		];
+
 		let mut top = first_expression;
 		// TODO expression delimiter
 		while !reader.is_finished() {
@@ -572,27 +579,9 @@ impl Expression {
 					is_optional: false,
 				};
 				continue;
-			} else if reader.is_operator_advance("//") {
-				let content = reader.parse_comment_literal(false)?.to_owned();
-				let position = top.get_position().union(reader.get_end());
-				top = Expression::Comment {
-					is_multiline: false,
-					content,
-					position,
-					on: Box::new(top),
-					prefix: false,
-				};
-				continue;
 			}
 
 			reader.skip();
-
-			// Order is important here
-			// TODO "<@>", "|>", disable
-			let postfix_binary_operators = &[
-				"**", "+", "-", "*", "+", "-", "*", "/", "<@>", "|>", ">>>", "<<", ">>", "<=",
-				">=", "<", ">", "===", "==", "!==", "!=", "%", "??", "&&", "||", "&", "|", "^",
-			];
 
 			if reader.starts_with_str(")")
 				|| reader.starts_with_str("]")
@@ -601,16 +590,30 @@ impl Expression {
 				return Ok(top);
 			}
 
-			if reader.is_operator_advance("/*") {
-				let content = reader.parse_comment_literal(true)?.to_owned();
-				let position = top.get_position().union(reader.get_end());
-				top = Expression::Comment {
-					is_multiline: true,
-					content,
-					position,
-					on: Box::new(top),
-					prefix: false,
-				};
+			if let Some(operator_str) = reader.is_one_of_operators(&["//", "/*"]) {
+				let after = reader.after_comment_literals();
+				let expresion_level_comment = after.starts_with(|chr: char| !chr.is_alphanumeric())
+					|| after.starts_with("in")
+					|| after.starts_with("instanceof")
+					|| after.starts_with("as")
+					|| after.starts_with("satisfies")
+					|| after.starts_with("is");
+
+				if expresion_level_comment {
+					let is_multiline = operator_str == "/*";
+					reader.advance(operator_str.len() as u32);
+					let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+					let position = top.get_position().union(reader.get_end());
+					top = Expression::Comment {
+						is_multiline,
+						content,
+						position,
+						on: Box::new(top),
+						prefix: false,
+					};
+				} else {
+					return Ok(top);
+				}
 			} else if let Some(operator_str) = reader.is_one_of_operators(&["++", "--"]) {
 				let operator = UnaryPostfixAssignmentOperator(match operator_str {
 					"++" => IncrementOrDecrement::Increment,
@@ -631,7 +634,7 @@ impl Expression {
 					operator,
 					position,
 				};
-			} else if let Some(operator_str) = reader.is_one_of_operators(postfix_binary_operators)
+			} else if let Some(operator_str) = reader.is_one_of_operators(POSTFIX_BINARY_OPERATORS)
 			{
 				// TODO could abstract this as left<->right etc + string options
 				let operator = match operator_str {

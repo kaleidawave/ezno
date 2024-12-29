@@ -153,7 +153,10 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		for item in keywords {
 			if current.starts_with(item)
-				&& current[item.len()..].chars().next().map_or(true, |chr| !chr.is_alphanumeric())
+				&& current[item.len()..]
+					.chars()
+					.next()
+					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
 			{
 				return Some(item);
 			}
@@ -168,7 +171,10 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		for item in keywords {
 			if current.starts_with(item)
-				&& current[item.len()..].chars().next().map_or(true, |chr| !chr.is_alphanumeric())
+				&& current[item.len()..]
+					.chars()
+					.next()
+					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
 			{
 				self.head += item.len() as u32;
 				return Some(item);
@@ -483,11 +489,11 @@ impl<'a> Lexer<'a> {
 		};
 		let mut escaped = false;
 		for (idx, chr) in chars {
-			if let '\\' = chr {
-				escaped = true;
-				continue;
-			} else if escaped {
+			if escaped {
 				escaped = false;
+				continue;
+			} else if let '\\' = chr {
+				escaped = true;
 				continue;
 			}
 
@@ -532,7 +538,6 @@ impl<'a> Lexer<'a> {
 				/// has decimal point
 				fractional: bool,
 			},
-			BigInt,
 			Exponent,
 		}
 
@@ -556,15 +561,22 @@ impl<'a> Lexer<'a> {
 
 		for (idx, chr) in chars {
 			match chr {
-				_ if matches!(state, NumberLiteralType::BigInt) => {
-					todo!("big int")
-					// if is_number_delimiter(chr) {
-					// 	// Content already checked
-					// 	push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
-					// 	set_state!(LexingState::None);
-					// } else {
-					// 	return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
-					// }
+				'n' => {
+					return if let NumberLiteralType::Decimal { fractional: false } = state {
+						let num_slice = current[..idx].to_owned();
+						let number = crate::number::NumberRepresentation::BigInt(
+							crate::number::NumberSign::Positive,
+							num_slice,
+						);
+						let length = (idx + 'n'.len_utf16()) as u32;
+						self.head += length;
+						Ok((number, length))
+					} else {
+						Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						))
+					};
 				}
 				// For binary/hexadecimal/octal literals
 				'b' | 'B' | 'x' | 'X' | 'o' | 'O' if idx == 1 => {
@@ -627,7 +639,6 @@ impl<'a> Lexer<'a> {
 					}
 					// all above allowed
 					NumberLiteralType::HexadecimalLiteral => {}
-					NumberLiteralType::BigInt => unreachable!(),
 				},
 				'.' => {
 					if let NumberLiteralType::Decimal { ref mut fractional } = state {
@@ -664,16 +675,14 @@ impl<'a> Lexer<'a> {
 						NumberLiteralType::OctalLiteral |
 						// Second `(idx - start) < 1` is for octal with prefix 0
 						NumberLiteralType::HexadecimalLiteral => {
-							todo!("hex undescore")
-							// if start + 2 == idx {
-							// 	current[..idx].ends_with(['b', 'B', 'x', 'X', 'o' , 'O'])
-							// } else {
-							// 	false
-							// }
+							if idx == 2 {
+								current[..idx].ends_with(['b', 'B', 'x', 'X', 'o', 'O'])
+							} else {
+								false
+							}
 						},
 						NumberLiteralType::Decimal { .. } => current[..idx].ends_with('.') || &current[..idx] == "0",
 						NumberLiteralType::Exponent => current[..idx].ends_with(['e', 'E']),
-						NumberLiteralType::BigInt => false
 					};
 					if invalid {
 						// (LexingErrors::InvalidUnderscore);
@@ -682,9 +691,6 @@ impl<'a> Lexer<'a> {
 							self.get_start().with_length(idx),
 						));
 					}
-				}
-				'n' if matches!(state, NumberLiteralType::Decimal { fractional: false }) => {
-					state = NumberLiteralType::BigInt;
 				}
 				// `10e-5` is a valid literal
 				'-' if matches!(state, NumberLiteralType::Exponent if current[..idx].ends_with(['e', 'E'])) =>
@@ -798,6 +804,21 @@ impl<'a> Lexer<'a> {
 			})
 		} else {
 			Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
+		}
+	}
+
+	/// Note scans after multiple comments
+	#[must_use]
+	pub fn after_comment_literals(&self) -> &str {
+		let mut current = self.get_current().trim_start();
+		loop {
+			if current.starts_with("//") {
+				current = current[current.find('\n').unwrap_or(current.len())..].trim_start();
+			} else if current.starts_with("/*") {
+				current = current[current.find("*/").unwrap_or(current.len())..].trim_start();
+			} else {
+				return current;
+			}
 		}
 	}
 
@@ -961,8 +982,8 @@ impl<'a> Lexer<'a> {
 			}
 		}
 
-		// TODO no new lines
-		let after_brackets = &current[after as usize..].trim_start();
+		let rest = &current[after as usize..];
+		let after_brackets = utilities::trim_whitespace_not_newlines(rest);
 		if after_brackets.starts_with("=>") {
 			(true, None)
 		} else if self.options.type_annotations && after_brackets.starts_with(':') {
@@ -1035,6 +1056,18 @@ pub(crate) mod utilities {
 			}
 		}
 		0
+	}
+
+	pub fn trim_whitespace_not_newlines(on: &str) -> &str {
+		let mut chars = on.char_indices();
+		let mut idx = 0;
+		for (at, chr) in chars {
+			idx = at;
+			if !chr.is_whitespace() || chr == '\n' {
+				break;
+			}
+		}
+		&on[idx..]
 	}
 
 	pub fn is_function_header(str: &str) -> bool {

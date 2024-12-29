@@ -228,6 +228,14 @@ impl Visitable for Block {
 	}
 }
 
+/// For ifs and other statements
+#[derive(Debug, Clone, PartialEq, EnumFrom)]
+#[apply(derive_ASTNode!)]
+pub enum BlockOrSingleStatement {
+	Braced(Block),
+	SingleStatement(Box<Statement>),
+}
+
 impl ASTNode for BlockOrSingleStatement {
 	fn get_position(&self) -> Span {
 		match self {
@@ -279,14 +287,6 @@ impl ASTNode for BlockOrSingleStatement {
 			}
 		}
 	}
-}
-
-/// For ifs and other statements
-#[derive(Debug, Clone, PartialEq, EnumFrom)]
-#[apply(derive_ASTNode!)]
-pub enum BlockOrSingleStatement {
-	Braced(Block),
-	SingleStatement(Box<Statement>),
 }
 
 impl Visitable for BlockOrSingleStatement {

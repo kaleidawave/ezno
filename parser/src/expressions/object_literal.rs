@@ -219,18 +219,16 @@ impl ASTNode for ObjectLiteralMember {
 				FunctionBase::from_reader_with_header_and_name(reader, header, key)?;
 
 			Ok(Self::Method(method))
-		} else {
-			if !header.is_no_modifiers() {
-				todo!();
-				// return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
-			}
+		} else if header.is_no_modifiers() {
 			if reader.is_operator(",") || reader.is_operator("}") {
 				if let PropertyKey::Identifier(name, position, _) = key.get_ast() {
 					Ok(Self::Shorthand(name, position))
 				} else {
-					todo!()
-					// let token = reader.next().ok_or_else(parse_lexing_error)?;
-					// throw_unexpected_token_with_token(token, &[TSXToken::Colon])
+					let found = reader.get_current().chars().next();
+					Err(crate::ParseError::new(
+						crate::ParseErrors::UnexpectedCharacter { expected: &[':'], found },
+						reader.get_start().with_length(1),
+					))
 				}
 			} else {
 				// TODO remove
@@ -244,6 +242,12 @@ impl ASTNode for ObjectLiteralMember {
 				let position = key.get_position().union(value.get_position());
 				Ok(Self::Property { assignment, key, value, position })
 			}
+		} else {
+			let found = reader.get_current().chars().next();
+			Err(crate::ParseError::new(
+				crate::ParseErrors::UnexpectedCharacter { expected: &['}'], found },
+				reader.get_start().with_length(1),
+			))
 		}
 	}
 
