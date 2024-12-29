@@ -727,7 +727,7 @@ impl<'a> Lexer<'a> {
 		Ok((number, length))
 	}
 
-	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, Option<&'a str>, usize), ParseError> {
+	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, Option<&'a str>), ParseError> {
 		let mut escaped = false;
 		let mut after_last_slash = false;
 		let mut in_set = false;
@@ -777,22 +777,14 @@ impl<'a> Lexer<'a> {
 
 		let regex = &current[1..regex_content];
 		let regex_end = regex_content + '/'.len_utf8();
+		let first_non_char = chars
+			.find_map(|(idx, chr)| (!chr.is_alphabetic()).then_some(idx))
+			.unwrap_or(current.len());
+		let regex_flag = &current[regex_end..first_non_char];
 
-		let mut flag_content = regex_end;
+		self.head += (2 + regex.len() + regex_flag.len()) as u32;
 
-		for (idx, chr) in chars {
-			// TODO if flags.contains(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'))
-			if !chr.is_alphabetic() {
-				flag_content = idx;
-				break;
-			}
-		}
-
-		let regex_flag = &current[regex_end..flag_content];
-
-		self.head += flag_content as u32;
-
-		Ok((regex, (!regex_flag.is_empty()).then_some(regex_flag), flag_content))
+		Ok((regex, (!regex_flag.is_empty()).then_some(regex_flag)))
 	}
 
 	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&str, ParseError> {

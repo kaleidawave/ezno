@@ -282,8 +282,8 @@ impl Expression {
 					prefix: true,
 				}
 			} else if reader.starts_with('/') {
-				let (pattern, flags, length) = reader.parse_regex_literal()?;
-				let position = start.with_length(length);
+				let (pattern, flags) = reader.parse_regex_literal()?;
+				let position = start.with_length(2 + pattern.len() + flags.map_or(0, str::len));
 				Expression::RegexLiteral {
 					pattern: pattern.to_owned(),
 					flags: flags.map(ToOwned::to_owned),
@@ -486,11 +486,12 @@ impl Expression {
 						position: start.union(end),
 					}
 				} else {
-					todo!("throw error here")
-					// return throw_unexpected_token_with_token(
-					//     token,
-					//     &[TSXToken::Dot, TSXToken::OpenParentheses],
-					// );
+					let position = reader.get_start().with_length(1);
+					let reason = ParseErrors::UnexpectedCharacter {
+						expected: &['.', '('],
+						found: reader.get_current().chars().next(),
+					};
+					return Err(ParseError::new(reason, position));
 				}
 			} else {
 				fn after_spaces_or_tabs(slices: &str) -> &str {
