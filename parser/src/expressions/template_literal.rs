@@ -31,6 +31,13 @@ impl ASTNode for TemplateLiteral {
 		let mut parts = Vec::new();
 		loop {
 			let current = reader.get_current();
+			if current.is_empty() {
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::UnexpectedEnd,
+					reader.get_start().with_length(0),
+				));
+			}
+
 			let mut escaped = false;
 			for (idx, chr) in current.char_indices() {
 				if escaped {

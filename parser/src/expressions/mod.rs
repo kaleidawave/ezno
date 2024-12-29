@@ -1968,6 +1968,7 @@ impl ASTNode for ArrayElement {
 
 	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
 		// This is allowed for some reason
+		reader.skip();
 		if reader.is_one_of_operators(&[",", "]"]).is_some() {
 			Ok(Self(None))
 		} else {
@@ -2004,6 +2005,10 @@ impl ArrayElement {
 
 impl ListItem for ArrayElement {
 	type LAST = ();
+
+	fn allow_empty() -> bool {
+		false
+	}
 }
 
 // Utils for Expression

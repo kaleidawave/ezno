@@ -187,7 +187,8 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 		.get_current()
 		.chars()
 		.next()
-		.is_some_and(|c| c.is_alphabetic() || c == '_' || c == '$');
+		.is_some_and(|c| crate::lexer::utilities::is_valid_identifier(c));
+
 	let default = if is_identifier {
 		let default_identifier = VariableIdentifier::from_reader(reader)?;
 		if reader.is_operator_advance(",") {

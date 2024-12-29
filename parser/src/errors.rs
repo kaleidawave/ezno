@@ -120,21 +120,21 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::ExpectedEndOfSource { found } => {
 				let found = &found[..std::cmp::min(found.len(), 10)];
-				f.write_str("Expected end of source, found {found}")
+				write!(f, "Expected end of source, found {found}")
 			}
 			ParseErrors::FunctionParameterOptionalAndDefaultValue => {
-				f.write_str("Function parameter cannot be optional *and* have default expression")
+				write!(f, "Function parameter cannot be optional *and* have default expression")
 			}
 			ParseErrors::ParameterCannotHaveDefaultValueHere => {
-				f.write_str("Function parameter cannot be have default value here")
+				write!(f, "Function parameter cannot be have default value here")
 			}
-			ParseErrors::InvalidLHSAssignment => f.write_str("Invalid syntax on LHS of assignment"),
+			ParseErrors::InvalidLHSAssignment => write!(f, "Invalid syntax on LHS of assignment"),
 			ParseErrors::ExpectedCatchOrFinally => {
-				f.write_str("Expected 'catch' or 'finally' to follow 'try'")
+				write!(f, "Expected 'catch' or 'finally' to follow 'try'")
 			}
 			ParseErrors::LexingFailed => {
 				// unreachable!("This should never be written"),
-				f.write_str("Lexing issue")
+				write!(f, "Lexing issue")
 			}
 			ParseErrors::InvalidDeclareItem(item) => {
 				write!(f, "Declare item '{item}' must be in .d.ts file")

@@ -89,9 +89,8 @@ function y(c: ) {
 
 #[test]
 fn property_access() {
-	let input = r"
-	console.log(x., 2);
-}"
+	let input = r"console.log(x., 2)
+"
 	.trim_start()
 	.replace("    ", "\t");
 

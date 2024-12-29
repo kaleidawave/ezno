@@ -383,6 +383,10 @@ pub trait ListItem: Sized {
 	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
 		unreachable!("ListItem::LAST != ASTNode")
 	}
+
+	fn allow_empty() -> bool {
+		true
+	}
 }
 
 /// Parses items surrounded in `{`, `[`, `(`, etc.
@@ -392,12 +396,9 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 	reader: &mut crate::new::Lexer,
 	end: &'static str,
 ) -> ParseResult<(Vec<T>, Option<T::LAST>)> {
-	// 	if let Some(start) = start {
-	// 		let _ = reader.expect(start)?;
-	// 	}
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if reader.is_operator_advance(end) {
+		if (T::allow_empty() || nodes.len() == 0) && reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		}
 
