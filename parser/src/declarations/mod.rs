@@ -68,7 +68,7 @@ impl Declaration {
 	// TODO strict mode can affect result
 	// TODO reuse
 	// Warning expects skip to have been called
-	pub(crate) fn is_declaration_start(reader: &crate::new::Lexer) -> bool {
+	pub(crate) fn is_declaration_start(reader: &crate::Lexer) -> bool {
 		let mut declaration_keyword = reader.is_one_of_keywords(&[
 			"let",
 			"const",
@@ -112,7 +112,7 @@ impl crate::ASTNode for Declaration {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		// TODO assert decorators are used. If they exist but item is not `Decorated`
 		// then need to throw a parse error
 		let decorators = decorators::decorators_from_reader(reader)?;

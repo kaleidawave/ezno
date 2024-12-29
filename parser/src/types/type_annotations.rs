@@ -132,7 +132,7 @@ impl ASTNode for AnnotationWithBinder {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.after_identifier().starts_with(':') {
 			let start = reader.get_start();
 			let name = reader.parse_identifier("type annotation binder", false)?.to_owned();
@@ -230,7 +230,7 @@ impl ASTNode for TypeAnnotation {
 		*get_field_by_type::GetFieldByType::get(self)
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		Self::from_reader_with_precedence(reader, TypeOperatorKind::None)
 	}
 
@@ -457,7 +457,7 @@ impl TypeAnnotation {
 	/// Also returns the local the generic arguments ran over
 	/// TODO refactor and tidy a lot of this, precedence rather than config
 	pub(crate) fn from_reader_with_precedence(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 		parent_kind: TypeOperatorKind,
 	) -> ParseResult<Self> {
 		if reader.get_options().partial_syntax {
@@ -912,7 +912,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('(')?;
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
@@ -1054,7 +1054,7 @@ impl ASTNode for TupleLiteralElement {
 		self.2
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let is_spread = reader.is_operator_advance("...");
 

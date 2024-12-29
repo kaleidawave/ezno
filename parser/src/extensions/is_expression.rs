@@ -22,7 +22,7 @@ impl ASTNode for IsExpression {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		let start = reader.expect_keyword("is")?;
 		reader.expect('(')?;
 		let matcher = MultipleExpression::from_reader(reader)?;

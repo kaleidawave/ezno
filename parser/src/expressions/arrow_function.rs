@@ -36,7 +36,7 @@ impl FunctionBased for ArrowFunctionBase {
 	// }
 
 	fn header_and_name_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		Ok((reader.is_operator_advance("async"), ()))
 	}
@@ -54,7 +54,7 @@ impl FunctionBased for ArrowFunctionBase {
 	}
 
 	fn parameters_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<FunctionParameters<(), ()>> {
 		if reader.is_operator("(") {
 			FunctionParameters::from_reader(reader)
@@ -132,7 +132,7 @@ impl FunctionBased for ArrowFunctionBase {
 
 impl ArrowFunction {
 	pub(crate) fn from_reader_with_first_parameter(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 		is_async: bool,
 		identifier: VariableIdentifier,
 	) -> ParseResult<Self> {
@@ -180,7 +180,7 @@ impl ASTNode for ExpressionOrBlock {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.is_operator("{") {
 			Block::from_reader(reader).map(Self::Block)
 		} else {

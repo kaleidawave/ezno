@@ -24,7 +24,7 @@ impl ASTNode for TryCatchStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("try")?;
 		let try_inner = Block::from_reader(reader)?;
 

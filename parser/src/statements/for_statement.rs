@@ -21,7 +21,7 @@ impl ASTNode for ForLoopStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("for")?;
 		let is_await = reader.is_keyword_advance("await");
 		let mut condition = ForLoopCondition::from_reader(reader)?;
@@ -99,7 +99,7 @@ impl ASTNode for ForLoopCondition {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		reader.expect('(')?;
 		reader.skip();
 

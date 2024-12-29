@@ -23,15 +23,15 @@ pub struct Parameter<V> {
 }
 
 pub trait ParameterVisibility: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
-	fn from_reader(reader: &mut crate::new::Lexer) -> Self;
+	fn from_reader(reader: &mut crate::Lexer) -> Self;
 }
 
 impl ParameterVisibility for () {
-	fn from_reader(reader: &mut crate::new::Lexer) -> Self {}
+	fn from_reader(reader: &mut crate::Lexer) -> Self {}
 }
 
 impl ParameterVisibility for Option<crate::types::Visibility> {
-	fn from_reader(reader: &mut crate::new::Lexer) -> Option<crate::types::Visibility> {
+	fn from_reader(reader: &mut crate::Lexer) -> Option<crate::types::Visibility> {
 		if let Some(Some(keyword)) = reader
 			.get_options()
 			.type_annotations
@@ -178,7 +178,7 @@ where
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('(')?;
 		let mut parameters = Vec::new();
 

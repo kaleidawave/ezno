@@ -22,9 +22,7 @@ pub mod types;
 mod variable_fields;
 pub mod visiting;
 
-pub mod new {
-	pub use super::lexer::Lexer;
-}
+pub(crate) use lexer::Lexer;
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
@@ -142,7 +140,7 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
 	fn get_position(&self) -> Span;
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self>;
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
@@ -177,7 +175,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 		keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
 		partial_points: Default::default(),
 	};
-	let mut lexer = crate::new::Lexer::new(script, offset, options);
+	let mut lexer = crate::Lexer::new(script, offset, options);
 
 	T::from_reader(&mut lexer).map(|ok| (ok, state))
 }
@@ -278,8 +276,8 @@ pub trait ExpressionOrStatementPosition:
 {
 	type FunctionBody: ASTNode;
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self>;
-	fn class_name_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self>;
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
+	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier>;
 
@@ -308,12 +306,12 @@ pub struct StatementPosition {
 impl ExpressionOrStatementPosition for StatementPosition {
 	type FunctionBody = FunctionBody;
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		VariableIdentifier::from_reader(reader)
 			.map(|identifier| Self { identifier, is_declare: false })
 	}
 
-	fn class_name_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		Self::from_reader(reader)
 	}
 
@@ -341,14 +339,14 @@ pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 impl ExpressionOrStatementPosition for ExpressionPosition {
 	type FunctionBody = Block;
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		reader.skip();
 		let is_not_name = reader.is_finished() || reader.is_one_of(&["(", "{", "[", "<"]).is_some();
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
 	}
 
-	fn class_name_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		reader.skip();
 		// TODO "implements" is TS syntax (reader options)
 		let is_not_name = reader.is_finished()
@@ -380,11 +378,11 @@ pub trait ListItem: Sized {
 	const LAST_PREFIX: Option<&'static str> = None;
 
 	#[allow(unused)]
-	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
+	fn parse_last_item(reader: &mut crate::Lexer) -> ParseResult<Self::LAST> {
 		unreachable!("ListItem::LAST != ASTNode")
 	}
 
-	fn allow_empty() -> bool {
+	fn skip_trailing() -> bool {
 		true
 	}
 }
@@ -393,14 +391,16 @@ pub trait ListItem: Sized {
 ///
 /// Supports trailing commas. But **does not create** *empty* like items afterwards
 pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
-	reader: &mut crate::new::Lexer,
+	reader: &mut crate::Lexer,
 	end: &'static str,
 ) -> ParseResult<(Vec<T>, Option<T::LAST>)> {
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		if (T::allow_empty() || nodes.is_empty()) && reader.is_operator_advance(end) {
+		if (T::skip_trailing() || nodes.is_empty()) && reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		}
+
+		reader.skip();
 
 		if T::LAST_PREFIX.is_some_and(|l| reader.starts_with_str(l)) {
 			let last = T::parse_last_item(reader)?;
@@ -481,7 +481,7 @@ pub enum VariableKeyword {
 }
 
 impl VariableKeyword {
-	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.is_keyword_advance("const") {
 			Ok(Self::Const)
 		} else if reader.is_keyword_advance("let") {

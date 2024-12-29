@@ -17,7 +17,7 @@ impl ASTNode for TemplateLiteral {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let tag = if reader.is_operator_advance("`") {
 			None
@@ -29,7 +29,7 @@ impl ASTNode for TemplateLiteral {
 		};
 
 		let mut parts = Vec::new();
-		loop {
+		'items: loop {
 			let current = reader.get_current();
 			if current.is_empty() {
 				return Err(crate::ParseError::new(
@@ -63,9 +63,12 @@ impl ASTNode for TemplateLiteral {
 					let expression = MultipleExpression::from_reader(reader)?;
 					reader.expect('}')?;
 					parts.push((content, expression));
-					break;
+					continue 'items;
 				}
 			}
+
+			let position = reader.get_start().with_length(current.len());
+			return Err(crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position));
 		}
 		let position = reader.get_start().with_length(reader.get_current().len());
 		Err(crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position))

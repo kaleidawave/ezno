@@ -12,7 +12,7 @@ use visitable_derive::Visitable;
 pub trait DeclarationExpression:
 	PartialEq + Clone + std::fmt::Debug + Send + std::marker::Sync + crate::Visitable
 {
-	fn expression_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self>;
+	fn expression_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
@@ -32,7 +32,7 @@ pub trait DeclarationExpression:
 }
 
 impl DeclarationExpression for Option<Expression> {
-	fn expression_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn expression_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.is_operator_advance("=") {
 			Expression::from_reader(reader).map(Some)
 		} else {
@@ -70,7 +70,7 @@ impl DeclarationExpression for Option<Expression> {
 }
 
 impl DeclarationExpression for crate::Expression {
-	fn expression_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn expression_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let _start = reader.expect('=')?;
 		Expression::from_reader(reader)
 	}
@@ -119,7 +119,7 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let name = WithComment::<VariableField>::from_reader(reader)?;
 		if TExpr::allow_definite_assignment_assertions() {
 			let _ = reader.is_operator_advance("!");
@@ -198,7 +198,7 @@ impl ASTNode for VariableDeclaration {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.is_keyword_advance("let") {
 			// state.append_keyword_at_pos(start.0, TSXKeyword::Let);

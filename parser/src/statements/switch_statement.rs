@@ -28,7 +28,7 @@ impl ASTNode for SwitchStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("switch")?;
 
 		reader.expect('(')?;

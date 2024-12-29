@@ -65,7 +65,7 @@ impl ASTNode for ExportDeclaration {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("export")?;
 		reader.skip();
 

@@ -18,7 +18,7 @@ impl ASTNode for Decorator {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		reader.expect('@')?;
 		let mut name = vec![reader.parse_identifier("decorator name", false)?.to_owned()];
@@ -92,7 +92,7 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let decorators = decorators_from_reader(reader)?;
 		N::from_reader(reader).map(|on| Self::new(decorators, on))
 	}
@@ -138,9 +138,7 @@ impl<U: ASTNode> Decorated<U> {
 	}
 }
 
-pub(crate) fn decorators_from_reader(
-	reader: &mut crate::new::Lexer,
-) -> ParseResult<Vec<Decorator>> {
+pub(crate) fn decorators_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<Decorator>> {
 	let mut decorators = Vec::new();
 	while reader.starts_with('@') {
 		decorators.push(Decorator::from_reader(reader)?);

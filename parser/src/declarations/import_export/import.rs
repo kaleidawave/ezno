@@ -43,7 +43,7 @@ impl ASTNode for ImportDeclaration {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let out = import_specifier_and_parts_from_reader(reader)?;
 
@@ -132,7 +132,7 @@ impl ASTNode for ImportDeclaration {
 
 impl ImportDeclaration {
 	#[cfg(feature = "extras")]
-	pub fn from_reader_reversed(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	pub fn from_reader_reversed(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("from")?;
 
 		let from = ImportLocation::from_reader(reader)?;
@@ -171,7 +171,7 @@ pub(crate) struct PartsResult {
 
 /// Covers `import` keyword, more 2
 pub(crate) fn import_specifier_and_parts_from_reader(
-	reader: &mut crate::new::Lexer,
+	reader: &mut crate::Lexer,
 ) -> ParseResult<PartsResult> {
 	reader.expect_keyword("import")?;
 
@@ -187,7 +187,7 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 		.get_current()
 		.chars()
 		.next()
-		.is_some_and(|c| crate::lexer::utilities::is_valid_identifier(c));
+		.is_some_and(crate::lexer::utilities::is_valid_identifier);
 
 	let default = if is_identifier {
 		let default_identifier = VariableIdentifier::from_reader(reader)?;

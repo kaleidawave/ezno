@@ -94,7 +94,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	type ParameterVisibility = ();
 
 	fn header_and_name_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		todo!()
 		// // TODO not great
@@ -152,7 +152,7 @@ impl ASTNode for ObjectLiteral {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('{')?;
 		let mut members: Vec<ObjectLiteralMember> = Vec::new();
 		loop {
@@ -188,7 +188,7 @@ impl ASTNode for ObjectLiteralMember {
 	}
 
 	#[allow(clippy::similar_names)]
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 
 		if reader.starts_with_str("//") || reader.starts_with_str("/*") {

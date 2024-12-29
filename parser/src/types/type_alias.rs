@@ -21,7 +21,7 @@ impl ASTNode for TypeAlias {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		let start = reader.get_start();
 		let _ = reader.expect_keyword("type")?;
 		let name = StatementPosition::from_reader(reader)?;

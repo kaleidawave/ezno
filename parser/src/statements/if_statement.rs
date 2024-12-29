@@ -41,7 +41,7 @@ impl ASTNode for IfStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("if")?;
 
 		reader.expect('(')?;
@@ -129,7 +129,7 @@ impl ASTNode for ConditionalElseStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("else")?;
 		reader.expect_keyword("if")?;
 		reader.expect('(')?;
@@ -160,7 +160,7 @@ impl ASTNode for UnconditionalElseStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("else")?;
 		let statements = BlockOrSingleStatement::from_reader(reader)?;
 		Ok(Self { position: start.union(statements.get_position()), inner: statements })

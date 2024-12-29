@@ -46,7 +46,7 @@ impl ASTNode for JSXElement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('<')?;
 		let tag_name = reader.parse_identifier("JSX element name", false)?.to_owned();
 		let mut attributes = Vec::new();
@@ -215,7 +215,7 @@ impl ASTNode for JSXAttribute {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let key = reader.parse_identifier("JSX element attribute", false)?.to_owned();
 		if reader.is_operator_advance("=") {
@@ -289,7 +289,7 @@ impl ASTNode for JSXFragment {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		reader.expect_operator("<>")?;
 		let children = jsx_children_from_reader(reader)?;
@@ -318,7 +318,7 @@ impl ASTNode for JSXRoot {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.starts_with_str("<>") {
 			JSXFragment::from_reader(reader).map(JSXRoot::Fragment)
 		} else {
@@ -339,7 +339,7 @@ impl ASTNode for JSXRoot {
 	}
 }
 
-fn jsx_children_from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Vec<JSXNode>> {
+fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNode>> {
 	let mut children = Vec::new();
 	// TODO count new lines etc
 	loop {
@@ -405,7 +405,7 @@ impl ASTNode for JSXNode {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.is_operator_advance("{") {

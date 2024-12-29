@@ -62,7 +62,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 	fn get_name(name: &Self::Name) -> Option<&str>;
 
 	fn header_and_name_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)>;
 
 	fn header_and_name_to_string_from_buffer<T: ToString>(
@@ -87,7 +87,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 
 	/// For [`crate::ArrowFunction`]
 	fn parameters_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<FunctionParameters<Self::LeadingParameter, Self::ParameterVisibility>> {
 		FunctionParameters::from_reader(reader)
 	}
@@ -161,7 +161,7 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let (header, name) = T::header_and_name_from_reader(reader)?;
 		Self::from_reader_with_header_and_name(reader, header, name)
 	}
@@ -199,7 +199,7 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 #[allow(clippy::similar_names)]
 impl<T: FunctionBased> FunctionBase<T> {
 	pub(crate) fn from_reader_with_header_and_name(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
@@ -308,7 +308,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	}
 
 	fn header_and_name_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader)?;
 		let name = T::from_reader(reader)?;
@@ -398,9 +398,9 @@ impl ASTNode for FunctionHeader {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		#[cfg(feature = "extras")]
-		fn parse_location(reader: &mut crate::new::Lexer) -> Option<FunctionLocationModifier> {
+		fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier> {
 			if reader.is_keyword_advance("server") {
 				Some(FunctionLocationModifier::Server)
 			} else if reader.is_keyword_advance("worker") {
@@ -516,7 +516,7 @@ impl MethodHeader {
 		}
 	}
 
-	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> Self {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
 		let after = reader.after_identifier();
 		if let Some('<' | '(' | '}' | ',' | ':') = after.chars().next() {
 			MethodHeader::default()
@@ -558,7 +558,7 @@ pub enum GeneratorSpecifier {
 }
 
 impl GeneratorSpecifier {
-	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> Option<Self> {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Option<Self> {
 		let start = reader.get_start();
 		if reader.is_operator_advance("*") {
 			Some(GeneratorSpecifier::Star(start.with_length(1)))
@@ -586,7 +586,7 @@ impl ASTNode for FunctionBody {
 		self.0.as_ref().map_or(source_map::Nullable::NULL, |Block(_, pos)| *pos)
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// If type annotations. Allow elided bodies for function overloading
 		let body = if reader.is_operator("{") || !reader.get_options().type_annotations {
 			Some(Block::from_reader(reader)?)

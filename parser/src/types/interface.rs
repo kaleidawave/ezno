@@ -38,7 +38,7 @@ impl ASTNode for InterfaceDeclaration {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("interface")?;
 
 		// #[cfg(feature = "extras")]
@@ -199,7 +199,7 @@ impl ASTNode for InterfaceMember {
 		*GetFieldByType::get(self)
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let is_readonly = reader.is_keyword_advance("readonly");
 
@@ -587,7 +587,7 @@ impl ASTNode for InterfaceMember {
 }
 
 pub(crate) fn interface_members_from_reader(
-	reader: &mut crate::new::Lexer,
+	reader: &mut crate::Lexer,
 ) -> ParseResult<Vec<WithComment<Decorated<InterfaceMember>>>> {
 	let mut members = Vec::new();
 	loop {

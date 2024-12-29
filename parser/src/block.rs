@@ -60,7 +60,7 @@ impl ASTNode for StatementOrDeclaration {
 		*get_field_by_type::GetFieldByType::get(self)
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.get_options().interpolation_points && reader.is_keyword_advance(MARKER) {
 			// TODO Start::reverse
 			let start = source_map::Start(reader.get_start().0 - MARKER.len() as u32);
@@ -138,7 +138,7 @@ impl ASTNode for Block {
 		self.1
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('{')?;
 		let items = statements_and_declarations_from_reader(reader)?;
 		let position = start.union(reader.expect('}')?);
@@ -244,7 +244,7 @@ impl ASTNode for BlockOrSingleStatement {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let stmt = Statement::from_reader(reader)?;
 		Ok(match stmt {
 			Statement::Block(blk) => Self::Braced(blk),
@@ -350,7 +350,7 @@ impl From<crate::Expression> for StatementOrDeclaration {
 
 /// Parse statements, regardless of bracing or not
 pub(crate) fn statements_and_declarations_from_reader(
-	reader: &mut crate::new::Lexer,
+	reader: &mut crate::Lexer,
 ) -> ParseResult<Vec<StatementOrDeclaration>> {
 	let mut items = Vec::new();
 	loop {

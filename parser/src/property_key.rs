@@ -11,7 +11,7 @@ use temporary_annex::Annex;
 use crate::{number::NumberRepresentation, ASTNode, Expression, ParseOptions, ParseResult};
 
 pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {
-	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)>;
+	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;
 
 	fn is_private(&self) -> bool;
 
@@ -31,7 +31,7 @@ pub struct AlwaysPublic;
 // ";
 
 impl PropertyKeyKind for AlwaysPublic {
-	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
+	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
 		let name = reader.parse_identifier("propery key", false)?;
 		Ok((name.to_owned(), start.with_length(name.len()), Self::new_public()))
@@ -61,7 +61,7 @@ pub enum PublicOrPrivate {
 // ";
 
 impl PropertyKeyKind for PublicOrPrivate {
-	fn parse_identifier(reader: &mut crate::new::Lexer) -> ParseResult<(String, Span, Self)> {
+	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
 		let publicity = if reader.is_operator_advance("#") { Self::Private } else { Self::Public };
 		let name = reader.parse_identifier("property key", false)?;
@@ -114,7 +114,7 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.starts_with('"') || reader.starts_with('\'') {
 			let (content, quoted) = reader.parse_string_literal()?;

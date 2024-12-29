@@ -23,7 +23,7 @@ impl ASTNode for TypeParameter {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		#[cfg(feature = "full-typescript")]
 		let is_constant = reader.is_keyword_advance("const");
 

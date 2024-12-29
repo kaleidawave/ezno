@@ -52,7 +52,7 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 	}
 
 	// TODO also single line comments here
-	fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		let just_type = reader.is_keyword_advance("type");
 
 		if U::PREFIX {
@@ -179,7 +179,7 @@ pub enum ImportExportName {
 
 impl ImportExportName {
 	// TODO remove Span return
-	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<(Self, Span)> {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<(Self, Span)> {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
@@ -234,7 +234,7 @@ pub enum ImportLocation {
 }
 
 impl ImportLocation {
-	pub(crate) fn from_reader(reader: &mut crate::new::Lexer) -> crate::ParseResult<Self> {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		// let _existing = r#"if let (true, Some(start), Some(Token(peek, at))) =
 		// 	(options.partial_syntax, start, reader.peek())
 		// {

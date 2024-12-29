@@ -82,7 +82,7 @@ impl ASTNode for Statement {
 		*get_field_by_type::GetFieldByType::get(self)
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.after_identifier().starts_with(':') {
 			let start = reader.get_start();
 			let name = reader.parse_identifier("statement label", true)?.to_owned();
@@ -289,7 +289,7 @@ impl ASTNode for VarVariableStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let _ = reader.expect_keyword("var")?;
 		let mut declarations = Vec::new();
@@ -348,7 +348,7 @@ impl ASTNode for WithStatement {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("with")?;
 		reader.expect_operator("(")?;
 		let expression = MultipleExpression::from_reader(reader)?;

@@ -20,7 +20,7 @@ impl ASTNode for DeclareVariableDeclaration {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		reader.expect_keyword("declare");
 		Self::from_reader_without_declare(reader)
 	}
@@ -46,7 +46,7 @@ impl ASTNode for DeclareVariableDeclaration {
 }
 
 impl DeclareVariableDeclaration {
-	pub fn from_reader_without_declare(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	pub fn from_reader_without_declare(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let keyword = VariableKeyword::from_reader(reader)?;
 		let mut declarations = Vec::new();

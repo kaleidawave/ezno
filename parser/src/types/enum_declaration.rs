@@ -17,7 +17,7 @@ impl ASTNode for EnumDeclaration {
 		self.position
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.get_start();
 		let is_constant = reader.is_keyword_advance("const");
 		reader.expect_keyword("enum")?;
@@ -90,7 +90,7 @@ impl ASTNode for EnumMember {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> Result<Self, crate::ParseError> {
+	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.get_start();
 		let name = reader.parse_identifier("enum member name", true)?.to_owned();
 		let (position, value) = if reader.is_operator_advance("=") {

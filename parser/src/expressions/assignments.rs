@@ -39,7 +39,7 @@ impl ASTNode for VariableOrPropertyAccess {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// I think this is correct
 		let precedence = super::operators::INDEX_PRECEDENCE - 1;
 		Expression::from_reader_with_precedence(reader, precedence)?.try_into()
@@ -190,7 +190,7 @@ impl ASTNode for LHSOfAssignment {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		Expression::from_reader(reader).and_then(TryInto::try_into)
 	}
 

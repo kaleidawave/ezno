@@ -196,7 +196,7 @@ impl ASTNode for Expression {
 		*GetFieldByType::get(self)
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Expression> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Expression> {
 		Self::from_reader_with_precedence(reader, COMMA_PRECEDENCE)
 	}
 
@@ -229,7 +229,7 @@ static SPECIAL_OPERATORS: &[&str] = {
 
 impl Expression {
 	pub fn from_reader_with_precedence(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
 		if reader.get_options().partial_syntax {
@@ -537,7 +537,7 @@ impl Expression {
 	}
 
 	pub fn from_reader_after_first_expression(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 		return_precedence: u8,
 		first_expression: Expression,
 	) -> ParseResult<Self> {
@@ -1689,7 +1689,7 @@ impl ASTNode for MultipleExpression {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let first = Expression::from_reader(reader)?;
 		reader.skip();
 		if reader.starts_with(',') {
@@ -1875,7 +1875,7 @@ impl ASTNode for FunctionArgument {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.is_operator_advance("...") {
@@ -1962,7 +1962,7 @@ impl ASTNode for ArrayElement {
 		self.0.as_ref().map_or(Span::NULL, ASTNode::get_position)
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// This is allowed for some reason
 		reader.skip();
 		if reader.is_one_of_operators(&[",", "]"]).is_some() {
@@ -2002,7 +2002,7 @@ impl ArrayElement {
 impl ListItem for ArrayElement {
 	type LAST = ();
 
-	fn allow_empty() -> bool {
+	fn skip_trailing() -> bool {
 		false
 	}
 }

@@ -34,7 +34,7 @@ impl ASTNode for VariableIdentifier {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let identifier = reader.parse_identifier("variable identifier", true)?;
 		let position = start.with_length(identifier.len());
@@ -105,7 +105,7 @@ impl ASTNode for VariableField {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.is_operator_advance("{") {
@@ -178,17 +178,13 @@ pub trait DestructuringFieldInto: ASTNode {
 	// This in an extra
 	type TypeAnnotation: Clone + PartialEq + Debug + Sync + Send + 'static;
 
-	fn type_annotation_from_reader(
-		reader: &mut crate::new::Lexer,
-	) -> ParseResult<Self::TypeAnnotation>;
+	fn type_annotation_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self::TypeAnnotation>;
 }
 
 impl DestructuringFieldInto for VariableField {
 	type TypeAnnotation = Option<crate::TypeAnnotation>;
 
-	fn type_annotation_from_reader(
-		reader: &mut crate::new::Lexer,
-	) -> ParseResult<Self::TypeAnnotation> {
+	fn type_annotation_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self::TypeAnnotation> {
 		if reader.get_options().destructuring_type_annotation && reader.is_operator_advance(":") {
 			crate::TypeAnnotation::from_reader(reader).map(Some)
 		} else {
@@ -201,7 +197,7 @@ impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
 	type TypeAnnotation = ();
 
 	fn type_annotation_from_reader(
-		_reader: &mut crate::new::Lexer,
+		_reader: &mut crate::Lexer,
 	) -> ParseResult<Self::TypeAnnotation> {
 		Ok(())
 	}
@@ -231,7 +227,7 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// Allowed
 		if reader.is_one_of_operators(&[",", "]"]).is_some() {
 			Ok(Self::None)
@@ -279,13 +275,17 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 
 	type LAST = SpreadDestructuringField<T>;
 
-	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
+	fn parse_last_item(reader: &mut crate::Lexer) -> ParseResult<Self::LAST> {
 		reader.skip();
 		let start = reader.get_start();
 		reader.expect_operator("...")?;
 		let node = T::from_reader(reader)?;
 		let position = start.union(node.get_position());
 		Ok(SpreadDestructuringField(Box::new(node), position))
+	}
+
+	fn skip_trailing() -> bool {
+		false
 	}
 }
 
@@ -314,7 +314,7 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ObjectDestructuringFiel
 
 	type LAST = SpreadDestructuringField<T>;
 
-	fn parse_last_item(reader: &mut crate::new::Lexer) -> ParseResult<Self::LAST> {
+	fn parse_last_item(reader: &mut crate::Lexer) -> ParseResult<Self::LAST> {
 		let start = reader.get_start();
 		reader.expect_operator("...")?;
 		let node = T::from_reader(reader)?;
@@ -328,7 +328,7 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 		*self.get()
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// #[cfg(not(feature = "extras"))]
 		// fn is_destructuring_into_marker(t: &TSXToken, _options: &ParseOptions) -> bool {
 		// 	matches!(t, TSXToken::Colon)

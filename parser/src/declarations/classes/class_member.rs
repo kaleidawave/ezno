@@ -66,7 +66,7 @@ impl ASTNode for ClassMember {
 	}
 
 	#[allow(clippy::similar_names)]
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let is_multiline_comment = reader.starts_with_str("/*");
 		if is_multiline_comment || reader.starts_with_str("//") {
 			let start = reader.get_start();
@@ -247,7 +247,7 @@ impl ASTNode for ClassMember {
 
 impl ClassFunction {
 	fn from_reader_with_config(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 		header: MethodHeader,
 		key: WithComment<PropertyKey<PublicOrPrivate>>,
 	) -> ParseResult<Self> {
@@ -268,7 +268,7 @@ impl FunctionBased for ClassFunctionBase {
 
 	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = MethodHeader::from_reader(reader);
 		let name = WithComment::<PropertyKey<_>>::from_reader(reader)?;
@@ -331,7 +331,7 @@ impl FunctionBased for ClassConstructorBase {
 	}
 
 	fn header_and_name_from_reader(
-		reader: &mut crate::new::Lexer,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let start = reader.expect_keyword("constructor")?;
 		Ok(((), ()))

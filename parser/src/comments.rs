@@ -96,7 +96,7 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 		}
 	}
 
-	fn from_reader(reader: &mut crate::new::Lexer) -> ParseResult<Self> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.is_operator_advance("/*") {
 			let comment = reader.parse_comment_literal(true)?.to_owned();
