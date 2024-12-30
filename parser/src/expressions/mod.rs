@@ -70,7 +70,7 @@ pub enum Expression {
 	ArrayLiteral(Vec<ArrayElement>, Span),
 	ObjectLiteral(ObjectLiteral),
 	TemplateLiteral(TemplateLiteral),
-	ParenthesizedExpression(Box<MultipleExpression>, Span),
+	Parenthesised(Box<MultipleExpression>, Span),
 	// Regular operations:
 	BinaryOperation {
 		lhs: Box<Expression>,
@@ -308,10 +308,7 @@ impl Expression {
 					reader.advance(1);
 					let parenthesize_expression = MultipleExpression::from_reader(reader)?;
 					let end = reader.expect(')')?;
-					Expression::ParenthesizedExpression(
-						Box::new(parenthesize_expression),
-						start.union(end),
-					)
+					Expression::Parenthesised(Box::new(parenthesize_expression), start.union(end))
 				}
 			} else if reader.starts_with('<') {
 				let is_generic_arguments = reader.after_brackets().starts_with('(');
@@ -1024,7 +1021,7 @@ impl Expression {
 			| Self::RegexLiteral { .. }
 			| Self::ArrayLiteral(..)
 			| Self::TemplateLiteral(..)
-			| Self::ParenthesizedExpression(..)
+			| Self::Parenthesised(..)
 			| Self::JSXRoot(..)
 			| Self::ExpressionFunction(..)
 			| Self::Null(..)
@@ -1361,7 +1358,7 @@ impl Expression {
 					}
 				}
 			}
-			Self::ParenthesizedExpression(expr, _) => {
+			Self::Parenthesised(expr, _) => {
 				// TODO more expressions could be considered for parenthesis elision
 				if matches!(&**expr, MultipleExpression::Single(inner) if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE)
 				{
@@ -1402,7 +1399,19 @@ impl Expression {
 			}
 			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
 				buf.push_str("new ");
+				// let requires_parenthesis = !matches!(
+				// 	&**constructor,
+				// 	Expression::VariableReference(..)
+				// 		| Expression::PropertyAccess { .. }
+				// 		| Expression::Parenthesised(..)
+				// );
+				// if requires_parenthesis {
+				// 	buf.push('(');
+				// }
 				constructor.to_string_from_buffer(buf, options, local);
+				// if requires_parenthesis {
+				// 	buf.push(')');
+				// }
 				if let (true, Some(type_arguments)) =
 					(options.include_type_annotations, type_arguments)
 				{
@@ -1533,7 +1542,22 @@ impl Expression {
 			Self::TemplateLiteral(template_literal) => {
 				// Doing here because of tag precedence
 				if let Some(tag) = &template_literal.tag {
+					// TODO ConstructorCall should not be here
+					let requires_parenthesis = !matches!(
+						&**tag,
+						Expression::VariableReference(..)
+							| Expression::PropertyAccess { .. }
+							| Expression::Parenthesised(..)
+							| Expression::FunctionCall { .. }
+							| Expression::ConstructorCall { .. }
+					);
+					if requires_parenthesis {
+						buf.push('(');
+					}
 					tag.to_string_using_precedence(buf, options, local, local2);
+					if requires_parenthesis {
+						buf.push(')');
+					}
 				}
 				buf.push('`');
 				for (static_part, dynamic_part) in &template_literal.parts {
@@ -2014,7 +2038,7 @@ impl Expression {
 	pub fn build_iife(block: Block) -> Self {
 		let position = block.get_position();
 		Expression::FunctionCall {
-			function: Expression::ParenthesizedExpression(
+			function: Expression::Parenthesised(
 				Box::new(
 					Expression::ArrowFunction(ArrowFunction {
 						// TODO maybe async
@@ -2046,7 +2070,7 @@ impl Expression {
 	#[must_use]
 	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
 		if let Expression::FunctionCall { arguments, function, .. } = self {
-			if let (true, Expression::ParenthesizedExpression(expression, _)) =
+			if let (true, Expression::Parenthesised(expression, _)) =
 				(arguments.is_empty(), &**function)
 			{
 				if let MultipleExpression::Single(Expression::ArrowFunction(function)) =
@@ -2062,7 +2086,7 @@ impl Expression {
 	/// Recurses to find first non parenthesized expression
 	#[must_use]
 	pub fn get_non_parenthesized(&self) -> &Self {
-		if let Expression::ParenthesizedExpression(inner_multiple_expr, _) = self {
+		if let Expression::Parenthesised(inner_multiple_expr, _) = self {
 			if let MultipleExpression::Single(expr) = &**inner_multiple_expr {
 				expr.get_non_parenthesized()
 			} else {
@@ -2237,7 +2261,7 @@ mod tests {
 		// Can't match 45 here
 		assert_matches_ast!(
 			"(45)",
-			ParenthesizedExpression(
+			Parenthesised(
 				Deref @ MultipleExpression::Single(NumberLiteral(
 					NumberRepresentation::Number { .. },
 					span!(1, 3),
@@ -2257,7 +2281,7 @@ mod tests {
 	fn multiple_expression() {
 		assert_matches_ast!(
 			"(45,2)",
-			ParenthesizedExpression(
+			Parenthesised(
 				Deref @ MultipleExpression::Multiple {
 					lhs:
 						Deref @ MultipleExpression::Single(NumberLiteral(

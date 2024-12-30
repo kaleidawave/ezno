@@ -989,7 +989,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::Comment { on, .. } => {
 			return synthesise_expression(on, environment, checking_data, expecting);
 		}
-		Expression::ParenthesizedExpression(inner_expression, _) => Instance::RValue(
+		Expression::Parenthesised(inner_expression, _) => Instance::RValue(
 			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),
 		Expression::ClassExpression(class) => Instance::RValue(synthesise_class_declaration(

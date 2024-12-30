@@ -697,30 +697,22 @@ impl<'a> Lexer<'a> {
 					{}
 				chr => {
 					let num_slice = &current[..idx];
-					let number = crate::number::NumberRepresentation::from_str(num_slice);
-					let number = number.unwrap();
-					let length = idx as u32;
-					self.head += length;
-					return Ok((number, length));
-					// if is_number_delimiter(chr) {
-					// 	// Note not = as don't want to include chr
-
-					// 	if num_slice.trim_end() == "."
-					// 		|| num_slice.ends_with(['x', 'X', 'o', 'O', '_', '-'])
-					// 		|| (!matches!(state, NumberLiteralType::HexadecimalLiteral)
-					// 			&& num_slice.ends_with(['e', 'E', 'b', 'B']))
-					// 	{
-					// 		// (LexingErrors::UnexpectedEndToNumberLiteral)
-					// 		return Err(())
-					// 	}
-					// } else {
-					// 	// (LexingErrors::UnexpectedEndToNumberLiteral)
-					// 	return Err(())
-					// }
+					return match crate::number::NumberRepresentation::from_str(num_slice) {
+						Ok(number) => {
+							let length = idx as u32;
+							self.head += length;
+							Ok((number, length))
+						}
+						Err(_) => Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						)),
+					};
 				}
 			}
 		}
 
+		// Fix if don't find end
 		let number = crate::number::NumberRepresentation::from_str(current).expect("bad number");
 		let length = current.len() as u32;
 		self.head += length;
@@ -785,10 +777,14 @@ impl<'a> Lexer<'a> {
 			.unwrap_or(current.len());
 
 		let regex_flags = &current[regex_end..first_non_char];
-		
-		let invalid_flag = regex_flags.chars().any(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'));
+
+		let invalid_flag =
+			regex_flags.chars().any(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'));
 		if invalid_flag {
-			Err(ParseError::new(ParseErrors::InvalidRegexFlag, self.get_start().with_length(regex_flags.len())))
+			Err(ParseError::new(
+				ParseErrors::InvalidRegexFlag,
+				self.get_start().with_length(regex_flags.len()),
+			))
 		} else {
 			self.head += regex_flags.len() as u32;
 			Ok((regex, regex_flags))

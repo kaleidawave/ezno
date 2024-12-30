@@ -81,7 +81,19 @@ impl ASTNode for TemplateLiteral {
 		local: crate::LocalToStringInformation,
 	) {
 		if let Some(tag) = &self.tag {
+			let requires_parenthesis = !matches!(
+				&**tag,
+				Expression::VariableReference(..)
+					| Expression::PropertyAccess { .. }
+					| Expression::Parenthesised(..)
+			);
+			if requires_parenthesis {
+				buf.push('(');
+			}
 			tag.to_string_from_buffer(buf, options, local);
+			if requires_parenthesis {
+				buf.push(')');
+			}
 		}
 		buf.push('`');
 		for (static_part, dynamic_part) in &self.parts {

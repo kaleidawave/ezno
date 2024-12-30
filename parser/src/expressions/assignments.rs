@@ -104,7 +104,7 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 				Ok(Self::Index { indexer, position, indexee })
 			}
 			// Yah weird. Recursion is fine
-			Expression::ParenthesizedExpression(inner, _) => {
+			Expression::Parenthesised(inner, _) => {
 				if let MultipleExpression::Single(expression) = *inner {
 					TryFrom::try_from(expression)
 				} else {
