@@ -497,12 +497,11 @@ impl TypeStore {
 	pub fn new_regexp(
 		&mut self,
 		pattern: &str,
-		flags: &Option<String>,
+		flags: &str,
 		_position: &Span,
 	) -> Result<TypeId, String> {
-		let regexp = RegExp::new(pattern, flags.as_ref().map(String::as_str))?;
+		let regexp = RegExp::new(pattern, flags)?;
 		let ty = Type::SpecialObject(SpecialObject::RegularExpression(regexp));
-
 		Ok(self.register_type(ty))
 	}
 

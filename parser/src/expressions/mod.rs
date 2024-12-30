@@ -63,7 +63,8 @@ pub enum Expression {
 	BooleanLiteral(bool, Span),
 	RegexLiteral {
 		pattern: String,
-		flags: Option<String>,
+		/// Can be `""`
+		flags: String,
 		position: Span,
 	},
 	ArrayLiteral(Vec<ArrayElement>, Span),
@@ -283,10 +284,10 @@ impl Expression {
 				}
 			} else if reader.starts_with('/') {
 				let (pattern, flags) = reader.parse_regex_literal()?;
-				let position = start.with_length(2 + pattern.len() + flags.map_or(0, str::len));
+				let position = start.with_length(2 + pattern.len() + flags.len());
 				Expression::RegexLiteral {
 					pattern: pattern.to_owned(),
-					flags: flags.map(ToOwned::to_owned),
+					flags: flags.to_owned(),
 					position,
 				}
 			} else if reader.is_operator_advance("[") {
@@ -1093,9 +1094,7 @@ impl Expression {
 				buf.push('/');
 				buf.push_str(pattern);
 				buf.push('/');
-				if let Some(flags) = flags {
-					buf.push_str(flags);
-				}
+				buf.push_str(flags);
 			}
 			Self::BinaryOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_using_precedence(
