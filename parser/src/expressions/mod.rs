@@ -906,15 +906,6 @@ impl Expression {
 				}
 
 				reader.advance(keyword.len() as u32);
-
-				// if (cfg!(not(feature = "extras"))
-				// 	&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::Is)))
-				// 	|| (cfg!(not(feature = "full-typescript"))
-				// 		&& matches!(peeked_token, TSXToken::Keyword(TSXKeyword::As)))
-				// {
-				// 	return Ok(top);
-				// }
-
 				let top_position = top.get_position();
 
 				let (special_operators, rhs_position): (SpecialOperators, Span) = match keyword {
@@ -951,6 +942,7 @@ impl Expression {
 					}
 					#[cfg(feature = "extras")]
 					"is" => {
+						// TODO early return if not option
 						let type_annotation = TypeAnnotation::from_reader_with_precedence(
 							reader,
 							TypeOperatorKind::Query,
@@ -1547,9 +1539,16 @@ impl Expression {
 						&**tag,
 						Expression::VariableReference(..)
 							| Expression::PropertyAccess { .. }
+							| Expression::ThisReference { .. }
+							| Expression::SuperExpression { .. }
+							| Expression::Null(..)
 							| Expression::Parenthesised(..)
 							| Expression::FunctionCall { .. }
 							| Expression::ConstructorCall { .. }
+							| Expression::SpecialOperators(
+								SpecialOperators::NonNullAssertion(..),
+								..
+							)
 					);
 					if requires_parenthesis {
 						buf.push('(');

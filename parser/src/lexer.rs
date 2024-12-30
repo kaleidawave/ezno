@@ -697,15 +697,15 @@ impl<'a> Lexer<'a> {
 					{}
 				chr => {
 					let num_slice = &current[..idx];
+					let length = idx;
 					return match crate::number::NumberRepresentation::from_str(num_slice) {
 						Ok(number) => {
-							let length = idx as u32;
-							self.head += length;
-							Ok((number, length))
+							self.head += length as u32;
+							Ok((number, length as u32))
 						}
 						Err(_) => Err(ParseError::new(
 							ParseErrors::InvalidNumber,
-							self.get_start().with_length(idx),
+							self.get_start().with_length(length),
 						)),
 					};
 				}
@@ -713,10 +713,17 @@ impl<'a> Lexer<'a> {
 		}
 
 		// Fix if don't find end
-		let number = crate::number::NumberRepresentation::from_str(current).expect("bad number");
-		let length = current.len() as u32;
-		self.head += length;
-		Ok((number, length))
+		let length = current.len();
+		match crate::number::NumberRepresentation::from_str(current) {
+			Ok(number) => {
+				self.head += length as u32;
+				Ok((number, length as u32))
+			}
+			Err(_) => Err(ParseError::new(
+				ParseErrors::InvalidNumber,
+				self.get_start().with_length(length),
+			)),
+		}
 	}
 
 	/// Returns content and flags. Flags can be empty
