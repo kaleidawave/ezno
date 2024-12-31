@@ -3,8 +3,8 @@ use std::ops::Neg;
 use crate::{
 	ast::VariableOrPropertyAccess, bracketed_items_from_reader, bracketed_items_to_string,
 	derive_ASTNode, extensions::decorators::Decorated, number::NumberRepresentation, ASTNode,
-	Decorator, ListItem, Marker, ParseError, ParseErrors, ParseOptions, ParseResult, Quoted, Span,
-	VariableField, WithComment,
+	Decorator, ListItem, Marker, ParseError, ParseErrors, ParseResult, Quoted, Span, VariableField,
+	WithComment,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
@@ -441,7 +441,6 @@ impl ASTNode for TypeAnnotation {
 #[derive(Clone, Copy)]
 pub(crate) enum TypeOperatorKind {
 	None,
-	Union,
 	Intersection,
 	// not an implication, not an implication, not an implication
 	Function,
@@ -678,7 +677,7 @@ impl TypeAnnotation {
 					let name = reader.parse_identifier("type name", false)?;
 					namespace.push(name.to_owned());
 				}
-				let position = position.union(reader.get_end());
+				let _position = position.union(reader.get_end());
 				TypeName::FromNamespace(namespace)
 			} else {
 				TypeName::Name(name)

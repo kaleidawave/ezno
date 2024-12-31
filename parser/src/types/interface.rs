@@ -2,8 +2,8 @@ use crate::{
 	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
 	extensions::decorators::Decorated, functions::MethodHeader, property_key::PublicOrPrivate,
 	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode,
-	ExpressionOrStatementPosition, ParseErrors, ParseOptions, ParseResult, PropertyKey, Span,
-	StatementPosition, TypeAnnotation, TypeParameter, WithComment,
+	ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span, StatementPosition,
+	TypeAnnotation, TypeParameter, WithComment,
 };
 
 use get_field_by_type::GetFieldByType;

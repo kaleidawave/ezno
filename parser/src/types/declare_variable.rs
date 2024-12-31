@@ -1,6 +1,6 @@
 use crate::{
-	declarations::VariableDeclarationItem, derive_ASTNode, ASTNode, Decorator, ParseOptions,
-	ParseResult, Span, VariableKeyword,
+	declarations::VariableDeclarationItem, derive_ASTNode, ASTNode, Decorator, ParseResult, Span,
+	VariableKeyword,
 };
 
 /// A `declare var/let/const` thingy.
@@ -21,7 +21,7 @@ impl ASTNode for DeclareVariableDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.expect_keyword("declare");
+		reader.expect_keyword("declare")?;
 		Self::from_reader_without_declare(reader)
 	}
 

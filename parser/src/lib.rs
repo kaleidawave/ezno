@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![allow(clippy::new_without_default, clippy::too_many_lines)]
 #![warn(clippy::must_use_candidate)]
-#![allow(unused)]
 
 mod block;
 mod comments;
@@ -22,12 +21,9 @@ pub mod types;
 mod variable_fields;
 pub mod visiting;
 
-pub(crate) use lexer::Lexer;
-
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
 pub use comments::WithComment;
 pub use declarations::Declaration;
-use functions::FunctionBody;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
@@ -36,9 +32,9 @@ pub use extensions::{
 	decorators::{Decorated, Decorator},
 	is_expression, jsx,
 };
+pub use functions::FunctionBody;
 pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
-use iterator_endiate::EndiateIteratorExt;
 pub use modules::Module;
 pub use options::*;
 pub use property_key::PropertyKey;
@@ -49,6 +45,8 @@ pub use types::{
 	type_declarations::{self, TypeParameter},
 };
 pub use variable_fields::*;
+
+pub(crate) use lexer::Lexer;
 pub(crate) use visiting::{
 	Chain, ChainVariable, VisitOptions, Visitable, VisitorMutReceiver, VisitorReceiver,
 };
@@ -168,7 +166,7 @@ pub fn lex_and_parse_script<T: ASTNode>(
 	#[allow(clippy::cast_possible_truncation)]
 	let length_of_source = script.len() as u32;
 
-	let mut state = ParsingState {
+	let state = ParsingState {
 		line_starts,
 		length_of_source,
 		constant_imports: Default::default(),
@@ -382,6 +380,7 @@ pub trait ListItem: Sized {
 		unreachable!("ListItem::LAST != ASTNode")
 	}
 
+	#[must_use]
 	fn skip_trailing() -> bool {
 		true
 	}
@@ -439,6 +438,8 @@ pub(crate) fn bracketed_items_to_string<T: source_map::ToString, U: ASTNode>(
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
+	use iterator_endiate::EndiateIteratorExt;
+
 	const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
 	let large =
 		are_nodes_over_length(nodes.iter(), options, local, Some(MAX_INLINE_OBJECT_LITERAL), true);

@@ -2,15 +2,13 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{
-	bracketed_items_to_string, derive_ASTNode, Expression, ParseErrors, VariableIdentifier,
-};
+use crate::{bracketed_items_to_string, derive_ASTNode, Expression};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	ParseOptions, ParseResult, Span, TypeAnnotation, TypeParameter, VisitOptions,
+	ParseResult, Span, TypeAnnotation, TypeParameter, VisitOptions,
 };
 
 #[apply(derive_ASTNode)]

@@ -1,7 +1,7 @@
 use crate::{
 	ast::MultipleExpression, block::BlockOrSingleStatement,
 	declarations::variable::VariableDeclaration, derive_ASTNode, ParseError, ParseErrors,
-	ParseOptions, VariableField, VariableKeyword, WithComment,
+	VariableField, VariableKeyword, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -167,7 +167,7 @@ impl ASTNode for ForLoopCondition {
 			} else {
 				Some(MultipleExpression::from_reader(reader)?)
 			};
-			let semi_colon_two = reader.expect(';')?;
+			let _semi_colon_two = reader.expect(';')?;
 			let afterthought = if reader.is_operator(")") {
 				None
 			} else {

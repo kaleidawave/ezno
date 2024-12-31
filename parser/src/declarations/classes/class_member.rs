@@ -8,8 +8,8 @@ use crate::{
 	},
 	property_key::PublicOrPrivate,
 	visiting::Visitable,
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey,
-	TypeAnnotation, WithComment,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, TypeAnnotation,
+	WithComment,
 };
 use source_map::Span;
 use visitable_derive::Visitable;
@@ -333,7 +333,7 @@ impl FunctionBased for ClassConstructorBase {
 	fn header_and_name_from_reader(
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		let start = reader.expect_keyword("constructor")?;
+		let _start = reader.expect_keyword("constructor")?;
 		Ok(((), ()))
 	}
 

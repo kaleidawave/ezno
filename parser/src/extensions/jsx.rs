@@ -1,6 +1,6 @@
 use crate::{
 	ast::FunctionArgument, derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors,
-	ParseOptions, ParseResult, Span,
+	ParseResult, Span,
 };
 use visitable_derive::Visitable;
 
@@ -87,7 +87,8 @@ impl ASTNode for JSXElement {
 						let end = reader.expect('}')?;
 						JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
 					} else if reader.starts_with_string_delimeter() {
-						let (content, quoted) = reader.parse_string_literal()?;
+						// TODO _quoted
+						let (content, _quoted) = reader.parse_string_literal()?;
 						let position = start.with_length(content.len() + 2);
 						JSXAttribute::Static(key, content.to_owned(), position)
 					} else {
@@ -125,7 +126,17 @@ impl ASTNode for JSXElement {
 					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 				})?
 				.to_owned();
+
 			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?;
+			if tag_name != closing_tag_name {
+				return Err(ParseError::new(
+					crate::ParseErrors::ClosingTagDoesNotMatch {
+						tag_name: &tag_name,
+						closing_tag_name,
+					},
+					start.with_length(closing_tag_name.len() + 2),
+				));
+			}
 			let end = reader.expect('>')?;
 			return Ok(JSXElement {
 				tag_name,
@@ -142,8 +153,8 @@ impl ASTNode for JSXElement {
 			if closing_tag_name != tag_name {
 				return Err(ParseError::new(
 					crate::ParseErrors::ClosingTagDoesNotMatch {
-						expected: &tag_name,
-						found: closing_tag_name,
+						tag_name: &tag_name,
+						closing_tag_name,
 					},
 					start.with_length(closing_tag_name.len() + 2),
 				));
@@ -225,7 +236,7 @@ impl ASTNode for JSXAttribute {
 				let end = reader.expect('}')?;
 				Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
 			} else if reader.starts_with_string_delimeter() {
-				let (content, quoted) = reader.parse_string_literal()?;
+				let (content, _quoted) = reader.parse_string_literal()?;
 				let position = start.with_length(content.len() + 2);
 				Ok(JSXAttribute::Static(key, content.to_owned(), position))
 			} else {
@@ -352,7 +363,6 @@ fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNod
 		}
 		children.push(JSXNode::from_reader(reader)?);
 	}
-	Ok(children)
 }
 
 fn jsx_children_to_string<T: source_map::ToString>(

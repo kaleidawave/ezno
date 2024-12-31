@@ -1,7 +1,7 @@
 //! Contains wrappers for AST with comments
 
 use super::{ASTNode, Span};
-use crate::{ParseOptions, ParseResult};
+use crate::ParseResult;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]

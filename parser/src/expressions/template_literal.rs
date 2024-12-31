@@ -1,5 +1,5 @@
 use super::{Expression, MultipleExpression};
-use crate::{derive_ASTNode, ASTNode, ParseOptions, ParseResult, Span};
+use crate::{derive_ASTNode, ASTNode, ParseResult, Span};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -18,14 +18,18 @@ impl ASTNode for TemplateLiteral {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let start = reader.get_start();
+		let _start = reader.get_start();
 		let tag = if reader.is_operator_advance("`") {
 			None
 		} else {
-			Some(Box::new(Expression::from_reader_with_precedence(
-				reader,
-				super::COMMA_PRECEDENCE,
-			)?))
+			let tag = Expression::from_reader_with_precedence(reader, super::COMMA_PRECEDENCE)?;
+			if tag.is_optional_like_expression() {
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::TaggedTemplateCannotBeUsedWithOptionalChain,
+					tag.get_position(),
+				));
+			}
+			Some(Box::new(tag))
 		};
 
 		let mut parts = Vec::new();
@@ -70,8 +74,8 @@ impl ASTNode for TemplateLiteral {
 			let position = reader.get_start().with_length(current.len());
 			return Err(crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position));
 		}
-		let position = reader.get_start().with_length(reader.get_current().len());
-		Err(crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position))
+		// let position = reader.get_start().with_length(reader.get_current().len());
+		// Err(crate::ParseError::new(crate::ParseErrors::UnexpectedEnd, position))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

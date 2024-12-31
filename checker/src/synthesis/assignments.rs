@@ -269,5 +269,9 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 				publicity: crate::types::properties::Publicity::Public,
 			}
 		}
+		VariableOrPropertyAccess::NonNullAssertion(on, _) => {
+			// TODO
+			synthesise_access_to_reference(on, environment, checking_data)
+		}
 	}
 }

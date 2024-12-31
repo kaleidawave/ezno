@@ -27,7 +27,7 @@ pub trait ParameterVisibility: Send + Sync + Sized + Debug + PartialEq + Clone +
 }
 
 impl ParameterVisibility for () {
-	fn from_reader(reader: &mut crate::Lexer) -> Self {}
+	fn from_reader(_reader: &mut crate::Lexer) -> Self {}
 }
 
 impl ParameterVisibility for Option<crate::types::Visibility> {

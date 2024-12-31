@@ -32,6 +32,7 @@ pub enum VariableOrPropertyAccess {
 		indexer: Box<MultipleExpression>,
 		position: Span,
 	},
+	NonNullAssertion(Box<Self>, Span),
 }
 
 impl ASTNode for VariableOrPropertyAccess {
@@ -82,6 +83,12 @@ impl ASTNode for VariableOrPropertyAccess {
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
+			VariableOrPropertyAccess::NonNullAssertion(on, _position) => {
+				on.to_string_from_buffer(buf, options, local);
+				if options.include_type_annotations {
+					buf.push('!');
+				}
+			}
 		}
 	}
 }
@@ -103,7 +110,7 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			Expression::Index { indexer, position, indexee, is_optional: false } => {
 				Ok(Self::Index { indexer, position, indexee })
 			}
-			// Yah weird. Recursion is fine
+			// Yah weird and recursion is fine here
 			Expression::Parenthesised(inner, _) => {
 				if let MultipleExpression::Single(expression) = *inner {
 					TryFrom::try_from(expression)
@@ -114,6 +121,11 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 					))
 				}
 			}
+			Expression::SpecialOperators(
+				super::SpecialOperators::NonNullAssertion(on),
+				position,
+			) => TryFrom::try_from(*on)
+				.map(|value| Self::NonNullAssertion(Box::new(value), position)),
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
 				expression.get_position(),
@@ -134,6 +146,12 @@ impl From<VariableOrPropertyAccess> for Expression {
 			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
 				Expression::PropertyAccess { parent, position, property, is_optional: false }
 			}
+			VariableOrPropertyAccess::NonNullAssertion(on, position) => {
+				Expression::SpecialOperators(
+					super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
+					position,
+				)
+			}
 		}
 	}
 }
@@ -143,6 +161,7 @@ impl VariableOrPropertyAccess {
 	pub fn get_parent(&self) -> Option<&Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..) => None,
+			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent(),
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 		}
@@ -151,6 +170,7 @@ impl VariableOrPropertyAccess {
 	pub fn get_parent_mut(&mut self) -> Option<&mut Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..) => None,
+			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent_mut(),
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 		}

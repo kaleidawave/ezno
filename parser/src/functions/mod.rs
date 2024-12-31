@@ -2,10 +2,9 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
 	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
-	property_key::{PropertyKey, PropertyKeyKind},
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
-	ASTNode, Block, ExpressionOrStatementPosition, ExpressionPosition, ParseOptions, ParseResult,
-	TypeAnnotation, TypeParameter, VisitOptions, Visitable, WithComment,
+	ASTNode, Block, ExpressionOrStatementPosition, ExpressionPosition, ParseResult, TypeAnnotation,
+	TypeParameter, VisitOptions, Visitable,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;

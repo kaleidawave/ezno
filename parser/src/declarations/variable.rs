@@ -3,8 +3,8 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	derive_ASTNode, expressions::operators::COMMA_PRECEDENCE, ASTNode, Expression, ParseError,
-	ParseErrors, ParseOptions, ParseResult, Span, TypeAnnotation, VariableField, WithComment,
+	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, Span,
+	TypeAnnotation, VariableField, WithComment,
 };
 use visitable_derive::Visitable;
 

@@ -4,8 +4,7 @@ use crate::{
 	derive_ASTNode,
 	functions::HeadingAndPosition,
 	functions::{FunctionBased, FunctionParameters, Parameter},
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, Span, TypeAnnotation,
-	VariableField, VariableIdentifier,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, Span, VariableField, VariableIdentifier,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

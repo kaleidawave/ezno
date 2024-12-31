@@ -1,8 +1,8 @@
 use crate::{
 	are_nodes_over_length, bracketed_items_from_reader, bracketed_items_to_string,
 	declarations::ClassDeclaration, derive_ASTNode, functions, number::NumberRepresentation,
-	types::type_annotations::TypeOperatorKind, ExpressionPosition, FunctionHeader, ListItem,
-	Marker, ParseErrors, ParseResult, Quoted,
+	types::type_annotations::TypeOperatorKind, ExpressionPosition, ListItem, Marker, ParseErrors,
+	ParseResult, Quoted,
 };
 
 use self::{
@@ -16,9 +16,7 @@ use self::{
 	},
 };
 
-use super::{
-	jsx::JSXRoot, ASTNode, Block, FunctionBase, ParseError, ParseOptions, Span, TypeAnnotation,
-};
+use super::{jsx::JSXRoot, ASTNode, Block, FunctionBase, ParseError, Span, TypeAnnotation};
 
 #[cfg(feature = "extras")]
 use crate::extensions::is_expression::IsExpression;
@@ -359,7 +357,7 @@ impl Expression {
 					op => unreachable!("{op:?}"),
 				};
 				reader.advance(2); // TODO reader.is_one_of_operators_advance
-				let precedence = operator.precedence();
+				let _precedence = operator.precedence();
 
 				// _with_precedence, _with_precedence
 				let operand = VariableOrPropertyAccess::from_reader(reader)?;
@@ -417,7 +415,7 @@ impl Expression {
 				} else {
 					let constructor_expression =
 						Self::from_reader_with_precedence(reader, FUNCTION_CALL_PRECEDENCE)?;
-					let position = start.union(constructor_expression.get_position());
+					let _position = start.union(constructor_expression.get_position());
 
 					let type_arguments = if reader.is_operator_advance("<") {
 						let (generic_arguments, _) = bracketed_items_from_reader(reader, ">")?;
@@ -725,37 +723,27 @@ impl Expression {
 				let position = position.union(new_rhs.get_position());
 				top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
 			} else if reader.is_operator("`") {
-				if AssociativityDirection::RightToLeft
-					.should_return(return_precedence, COMMA_PRECEDENCE)
-				{
-					return Ok(top);
-				}
-
-				let mut template_literal = TemplateLiteral::from_reader(reader)?;
-				// TODO check expression here
-				template_literal.position.start = top.get_position().start;
-				template_literal.tag = Some(Box::new(top));
-				top = Expression::TemplateLiteral(template_literal);
-			} else if reader.starts_with('<') {
 				if AssociativityDirection::LeftToRight
 					.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
 				{
 					return Ok(top);
 				}
-				let (is_optional, length) =
-					if reader.starts_with('?') { (true, 3) } else { (false, 1) };
-				reader.advance(length);
-				let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
-				reader.expect('(')?;
-				let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
-				let position = top.get_position().union(reader.get_end());
-				top = Expression::FunctionCall {
-					function: Box::new(top),
-					type_arguments: Some(type_arguments),
-					arguments,
-					position,
-					is_optional,
-				};
+
+				if let Expression::UnaryPostfixAssignmentOperation { .. } = top {
+					return Ok(top);
+				}
+
+				if top.is_optional_like_expression() {
+					return Err(ParseError::new(
+						ParseErrors::TaggedTemplateCannotBeUsedWithOptionalChain,
+						top.get_position(),
+					));
+				}
+
+				let mut template_literal = TemplateLiteral::from_reader(reader)?;
+				template_literal.position.start = top.get_position().start;
+				template_literal.tag = Some(Box::new(top));
+				top = Expression::TemplateLiteral(template_literal);
 			} else if reader.starts_with_str("?.(")
 				|| reader.starts_with_str("?.<")
 				|| reader.starts_with('(')
@@ -766,7 +754,7 @@ impl Expression {
 					return Ok(top);
 				}
 				// TODO bit weird
-				let (is_optional) = if reader.starts_with('?') {
+				let is_optional = if reader.starts_with('?') {
 					reader.advance(2);
 					true
 				} else {
@@ -1390,20 +1378,9 @@ impl Expression {
 				arguments_to_string(arguments, buf, options, local);
 			}
 			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
+				// TODO requires parenthesis
 				buf.push_str("new ");
-				// let requires_parenthesis = !matches!(
-				// 	&**constructor,
-				// 	Expression::VariableReference(..)
-				// 		| Expression::PropertyAccess { .. }
-				// 		| Expression::Parenthesised(..)
-				// );
-				// if requires_parenthesis {
-				// 	buf.push('(');
-				// }
 				constructor.to_string_from_buffer(buf, options, local);
-				// if requires_parenthesis {
-				// 	buf.push(')');
-				// }
 				if let (true, Some(type_arguments)) =
 					(options.include_type_annotations, type_arguments)
 				{
@@ -1535,28 +1512,14 @@ impl Expression {
 				// Doing here because of tag precedence
 				if let Some(tag) = &template_literal.tag {
 					// TODO ConstructorCall should not be here
-					let requires_parenthesis = !matches!(
-						&**tag,
-						Expression::VariableReference(..)
-							| Expression::PropertyAccess { .. }
-							| Expression::ThisReference { .. }
-							| Expression::SuperExpression { .. }
-							| Expression::Null(..)
-							| Expression::Parenthesised(..)
-							| Expression::FunctionCall { .. }
-							| Expression::ConstructorCall { .. }
-							| Expression::SpecialOperators(
-								SpecialOperators::NonNullAssertion(..),
-								..
-							)
-					);
-					if requires_parenthesis {
-						buf.push('(');
-					}
+					// let requires_parenthesis = tag.is_simple();
+					// if requires_parenthesis {
+					// 	buf.push('(');
+					// }
 					tag.to_string_using_precedence(buf, options, local, local2);
-					if requires_parenthesis {
-						buf.push(')');
-					}
+					// if requires_parenthesis {
+					// 	buf.push(')');
+					// }
 				}
 				buf.push('`');
 				for (static_part, dynamic_part) in &template_literal.parts {
@@ -1637,6 +1600,16 @@ impl Expression {
 		// if inverted {
 		// 	buf.push(')');
 		// }
+	}
+
+	#[must_use]
+	pub fn is_optional_like_expression(&self) -> bool {
+		matches!(
+			self,
+			Expression::PropertyAccess { is_optional: true, .. }
+				| Expression::Index { is_optional: true, .. }
+				| Expression::FunctionCall { is_optional: true, .. }
+		)
 	}
 }
 

@@ -8,7 +8,7 @@ use source_map::Span;
 use std::fmt::Debug;
 use temporary_annex::Annex;
 
-use crate::{number::NumberRepresentation, ASTNode, Expression, ParseOptions, ParseResult};
+use crate::{number::NumberRepresentation, ASTNode, Expression, ParseResult};
 
 pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;

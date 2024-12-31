@@ -1,15 +1,11 @@
 pub mod export;
 pub mod import;
 
-use derive_enum_from_into::{EnumFrom, EnumTryInto};
 use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{
-	derive_ASTNode, extensions::decorators, Decorated, Marker, ParseError, ParseErrors,
-	ParseOptions, Quoted, StatementPosition,
-};
+use crate::{derive_ASTNode, Marker, ParseError, ParseErrors, Quoted};
 
 pub trait ImportOrExport: std::fmt::Debug + Clone + PartialEq + Sync + Send + 'static {
 	const PREFIX: bool;
@@ -262,7 +258,7 @@ impl ImportLocation {
 
 		reader.skip();
 
-		let start = reader.get_start();
+		let _start = reader.get_start();
 		let (content, quoted) = reader.parse_string_literal()?;
 		Ok(ImportLocation::Quoted(content.to_owned(), quoted))
 	}

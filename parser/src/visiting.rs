@@ -464,7 +464,6 @@ mod structures {
 mod visitors {
 	use super::{BlockItem, Chain, Expression, ImmutableVariableOrProperty, SelfVisitable};
 	use crate::block::BlockLike;
-	use source_map::Span;
 
 	/// A visitor over something which is hooked/is [`SelfVisitable`] with some generic `Data`
 	pub trait Visitor<Item: SelfVisitable, Data> {

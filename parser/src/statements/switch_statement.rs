@@ -1,11 +1,7 @@
-use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{
-	ast::MultipleExpression, derive_ASTNode, ASTNode, Expression, ParseOptions,
-	StatementOrDeclaration,
-};
+use crate::{ast::MultipleExpression, derive_ASTNode, ASTNode, Expression, StatementOrDeclaration};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]

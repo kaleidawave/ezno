@@ -7,7 +7,7 @@ use crate::{
 	declarations::{export::Exportable, ExportDeclaration},
 	derive_ASTNode,
 	marker::MARKER,
-	Declaration, Decorated, Marker, ParseOptions, ParseResult, Statement, VisitOptions, Visitable,
+	Declaration, Decorated, Marker, ParseResult, Statement, VisitOptions, Visitable,
 };
 
 #[apply(derive_ASTNode)]

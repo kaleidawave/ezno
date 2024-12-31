@@ -7,8 +7,8 @@ use crate::{
 	bracketed_items_from_reader, derive_ASTNode,
 	property_key::PropertyKey,
 	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
-	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseOptions, ParseResult,
-	Span, VisitOptions, Visitable, WithComment,
+	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseResult, Span,
+	VisitOptions, Visitable, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;

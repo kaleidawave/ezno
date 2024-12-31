@@ -2,28 +2,28 @@ use crate::{
 	errors::{ParseError, ParseErrors},
 	marker::Marker,
 	options::ParseOptions,
-	Comments, Quoted, Span,
+	Span,
 };
 
-pub(super) enum NumberLiteralType {
-	BinaryLiteral,
-	/// strict mode done at the parse level
-	OctalLiteral,
-	HexadecimalLiteral,
-	/// Base 10
-	Decimal {
-		/// has decimal point
-		fractional: bool,
-	},
-	BigInt,
-	Exponent,
-}
+// pub(super) enum NumberLiteralType {
+// 	BinaryLiteral,
+// 	/// strict mode done at the parse level
+// 	OctalLiteral,
+// 	HexadecimalLiteral,
+// 	/// Base 10
+// 	Decimal {
+// 		/// has decimal point
+// 		fractional: bool,
+// 	},
+// 	BigInt,
+// 	Exponent,
+// }
 
-impl Default for NumberLiteralType {
-	fn default() -> Self {
-		Self::Decimal { fractional: false }
-	}
-}
+// impl Default for NumberLiteralType {
+// 	fn default() -> Self {
+// 		Self::Decimal { fractional: false }
+// 	}
+// }
 
 // TODO state for "use strict" etc?
 // TODO hold Keywords map, markers, syntax errors etc
@@ -46,7 +46,7 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
 	// (crate)
 	#[must_use]
-	pub fn new(script: &'a str, offset: Option<u32>, options: ParseOptions) -> Self {
+	pub fn new(script: &'a str, _offset: Option<u32>, options: ParseOptions) -> Self {
 		if script.len() > u32::MAX as usize {
 			todo!()
 			// return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
@@ -87,35 +87,29 @@ impl<'a> Lexer<'a> {
 		)
 	}
 
-	// TODO temp
-	fn get_surrounding(&self) -> (&'a str, &'a str) {
-		const WIDTH: usize = 14;
-		let head = self.head as usize;
-		let start = head.saturating_sub(WIDTH);
-		let end = std::cmp::min(head + WIDTH, self.script.len());
-		(&self.script[start..head], &self.script[head..end])
-	}
-
 	#[must_use]
 	pub fn last_was_from_new_line(&self) -> u32 {
 		self.state.last_new_lines
 	}
 
 	pub fn skip(&mut self) {
-		let mut count = 0;
-		let mut new_lines = 0;
-		for (idx, chr) in self.get_current().char_indices() {
-			if !chr.is_whitespace() {
-				break;
+		let current = self.get_current();
+		if current.starts_with(char::is_whitespace) {
+			let start = self.head;
+			self.state.last_new_lines = 0;
+
+			for (idx, chr) in current.char_indices() {
+				if !chr.is_whitespace() {
+					self.head = start + idx as u32;
+					return;
+				}
+				if let '\n' = chr {
+					self.state.last_new_lines += 1;
+				}
 			}
-			if let '\n' = chr {
-				new_lines += 1;
-			}
-			count += 1;
-		}
-		if count > 0 {
-			self.state.last_new_lines = new_lines;
-			self.head += count;
+
+			// Else if
+			self.head += current.len() as u32;
 		}
 	}
 
@@ -362,7 +356,6 @@ impl<'a> Lexer<'a> {
 		if let Some((_, chr)) = iter.next() {
 			let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
 			if !first_is_valid {
-				let current = self.get_current();
 				return Err(ParseError::new(
 					ParseErrors::ExpectedIdentifier { location },
 					start.with_length(chr.len_utf8()),
@@ -544,7 +537,7 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		let mut chars = current.char_indices();
 
-		let mut state = match chars.next().map(|(idx, chr)| chr) {
+		let mut state = match chars.next().map(|(_idx, chr)| chr) {
 			Some('0') if current.as_bytes().get(1).is_some_and(|b| (b'0'..=b'7').contains(b)) => {
 				// TODO strict mode should be done in the parser stage (as that is where context is)
 				NumberLiteralType::OctalLiteral
@@ -695,7 +688,7 @@ impl<'a> Lexer<'a> {
 				// `10e-5` is a valid literal
 				'-' if matches!(state, NumberLiteralType::Exponent if current[..idx].ends_with(['e', 'E'])) =>
 					{}
-				chr => {
+				_chr => {
 					let num_slice = &current[..idx];
 					let length = idx;
 					return match crate::number::NumberRepresentation::from_str(num_slice) {
@@ -729,12 +722,11 @@ impl<'a> Lexer<'a> {
 	/// Returns content and flags. Flags can be empty
 	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, &'a str), ParseError> {
 		let mut escaped = false;
-		let mut after_last_slash = false;
 		let mut in_set = false;
 		self.skip();
 		let current = self.get_current();
 		let mut chars = current.char_indices();
-		assert!(chars.next().is_some_and(|(idx, chr)| chr == '/'));
+		assert!(chars.next().is_some_and(|(_idx, chr)| chr == '/'));
 		let start = self.get_start();
 
 		let mut regex_content = 1;
@@ -846,7 +838,7 @@ impl<'a> Lexer<'a> {
 					if let b')' | b'}' | b']' = chr {
 						// Extra removal
 						open_chevrons >>= 1;
-						bracket_count.saturating_sub(1);
+						bracket_count = bracket_count.saturating_sub(1);
 					}
 				} else if let b'>' = chr {
 					continue;
@@ -866,7 +858,6 @@ impl<'a> Lexer<'a> {
 	#[must_use]
 	pub fn after_identifier(&self) -> &'a str {
 		let current = self.get_current();
-		let mut paren_count: u32 = 0;
 
 		let mut chars = current.as_bytes().iter().enumerate();
 		for (idx, chr) in chars.by_ref() {
@@ -916,7 +907,7 @@ impl<'a> Lexer<'a> {
 				}
 			}
 		} else {
-			let mut paren_count: u32 = 0;
+			// let mut paren_count: u32 = 0;
 			let mut chars = current.as_bytes().iter().enumerate();
 			for (_, chr) in chars.by_ref() {
 				if !chr.is_ascii_whitespace() {
@@ -935,7 +926,7 @@ impl<'a> Lexer<'a> {
 
 	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
 	pub fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
-		let last = self.state.last_new_lines;
+		// let last = self.state.last_new_lines;
 		// TODO order
 		let semi_colon_like = self.starts_with_str("//")
 			|| self.is_operator_advance(";")
@@ -989,15 +980,14 @@ impl<'a> Lexer<'a> {
 		} else if self.options.type_annotations && after_brackets.starts_with(':') {
 			// TODO WIP implementation
 			let save_point = self.head;
-			let mut reader = self;
-			reader.head += after + 1;
+			self.head += after + 1;
 			// I hate this!!. Can double allocate for expressions
 			let annotation = crate::types::TypeAnnotation::from_reader_with_precedence(
-				reader,
+				self,
 				crate::types::type_annotations::TypeOperatorKind::ReturnType,
 			);
-			let starts_with_arrow = reader.starts_with_str("=>");
-			reader.head = save_point;
+			let starts_with_arrow = self.starts_with_str("=>");
+			self.head = save_point;
 			if let (true, Ok(annotation)) = (starts_with_arrow, annotation) {
 				(true, Some(annotation))
 			} else {
@@ -1059,7 +1049,7 @@ pub(crate) mod utilities {
 	}
 
 	pub fn trim_whitespace_not_newlines(on: &str) -> &str {
-		let mut chars = on.char_indices();
+		let chars = on.char_indices();
 		let mut idx = 0;
 		for (at, chr) in chars {
 			idx = at;

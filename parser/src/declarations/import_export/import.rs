@@ -1,7 +1,7 @@
 use super::{ImportExportPart, ImportLocation};
 use crate::{
 	ast::object_literal::ObjectLiteral, bracketed_items_from_reader, derive_ASTNode, ASTNode,
-	ParseOptions, ParseResult, ParsingState, VariableIdentifier,
+	ParseResult, VariableIdentifier,
 };
 use source_map::Span;
 use visitable_derive::Visitable;
@@ -194,7 +194,7 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 		if reader.is_operator_advance(",") {
 			Some(default_identifier)
 		} else {
-			let end = default_identifier.get_position().get_end();
+			let _end = default_identifier.get_position().get_end();
 			return Ok(PartsResult {
 				#[cfg(feature = "extras")]
 				is_deferred,

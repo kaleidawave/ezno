@@ -16,10 +16,7 @@ use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{
-	derive_ASTNode, extensions::decorators, Decorated, Marker, ParseError, ParseErrors,
-	ParseOptions, Quoted, StatementPosition,
-};
+use crate::{derive_ASTNode, extensions::decorators, Decorated, StatementPosition};
 
 pub use self::{
 	classes::ClassDeclaration,
@@ -69,7 +66,7 @@ impl Declaration {
 	// TODO reuse
 	// Warning expects skip to have been called
 	pub(crate) fn is_declaration_start(reader: &crate::Lexer) -> bool {
-		let mut declaration_keyword = reader.is_one_of_keywords(&[
+		let declaration_keyword = reader.is_one_of_keywords(&[
 			"let",
 			"const",
 			"class",

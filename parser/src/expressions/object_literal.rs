@@ -3,8 +3,7 @@ use crate::{
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
 	visiting::Visitable,
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, Span,
-	WithComment,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
@@ -94,7 +93,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	type ParameterVisibility = ();
 
 	fn header_and_name_from_reader(
-		reader: &mut crate::Lexer,
+		_reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		todo!()
 		// // TODO not great

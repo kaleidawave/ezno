@@ -13,9 +13,7 @@ use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use std::fmt::Debug;
 
-use super::{
-	expressions::MultipleExpression, ASTNode, Block, Expression, ParseOptions, ParseResult, Span,
-};
+use super::{expressions::MultipleExpression, ASTNode, Block, Expression, ParseResult, Span};
 pub use for_statement::{ForLoopCondition, ForLoopStatement, ForLoopStatementInitialiser};
 pub use if_statement::*;
 pub use switch_statement::{SwitchBranch, SwitchStatement};

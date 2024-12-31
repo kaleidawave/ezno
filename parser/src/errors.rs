@@ -23,8 +23,8 @@ pub enum ParseErrors<'a> {
 		found: &'a str,
 	},
 	ClosingTagDoesNotMatch {
-		expected: &'a str,
-		found: &'a str,
+		tag_name: &'a str,
+		closing_tag_name: &'a str,
 	},
 	ExpectedStringLiteral {
 		found: &'a str,
@@ -65,6 +65,8 @@ pub enum ParseErrors<'a> {
 	UnexpectedEnd,
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
 	TypeAnnotationUsed,
+	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
+	TaggedTemplateCannotBeUsedWithOptionalChain,
 }
 
 impl Display for ParseErrors<'_> {
@@ -105,8 +107,7 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::UnexpectedEnd => {
 				write!(f, "Unexpected end")
 			}
-			// ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
-			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
+			ParseErrors::ClosingTagDoesNotMatch { tag_name: expected, closing_tag_name: found } => {
 				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")
 			}
 			ParseErrors::NonStandardSyntaxUsedWithoutEnabled => {
@@ -116,7 +117,10 @@ impl Display for ParseErrors<'_> {
 				write!(f, "Expected string literal, found {found:?}")
 			}
 			ParseErrors::TypeArgumentsNotValidOnReference => {
-				write!(f, "Type arguments not valid on reference",)
+				write!(f, "Type arguments not valid on reference")
+			}
+			ParseErrors::TaggedTemplateCannotBeUsedWithOptionalChain => {
+				write!(f, "Tagged template cannot be used with optional chain")
 			}
 			ParseErrors::ExpectedEndOfSource { found } => {
 				let found = &found[..std::cmp::min(found.len(), 10)];

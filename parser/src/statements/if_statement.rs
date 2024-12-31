@@ -1,6 +1,4 @@
-use crate::{
-	block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression, ParseOptions,
-};
+use crate::{block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression};
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
@@ -64,7 +62,7 @@ impl ASTNode for IfStatement {
 			// TODO doesn't use `ConditionalElseStatement` or `UnconditionalElseStatement`, `ASTNode::from_reader` implementations
 			reader.advance("else".len() as u32);
 			if reader.is_keyword_advance("if") {
-				let value = reader.expect('(')?;
+				let _value = reader.expect('(')?;
 				let condition = MultipleExpression::from_reader(reader)?;
 				reader.expect(')')?;
 				let inner = BlockOrSingleStatement::from_reader(reader)?;

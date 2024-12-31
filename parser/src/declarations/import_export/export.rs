@@ -1,7 +1,7 @@
 use crate::{
 	derive_ASTNode, type_annotations::TypeAnnotationFunctionParameters,
-	types::enum_declaration::EnumDeclaration, ASTNode, Expression, ParseError, ParseOptions,
-	ParseResult, Span, StatementPosition, TypeAnnotation, VariableIdentifier,
+	types::enum_declaration::EnumDeclaration, ASTNode, Expression, ParseResult, Span,
+	StatementPosition, TypeAnnotation, VariableIdentifier,
 };
 
 use super::{
