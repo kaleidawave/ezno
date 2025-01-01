@@ -4951,7 +4951,7 @@ console.log(a.prop);
 export default const;
 ```
 
-- Found reserved identifier
+- Expected start of expression
 
 #### Only synthesis module once
 
