@@ -512,7 +512,22 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub fn starts_with_number(&self) -> bool {
-		self.get_current().as_bytes().first().is_some_and(|b| b.is_ascii_digit() || *b == b'.')
+		let bytes = self.get_current().as_bytes();
+		if let Some(start) = bytes.first() {
+			if start.is_ascii_digit() {
+				true
+			} else if let b'.' = start {
+				if let Some(after) = bytes.get(1) {
+					after.is_ascii_digit() || *after == b'_'
+				} else {
+					false
+				}
+			} else {
+				false
+			}
+		} else {
+			false
+		}
 	}
 
 	// TODO errors + some parts are weird
