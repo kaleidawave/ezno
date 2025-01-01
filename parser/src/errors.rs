@@ -67,6 +67,7 @@ pub enum ParseErrors<'a> {
 	TypeAnnotationUsed,
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
 	TaggedTemplateCannotBeUsedWithOptionalChain,
+	ExpectedExpression,
 }
 
 impl Display for ParseErrors<'_> {
@@ -191,6 +192,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::TypeAnnotationUsed => {
 				write!(f, "Cannot use type annotations in non-ts file")
+			}
+			ParseErrors::ExpectedExpression => {
+				write!(f, "Expected start of expression")
 			}
 		}
 	}

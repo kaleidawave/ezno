@@ -290,7 +290,7 @@ impl<'a> Lexer<'a> {
 	/// Can't do `-` and `+` because they are valid expression prefixed
 	/// TODO `.` if not number etc.
 	#[must_use]
-	pub fn starts_with_expression_delimter(&self) -> bool {
+	pub fn starts_with_expression_delimiter(&self) -> bool {
 		let current = self.get_current();
 		IntoIterator::into_iter(["=", ",", ":", "?", "]", ")", "}", ";"])
 			.any(|expression_delimiter| current.starts_with(expression_delimiter))
@@ -435,7 +435,7 @@ impl<'a> Lexer<'a> {
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
 		let current = self.get_current();
-		for i in 0..current.len() {
+		for (i, _) in current.char_indices() {
 			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
 				self.head += (i + until.len()) as u32;
 				return Ok((&current[..i], until));
@@ -449,7 +449,7 @@ impl<'a> Lexer<'a> {
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
 		let current = self.get_current();
-		for i in 0..current.len() {
+		for (i, _) in current.char_indices() {
 			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
 				self.head += i as u32;
 				let content = &current[..i];

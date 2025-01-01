@@ -462,7 +462,7 @@ impl TypeAnnotation {
 		if reader.get_options().partial_syntax {
 			let start = reader.get_start();
 			reader.skip();
-			let next_is_not_expression_like = reader.starts_with_expression_delimter()
+			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
 				|| reader.starts_with_statement_or_declaration_on_new_line();
 
 			if next_is_not_expression_like {

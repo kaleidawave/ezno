@@ -156,6 +156,9 @@ impl ASTNode for Statement {
 				content.to_owned(),
 				start.with_length(4 + content.len()),
 			))
+		} else if reader.get_options().partial_syntax && reader.starts_with_expression_delimiter() {
+			// Prevents cycic recursion
+			Err(ParseError::new(ParseErrors::ExpectedExpression, reader.next_item_span()))
 		} else {
 			let expression = MultipleExpression::from_reader(reader)?;
 			Ok(Statement::Expression(expression))

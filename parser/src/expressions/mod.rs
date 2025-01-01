@@ -1,8 +1,7 @@
 use crate::{
 	are_nodes_over_length, bracketed_items_from_reader, bracketed_items_to_string,
 	declarations::ClassDeclaration, derive_ASTNode, functions, number::NumberRepresentation,
-	types::type_annotations::TypeOperatorKind, ExpressionPosition, ListItem, Marker, ParseErrors,
-	ParseResult, Quoted,
+	ExpressionPosition, ListItem, Marker, ParseErrors, ParseResult, Quoted,
 };
 
 use self::{
@@ -234,7 +233,7 @@ impl Expression {
 		if reader.get_options().partial_syntax {
 			let start = reader.get_start();
 			reader.skip();
-			let next_is_not_expression_like = reader.starts_with_expression_delimter()
+			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
 				|| reader.starts_with_statement_or_declaration_on_new_line();
 
 			if next_is_not_expression_like {
@@ -499,28 +498,35 @@ impl Expression {
 					Default::default()
 				}
 
-				let name = reader.parse_identifier("variable reference expression", true)?;
+				let name = reader.parse_identifier("variable reference expression", true);
 
-				if reader.get_options().interpolation_points && name == crate::marker::MARKER {
-					let position = start.with_length(0);
-					let marker_id = reader.new_partial_point_marker(position);
-					Expression::Marker { marker_id, position }
-				} else {
-					let position = start.with_length(name.len());
-
-					// Use this method to also not advance
-					// `trim` but without newlines
-					if after_spaces_or_tabs(reader.get_current()).starts_with("=>") {
-						let identifier =
-							crate::VariableIdentifier::Standard(name.to_owned(), position);
-						let is_async = false;
-						ArrowFunction::from_reader_with_first_parameter(
-							reader, is_async, identifier,
-						)
-						.map(Expression::ArrowFunction)?
+				if let Ok(name) = name {
+					if reader.get_options().interpolation_points && name == crate::marker::MARKER {
+						let position = start.with_length(0);
+						let marker_id = reader.new_partial_point_marker(position);
+						Expression::Marker { marker_id, position }
 					} else {
-						Expression::VariableReference(name.to_owned(), position)
+						let position = start.with_length(name.len());
+
+						// Use this method to also not advance
+						// `trim` but without newlines
+						if after_spaces_or_tabs(reader.get_current()).starts_with("=>") {
+							let identifier =
+								crate::VariableIdentifier::Standard(name.to_owned(), position);
+							let is_async = false;
+							ArrowFunction::from_reader_with_first_parameter(
+								reader, is_async, identifier,
+							)
+							.map(Expression::ArrowFunction)?
+						} else {
+							Expression::VariableReference(name.to_owned(), position)
+						}
 					}
+				} else {
+					return Err(ParseError::new(
+						ParseErrors::ExpectedExpression,
+						reader.next_item_span(),
+					));
 				}
 			}
 		};
@@ -906,7 +912,7 @@ impl Expression {
 						} else {
 							let annotation = TypeAnnotation::from_reader_with_precedence(
 								reader,
-								TypeOperatorKind::Query,
+								crate::types::type_annotations::TypeOperatorKind::Query,
 							)?;
 							let position = annotation.get_position();
 							(TypeOrConst::Type(Box::new(annotation)), position)
@@ -917,7 +923,7 @@ impl Expression {
 					"satisfies" => {
 						let type_annotation = TypeAnnotation::from_reader_with_precedence(
 							reader,
-							TypeOperatorKind::Query,
+							crate::types::type_annotations::TypeOperatorKind::Query,
 						)?;
 						let position = type_annotation.get_position();
 						(
@@ -933,7 +939,7 @@ impl Expression {
 						// TODO early return if not option
 						let type_annotation = TypeAnnotation::from_reader_with_precedence(
 							reader,
-							TypeOperatorKind::Query,
+							crate::types::type_annotations::TypeOperatorKind::Query,
 						)?;
 						let position = type_annotation.get_position();
 						(

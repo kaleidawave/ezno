@@ -112,7 +112,7 @@ fn property_access() {
 
 #[test]
 fn invalid_syntax() {
-	let sources = [("", true), ("][", false), ("{}}", false)];
+	let sources = [("", true), ("][", false), ("{}}", false), ("))", false)];
 
 	for (source, is_okay) in sources {
 		let result = Module::from_string(

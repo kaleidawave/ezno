@@ -32,6 +32,7 @@ pub enum VariableOrPropertyAccess {
 		indexer: Box<MultipleExpression>,
 		position: Span,
 	},
+	#[cfg(feature = "full-typescript")]
 	NonNullAssertion(Box<Self>, Span),
 }
 
@@ -83,6 +84,7 @@ impl ASTNode for VariableOrPropertyAccess {
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
+			#[cfg(feature = "full-typescript")]
 			VariableOrPropertyAccess::NonNullAssertion(on, _position) => {
 				on.to_string_from_buffer(buf, options, local);
 				if options.include_type_annotations {
@@ -121,6 +123,7 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 					))
 				}
 			}
+			#[cfg(feature = "full-typescript")]
 			Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(on),
 				position,
@@ -146,12 +149,11 @@ impl From<VariableOrPropertyAccess> for Expression {
 			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
 				Expression::PropertyAccess { parent, position, property, is_optional: false }
 			}
-			VariableOrPropertyAccess::NonNullAssertion(on, position) => {
-				Expression::SpecialOperators(
-					super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
-					position,
-				)
-			}
+			#[cfg(feature = "full-typescript")]
+			VariableOrPropertyAccess::NonNullAssertion(on, position) => Expression::SpecialOperators(
+				super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
+				position,
+			),
 		}
 	}
 }
@@ -161,18 +163,20 @@ impl VariableOrPropertyAccess {
 	pub fn get_parent(&self) -> Option<&Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..) => None,
-			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent(),
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
+			#[cfg(feature = "full-typescript")]
+			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent(),
 		}
 	}
 
 	pub fn get_parent_mut(&mut self) -> Option<&mut Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..) => None,
-			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent_mut(),
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
+			#[cfg(feature = "full-typescript")]
+			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent_mut(),
 		}
 	}
 }
