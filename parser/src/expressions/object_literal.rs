@@ -190,8 +190,8 @@ impl ASTNode for ObjectLiteralMember {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 
-		if reader.starts_with_str("//") || reader.starts_with_str("/*") {
-			let is_multiline = reader.starts_with_str("/*");
+		if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
+			let is_multiline = reader.starts_with_slice("/*");
 			reader.advance(2);
 			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 			let position = if is_multiline {

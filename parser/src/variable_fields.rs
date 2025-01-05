@@ -1,5 +1,4 @@
 /// Contains:
-/// - [`VariableId`] given to variable declaring items
 /// - [`VariableField`] for destructuring things and its nested derivatives + visiting behavior + tests for self
 use std::fmt::Debug;
 

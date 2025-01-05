@@ -266,8 +266,8 @@ impl Expression {
 			//     2
 			// ]
 			// ```
-			else if reader.starts_with_str("//") || reader.starts_with_str("/*") {
-				let is_multiline = reader.starts_with_str("/*");
+			else if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
+				let is_multiline = reader.starts_with_slice("/*");
 				reader.advance(2);
 				let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 				let expression = Self::from_reader_with_precedence(reader, return_precedence)?;
@@ -582,9 +582,9 @@ impl Expression {
 
 			reader.skip();
 
-			if reader.starts_with_str(")")
-				|| reader.starts_with_str("]")
-				|| reader.starts_with_str("}")
+			if reader.starts_with_slice(")")
+				|| reader.starts_with_slice("]")
+				|| reader.starts_with_slice("}")
 			{
 				return Ok(top);
 			}
@@ -750,8 +750,8 @@ impl Expression {
 				template_literal.position.start = top.get_position().start;
 				template_literal.tag = Some(Box::new(top));
 				top = Expression::TemplateLiteral(template_literal);
-			} else if reader.starts_with_str("?.(")
-				|| reader.starts_with_str("?.<")
+			} else if reader.starts_with_slice("?.(")
+				|| reader.starts_with_slice("?.<")
 				|| reader.starts_with('(')
 			{
 				if AssociativityDirection::LeftToRight
@@ -785,7 +785,7 @@ impl Expression {
 					position,
 					is_optional,
 				};
-			} else if reader.starts_with_str("?.[") || reader.starts_with('[') {
+			} else if reader.starts_with_slice("?.[") || reader.starts_with('[') {
 				if AssociativityDirection::LeftToRight
 					.should_return(return_precedence, INDEX_PRECEDENCE)
 				{
@@ -804,7 +804,7 @@ impl Expression {
 					indexer: Box::new(indexer),
 					is_optional,
 				};
-			} else if reader.starts_with_str("?.") || reader.starts_with('.') {
+			} else if reader.starts_with_slice("?.") || reader.starts_with('.') {
 				/// Looks to see if next is not like a property identifier, returns how many characters
 				/// it skipped over for position information
 				fn get_not_identifier_length(on: &str) -> Option<usize> {
@@ -856,7 +856,7 @@ impl Expression {
 				} else {
 					reader.skip();
 					while reader.is_one_of(&["//", "/*"]).is_some() {
-						let is_multiline = reader.starts_with_str("/*");
+						let is_multiline = reader.starts_with_slice("/*");
 						reader.advance(2);
 						let _content = reader.parse_comment_literal(is_multiline)?;
 					}
@@ -1291,7 +1291,14 @@ impl Expression {
 			}
 			Self::VariableReference(name, position) => {
 				buf.add_mapping(&position.with_source(local.under));
+				let is_reserved = crate::lexer::utilities::is_reserved_word(name);
+				if is_reserved {
+					buf.push('(');
+				}
 				buf.push_str(name);
+				if is_reserved {
+					buf.push(')');
+				}
 			}
 			Self::ThisReference(..) => {
 				buf.push_str("this");
@@ -1884,8 +1891,8 @@ impl ASTNode for FunctionArgument {
 			let expression = Expression::from_reader(reader)?;
 			let position = start.union(expression.get_position());
 			Ok(Self::Spread(expression, position))
-		} else if reader.starts_with_str("//") || reader.starts_with_str("/*") {
-			let is_multiline = reader.starts_with_str("/*");
+		} else if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
+			let is_multiline = reader.starts_with_slice("/*");
 			reader.advance(2);
 			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 			if reader.is_one_of_operators(&[")", "}", ","]).is_some() {

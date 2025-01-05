@@ -283,8 +283,8 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	pub fn starts_with_str(&self, str: &str) -> bool {
-		self.get_current().starts_with(str)
+	pub fn starts_with_slice(&self, slice: &str) -> bool {
+		self.get_current().starts_with(slice)
 	}
 
 	/// Can't do `-` and `+` because they are valid expression prefixed
@@ -299,20 +299,27 @@ impl<'a> Lexer<'a> {
 	#[must_use]
 	pub fn starts_with_statement_or_declaration_on_new_line(&self) -> bool {
 		let current = self.get_current();
-		IntoIterator::into_iter(["const", "let", "function", "class", "if", "for", "while"]).any(
-			|stmt_or_dec_prefix| {
-				current.starts_with(stmt_or_dec_prefix)
-					&& current[stmt_or_dec_prefix.len()..]
-						.chars()
-						.next()
-						.is_some_and(|next| !utilities::is_valid_identifier(next))
-			},
-		)
+		if self.state.last_new_lines > 0 {
+			// `class` and `function` are actual expressions...
+			let statement_or_declaration_prefixes =
+				&["const", "let", "function", "class", "if", "for", "while"];
+			for prefix in statement_or_declaration_prefixes {
+				if current.starts_with(prefix) && {
+					let after = &current[prefix.len()..];
+					!after.starts_with(|chr| utilities::is_valid_identifier(chr))
+				} {
+					return true;
+				}
+			}
+			false
+		} else {
+			false
+		}
 	}
 
 	pub fn is_operator(&mut self, operator: &str) -> bool {
 		self.skip();
-		self.starts_with_str(operator)
+		self.starts_with_slice(operator)
 	}
 
 	pub fn is_operator_advance(&mut self, operator: &str) -> bool {
@@ -349,17 +356,30 @@ impl<'a> Lexer<'a> {
 		location: &'static str,
 		check_reserved: bool,
 	) -> Result<&'a str, ParseError> {
+		enum State {
+			Standard,
+			StartOfUnicode,
+			UnicodeEscape(u8),
+			UnicodeBracedEscape { first_bracket: bool },
+		}
+
 		self.skip();
 		let current = self.get_current();
 		let start = self.get_start();
 		let mut iter = current.char_indices();
+		let mut state = State::Standard;
 		if let Some((_, chr)) = iter.next() {
-			let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
-			if !first_is_valid {
-				return Err(ParseError::new(
-					ParseErrors::ExpectedIdentifier { location },
-					start.with_length(chr.len_utf8()),
-				));
+			if let '\\' = chr {
+				state = State::StartOfUnicode;
+			} else {
+				// Note `is_alphabetic` here
+				let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
+				if !first_is_valid {
+					return Err(ParseError::new(
+						ParseErrors::ExpectedIdentifier { location },
+						start.with_length(chr.len_utf8()),
+					));
+				}
 			}
 		} else {
 			return Err(ParseError::new(
@@ -369,23 +389,92 @@ impl<'a> Lexer<'a> {
 		}
 
 		for (idx, chr) in iter {
-			// Note `is_alphanumeric` here
-			let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
-			if !is_valid {
-				let value = &current[..idx];
-				let result = if !check_reserved
-					|| crate::lexer::utilities::is_valid_variable_identifier(value)
-				{
-					self.head += idx as u32;
-					Ok(value)
-				} else {
-					Err(ParseError::new(
-						ParseErrors::ReservedIdentifier,
-						start.with_length(value.len()),
-					))
-				};
-				return result;
+			match state {
+				State::UnicodeEscape(steps) => {
+					if !matches!(chr, '0'..='9' | 'A'..='F') {
+						return Err(ParseError::new(
+							ParseErrors::InvalidUnicodeCodePointInIdentifier,
+							start.with_length(idx as usize + chr.len_utf8()),
+						));
+					}
+					if steps == 1 {
+						state = State::Standard;
+					} else {
+						state = State::UnicodeEscape(steps - 1)
+					}
+				}
+				State::UnicodeBracedEscape { ref mut first_bracket } => {
+					if *first_bracket {
+						if chr == '}' {
+							state = State::Standard;
+						} else if !matches!(chr, '0'..='9' | 'A'..='F') {
+							return Err(ParseError::new(
+								ParseErrors::InvalidUnicodeCodePointInIdentifier,
+								start.with_length(idx + chr.len_utf8()),
+							));
+						}
+					} else {
+						if chr == '{' {
+							*first_bracket = true;
+						} else {
+							return Err(ParseError::new(
+								ParseErrors::InvalidUnicodeCodePointInIdentifier,
+								start.with_length(idx + chr.len_utf8()),
+							));
+						}
+					}
+				}
+				State::StartOfUnicode => {
+					if let 'u' = chr {
+						let next_char = current[(idx + 1)..].chars().next();
+						state = if let Some('{') = next_char {
+							State::UnicodeBracedEscape { first_bracket: false }
+						} else if let Some('0'..='9' | 'A'..='F') = next_char {
+							State::UnicodeEscape(4)
+						} else {
+							return Err(ParseError::new(
+								ParseErrors::InvalidUnicodeCodePointInIdentifier,
+								start.with_length(idx + chr.len_utf8()),
+							));
+						};
+					} else {
+						return Err(ParseError::new(
+							ParseErrors::InvalidUnicodeCodePointInIdentifier,
+							start.with_length(idx + chr.len_utf8()),
+						));
+					}
+				}
+				State::Standard => {
+					if let '\\' = chr {
+						state = State::StartOfUnicode;
+					} else {
+						// Note `is_alphanumeric` here
+						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
+						if !is_valid {
+							let value = &current[..idx];
+							let result = if !check_reserved
+								|| crate::lexer::utilities::is_valid_variable_identifier(value)
+							{
+								self.head += idx as u32;
+								Ok(value)
+							} else {
+								Err(ParseError::new(
+									ParseErrors::ReservedIdentifier,
+									start.with_length(value.len()),
+								))
+							};
+							return result;
+						}
+					}
+				}
 			}
+		}
+
+		if !matches!(state, State::Standard) {
+			return Err(ParseError::new(
+				ParseErrors::InvalidUnicodeCodePointInIdentifier,
+				start.with_length(current.len()),
+			));
 		}
 
 		// If left over
@@ -429,7 +518,7 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
-	// For JSX
+	// For JSX attributes and content. Also returns which one of `possibles` matched
 	pub fn parse_until_one_of(
 		&mut self,
 		possibles: &[&'static str],
@@ -943,12 +1032,12 @@ impl<'a> Lexer<'a> {
 	pub fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
 		// let last = self.state.last_new_lines;
 		// TODO order
-		let semi_colon_like = self.starts_with_str("//")
+		let semi_colon_like = self.starts_with_slice("//")
 			|| self.is_operator_advance(";")
 			|| self.last_was_from_new_line() > 0
 			|| self.is_operator("}")
 			// TODO what about spaces
-			|| self.starts_with_str("\n")
+			|| self.starts_with_slice("\n")
 			|| self.is_finished();
 
 		if semi_colon_like {
@@ -1001,7 +1090,7 @@ impl<'a> Lexer<'a> {
 				self,
 				crate::types::type_annotations::TypeOperatorKind::ReturnType,
 			);
-			let starts_with_arrow = self.starts_with_str("=>");
+			let starts_with_arrow = self.starts_with_slice("=>");
 			self.head = save_point;
 			if let (true, Ok(annotation)) = (starts_with_arrow, annotation) {
 				(true, Some(annotation))
@@ -1022,11 +1111,24 @@ impl<'a> Lexer<'a> {
 
 pub(crate) mod utilities {
 	pub fn is_valid_identifier(chr: char) -> bool {
-		chr.is_alphanumeric() || chr == '_' || chr == '$'
+		// TODO `\\` for unicode identifiers
+		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
+	}
+
+	pub fn is_reserved_word(identifier: &str) -> bool {
+		matches!(
+			identifier,
+			"enum"
+				| "implements"
+				| "interface"
+				| "let" | "package"
+				| "private" | "protected"
+				| "public" | "static"
+		)
 	}
 
 	pub fn is_valid_variable_identifier(identifier: &str) -> bool {
-		!matches!(
+		let is_invalid = matches!(
 			identifier,
 			"const"
 				| "var" | "if"
@@ -1045,7 +1147,9 @@ pub(crate) mod utilities {
 				| "catch" | "finally"
 				| "throw" | "extends"
 				| "enum"
-		)
+		);
+
+		!is_invalid
 	}
 
 	// TODO move
@@ -1075,19 +1179,19 @@ pub(crate) mod utilities {
 		&on[idx..]
 	}
 
-	pub fn is_function_header(str: &str) -> bool {
-		let str = str.trim_start();
+	pub fn is_function_header(slice: &str) -> bool {
+		let slice = slice.trim_start();
 		// TODO
 		let extras = true;
-		str.starts_with("async ")
+		slice.starts_with("async ")
 			|| {
-				str.starts_with("function")
-					&& !str["function".len()..].chars().next().is_some_and(is_valid_identifier)
+				slice.starts_with("function")
+					&& !slice["function".len()..].chars().next().is_some_and(is_valid_identifier)
 			} || (extras && {
 			// TODO + after is "function"
-			str.starts_with("generator ")
-				|| str.starts_with("worker ")
-				|| str.starts_with("server ")
+			slice.starts_with("generator ")
+				|| slice.starts_with("worker ")
+				|| slice.starts_with("server ")
 		})
 	}
 

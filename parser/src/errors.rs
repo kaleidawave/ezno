@@ -33,6 +33,7 @@ pub enum ParseErrors<'a> {
 	ExpectedEndOfSource {
 		found: &'a str,
 	},
+	InvalidUnicodeCodePointInIdentifier,
 	FunctionParameterOptionalAndDefaultValue,
 	ParameterCannotHaveDefaultValueHere,
 	InvalidLHSAssignment,
@@ -104,6 +105,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::InvalidRegularExpression => {
 				write!(f, "Invalid regular expression")
+			}
+			ParseErrors::InvalidUnicodeCodePointInIdentifier => {
+				write!(f, "invalid unicode code point in identifier")
 			}
 			ParseErrors::UnexpectedEnd => {
 				write!(f, "Unexpected end")

@@ -401,7 +401,7 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 
 		reader.skip();
 
-		if T::LAST_PREFIX.is_some_and(|l| reader.starts_with_str(l)) {
+		if T::LAST_PREFIX.is_some_and(|l| reader.starts_with_slice(l)) {
 			let last = T::parse_last_item(reader)?;
 			reader.expect_operator(end)?;
 			return Ok((nodes, Some(last)));

@@ -67,8 +67,8 @@ impl ASTNode for ClassMember {
 
 	#[allow(clippy::similar_names)]
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let is_multiline_comment = reader.starts_with_str("/*");
-		if is_multiline_comment || reader.starts_with_str("//") {
+		let is_multiline_comment = reader.starts_with_slice("/*");
+		if is_multiline_comment || reader.starts_with_slice("//") {
 			let start = reader.get_start();
 			reader.advance(2);
 			let comment = reader.parse_comment_literal(is_multiline_comment)?;

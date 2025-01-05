@@ -77,9 +77,16 @@ impl ASTNode for JSXElement {
 				};
 				attributes.push(attribute);
 			} else {
-				// TODO extras here @ etc
 				let start = reader.get_start();
-				let key = reader.parse_identifier("JSX element attribute", false)?.to_owned();
+				let key = match reader.parse_until_one_of(&["=", " ", ">"]) {
+					Ok((key, _)) => key.to_owned(),
+					Err(()) => {
+						return Err(ParseError::new(
+							ParseErrors::ExpectedIdentifier { location: "JSX Attribute" },
+							start.with_length(0),
+						));
+					}
+				};
 				let attribute = if reader.is_operator_advance("=") {
 					let start = reader.get_start();
 					if reader.is_operator_advance("{") {
@@ -103,7 +110,7 @@ impl ASTNode for JSXElement {
 				} else {
 					// Boolean attributes
 					let position = start.with_length(key.len());
-					JSXAttribute::BooleanAttribute(key, position)
+					JSXAttribute::Boolean(key, position)
 				};
 				attributes.push(attribute);
 			}
@@ -126,6 +133,8 @@ impl ASTNode for JSXElement {
 					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 				})?
 				.to_owned();
+
+			reader.advance("</".len() as u32);
 
 			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?;
 			if tag_name != closing_tag_name {
@@ -209,7 +218,7 @@ impl ASTNode for JSXElement {
 pub enum JSXAttribute {
 	Static(String, String, Span),
 	Dynamic(String, Box<Expression>, Span),
-	BooleanAttribute(String, Span),
+	Boolean(String, Span),
 	Spread(Expression, Span),
 	/// Preferably want a identifier here not an expr
 	Shorthand(Expression),
@@ -220,7 +229,7 @@ impl ASTNode for JSXAttribute {
 		match self {
 			JSXAttribute::Static(_, _, pos)
 			| JSXAttribute::Dynamic(_, _, pos)
-			| JSXAttribute::BooleanAttribute(_, pos) => *pos,
+			| JSXAttribute::Boolean(_, pos) => *pos,
 			JSXAttribute::Spread(_, spread_pos) => *spread_pos,
 			JSXAttribute::Shorthand(expr) => expr.get_position(),
 		}
@@ -248,7 +257,7 @@ impl ASTNode for JSXAttribute {
 		} else {
 			// Boolean attributes
 			let position = start.with_length(key.len());
-			Ok(JSXAttribute::BooleanAttribute(key, position))
+			Ok(JSXAttribute::Boolean(key, position))
 		}
 	}
 
@@ -273,7 +282,7 @@ impl ASTNode for JSXAttribute {
 				expression.to_string_from_buffer(buf, options, local);
 				buf.push('}');
 			}
-			JSXAttribute::BooleanAttribute(key, _) => {
+			JSXAttribute::Boolean(key, _) => {
 				buf.push_str(key.as_str());
 			}
 			JSXAttribute::Spread(expr, _) => {
@@ -330,7 +339,7 @@ impl ASTNode for JSXRoot {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		if reader.starts_with_str("<>") {
+		if reader.starts_with_slice("<>") {
 			JSXFragment::from_reader(reader).map(JSXRoot::Fragment)
 		} else {
 			JSXElement::from_reader(reader).map(JSXRoot::Element)
@@ -358,7 +367,7 @@ fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNod
 		for _ in 0..reader.last_was_from_new_line() {
 			children.push(JSXNode::LineBreak);
 		}
-		if reader.starts_with_str("</") {
+		if reader.starts_with_slice("</") {
 			return Ok(children);
 		}
 		children.push(JSXNode::from_reader(reader)?);
@@ -422,7 +431,7 @@ impl ASTNode for JSXNode {
 			let expression = FunctionArgument::from_reader(reader)?;
 			let end = reader.expect('}')?;
 			Ok(JSXNode::InterpolatedExpression(Box::new(expression), start.union(end)))
-		} else if reader.starts_with_str("<!--") {
+		} else if reader.starts_with_slice("<!--") {
 			reader.advance("<!--".len() as u32);
 			let content = reader
 				.parse_until("-->")
@@ -434,7 +443,7 @@ impl ASTNode for JSXNode {
 				.to_owned();
 			let position = start.with_length(content.len());
 			Ok(JSXNode::Comment(content, position))
-		} else if reader.starts_with_str("<") {
+		} else if reader.starts_with_slice("<") {
 			let element = JSXElement::from_reader(reader)?;
 			Ok(JSXNode::Element(element))
 		} else {

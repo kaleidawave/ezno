@@ -131,10 +131,15 @@ function Component(item) {
 		<h1 class="heading">{item.heading}</h1>
 		<img src={item.image}>
 		<!-- Some comment -->
-		<p>
+		<p data-something>
 			Something {item.content}
 		</p>
 		{/* hi */}
+		<style>
+			h1 {
+				color: red;
+			}
+		</style>
 		<button disabled>One line</button>
 	</div>
 }

@@ -206,7 +206,7 @@ impl ASTNode for VariableDeclaration {
 			loop {
 				reader.skip();
 				if reader.is_one_of(&["//", "/*"]).is_some() {
-					let is_multiline = reader.starts_with_str("/*");
+					let is_multiline = reader.starts_with_slice("/*");
 					reader.advance(2);
 					let _content = reader.parse_comment_literal(is_multiline)?;
 					continue;
