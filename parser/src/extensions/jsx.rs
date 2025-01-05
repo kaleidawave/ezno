@@ -78,8 +78,8 @@ impl ASTNode for JSXElement {
 				attributes.push(attribute);
 			} else {
 				let start = reader.get_start();
-				let key = match reader.parse_until_one_of(&["=", " ", ">"]) {
-					Ok((key, _)) => key.to_owned(),
+				let (key, delimiter) = match reader.parse_until_one_of(&["=", " ", ">"]) {
+					Ok((key, delimiter)) => (key.to_owned(), delimiter),
 					Err(()) => {
 						return Err(ParseError::new(
 							ParseErrors::ExpectedIdentifier { location: "JSX Attribute" },
@@ -87,32 +87,39 @@ impl ASTNode for JSXElement {
 						));
 					}
 				};
-				let attribute = if reader.is_operator_advance("=") {
-					let start = reader.get_start();
-					if reader.is_operator_advance("{") {
-						let expression = Expression::from_reader(reader)?;
-						let end = reader.expect('}')?;
-						JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
-					} else if reader.starts_with_string_delimeter() {
-						// TODO _quoted
-						let (content, _quoted) = reader.parse_string_literal()?;
-						let position = start.with_length(content.len() + 2);
-						JSXAttribute::Static(key, content.to_owned(), position)
-					} else {
-						let error_position = start.with_length(
-							crate::lexer::utilities::next_empty_occurance(reader.get_current()),
-						);
-						return Err(ParseError::new(
-							ParseErrors::ExpectedJSXAttribute,
-							error_position,
-						));
+				match delimiter {
+					"=" => {
+						let start = reader.get_start();
+						let attribute = if reader.is_operator_advance("{") {
+							let expression = Expression::from_reader(reader)?;
+							let end = reader.expect('}')?;
+							JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
+						} else if reader.starts_with_string_delimeter() {
+							// TODO _quoted
+							let (content, _quoted) = reader.parse_string_literal()?;
+							let position = start.with_length(content.len() + 2);
+							JSXAttribute::Static(key, content.to_owned(), position)
+						} else {
+							let error_position = start.with_length(
+								crate::lexer::utilities::next_empty_occurance(reader.get_current()),
+							);
+							return Err(ParseError::new(
+								ParseErrors::ExpectedJSXAttribute,
+								error_position,
+							));
+						};
+						attributes.push(attribute);
 					}
-				} else {
-					// Boolean attributes
-					let position = start.with_length(key.len());
-					JSXAttribute::Boolean(key, position)
-				};
-				attributes.push(attribute);
+					delimiter => {
+						// Boolean attributes
+						let position = start.with_length(key.len());
+						let attribute = JSXAttribute::Boolean(key, position);
+						attributes.push(attribute);
+						if delimiter == ">" {
+							break;
+						}
+					}
+				}
 			}
 		}
 
@@ -133,8 +140,6 @@ impl ASTNode for JSXElement {
 					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 				})?
 				.to_owned();
-
-			reader.advance("</".len() as u32);
 
 			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?;
 			if tag_name != closing_tag_name {
@@ -203,7 +208,19 @@ impl ASTNode for JSXElement {
 			}
 			JSXElementChildren::SelfClosing => {}
 			JSXElementChildren::Literal(ref content) => {
-				buf.push_str(content);
+				// if options.pretty {
+				// 	// Perform indent correction
+				// 	// Have to use '\n' as `.lines` with it's handling of '\r'
+				// 	for (idx, line) in content.split('\n').enumerate() {
+				// 		if idx > 0 {
+				// 			buf.push_new_line();
+				// 		}
+				// 		options.add_indent(local.depth, buf);
+				// 		buf.push_str(line);
+				// 	}
+				// } else {
+				buf.push_str_contains_new_line(content.as_str());
+				// }
 				buf.push_str("</");
 				buf.push_str(&self.tag_name);
 				buf.push('>');
@@ -408,6 +425,7 @@ fn jsx_children_to_string<T: source_map::ToString>(
 pub enum JSXNode {
 	Element(JSXElement),
 	TextNode(String, Span),
+	/// Function argument as single comments and `...` is allowed
 	InterpolatedExpression(Box<FunctionArgument>, Span),
 	Comment(String, Span),
 	LineBreak,
@@ -430,7 +448,8 @@ impl ASTNode for JSXNode {
 		if reader.is_operator_advance("{") {
 			let expression = FunctionArgument::from_reader(reader)?;
 			let end = reader.expect('}')?;
-			Ok(JSXNode::InterpolatedExpression(Box::new(expression), start.union(end)))
+			let position = start.union(end);
+			Ok(JSXNode::InterpolatedExpression(Box::new(expression), position))
 		} else if reader.starts_with_slice("<!--") {
 			reader.advance("<!--".len() as u32);
 			let content = reader
@@ -441,6 +460,7 @@ impl ASTNode for JSXNode {
 					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 				})?
 				.to_owned();
+
 			let position = start.with_length(content.len());
 			Ok(JSXNode::Comment(content, position))
 		} else if reader.starts_with_slice("<") {

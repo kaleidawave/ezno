@@ -300,21 +300,19 @@ impl Expression {
 				let (is_arrow_function, _return_annotation) = reader.is_arrow_function();
 				if is_arrow_function {
 					let arrow_function = ArrowFunction::from_reader(reader)?;
-					Expression::ArrowFunction(arrow_function)
-				} else {
-					reader.advance(1);
-					let parenthesize_expression = MultipleExpression::from_reader(reader)?;
-					let end = reader.expect(')')?;
-					Expression::Parenthesised(Box::new(parenthesize_expression), start.union(end))
+					return Ok(Expression::ArrowFunction(arrow_function));
 				}
+				reader.advance(1);
+				let parenthesize_expression = MultipleExpression::from_reader(reader)?;
+				let end = reader.expect(')')?;
+				Expression::Parenthesised(Box::new(parenthesize_expression), start.union(end))
 			} else if reader.starts_with('<') {
 				let is_generic_arguments = reader.after_brackets().starts_with('(');
 				if is_generic_arguments {
 					let arrow_function = ArrowFunction::from_reader(reader)?;
-					Expression::ArrowFunction(arrow_function)
-				} else {
-					JSXRoot::from_reader(reader).map(Expression::JSXRoot)?
+					return Ok(Expression::ArrowFunction(arrow_function));
 				}
+				JSXRoot::from_reader(reader).map(Expression::JSXRoot)?
 			} else if reader.starts_with('`') {
 				TemplateLiteral::from_reader(reader).map(Expression::TemplateLiteral)?
 			} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
@@ -331,7 +329,7 @@ impl Expression {
 				if current.starts_with("function") {
 					Expression::ExpressionFunction(ExpressionFunction::from_reader(reader)?)
 				} else {
-					Expression::ArrowFunction(ArrowFunction::from_reader(reader)?)
+					return ArrowFunction::from_reader(reader).map(Expression::ArrowFunction);
 				}
 			} else if reader.is_operator_advance("#") {
 				let property_name = reader.parse_identifier("property name", false)?.to_owned();
@@ -489,13 +487,13 @@ impl Expression {
 					return Err(ParseError::new(reason, position));
 				}
 			} else {
-				fn after_spaces_or_tabs(slices: &str) -> &str {
-					for (idx, chr) in slices.char_indices() {
-						if !matches!(chr, ' ' | '\t') {
-							return &slices[idx..];
-						}
-					}
-					Default::default()
+				#[cfg(feature = "extras")]
+				if reader.get_options().is_expressions
+					&& reader.is_keyword("is")
+					&& reader.after_brackets().starts_with('{')
+				{
+					return crate::extensions::is_expression::IsExpression::from_reader(reader)
+						.map(Expression::IsExpression);
 				}
 
 				let name = reader.parse_identifier("variable reference expression", true);
@@ -507,20 +505,20 @@ impl Expression {
 						Expression::Marker { marker_id, position }
 					} else {
 						let position = start.with_length(name.len());
-
-						// Use this method to also not advance
-						// `trim` but without newlines
-						if after_spaces_or_tabs(reader.get_current()).starts_with("=>") {
+						if crate::lexer::utilities::trim_whitespace_not_newlines(
+							reader.get_current(),
+						)
+						.starts_with("=>")
+						{
 							let identifier =
 								crate::VariableIdentifier::Standard(name.to_owned(), position);
 							let is_async = false;
-							ArrowFunction::from_reader_with_first_parameter(
+							return ArrowFunction::from_reader_with_first_parameter(
 								reader, is_async, identifier,
 							)
-							.map(Expression::ArrowFunction)?
-						} else {
-							Expression::VariableReference(name.to_owned(), position)
+							.map(Expression::ArrowFunction);
 						}
+						Expression::VariableReference(name.to_owned(), position)
 					}
 				} else {
 					return Err(ParseError::new(
@@ -530,11 +528,6 @@ impl Expression {
 				}
 			}
 		};
-
-		// Operator precedence == 2, nothing can beat so
-		if let Expression::ArrowFunction(..) = first_expression {
-			return Ok(first_expression);
-		}
 
 		Self::from_reader_after_first_expression(reader, return_precedence, first_expression)
 	}
@@ -1892,40 +1885,40 @@ impl ASTNode for FunctionArgument {
 			let position = start.union(expression.get_position());
 			Ok(Self::Spread(expression, position))
 		} else if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
-			let is_multiline = reader.starts_with_slice("/*");
-			reader.advance(2);
+			let is_multiline = reader.is_operator_advance("/*");
 			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+			reader.skip();
 			if reader.is_one_of_operators(&[")", "}", ","]).is_some() {
 				let position = start.union(reader.get_end());
-				return Ok(Self::Comment { content, is_multiline, position });
+				Ok(Self::Comment { content, is_multiline, position })
+			} else {
+				let inner = Self::from_reader(reader)?;
+				let position = start.union(inner.get_position());
+
+				Ok(match inner {
+					FunctionArgument::Spread(expr, _end) => FunctionArgument::Spread(
+						Expression::Comment {
+							content,
+							on: Box::new(expr),
+							position,
+							is_multiline,
+							prefix: true,
+						},
+						position,
+					),
+					FunctionArgument::Standard(expr) => {
+						FunctionArgument::Standard(Expression::Comment {
+							content,
+							on: Box::new(expr),
+							position,
+							is_multiline,
+							prefix: true,
+						})
+					}
+					// TODO combine comments
+					c @ FunctionArgument::Comment { .. } => c,
+				})
 			}
-
-			let inner = Self::from_reader(reader)?;
-			let position = start.union(inner.get_position());
-
-			Ok(match inner {
-				FunctionArgument::Spread(expr, _end) => FunctionArgument::Spread(
-					Expression::Comment {
-						content,
-						on: Box::new(expr),
-						position,
-						is_multiline,
-						prefix: true,
-					},
-					position,
-				),
-				FunctionArgument::Standard(expr) => {
-					FunctionArgument::Standard(Expression::Comment {
-						content,
-						on: Box::new(expr),
-						position,
-						is_multiline,
-						prefix: true,
-					})
-				}
-				// TODO combine?
-				c @ FunctionArgument::Comment { .. } => c,
-			})
 		} else {
 			Expression::from_reader(reader).map(Self::Standard)
 		}

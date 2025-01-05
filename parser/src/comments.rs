@@ -136,7 +136,6 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 							options.add_indent(local.depth, buf);
 							buf.push_str(line.trim());
 						}
-					// buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(content.as_str());
 					}

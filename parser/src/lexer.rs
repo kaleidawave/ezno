@@ -306,7 +306,7 @@ impl<'a> Lexer<'a> {
 			for prefix in statement_or_declaration_prefixes {
 				if current.starts_with(prefix) && {
 					let after = &current[prefix.len()..];
-					!after.starts_with(|chr| utilities::is_valid_identifier(chr))
+					!after.starts_with(utilities::is_valid_identifier)
 				} {
 					return true;
 				}
@@ -394,13 +394,13 @@ impl<'a> Lexer<'a> {
 					if !matches!(chr, '0'..='9' | 'A'..='F') {
 						return Err(ParseError::new(
 							ParseErrors::InvalidUnicodeCodePointInIdentifier,
-							start.with_length(idx as usize + chr.len_utf8()),
+							start.with_length(idx + chr.len_utf8()),
 						));
 					}
 					if steps == 1 {
 						state = State::Standard;
 					} else {
-						state = State::UnicodeEscape(steps - 1)
+						state = State::UnicodeEscape(steps - 1);
 					}
 				}
 				State::UnicodeBracedEscape { ref mut first_bracket } => {
@@ -413,15 +413,13 @@ impl<'a> Lexer<'a> {
 								start.with_length(idx + chr.len_utf8()),
 							));
 						}
+					} else if chr == '{' {
+						*first_bracket = true;
 					} else {
-						if chr == '{' {
-							*first_bracket = true;
-						} else {
-							return Err(ParseError::new(
-								ParseErrors::InvalidUnicodeCodePointInIdentifier,
-								start.with_length(idx + chr.len_utf8()),
-							));
-						}
+						return Err(ParseError::new(
+							ParseErrors::InvalidUnicodeCodePointInIdentifier,
+							start.with_length(idx + chr.len_utf8()),
+						));
 					}
 				}
 				State::StartOfUnicode => {
@@ -482,8 +480,7 @@ impl<'a> Lexer<'a> {
 		Ok(current)
 	}
 
-	// For comments
-	// WIP
+	// Will append the length on `until`
 	pub fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
 		let current = self.get_current();
 		for (idx, _) in current.char_indices() {
@@ -894,6 +891,7 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
+	/// Expects that `//` or `/*` has been parsed
 	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&str, ParseError> {
 		if is_multiline {
 			self.parse_until("*/").map_err(|()| {
@@ -924,33 +922,83 @@ impl<'a> Lexer<'a> {
 	// TODO also can exit if there is `=` or `:` and = 0 in some examples
 	#[must_use]
 	pub fn after_brackets(&self) -> &'a str {
+		use crate::Quoted;
+
+		enum State {
+			None,
+			Comment,
+			StringLiteral { escaped: bool, quoted: Quoted },
+			// TemplateLiteral { escaped: bool },
+			// RegexLiteral { escaped: bool },
+			MultilineComment,
+		}
+
+		// let mut template_literal_depth = 0;
+
 		let current = self.get_current();
 		let mut bracket_count: u32 = 0;
 		let mut open_chevrons = 0u64;
+		let mut state = State::None;
+
 		// TODO account for string literals and comments
 		// TODO account for utf16
 		for (idx, chr) in current.as_bytes().iter().enumerate() {
-			if let b'(' | b'{' | b'[' | b'<' = chr {
-				open_chevrons |= u64::from(*chr == b'<');
-				open_chevrons <<= 1;
-				bracket_count += 1;
-			} else if let b')' | b'}' | b']' | b'>' = chr {
-				// TODO WIP
-				open_chevrons >>= 1;
-				let last_was_open_chevron = (open_chevrons & 1) != 0;
-				if last_was_open_chevron {
-					if let b')' | b'}' | b']' = chr {
-						// Extra removal
+			match state {
+				State::None => {
+					if let b'(' | b'{' | b'[' | b'<' = chr {
+						open_chevrons |= u64::from(*chr == b'<');
+						open_chevrons <<= 1;
+						bracket_count += 1;
+					} else if let b')' | b'}' | b']' | b'>' = chr {
+						// TODO WIP
 						open_chevrons >>= 1;
-						bracket_count = bracket_count.saturating_sub(1);
-					}
-				} else if let b'>' = chr {
-					continue;
-				}
+						let last_was_open_chevron = (open_chevrons & 1) != 0;
+						if last_was_open_chevron {
+							if let b')' | b'}' | b']' = chr {
+								// Extra removal
+								open_chevrons >>= 1;
+								bracket_count = bracket_count.saturating_sub(1);
+							}
+						} else if let b'>' = chr {
+							continue;
+						}
 
-				bracket_count = bracket_count.saturating_sub(1);
-				if bracket_count == 0 {
-					return current[(idx + 1)..].trim_start();
+						bracket_count = bracket_count.saturating_sub(1);
+						if bracket_count == 0 {
+							return current[(idx + 1)..].trim_start();
+						}
+					} else if let b'"' = chr {
+						state = State::StringLiteral { escaped: false, quoted: Quoted::Double };
+					} else if let b'\'' = chr {
+						state = State::StringLiteral { escaped: false, quoted: Quoted::Single };
+					} else if let b'/' = chr {
+						if current[idx..].starts_with("/*") {
+							state = State::MultilineComment;
+						} else if current[idx..].starts_with("//") {
+							state = State::Comment;
+						}
+					}
+				}
+				State::Comment => {
+					if let b'\n' = chr {
+						state = State::None;
+					}
+				}
+				State::StringLiteral { ref mut escaped, quoted } => {
+					if *escaped {
+						*escaped = false;
+						continue;
+					}
+					if let b'\\' = chr {
+						*escaped = true;
+					} else if let (Quoted::Double, b'"') | (Quoted::Single, b'\'') = (quoted, chr) {
+						state = State::None;
+					}
+				}
+				State::MultilineComment => {
+					if current[idx..].starts_with("*/") {
+						state = State::None;
+					}
 				}
 			}
 		}
@@ -1061,31 +1109,16 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub fn is_arrow_function(&mut self) -> (bool, Option<crate::types::TypeAnnotation>) {
-		let current = self.get_current();
-		let mut paren_count: u32 = 0;
-		// TODO account for string literals and comments
-		let mut after: u32 = 0;
-		for (idx, chr) in current.as_bytes().iter().enumerate() {
-			if let b'(' = chr {
-				paren_count += 1;
-			} else if let b')' = chr {
-				paren_count = paren_count.saturating_sub(1);
-				if paren_count == 0 {
-					after = (idx + ")".len()) as u32;
-					break;
-				}
-			}
-		}
-
-		let rest = &current[after as usize..];
-		let after_brackets = utilities::trim_whitespace_not_newlines(rest);
+		let after_brackets = utilities::trim_whitespace_not_newlines(self.after_brackets());
 		if after_brackets.starts_with("=>") {
 			(true, None)
 		} else if self.options.type_annotations && after_brackets.starts_with(':') {
 			// TODO WIP implementation
 			let save_point = self.head;
-			self.head += after + 1;
-			// I hate this!!. Can double allocate for expressions
+			let after = self.get_current().len() - after_brackets.len();
+			self.head += after as u32 + 1;
+			// TODO: I hate this!!
+			// Can double allocate for expressions build up bad information
 			let annotation = crate::types::TypeAnnotation::from_reader_with_precedence(
 				self,
 				crate::types::type_annotations::TypeOperatorKind::ReturnType,
@@ -1146,7 +1179,6 @@ pub(crate) mod utilities {
 				| "debugger" | "try"
 				| "catch" | "finally"
 				| "throw" | "extends"
-				| "enum"
 		);
 
 		!is_invalid
