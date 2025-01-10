@@ -585,7 +585,7 @@ fn get_parameter_name(parameter: &parser::VariableField) -> String {
 /// This synthesise is for function types, references and interfaces.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextType>(
-	type_parameters: &Option<Vec<TypeParameter>>,
+	type_parameters: Option<&[TypeParameter]>,
 	parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	// This Option rather than Option because function type references are always some
 	return_type: Option<&TypeAnnotation>,

@@ -381,7 +381,7 @@ pub struct ClassPropertiesToRegister<'a, A: crate::ASTImplementation> {
 	pub properties: Vec<ClassValue<'a, A>>,
 }
 
-impl<'a, A: crate::ASTImplementation> FunctionRegisterBehavior<'a, A> {
+impl<A: crate::ASTImplementation> FunctionRegisterBehavior<'_, A> {
 	#[must_use]
 	pub fn is_async(&self) -> bool {
 		match self {

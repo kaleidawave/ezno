@@ -36,10 +36,10 @@ impl SynthesiseToAssignable for LHSOfAssignment {
 	) -> Assignable<super::EznoParser> {
 		match self {
 			LHSOfAssignment::ObjectDestructuring { members, spread, position: _ } => {
-				synthesise_object_to_reference(members, spread, environment, checking_data)
+				synthesise_object_to_reference(members, spread.as_ref(), environment, checking_data)
 			}
 			LHSOfAssignment::ArrayDestructuring { members, spread, position: _ } => {
-				synthesise_array_to_reference(members, spread, environment, checking_data)
+				synthesise_array_to_reference(members, spread.as_ref(), environment, checking_data)
 			}
 			LHSOfAssignment::VariableOrPropertyAccess(access) => Assignable::Reference(
 				synthesise_access_to_reference(access, environment, checking_data),
@@ -56,10 +56,10 @@ impl SynthesiseToAssignable for VariableField {
 	) -> Assignable<super::EznoParser> {
 		match self {
 			VariableField::Object { members, spread, position: _ } => {
-				synthesise_object_to_reference(members, spread, environment, checking_data)
+				synthesise_object_to_reference(members, spread.as_ref(), environment, checking_data)
 			}
 			VariableField::Array { members, spread, position: _ } => {
-				synthesise_array_to_reference(members, spread, environment, checking_data)
+				synthesise_array_to_reference(members, spread.as_ref(), environment, checking_data)
 			}
 			VariableField::Name(ident) => Assignable::Reference(match ident {
 				VariableIdentifier::Standard(name, position) => Reference::Variable(
@@ -79,7 +79,7 @@ fn synthesise_object_to_reference<
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
 	items: &[parser::WithComment<parser::ObjectDestructuringField<U>>],
-	spread: &Option<parser::SpreadDestructuringField<U>>,
+	spread: Option<&parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {
@@ -144,7 +144,7 @@ fn synthesise_array_to_reference<
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
 	items: &[parser::WithComment<parser::ArrayDestructuringField<U>>],
-	spread: &Option<parser::SpreadDestructuringField<U>>,
+	spread: Option<&parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Assignable<super::EznoParser> {

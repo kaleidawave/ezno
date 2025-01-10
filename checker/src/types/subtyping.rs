@@ -186,7 +186,7 @@ pub struct State<'a> {
 
 pub type StateSavePoint = [u16; 4];
 
-impl<'a> State<'a> {
+impl State<'_> {
 	/// For `or`s, some items might have to be removed if the branch fails
 	#[must_use]
 	pub fn produce_save_point(&self) -> StateSavePoint {

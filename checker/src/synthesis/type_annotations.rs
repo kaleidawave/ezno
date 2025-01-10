@@ -393,7 +393,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		} => {
 			let position = position.with_source(environment.get_source());
 			let function_type = synthesise_function_annotation(
-				type_parameters,
+				type_parameters.as_deref(),
 				parameters,
 				Some(return_type),
 				environment,

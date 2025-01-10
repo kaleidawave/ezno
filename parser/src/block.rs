@@ -84,7 +84,7 @@ impl ASTNode for StatementOrDeclaration {
 			if let Some(Token(TSXToken::Keyword(TSXKeyword::Enum | TSXKeyword::Type), _)) =
 				reader.peek()
 			{
-				if reader.peek_n(1).map_or(false, |t| !t.0.is_symbol()) {
+				if reader.peek_n(1).is_some_and(|t| !t.0.is_symbol()) {
 					return Ok(StatementOrDeclaration::Declaration(Declaration::from_reader(
 						reader, state, options,
 					)?));

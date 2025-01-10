@@ -83,7 +83,20 @@ impl crate::BinarySerializable for PropertyKey<'static> {
 	}
 }
 
-impl<'a> PropertyKey<'a> {
+// WIP quick hack for static property keys under < 10
+static NUMBERS: &str = "0123456789";
+
+impl PropertyKey<'_> {
+	/// For small array indexes
+	#[must_use]
+	pub fn from_usize(a: usize) -> Self {
+		if a < 10 {
+			Self::String(Cow::Borrowed(&NUMBERS[a..=a]))
+		} else {
+			Self::String(Cow::Owned(a.to_string()))
+		}
+	}
+
 	#[must_use]
 	pub fn into_owned(&self) -> PropertyKey<'static> {
 		match self {
@@ -208,21 +221,6 @@ pub(crate) fn get_simple_property_value(
 		get_logical(value)
 	} else {
 		None
-	}
-}
-
-// WIP quick hack for static property keys under < 10
-static NUMBERS: &str = "0123456789";
-
-impl<'a> PropertyKey<'a> {
-	/// For small array indexes
-	#[must_use]
-	pub fn from_usize(a: usize) -> Self {
-		if a < 10 {
-			Self::String(Cow::Borrowed(&NUMBERS[a..=a]))
-		} else {
-			Self::String(Cow::Owned(a.to_string()))
-		}
 	}
 }
 

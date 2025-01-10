@@ -482,7 +482,7 @@ impl TypeAnnotation {
 					| TSXToken::Comma
 					| TSXToken::OpenChevron
 			) || peek.is_assignment()
-				|| (start.map_or(false, |start| {
+				|| (start.is_some_and(|start| {
 					peek.is_statement_or_declaration_start()
 						&& state
 							.line_starts
@@ -1131,7 +1131,7 @@ impl TypeAnnotationFunctionParameters {
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
 		while !matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
-			while reader.peek().map_or(false, |Token(ty, _)| ty.is_comment()) {
+			while reader.peek().is_some_and(|Token(ty, _)| ty.is_comment()) {
 				reader.next();
 			}
 			let mut decorators = Vec::<Decorator>::new();

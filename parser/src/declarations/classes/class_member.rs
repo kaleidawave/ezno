@@ -74,7 +74,7 @@ impl ASTNode for ClassMember {
 		state: &mut crate::ParsingState,
 		options: &ParseOptions,
 	) -> ParseResult<Self> {
-		if reader.peek().map_or(false, |t| t.0.is_comment()) {
+		if reader.peek().is_some_and(|t| t.0.is_comment()) {
 			let (comment, is_multiline, span) =
 				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
 			return Ok(Self::Comment(comment, is_multiline, span));

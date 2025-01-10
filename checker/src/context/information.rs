@@ -284,7 +284,7 @@ pub struct ModuleInformation<'a> {
 	pub module: &'a LocalInformation,
 }
 
-impl<'a> InformationChain for ModuleInformation<'a> {
+impl InformationChain for ModuleInformation<'_> {
 	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation> {
 		IntoIterator::into_iter([self.top, self.module])
 	}

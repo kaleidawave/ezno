@@ -123,7 +123,7 @@ pub struct Contributions<'a> {
 	pub staging_contravariant: TriMap<TypeId, CovariantContribution, ContributionDepth>,
 }
 
-impl<'a> Contributions<'a> {
+impl Contributions<'_> {
 	/// TODO return position?
 	#[must_use]
 	pub fn get_standard_restriction(&self, under: TypeId) -> Option<TypeId> {

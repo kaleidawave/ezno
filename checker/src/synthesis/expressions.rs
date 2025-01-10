@@ -864,7 +864,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						let (result, special) = call_function(
 							super_type,
 							CalledWithNew::Super { this_type },
-							&None,
+							None,
 							Some(arguments),
 							environment,
 							checking_data,
@@ -911,7 +911,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let (result, special) = call_function(
 				on,
 				CalledWithNew::None,
-				type_arguments,
+				type_arguments.as_deref(),
 				Some(arguments),
 				environment,
 				checking_data,
@@ -930,8 +930,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let (result, _) = call_function(
 				on,
 				called_with_new,
-				type_arguments,
-				arguments.as_ref(),
+				type_arguments.as_deref(),
+				arguments.as_deref(),
 				environment,
 				checking_data,
 				*position,
@@ -1207,8 +1207,8 @@ fn operator_to_assignment_kind(
 fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
-	type_arguments: &Option<Vec<parser::TypeAnnotation>>,
-	arguments: Option<&Vec<FunctionArgument>>,
+	type_arguments: Option<&[parser::TypeAnnotation]>,
+	arguments: Option<&[FunctionArgument]>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,

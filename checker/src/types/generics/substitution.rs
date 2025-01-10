@@ -30,7 +30,7 @@ pub struct SubstitutionArguments<'a> {
 	pub(crate) closures: Vec<ClosureId>,
 }
 
-impl<'a> ClosureChain for SubstitutionArguments<'a> {
+impl ClosureChain for SubstitutionArguments<'_> {
 	fn get_fact_from_closure<T, R>(&self, _fact: &LocalInformation, cb: T) -> Option<R>
 	where
 		T: Fn(ClosureId) -> Option<R>,
@@ -39,7 +39,7 @@ impl<'a> ClosureChain for SubstitutionArguments<'a> {
 	}
 }
 
-impl<'a> SubstitutionArguments<'a> {
+impl SubstitutionArguments<'_> {
 	/// TODO this might need to be done per context
 	pub fn set_during_application(&mut self, ty: TypeId, value: TypeId) {
 		self.arguments.insert(ty, value);
