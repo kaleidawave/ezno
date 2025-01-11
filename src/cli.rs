@@ -56,7 +56,7 @@ pub(crate) struct ExperimentalArguments {
 pub(crate) enum ExperimentalSubcommand {
 	Build(BuildArguments),
 	Format(FormatArguments),
-	#[cfg(not(target_family = "wasm"))]
+	#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 	Upgrade(UpgradeArguments),
 }
 

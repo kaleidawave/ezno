@@ -38,8 +38,8 @@ impl WASMCheckOutput {
 		&self,
 		path: &str,
 		pos: u32,
-	) -> Option<(String, SpanWithSource)> {
-		self.0.get_type_at_position_with_span(path, pos)
+	) -> Option<(String, crate::source_map::SpanWithSource)> {
+		self.0.get_type_at_position_with_span(path, pos, false)
 	}
 
 	pub fn get_module_ast(&self, path: &str) -> JsValue {
@@ -102,8 +102,8 @@ impl WASMBuildOutput {
 	}
 
 	#[wasm_bindgen(js_name = check_output, getter, skip_typescript)]
-	pub fn get_diagnostics(&self) -> WASMCheckOutput {
-		self.check_output
+	pub fn get_diagnostics(&self) -> &WASMCheckOutput {
+		&self.check_output
 	}
 }
 
