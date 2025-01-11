@@ -45,11 +45,7 @@ impl CovariantContribution {
 				types.new_constant_type(crate::Constant::String(slice))
 			}
 			CovariantContribution::Number(number) => {
-				if let Ok(number) = number.try_into() {
-					types.new_constant_type(crate::Constant::Number(number))
-				} else {
-					TypeId::NAN
-				}
+				types.new_constant_type(crate::Constant::Number(number))
 			}
 			CovariantContribution::CaseInsensitive(on) => {
 				let inner = on.into_type(types);

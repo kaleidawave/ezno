@@ -453,7 +453,7 @@ pub(crate) fn type_is_subtype_with_generics(
 		),
 		Type::Constant(lhs) => {
 			if let Type::Constant(rhs) = subtype {
-				if lhs == rhs {
+				if lhs.equals(rhs) {
 					SubTypeResult::IsSubType
 				} else {
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
@@ -2980,7 +2980,7 @@ pub(crate) fn number_matches_type(
 	match types.get_type_by_id(base) {
 		Type::Constant(cst) => {
 			if let Constant::Number(base_number) = cst {
-				*base_number == number
+				*base_number == number || (base_number.is_nan() && number.is_nan())
 			} else {
 				false
 			}
@@ -2991,7 +2991,7 @@ pub(crate) fn number_matches_type(
 		}) => {
 			let argument = arguments.get_structure_restriction(TypeId::NUMBER_GENERIC).unwrap();
 			if let Type::Constant(Constant::Number(argument)) = types.get_type_by_id(argument) {
-				let number: ordered_float::NotNan<f64> = number.try_into().unwrap();
+				let number: f64 = number.try_into().unwrap();
 				(number % argument) == 0.
 			} else {
 				crate::utilities::notify!("Here?");

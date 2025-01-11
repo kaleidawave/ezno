@@ -104,9 +104,7 @@ pub(crate) fn call_constant_function(
 				"abs" => num.abs(),
 				_ => unreachable!(),
 			};
-
-			let Ok(num) = result.try_into() else { return Ok(ConstantOutput::Value(TypeId::NAN)) };
-			Ok(ConstantOutput::Value(types.new_constant_type(Constant::Number(num))))
+			Ok(ConstantOutput::Value(types.new_constant_type(Constant::Number(result))))
 		}
 		"imul" => {
 			if let [x, y] = arguments {
@@ -114,7 +112,7 @@ pub(crate) fn call_constant_function(
 					(types.get_type_by_id(x.value), types.get_type_by_id(y.value))
 				{
 					// TODO is this correct, what about overflow?
-					let result = (x.into_inner() as i32) * (y.into_inner() as i32);
+					let result = (*x as i32) * (*y as i32);
 					Ok(ConstantOutput::Value(
 						types.new_constant_type(Constant::Number(result.into())),
 					))

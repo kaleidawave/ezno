@@ -74,7 +74,7 @@ impl Default for TypeStore {
 			// one
 			Type::Constant(Constant::Number(1.into())),
 			// NaN
-			Type::Constant(Constant::NaN),
+			Type::Constant(Constant::Number(f64::NAN)),
 			Type::Constant(Constant::Number(f64::NEG_INFINITY.try_into().unwrap())),
 			Type::Constant(Constant::Number(f64::INFINITY.try_into().unwrap())),
 			Type::Constant(Constant::Number(f64::MIN.try_into().unwrap())),
@@ -229,9 +229,9 @@ impl TypeStore {
 			Constant::Number(number) if number == 1f64 => TypeId::ONE,
 			Constant::Number(number) if number == f64::NEG_INFINITY => TypeId::NEG_INFINITY,
 			Constant::Number(number) if number == f64::INFINITY => TypeId::INFINITY,
+			Constant::Number(number) if number.is_nan() => TypeId::NAN,
 			Constant::Boolean(true) => TypeId::TRUE,
 			Constant::Boolean(false) => TypeId::FALSE,
-			Constant::NaN => TypeId::NAN,
 			_ => {
 				let ty = Type::Constant(constant);
 				// TODO maybe separate id

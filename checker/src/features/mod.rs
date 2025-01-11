@@ -78,7 +78,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 		if let crate::Type::Constant(cst) = ty {
 			// TODO backing type
 			let name = match cst {
-				crate::Constant::NaN | crate::Constant::Number(_) => "number",
+				crate::Constant::Number(_) => "number",
 				crate::Constant::String(_) => "string",
 				crate::Constant::Boolean(_) => "boolean",
 				crate::Constant::Symbol { key: _ } => "symbol",

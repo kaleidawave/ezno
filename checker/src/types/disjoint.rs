@@ -152,7 +152,7 @@ pub fn types_are_disjoint(
 				crate::utilities::notify!("{:?}", (num, lhs_mod));
 				// Modulos return negative for negative number :(
 				// Checking whether out of range here
-				num.abs() > **lhs_mod
+				num.abs() > *lhs_mod
 			} else {
 				false
 			}
@@ -171,7 +171,7 @@ pub fn types_are_disjoint(
 				crate::utilities::notify!("{:?}", (num, rhs_mod));
 				// Modulos return negative for negative number :(
 				// Checking whether out of range here
-				num.abs() > **rhs_mod
+				num.abs() > *rhs_mod
 			} else {
 				false
 			}
@@ -201,7 +201,7 @@ pub fn types_are_disjoint(
 			types_are_disjoint(lhs, rhs, already_checked, information, types)
 		} else if let Type::Constant(lhs_cst) = lhs_ty {
 			if let Type::Constant(rhs_cst) = rhs_ty {
-				lhs_cst != rhs_cst
+				!lhs_cst.equals(rhs_cst)
 			} else {
 				types_are_disjoint(
 					lhs_cst.get_backing_type(),

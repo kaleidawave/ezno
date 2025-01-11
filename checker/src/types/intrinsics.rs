@@ -415,14 +415,12 @@ pub fn get_range_and_mod_class(
 	}
 }
 
-type BetterF64 = ordered_float::NotNan<f64>;
-
 /// Unit. No combinations at this point
 #[derive(Debug)]
 pub enum PureNumberIntrinsic {
-	GreaterThan(BetterF64),
-	LessThan(BetterF64),
-	Modulo { modulo: BetterF64, offset: BetterF64 },
+	GreaterThan(f64),
+	LessThan(f64),
+	Modulo { modulo: f64, offset: f64 },
 }
 
 impl PureNumberIntrinsic {

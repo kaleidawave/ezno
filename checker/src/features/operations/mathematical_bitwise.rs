@@ -87,11 +87,7 @@ pub fn evaluate_mathematical_operation(
 							f64::from((lhs as i32) | (rhs as i32))
 						}
 					};
-					let value = ordered_float::NotNan::try_from(value);
-					let ty = match value {
-						Ok(value) => types.new_constant_type(Constant::Number(value)),
-						Err(_) => TypeId::NAN,
-					};
+					let ty = types.new_constant_type(Constant::Number(value));
 					Ok(ty)
 				}
 				(lhs, rhs) => {

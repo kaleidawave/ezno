@@ -1,16 +1,14 @@
-type BetterF64 = ordered_float::NotNan<f64>;
-
 /// x ≡ *class* [mod *modulo*]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ModuloClass {
-	pub modulo: BetterF64,
-	pub offset: BetterF64,
+	pub modulo: f64,
+	pub offset: f64,
 }
 
 // TODO more operations
 impl ModuloClass {
 	#[must_use]
-	pub fn new(modulo: BetterF64, offset: BetterF64) -> Self {
+	pub fn new(modulo: f64, offset: f64) -> Self {
 		debug_assert!(modulo != 0.);
 		if modulo > 0f64.try_into().unwrap() {
 			Self { offset: offset % modulo, modulo }
@@ -22,7 +20,7 @@ impl ModuloClass {
 	}
 
 	#[must_use]
-	pub fn contains(self, value: BetterF64) -> bool {
+	pub fn contains(self, value: f64) -> bool {
 		// Note -0. = 0.
 		(value - self.offset) % self.modulo == 0.
 	}
@@ -50,7 +48,7 @@ impl ModuloClass {
 	}
 
 	#[must_use]
-	pub fn offset(self, offset: BetterF64) -> Self {
+	pub fn offset(self, offset: f64) -> Self {
 		// TODO temp fix
 		if self.is_default() {
 			self
@@ -60,7 +58,7 @@ impl ModuloClass {
 	}
 
 	#[must_use]
-	pub fn multiply(self, multiple: BetterF64) -> Self {
+	pub fn multiply(self, multiple: f64) -> Self {
 		// TODO temp fix
 		if self.is_default() {
 			self
@@ -88,7 +86,7 @@ impl ModuloClass {
 /// Using Farey algoirthm
 /// TODO is there a faster way implemntation
 /// Note that numerator and denominator are coprime
-fn try_get_numerator_denominator(input: BetterF64) -> Result<(i32, i32), ()> {
+fn try_get_numerator_denominator(input: f64) -> Result<(i32, i32), ()> {
 	const STEPS: usize = 50;
 	const MARGIN: f64 = 1e-4;
 
@@ -118,7 +116,7 @@ fn try_get_numerator_denominator(input: BetterF64) -> Result<(i32, i32), ()> {
 	Err(())
 }
 
-fn gcd_of_float(n1: BetterF64, n2: BetterF64) -> Result<BetterF64, ()> {
+fn gcd_of_float(n1: f64, n2: f64) -> Result<f64, ()> {
 	fn gcd(mut n1: i32, mut n2: i32) -> i32 {
 		while n2 != 0 {
 			let t = n2;
@@ -137,13 +135,13 @@ fn gcd_of_float(n1: BetterF64, n2: BetterF64) -> Result<BetterF64, ()> {
 	let (c, d) = try_get_numerator_denominator(n2)?;
 
 	// gcd(a / b, c / d) = gcd(a, c) / lcm(b, d)
-	Ok(BetterF64::new(f64::from(gcd(a, c)) / f64::from(lcm(b, d))).unwrap())
+	Ok(f64::from(gcd(a, c)) / f64::from(lcm(b, d)))
 }
 
 // hmmm
 impl Default for ModuloClass {
 	fn default() -> Self {
-		Self { modulo: f64::EPSILON.try_into().unwrap(), offset: BetterF64::new(0.).unwrap() }
+		Self { modulo: f64::EPSILON.try_into().unwrap(), offset: 0. }
 	}
 }
 
@@ -155,8 +153,8 @@ mod tests {
 	#[test]
 	fn gcd() {
 		assert_eq!(
-			gcd_of_float(BetterF64::new(1. / 3.).unwrap(), BetterF64::new(3. / 2.).unwrap()),
-			Ok(BetterF64::new(0.16666666666666666).unwrap())
+			gcd_of_float(f64::new(1. / 3.).unwrap(), f64::new(3. / 2.).unwrap()),
+			Ok(f64::new(0.16666666666666666).unwrap())
 		);
 	}
 }

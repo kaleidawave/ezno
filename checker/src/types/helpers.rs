@@ -52,7 +52,7 @@ pub fn get_array_length(
 	ctx: &impl InformationChain,
 	on: TypeId,
 	types: &TypeStore,
-) -> Result<ordered_float::NotNan<f64>, Option<TypeId>> {
+) -> Result<f64, Option<TypeId>> {
 	let length_property = properties::PropertyKey::String(std::borrow::Cow::Borrowed("length"));
 	let id = properties::get_simple_property_value(ctx, on, &length_property, types).ok_or(None)?;
 	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
@@ -315,7 +315,7 @@ pub fn type_equal(lhs: TypeId, rhs: TypeId, types: &TypeStore) -> bool {
 	} else if let (Type::Constant(lhs), Type::Constant(rhs)) =
 		(types.get_type_by_id(lhs), types.get_type_by_id(rhs))
 	{
-		lhs == rhs
+		lhs.equals(rhs)
 	} else {
 		false
 	}

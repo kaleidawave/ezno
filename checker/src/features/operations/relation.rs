@@ -51,7 +51,7 @@ pub fn evaluate_equality_inequality_operation(
 			if let (Type::Constant(lhs), Type::Constant(rhs)) =
 				(types.get_type_by_id(lhs), types.get_type_by_id(rhs))
 			{
-				let result = if lhs == rhs { TypeId::TRUE } else { TypeId::FALSE };
+				let result = if lhs.equals(rhs) { TypeId::TRUE } else { TypeId::FALSE };
 				return Ok((result, EqualityAndInequalityResultKind::Constant));
 			}
 

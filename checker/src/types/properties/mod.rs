@@ -83,17 +83,34 @@ impl crate::BinarySerializable for PropertyKey<'static> {
 	}
 }
 
-// WIP quick hack for static property keys under < 10
-static NUMBERS: &str = "0123456789";
+fn float_as_u8(number: f64) -> Option<u8> {
+	if !number.is_nan() && number == number.trunc() && (0. ..256.).contains(&number) {
+		Some(number as u8)
+	} else {
+		None
+	}
+}
 
 impl PropertyKey<'_> {
+	/// For array indexes
+	#[must_use]
+	pub fn from_usize(a: usize) -> PropertyKey<'static> {
+		if let Ok(a) = u8::try_from(a) {
+			PropertyKey::from_u8(a)
+		} else {
+			PropertyKey::String(Cow::Owned(a.to_string()))
+		}
+	}
+
 	/// For small array indexes
 	#[must_use]
-	pub fn from_usize(a: usize) -> Self {
+	pub fn from_u8(a: u8) -> PropertyKey<'static> {
+		// Trick to not allocate for static property keys under < 10
+		static NUMBERS: &str = "0123456789";
 		if a < 10 {
-			Self::String(Cow::Borrowed(&NUMBERS[a..=a]))
+			PropertyKey::String(Cow::Borrowed(&NUMBERS[(a as usize)..=(a as usize)]))
 		} else {
-			Self::String(Cow::Owned(a.to_string()))
+			PropertyKey::String(Cow::Owned(a.to_string()))
 		}
 	}
 
@@ -109,8 +126,11 @@ impl PropertyKey<'_> {
 		if let Type::Constant(c) = types.get_type_by_id(ty) {
 			match c {
 				Constant::Number(n) => {
-					// if n.fractional ??
-					PropertyKey::from_usize(n.into_inner() as usize)
+					if let Some(n) = float_as_u8(*n) {
+						PropertyKey::from_u8(n)
+					} else {
+						PropertyKey::String(Cow::Owned(n.to_string()))
+					}
 				}
 				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
 				Constant::Boolean(b) => {
@@ -120,7 +140,6 @@ impl PropertyKey<'_> {
 					// Okay I think?
 					PropertyKey::Type(ty)
 				}
-				Constant::NaN => PropertyKey::String(Cow::Borrowed("NaN")),
 				Constant::Undefined => PropertyKey::String(Cow::Borrowed("undefined")),
 			}
 		} else {
@@ -133,10 +152,8 @@ impl PropertyKey<'_> {
 			PropertyKey::String(s) => s.parse::<usize>().ok(),
 			PropertyKey::Type(t) => {
 				if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(*t) {
-					// TODO is there a better way
-					#[allow(clippy::float_cmp)]
-					if n.trunc() == **n {
-						Some(**n as usize)
+					if let Some(n) = float_as_u8(*n) {
+						Some(n as usize)
 					} else {
 						None
 					}

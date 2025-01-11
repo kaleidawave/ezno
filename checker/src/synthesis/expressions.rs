@@ -114,18 +114,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::NumberLiteral(value, ..) => {
-			let not_nan = if let Ok(v) = f64::try_from(value.clone()) {
-				if let Ok(value) = v.try_into() {
-					value
-				} else {
-					crate::utilities::notify!("Returning zero here? {:?}", value);
-					return TypeId::ZERO;
-				}
+			if let Ok(value) = f64::try_from(value.clone()) {
+				return checking_data.types.new_constant_type(Constant::Number(value));
 			} else {
 				crate::utilities::notify!("TODO big int");
 				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
-			};
-			return checking_data.types.new_constant_type(Constant::Number(not_nan));
+			}
 		}
 		Expression::BooleanLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::Boolean(*value))

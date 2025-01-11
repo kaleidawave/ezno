@@ -656,7 +656,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				match get_array_length(info, ty, types) {
 					Ok(n) => {
 						buf.push('[');
-						for i in 0..(n.into_inner() as usize) {
+						for i in 0..(n as usize) {
 							if i != 0 {
 								buf.push_str(", ");
 							}
