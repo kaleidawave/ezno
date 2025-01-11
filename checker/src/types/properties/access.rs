@@ -44,7 +44,7 @@ fn get_property_from_list(
 		}
 
 		if let PropertyValue::ConditionallyExists { .. } = value {
-			crate::utilities::notify!("TODO trailing");
+			crate::utilities::notify!("TODO trailing on {:?}", key);
 			// continue;
 		}
 

@@ -609,8 +609,7 @@ fn call_logical<B: CallCheckingBehavior>(
 					// TODO just for debugging. These have their constant things called every time AND queue an event
 					let is_independent_function = const_fn_ident.ends_with("independent");
 
-					let call_anyway = const_fn_ident.starts_with("debug")
-						|| const_fn_ident.starts_with("print")
+					let call_anyway = const_fn_ident.starts_with("ezno")
 						|| is_independent_function
 						|| matches!(
 							const_fn_ident.as_str(),

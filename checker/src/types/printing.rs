@@ -519,12 +519,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 		| Type::Interface { name, parameters: _, .. }
 		| Type::AliasTo { to: _, name, parameters: _ }) => {
 			if debug {
-				write!(buf, "{name}#{} ", ty.0).unwrap();
+				write!(buf, "{name}#{}", ty.0).unwrap();
 				if let Type::AliasTo { to, .. } = t {
-					buf.push_str("= ");
+					buf.push_str(" = ");
 					print_type_into_buf(*to, buf, cycles, args, types, info, debug);
 				} else if let Type::Class { .. } = t {
-					buf.push_str("(class)");
+					buf.push_str(" (class)");
 				}
 			} else {
 				buf.push_str(name);

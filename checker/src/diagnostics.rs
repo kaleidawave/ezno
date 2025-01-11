@@ -274,9 +274,18 @@ impl TypeStringRepresentation {
 				});
 				Self::from_property_constraint(*on, generics, ctx, types, debug_mode)
 			}
-			crate::types::logical::Logical::BasedOnKey { .. } => {
-				Self("TODO based on key?".to_owned())
+			crate::types::logical::Logical::BasedOnKey(
+				crate::types::logical::BasedOnKey::Left { value, key_arguments },
+			) => {
+				let property_generics = Some(GenericChainLink::MappedPropertyLink {
+					parent_link: generics.as_ref(),
+					value: &key_arguments,
+				});
+				Self::from_property_constraint(*value, property_generics, ctx, types, debug_mode)
 			}
+			crate::types::logical::Logical::BasedOnKey(
+				crate::types::logical::BasedOnKey::Right(_right),
+			) => Self("TODO BasedOnKey::Right".to_owned()),
 		}
 	}
 }
@@ -557,17 +566,17 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					)],
 					kind,
 				},
-				AssignmentError::PropertyConstraint {
-					property_constraint: property_type,
-					value_type,
-					assignment_position,
-				} => Diagnostic::Position {
-					reason: format!(
-						"Type {value_type} does not meet property constraint {property_type}"
-					),
-					position: assignment_position,
-					kind,
-				},
+				// AssignmentError::PropertyConstraint {
+				// 	property_constraint: property_type,
+				// 	value_type,
+				// 	assignment_position,
+				// } => Diagnostic::Position {
+				// 	reason: format!(
+				// 		"Type {value_type} does not meet property constraint {property_type}"
+				// 	),
+				// 	position: assignment_position,
+				// 	kind,
+				// },
 				AssignmentError::Constant(position) => Diagnostic::Position {
 					reason: "Cannot assign to constant".into(),
 					position,

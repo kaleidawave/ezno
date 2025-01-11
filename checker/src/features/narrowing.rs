@@ -363,7 +363,26 @@ pub fn narrow_based_on_expression(
 						}
 					}
 				} else {
-					crate::utilities::notify!("Here?, {:?}", constructor);
+					let constraint = crate::types::get_constraint(condition, types).unwrap();
+					if let Type::Constructor(Constructor::TypeExtends(
+						crate::types::TypeExtends { .. },
+					)) = types.get_type_by_id(constraint)
+					{
+						// TODO why isn't this collapsed during calling
+						narrow_based_on_expression(constraint, negate, into, information, types);
+					} else {
+						crate::utilities::notify!("Here?, {:?}", constructor);
+						let mut result = Vec::new();
+						build_union_from_filter(
+							condition,
+							Filter::from_boolean_cast(!negate),
+							&mut result,
+							information,
+							types,
+						);
+						let narrowed_to = types.new_or_type_from_iterator(result);
+						into.insert(condition, narrowed_to);
+					}
 				}
 			}
 		}
@@ -371,11 +390,11 @@ pub fn narrow_based_on_expression(
 		if rpt.get_constraint() == TypeId::BOOLEAN_TYPE {
 			let result = if negate { TypeId::FALSE } else { TypeId::TRUE };
 			into.insert(condition, result);
-		} else if !negate {
+		} else {
 			let mut result = Vec::new();
-			super::narrowing::build_union_from_filter(
+			build_union_from_filter(
 				condition,
-				super::narrowing::NOT_FASLY,
+				Filter::from_boolean_cast(!negate),
 				&mut result,
 				information,
 				types,
@@ -404,8 +423,8 @@ pub(crate) enum Filter<'a> {
 static NULL_OR_UNDEFINED: Filter<'static> = Filter::NullOrUndefined;
 pub(crate) static NOT_NULL_OR_UNDEFINED: Filter<'static> = Filter::Not(&NULL_OR_UNDEFINED);
 
-pub(crate) static FASLY: Filter<'static> = Filter::Falsy;
-pub(crate) static NOT_FASLY: Filter<'static> = Filter::Not(&FASLY);
+pub(crate) static FALSY: Filter<'static> = Filter::Falsy;
+pub(crate) static NOT_FALSY: Filter<'static> = Filter::Not(&FALSY);
 
 impl Filter<'_> {
 	// Returns `true` if `value` passes filter
@@ -494,6 +513,14 @@ impl Filter<'_> {
 				let allowed_match = !negate;
 				(allowed_match && is_falsy) || (!allowed_match && !is_falsy)
 			}
+		}
+	}
+
+	pub(crate) fn from_boolean_cast(like: bool) -> Filter<'static> {
+		if like {
+			NOT_FALSY
+		} else {
+			FALSY
 		}
 	}
 }

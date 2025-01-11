@@ -285,7 +285,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub(crate) fn debug(&self) -> String {
+	pub(crate) fn _debug(&self) -> String {
 		use std::fmt::Write;
 		const INDENT: &str = "\t";
 
@@ -1002,11 +1002,11 @@ pub enum AssignmentError {
 		value_type: TypeStringRepresentation,
 		value_position: SpanWithSource,
 	},
-	PropertyConstraint {
-		property_constraint: TypeStringRepresentation,
-		value_type: TypeStringRepresentation,
-		assignment_position: SpanWithSource,
-	},
+	// PropertyConstraint {
+	// 	property_constraint: TypeStringRepresentation,
+	// 	value_type: TypeStringRepresentation,
+	// 	assignment_position: SpanWithSource,
+	// },
 	VariableUsedInTDZ(VariableUsedInTDZ),
 }
 

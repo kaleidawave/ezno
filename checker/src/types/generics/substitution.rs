@@ -618,6 +618,13 @@ pub(crate) fn compute_extends_rule(
 			otherwise_result,
 		);
 		types.new_or_type(lhs, rhs)
+	} else if let Some(_constraint) = super::super::get_constraint(item, types) {
+		let specialised_result =
+			Type::Constructor(Constructor::TypeExtends(crate::types::TypeExtends {
+				item,
+				extends,
+			}));
+		types.register_type(specialised_result)
 	} else {
 		let mut state = State {
 			already_checked: Default::default(),

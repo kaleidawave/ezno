@@ -1,43 +1,36 @@
 // This contains some of definitions from overrides. Some can be removed during development to test things (and to remove things that might be causing a crash)
 
-@Constant
+@Constant("ezno:print_type")
 declare function print_type<T>(...args: Array<T>): void
-@Constant
+@Constant("ezno:debug_type")
 declare function debug_type<T>(...args: Array<T>): void
-@Constant
+@Constant("ezno:debug_type_independent")
 declare function debug_type_independent<T>(...args: Array<T>): void
-@Constant
+@Constant("ezno:print_and_debug_type")
 declare function print_and_debug_type<T>(...args: Array<T>): void
-@Constant
-declare function print_constraint(t: any): void
-@Constant
+@Constant("ezno:debug_type_rust")
 declare function debug_type_rust(t: any): void
-@Constant
+@Constant("ezno:debug_type_rust_independent")
 declare function debug_type_rust_independent(t: any): void
 
-@Constant
-declare function debug_effects_rust(t: () => {}): void
-@Constant
-declare function debug_effects(t: () => {}): void
+@Constant("ezno:debug_constraint")
+declare function debug_constraint(a: any);
+@Constant("ezno:print_constraint")
+declare function print_constraint(t: any): void
 
-@Constant
+@Constant("ezno:debug_effects")
+declare function debug_effects(t: () => {}): void
+@Constant("ezno:debug_effects_rust")
+declare function debug_effects_rust(t: () => {}): void
+
+@Constant("ezno:is_dependent")
 declare function is_dependent(t: any): void
-@Constant
+@Constant("ezno:print_environment_state")
 declare function print_environment_state<T>(): any
 
-@Constant
-declare function debug_context(): void
-@Constant
-declare function context_id(): void
-@Constant
-declare function context_id_chain(): void
-
-@Constant
-declare function debug_state(): void
-
-// A function, as it should be!
-@Constant
-declare function satisfies<YE>(t: YE): YE
+// // A function, as it should be!
+// @Constant
+// declare function satisfies<YE>(t: YE): YE
 
 interface ImportEnv {
     [key: string]: string;

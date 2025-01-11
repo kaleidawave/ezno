@@ -2590,7 +2590,7 @@ function func(a: number, b: number, c: number) {
 
 - Expected 5, found true
 
-### Operators across conditions
+#### Operators across conditions
 
 ```ts
 function func(param: boolean) {
@@ -2622,6 +2622,14 @@ function func3(p1: Not<string>, p2: Not<number>) {
 ```
 
 - This equality is always false as "hi" and Not\<string> have no overlap
+
+#### NaN
+
+```ts
+const value: string = 0 / 0 + 1;
+```
+
+- Type NaN is not assignable to type string
 
 ### Statements, declarations and expressions
 
@@ -4118,13 +4126,13 @@ type Mutable<T> = {
 
 interface Y { readonly a: string }
 declare let x: Mutable<Y>;
-x.a = "hi";
 x.a = 4;
+x.a = "hi";
 ```
 
-> TODO this message is incorrect!!!!, should be string
+> TODO message should be string
 
-- Type 4 does not meet property constraint "hi"
+- Type 4 does not meet property constraint Y\[a]
 
 #### `as` rewrite
 
@@ -4495,6 +4503,19 @@ function func(param: boolean) {
 - Expected null, found false
 
 #### Assertions annotation
+
+```ts
+declare function isNumber(param: any): asserts param is number;
+declare const value: any;
+
+if (isNumber(value)) {
+	value satisfies string;
+}
+```
+
+- Expected string, found number
+
+#### Assertions annotation return type checker
 
 ```ts
 function func1(param: any): asserts param is number {

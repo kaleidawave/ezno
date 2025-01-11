@@ -164,9 +164,11 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 
 		tls_stream.write_all(request.as_bytes())?;
 		if let "api.github.com" = path {
-			tls_stream.write_all(b"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n")?;
+			tls_stream.write_all(
+				b"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n",
+			)?;
 		}
-		tls_stream.write_all("\r\n")?;
+		tls_stream.write_all(b"\r\n")?;
 
 		Ok(tls_stream)
 	}
@@ -284,7 +286,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	loop {
 		let mut line = String::new();
 		reader.read_line(&mut line)?;
-		if let "\r\n" = line {
+		if let "\r\n" = line.as_str() {
 			break;
 		}
 	}
