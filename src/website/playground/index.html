@@ -5,18 +5,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ezno Playground</title>
-    <!-- Vite doesn't rewrite them :( https://github.com/vitejs/vite/issues/7362 -->
-    <!-- Also maybe they should be in the parent directory? -->
-    <meta property="twitter:image" content="/ezno/playground/assets/banner.png">
-    <meta property="og:image" content="/ezno/playground/assets/banner.png">
+    <meta property="twitter:image" content="/ezno/assets/banner.png">
+    <meta property="og:image" content="/ezno/assets/banner.png">
 
-    <link rel="stylesheet" href="assets/index.css">
-    <link rel="icon" href="assets/ezno.svg">
+    <link rel="stylesheet" href="/ezno/assets/index.css">
+    <link rel="icon" href="/ezno/assets/ezno.svg">
 </head>
 
 <body>
     <header>
-        <img src="assets/ezno.svg" alt="EZNO" height="40px">
+        <img src="/ezno/assets/ezno.svg" alt="EZNO" height="40px">
         <p>
             Playground for the Ezno type checker.
             <a href="https://kaleidawave.github.io/posts/the-quest-continues/#there-is-a-new-web-based-playground">See
@@ -36,12 +34,27 @@
             <ol class="diagnostics">
             </ol>
         </div>
-        <button id="share">Share</button>
-        <details>
-            <summary>More:</summary>
-            <div id="version"></div>
-            <div id="time"></div>
-        </details>
+        <div class="extras">
+            <button id="share">Share</button>
+            <button id="build">Build</button>
+            <details>
+                <summary>More:</summary>
+                <div id="version"></div>
+                <div id="time"></div>
+            </details>
+            <details>
+                <summary>Build config:</summary>
+                <form id="build-config">
+                    <label for="">Strip whitespace</label>
+                    <input type="checkbox" name="strip_whitespace" id="strip_whitespace">
+                    <label for="">Tree shake</label>
+                    <input type="checkbox" name="tree_shake" id="tree_shake">
+                    <!-- <label for="">Run linter</label>
+                    <input type="checkbox" name="run-linter" id="run-linter"> -->
+                </form>
+            </details>
+            <pre id="build-output"></pre>
+        </div>
     </main>
     <footer>
         <hr>
@@ -53,7 +66,7 @@
                href="https://www.val.town/v/kaleidawave/savedNamedPlaygrounds">on val.town</a>.
         </p>
     </footer>
-    <script type="module" src="./main.js"></script>
+    <script type="module" src="./out.js"></script>
 </body>
 
 </html>
