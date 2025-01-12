@@ -30,28 +30,16 @@ main {
     font-size: 16px;
 }
 
-.diagnostics>li {
-    cursor: pointer;
-}
-
-#build-config>input:not(:last-child) {
-    border-right: 2px solid white;
-}
-
 a {
-    color: coral;
+    color: rgb(255, 217, 80);
 }
 
 a:visited {
-    color: rgb(222 174 154);
+    color: coral;
 }
 
 hr {
     margin: 40px 0;
-}
-
-pre#build-output {
-    tab-size: 4;
 }
 
 button {
@@ -66,12 +54,6 @@ button {
 
 button:hover {
     cursor: pointer;
-}
-
-body.component>header,
-body.component .extras,
-body.component>footer {
-    display: none;
 }
 
 @media (max-width: 700px) {
