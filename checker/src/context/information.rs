@@ -383,9 +383,11 @@ pub fn merge_info(
 				if let Some(otherwise) = otherwise {
 					onto.extend(otherwise, None);
 				} else {
+					let options =
+						crate::features::narrowing::NarrowingOptions { number_intrinsics: false };
 					// Could negate existing, but starting again handles types better
 					let values = crate::features::narrowing::narrow_based_on_expression_into_vec(
-						condition, true, parents, types,
+						condition, true, parents, types, &options,
 					);
 
 					onto.narrowed_values = values;

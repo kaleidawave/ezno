@@ -139,7 +139,7 @@ pub fn types_are_disjoint(
 			number_range_disjoint(args, rhs, types)
 		} else if let Type::Constructor(Constructor::BinaryOperator {
 			lhs: _lhs,
-			operator: MathematicalOrBitwiseOperation::Modulo,
+			operator: MathematicalOrBitwiseOperation::Remainder,
 			rhs,
 			result: _,
 		}) = lhs_ty
@@ -150,7 +150,7 @@ pub fn types_are_disjoint(
 			) = (types.get_type_by_id(*rhs), rhs_ty)
 			{
 				crate::utilities::notify!("{:?}", (num, lhs_mod));
-				// Modulos return negative for negative number :(
+				// Remainders return negative for negative number :(
 				// Checking whether out of range here
 				num.abs() > *lhs_mod
 			} else {
@@ -158,7 +158,7 @@ pub fn types_are_disjoint(
 			}
 		} else if let Type::Constructor(Constructor::BinaryOperator {
 			lhs: _lhs,
-			operator: MathematicalOrBitwiseOperation::Modulo,
+			operator: MathematicalOrBitwiseOperation::Remainder,
 			rhs,
 			result: _,
 		}) = rhs_ty
@@ -169,7 +169,7 @@ pub fn types_are_disjoint(
 			) = (types.get_type_by_id(*rhs), lhs_ty)
 			{
 				crate::utilities::notify!("{:?}", (num, rhs_mod));
-				// Modulos return negative for negative number :(
+				// Remainders return negative for negative number :(
 				// Checking whether out of range here
 				num.abs() > *rhs_mod
 			} else {

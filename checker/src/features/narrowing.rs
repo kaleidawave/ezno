@@ -10,14 +10,19 @@ use crate::{
 
 use super::operations::{CanonicalEqualityAndInequality, MathematicalOrBitwiseOperation};
 
+pub struct NarrowingOptions {
+	pub number_intrinsics: bool,
+}
+
 pub fn narrow_based_on_expression_into_vec(
 	condition: TypeId,
 	negate: bool,
 	information: &impl InformationChain,
 	types: &mut TypeStore,
+	options: &NarrowingOptions,
 ) -> Map<TypeId, TypeId> {
 	let mut into = Default::default();
-	narrow_based_on_expression(condition, negate, &mut into, information, types);
+	narrow_based_on_expression(condition, negate, &mut into, information, types, options);
 	into.iter_mut().for_each(|(on, value)| *value = types.new_narrowed(*on, *value));
 	into
 }
@@ -28,6 +33,7 @@ pub fn narrow_based_on_expression(
 	into: &mut Map<TypeId, TypeId>,
 	information: &impl InformationChain,
 	types: &mut TypeStore,
+	options: &NarrowingOptions,
 ) {
 	let r#type = types.get_type_by_id(condition);
 	if let Type::Constructor(constructor) = r#type {
@@ -81,7 +87,7 @@ pub fn narrow_based_on_expression(
 					}
 				} else if let Type::Constructor(Constructor::BinaryOperator {
 					lhs: operand,
-					operator: MathematicalOrBitwiseOperation::Modulo,
+					operator: MathematicalOrBitwiseOperation::Remainder,
 					rhs: modulo,
 					result: _,
 				}) = lhs_type
@@ -165,9 +171,23 @@ pub fn narrow_based_on_expression(
 					}) = types.get_type_by_id(get_origin(lhs, types))
 					{
 						if crate::types::helpers::type_equal(*truthy_result, rhs, types) {
-							narrow_based_on_expression(*condition, false, into, information, types);
+							narrow_based_on_expression(
+								*condition,
+								false,
+								into,
+								information,
+								types,
+								options,
+							);
 						} else if crate::types::helpers::type_equal(*otherwise_result, rhs, types) {
-							narrow_based_on_expression(*condition, true, into, information, types);
+							narrow_based_on_expression(
+								*condition,
+								true,
+								into,
+								information,
+								types,
+								options,
+							);
 						}
 					}
 					// PROPERTY NARROWING HERE (x.a: b => x: {a: b})
@@ -211,9 +231,9 @@ pub fn narrow_based_on_expression(
 				lhs,
 				operator: CanonicalEqualityAndInequality::LessThan,
 				rhs,
-			} => {
+			} if options.number_intrinsics => {
 				if negate {
-					crate::utilities::notify!("Skipping negate on less");
+					crate::utilities::notify!("Skipping negate on LessThan result");
 					return;
 				}
 				let lhs = get_origin(*lhs, types);
@@ -224,7 +244,7 @@ pub fn narrow_based_on_expression(
 						rhs,
 						types,
 					);
-					// TODO need to merge. This is very bad
+					// TODO might need to update to narrower type
 					let narrowed_to = if let Some(existing) = into.get(&lhs) {
 						crate::utilities::notify!("Here");
 						types.new_and_type(*existing, narrowed_to)
@@ -239,7 +259,7 @@ pub fn narrow_based_on_expression(
 						lhs,
 						types,
 					);
-					// TODO need to merge. This is very bad
+					// TODO might need to update to narrower type
 					let narrowed_to = if let Some(existing) = into.get(&rhs) {
 						crate::utilities::notify!("Here");
 						types.new_and_type(narrowed_to, *existing)
@@ -303,15 +323,32 @@ pub fn narrow_based_on_expression(
 			}
 			constructor => {
 				if let Some(condition) = as_logical_not(constructor, types) {
-					narrow_based_on_expression(condition, !negate, into, information, types);
+					narrow_based_on_expression(
+						condition,
+						!negate,
+						into,
+						information,
+						types,
+						options,
+					);
 				} else if let Some((lhs, rhs)) = as_logical_and(constructor, types) {
 					// De Morgan's laws
 					if negate {
 						// OR: Pull assertions from left and right, merge if both branches assert something
-						let lhs_requests =
-							narrow_based_on_expression_into_vec(lhs, negate, information, types);
-						let rhs_requests =
-							narrow_based_on_expression_into_vec(rhs, negate, information, types);
+						let lhs_requests = narrow_based_on_expression_into_vec(
+							lhs,
+							negate,
+							information,
+							types,
+							options,
+						);
+						let rhs_requests = narrow_based_on_expression_into_vec(
+							rhs,
+							negate,
+							information,
+							types,
+							options,
+						);
 
 						for (on, lhs_request) in lhs_requests {
 							if let Some(rhs_request) = rhs_requests.get(&on) {
@@ -331,25 +368,56 @@ pub fn narrow_based_on_expression(
 						}
 					} else {
 						// AND: Pull assertions from left and right
-						narrow_based_on_expression(lhs, negate, into, information, types);
-						narrow_based_on_expression(rhs, negate, into, information, types);
+						narrow_based_on_expression(lhs, negate, into, information, types, options);
+						narrow_based_on_expression(rhs, negate, into, information, types, options);
 					}
 				} else if let Some((lhs, rhs)) = as_logical_or(constructor, types) {
 					// De Morgan's laws
 					if negate {
 						// AND: Pull assertions from left and right
-						narrow_based_on_expression(lhs, negate, into, information, types);
-						narrow_based_on_expression(rhs, negate, into, information, types);
+						narrow_based_on_expression(lhs, negate, into, information, types, options);
+						narrow_based_on_expression(rhs, negate, into, information, types, options);
 					} else {
 						// OR: Pull assertions from left and right, merge if both branches assert something
-						let lhs_requests =
-							narrow_based_on_expression_into_vec(lhs, negate, information, types);
-						let rhs_requests =
-							narrow_based_on_expression_into_vec(rhs, negate, information, types);
+						let lhs_requests = narrow_based_on_expression_into_vec(
+							lhs,
+							negate,
+							information,
+							types,
+							options,
+						);
+						let rhs_requests = narrow_based_on_expression_into_vec(
+							rhs,
+							negate,
+							information,
+							types,
+							options,
+						);
+
+						crate::utilities::notify!(
+							"lhs={}, rhs={}",
+							crate::types::printing::print_type(lhs, types, information, true),
+							crate::types::printing::print_type(rhs, types, information, true)
+						);
 
 						for (on, lhs_request) in lhs_requests {
 							if let Some(rhs_request) = rhs_requests.get(&on) {
 								let rhs_request = *rhs_request;
+								crate::utilities::notify!(
+									"merging lhs={}, rhs={}",
+									crate::types::printing::print_type(
+										lhs_request,
+										types,
+										information,
+										true
+									),
+									crate::types::printing::print_type(
+										rhs_request,
+										types,
+										information,
+										true
+									)
+								);
 								let (lhs_request, rhs_request) = (
 									crate::types::get_constraint(lhs_request, types)
 										.unwrap_or(lhs_request),
@@ -369,7 +437,14 @@ pub fn narrow_based_on_expression(
 					)) = types.get_type_by_id(constraint)
 					{
 						// TODO why isn't this collapsed during calling
-						narrow_based_on_expression(constraint, negate, into, information, types);
+						narrow_based_on_expression(
+							constraint,
+							negate,
+							into,
+							information,
+							types,
+							options,
+						);
 					} else {
 						crate::utilities::notify!("Here?, {:?}", constructor);
 						let mut result = Vec::new();

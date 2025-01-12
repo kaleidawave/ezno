@@ -36,6 +36,10 @@ where
 		};
 	}
 
+	let options = crate::features::narrowing::NarrowingOptions {
+		number_intrinsics: checking_data.options.advanced_numbers,
+	};
+
 	let (truthy_result, truthy_info) = {
 		let mut truthy_environment = environment
 			.new_lexical_environment(Scope::Conditional { antecedent: condition, is_switch: None });
@@ -45,6 +49,7 @@ where
 			false,
 			environment,
 			&mut checking_data.types,
+			&options,
 		);
 
 		crate::utilities::notify!("Narrowed value {:?} in true branch", values);
@@ -80,6 +85,7 @@ where
 			true,
 			environment,
 			&mut checking_data.types,
+			&options,
 		);
 
 		crate::utilities::notify!("Narrowed value {:?} in false branch", values);

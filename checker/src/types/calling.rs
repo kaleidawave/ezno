@@ -2011,18 +2011,19 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							// crate::utilities::notify!("(pairing explicit generics for) Generic parameter = {:?}", parameter_type);
 
 							let ty = checking_data.types.get_type_by_id(parameter_type);
-							let parameter_type = if let Type::RootPolyType(
-								PolyNature::Parameter { fixed_to },
-							) = ty
-							{
-								*fixed_to
-							} else {
-								crate::utilities::notify!(
-									"Parameter is not `PolyNature::Parameter`? {:?}",
+							let parameter_type =
+								if let Type::RootPolyType(PolyNature::Parameter {
+									fixed_to, ..
+								}) = ty
+								{
+									*fixed_to
+								} else {
+									crate::utilities::notify!(
+									"Parameter is not `PolyNature::Parameter` when pairing arguments? Got {:?}",
 									ty
 								);
-								parameter_type
-							};
+									parameter_type
+								};
 
 							if let Some(arguments) = type_arguments.clone() {
 								if let Some((ty, _)) = arguments.get(&parameter_type) {

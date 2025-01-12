@@ -277,11 +277,40 @@ impl TypeStringRepresentation {
 			crate::types::logical::Logical::BasedOnKey(
 				crate::types::logical::BasedOnKey::Left { value, key_arguments },
 			) => {
-				let property_generics = Some(GenericChainLink::MappedPropertyLink {
+				let property_generics = GenericChainLink::MappedPropertyLink {
 					parent_link: generics.as_ref(),
 					value: &key_arguments,
-				});
-				Self::from_property_constraint(*value, property_generics, ctx, types, debug_mode)
+				};
+				// let value = *value;
+				// if let crate::types::logical::Logical::Pure(ref value) = value {
+
+				// 	if let crate::types::properties::PropertyValue::Value(value) = value.inner_simple() {
+				// 		let value = if let Some(crate::types::CovariantContribution::TypeId(value)) =
+				// 			property_generics.get_argument_covariant(*value)
+				// 		{
+				// 			value
+				// 		} else {
+				// 			*value
+				// 		};
+
+				// 		let ty = types.get_type_by_id(value);
+				// 		crate::utilities::notify!("{:?}", ty);
+
+				// 		// Skip interface stuff
+				// 		if let crate::Type::Constructor(crate::types::Constructor::Property { result, .. }) = ty {
+				// 			let value = print_type_with_type_arguments(*result, Some(property_generics), types, ctx, debug_mode);
+				// 			return Self(value)
+				// 		}
+				// 	}
+				// }
+				// crate::utilities::notify!("{:?}", value);
+				Self::from_property_constraint(
+					*value,
+					Some(property_generics),
+					ctx,
+					types,
+					debug_mode,
+				)
 			}
 			crate::types::logical::Logical::BasedOnKey(
 				crate::types::logical::BasedOnKey::Right(_right),

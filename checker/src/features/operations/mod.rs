@@ -10,3 +10,8 @@ pub use relation::{
 	EqualityAndInequality, EqualityAndInequalityResultKind,
 };
 pub use unary::{evaluate_unary_operator, UnaryOperation};
+
+pub struct OperatorOptions {
+	pub advanced_numbers: bool,
+	pub strict_casts: bool,
+}

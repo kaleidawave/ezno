@@ -491,7 +491,7 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 			// 		let value_type =
 			// 			TypeStringRepresentation::from_type_id(new, environment, types, false);
 
-			// 		// TOOD generics
+			// 		// TODO generics
 			// 		return Err(SetPropertyError::DoesNotMeetConstraint {
 			// 			property_constraint,
 			// 			value_type,
@@ -630,7 +630,7 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 			SynthesisedArgument { spread: false, value: resolver, position },
 		];
 		let input = CallingInput {
-			// TOOD special
+			// TODO special
 			called_with_new: CalledWithNew::GetterOrSetter { this_type: handler },
 			// TODO
 			call_site: source_map::Nullable::NULL,

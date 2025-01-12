@@ -643,19 +643,19 @@ pub(crate) fn get_property_unbound(
 				types.get_type_by_id(key)
 			{
 				if let Some(argument) =
-					under_type_arguments.and_then(|v| v.get_single_argument(key))
+					under_type_arguments.and_then(|v| v.get_argument_covariant(key))
 				{
-					return get_property_on_type_unbound(
+					get_property_on_type_unbound(
 						(on, on_type_arguments),
-						(publicity, &PropertyKey::Type(argument), under_type_arguments),
+						(publicity, &argument.into_property_key(), under_type_arguments),
 						require_both_logical,
 						info_chain,
 						types,
-					);
+					)
+				} else {
+					crate::utilities::notify!("No mapped argument, returning BasedOnKey::Right");
+					Ok(Logical::BasedOnKey(BasedOnKey::Right(PropertyOn { on, key })).into())
 				}
-
-				crate::utilities::notify!("No mapped argument, returning BasedOnKey::Right");
-				Ok(Logical::BasedOnKey(BasedOnKey::Right(PropertyOn { on, key })).into())
 			} else if get_constraint(on, types).is_some_and(is_inferrable_type)
 				|| is_inferrable_type(on)
 			{
@@ -681,6 +681,7 @@ pub(crate) fn get_property_unbound(
 #[derive(Debug, Clone, Copy, binary_serialize_derive::BinarySerializable)]
 pub enum AccessMode {
 	Regular,
+	FromTypeAnnotation,
 	/// For destructuring
 	DoNotBindThis,
 }
@@ -1160,7 +1161,7 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 			SynthesisedArgument { spread: false, value: resolver, position },
 		];
 		let input = CallingInput {
-			// TOOD special
+			// TODO special
 			called_with_new: CalledWithNew::GetterOrSetter { this_type: handler },
 			// TODO
 			call_site: source_map::Nullable::NULL,

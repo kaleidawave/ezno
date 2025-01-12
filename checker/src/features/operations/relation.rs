@@ -37,7 +37,7 @@ pub fn evaluate_equality_inequality_operation(
 	mut rhs: TypeId,
 	info: &impl crate::context::InformationChain,
 	types: &mut crate::types::TypeStore,
-	strict_casts: bool,
+	options: &super::OperatorOptions,
 ) -> Result<(TypeId, EqualityAndInequalityResultKind), ()> {
 	// `NaN == t` is always true
 	if lhs == TypeId::NAN || rhs == TypeId::NAN {
@@ -81,7 +81,7 @@ pub fn evaluate_equality_inequality_operation(
 			let left_dependent = types.get_type_by_id(lhs).is_dependent();
 
 			// Sort if `*constant* == ...`. Ideally want constant type on the RHS
-			let (lhs, rhs) = if left_dependent { (lhs, rhs) } else { (rhs, rhs) };
+			let (lhs, rhs) = if left_dependent { (lhs, rhs) } else { (rhs, lhs) };
 			let operator = CanonicalEqualityAndInequality::StrictEqual;
 			let result_ty =
 				types.register_type(Type::Constructor(Constructor::CanonicalRelationOperator {
@@ -91,29 +91,13 @@ pub fn evaluate_equality_inequality_operation(
 				}));
 
 			Ok((result_ty, EqualityAndInequalityResultKind::Condition))
-
-			// } else {
-			// 	match attempt_constant_equality(lhs, rhs, types) {
-			// 		Ok(ty) => Ok((
-			// 			if ty { TypeId::TRUE } else { TypeId::FALSE },
-			// 			EqualityAndInequalityResultKind::Constant,
-			// 		)),
-			// 		Err(()) => {
-			// 			unreachable!(
-			// 				"should have been caught `is_dependent` above, {:?} === {:?}",
-			// 				types.get_type_by_id(lhs),
-			// 				types.get_type_by_id(rhs)
-			// 			)
-			// 		}
-			// 	}
-			// }
 		}
 		EqualityAndInequality::LessThan => {
 			fn attempt_less_than(
 				lhs: TypeId,
 				rhs: TypeId,
 				types: &mut crate::types::TypeStore,
-				strict_casts: bool,
+				options: &super::OperatorOptions,
 			) -> Result<bool, ()> {
 				// Similar but reversed semantics to add
 				match (types.get_type_by_id(lhs), types.get_type_by_id(rhs)) {
@@ -125,8 +109,8 @@ pub fn evaluate_equality_inequality_operation(
 						Ok(string1 < string2)
 					}
 					(Type::Constant(c1), Type::Constant(c2)) => {
-						let lhs = cast_as_number(c1, strict_casts)?;
-						let rhs = cast_as_number(c2, strict_casts)?;
+						let lhs = cast_as_number(c1, options.strict_casts)?;
+						let rhs = cast_as_number(c2, options.strict_casts)?;
 						Ok(lhs < rhs)
 					}
 					(lhs, rhs) => {
@@ -141,6 +125,7 @@ pub fn evaluate_equality_inequality_operation(
 				|| types.get_type_by_id(rhs).is_dependent();
 
 			if either_is_dependent {
+				// Tidies some things for counting loop iterations
 				{
 					if let Type::Constructor(Constructor::BinaryOperator {
 						lhs: op_lhs,
@@ -162,17 +147,15 @@ pub fn evaluate_equality_inequality_operation(
 					}
 				}
 
+				if !helpers::simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
+					|| !helpers::simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
 				{
-					if !helpers::simple_subtype(lhs, TypeId::NUMBER_TYPE, info, types)
-						|| !helpers::simple_subtype(rhs, TypeId::NUMBER_TYPE, info, types)
-					{
-						return Err(());
-					}
+					return Err(());
+				}
 
+				if options.advanced_numbers {
 					let lhs = get_constraint(lhs, types).unwrap_or(lhs);
 					let rhs = get_constraint(rhs, types).unwrap_or(rhs);
-
-					// Tidies some things for counting loop iterations
 
 					// Checking disjoint-ness for inequalities (TODO under option) via distribution
 					if let ((Some(lhs_range), _), (Some(rhs_range), _)) = (
@@ -221,7 +204,7 @@ pub fn evaluate_equality_inequality_operation(
 					EqualityAndInequalityResultKind::Condition,
 				))
 			} else {
-				attempt_less_than(lhs, rhs, types, strict_casts).map(|value| {
+				attempt_less_than(lhs, rhs, types, options).map(|value| {
 					(
 						if value { TypeId::TRUE } else { TypeId::FALSE },
 						EqualityAndInequalityResultKind::Constant,
@@ -237,7 +220,7 @@ pub fn evaluate_equality_inequality_operation(
 				rhs,
 				info,
 				types,
-				strict_casts,
+				options,
 			)?;
 
 			if equality_result == TypeId::TRUE {
@@ -249,7 +232,7 @@ pub fn evaluate_equality_inequality_operation(
 					rhs,
 					info,
 					types,
-					strict_casts,
+					options,
 				)
 			} else {
 				let (less_than_result, warning) = evaluate_equality_inequality_operation(
@@ -258,7 +241,7 @@ pub fn evaluate_equality_inequality_operation(
 					rhs,
 					info,
 					types,
-					strict_casts,
+					options,
 				)?;
 				Ok((types.new_logical_or_type(equality_result, less_than_result), warning))
 			}
@@ -270,7 +253,7 @@ pub fn evaluate_equality_inequality_operation(
 				rhs,
 				info,
 				types,
-				strict_casts,
+				options,
 			)?;
 			if let EqualityAndInequalityResultKind::Condition = kind {
 				Ok((types.new_logical_negation_type(equality_result), kind))
@@ -296,7 +279,7 @@ pub fn evaluate_equality_inequality_operation(
 				rhs,
 				info,
 				types,
-				strict_casts,
+				options,
 			)?;
 			if let EqualityAndInequalityResultKind::Condition = kind {
 				Ok((types.new_logical_negation_type(equality_result), kind))
@@ -318,7 +301,7 @@ pub fn evaluate_equality_inequality_operation(
 			lhs,
 			info,
 			types,
-			strict_casts,
+			options,
 		),
 		// Swapping operands!
 		EqualityAndInequality::GreaterThanOrEqual => evaluate_equality_inequality_operation(
@@ -327,7 +310,7 @@ pub fn evaluate_equality_inequality_operation(
 			lhs,
 			info,
 			types,
-			strict_casts,
+			options,
 		),
 	}
 }
@@ -344,7 +327,7 @@ pub fn is_null_or_undefined(
 		TypeId::NULL_TYPE,
 		info,
 		types,
-		false,
+		&super::OperatorOptions { strict_casts: false, advanced_numbers: false },
 	)
 	.map_or(TypeId::ERROR_TYPE, |(left, _)| left);
 
@@ -357,7 +340,7 @@ pub fn is_null_or_undefined(
 			TypeId::UNDEFINED_TYPE,
 			info,
 			types,
-			false,
+			&super::OperatorOptions { strict_casts: false, advanced_numbers: false },
 		)
 		.map_or(TypeId::ERROR_TYPE, |(left, _)| left);
 

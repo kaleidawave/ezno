@@ -48,6 +48,23 @@ pub(crate) fn _assign_to_tuple(_ty: TypeId) -> TypeId {
 	// if let PropertyKey::Type(slice) =
 }
 
+pub(crate) fn get_reference_name(types: &TypeStore, ty: TypeId) -> Option<&str> {
+	match types.get_type_by_id(ty) {
+		Type::RootPolyType(
+			PolyNature::Parameter { variable_id, .. }
+			| PolyNature::FreeVariable {
+				reference: crate::types::RootReference::Variable(variable_id),
+				..
+			},
+		) => Some(types.get_parameter_name(*variable_id)),
+		Type::RootPolyType(PolyNature::FreeVariable {
+			reference: crate::types::RootReference::This,
+			..
+		}) => Some("this"),
+		_ => None,
+	}
+}
+
 pub fn get_array_length(
 	ctx: &impl InformationChain,
 	on: TypeId,

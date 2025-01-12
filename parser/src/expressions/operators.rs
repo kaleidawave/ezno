@@ -14,7 +14,7 @@ use crate::{derive_ASTNode, TSXKeyword, TSXToken};
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[apply(derive_ASTNode!)]
 pub enum BinaryOperator {
-	Add, Subtract, Multiply, Divide, Modulo, Exponent,
+	Add, Subtract, Multiply, Divide, Remainder, Exponent,
 
     BitwiseShiftLeft, BitwiseShiftRight, BitwiseShiftRightUnsigned,
     BitwiseAnd, BitwiseXOr, BitwiseOr,
@@ -44,7 +44,7 @@ impl BinaryOperator {
 pub enum BinaryAssignmentOperator {
     LogicalNullishAssignment,
     
-    AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, ModuloAssign, ExponentAssign,
+    AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, RemainderAssign, ExponentAssign,
     LogicalAndAssign, LogicalOrAssign,
     BitwiseShiftLeftAssign, BitwiseShiftRightAssign, BitwiseShiftRightUnsigned, 
     BitwiseAndAssign, BitwiseXOrAssign, BitwiseOrAssign,
@@ -130,7 +130,7 @@ impl Operator for BinaryOperator {
 			BinaryOperator::StrictEqual => "===",
 			BinaryOperator::NotEqual => "!=",
 			BinaryOperator::StrictNotEqual => "!==",
-			BinaryOperator::Modulo => "%",
+			BinaryOperator::Remainder => "%",
 			BinaryOperator::NullCoalescing => "??",
 			BinaryOperator::LogicalAnd => "&&",
 			BinaryOperator::LogicalOr => "||",
@@ -149,7 +149,7 @@ impl Operator for BinaryOperator {
 		match self {
 			BinaryOperator::Pipe | BinaryOperator::Compose => 15,
 			BinaryOperator::Exponent => 14,
-			BinaryOperator::Multiply | BinaryOperator::Divide | BinaryOperator::Modulo => 13,
+			BinaryOperator::Multiply | BinaryOperator::Divide | BinaryOperator::Remainder => 13,
 			BinaryOperator::Add | BinaryOperator::Subtract => 12,
 			BinaryOperator::BitwiseShiftLeft
 			| BinaryOperator::BitwiseShiftRightUnsigned
@@ -230,7 +230,7 @@ impl Operator for BinaryAssignmentOperator {
 			BinaryAssignmentOperator::SubtractAssign => "-=",
 			BinaryAssignmentOperator::MultiplyAssign => "*=",
 			BinaryAssignmentOperator::DivideAssign => "/=",
-			BinaryAssignmentOperator::ModuloAssign => "%=",
+			BinaryAssignmentOperator::RemainderAssign => "%=",
 			BinaryAssignmentOperator::ExponentAssign => "**=",
 			BinaryAssignmentOperator::BitwiseShiftLeftAssign => "<<=",
 			BinaryAssignmentOperator::BitwiseShiftRightAssign => ">>=",
@@ -313,7 +313,7 @@ impl From<BinaryAssignmentOperator> for BinaryOperator {
 			BinaryAssignmentOperator::SubtractAssign => BinaryOperator::Subtract,
 			BinaryAssignmentOperator::MultiplyAssign => BinaryOperator::Multiply,
 			BinaryAssignmentOperator::DivideAssign => BinaryOperator::Divide,
-			BinaryAssignmentOperator::ModuloAssign => BinaryOperator::Modulo,
+			BinaryAssignmentOperator::RemainderAssign => BinaryOperator::Remainder,
 			BinaryAssignmentOperator::ExponentAssign => BinaryOperator::Exponent,
 			BinaryAssignmentOperator::LogicalAndAssign => BinaryOperator::LogicalAnd,
 			BinaryAssignmentOperator::LogicalOrAssign => BinaryOperator::LogicalOr,
@@ -371,7 +371,7 @@ impl TryFrom<&TSXToken> for BinaryOperator {
 			TSXToken::Multiply => Ok(BinaryOperator::Multiply),
 			TSXToken::Divide => Ok(BinaryOperator::Divide),
 			TSXToken::Exponent => Ok(BinaryOperator::Exponent),
-			TSXToken::Modulo => Ok(BinaryOperator::Modulo),
+			TSXToken::Remainder => Ok(BinaryOperator::Remainder),
 			TSXToken::Equal => Ok(BinaryOperator::Equal),
 			TSXToken::NotEqual => Ok(BinaryOperator::NotEqual),
 			TSXToken::StrictEqual => Ok(BinaryOperator::StrictEqual),

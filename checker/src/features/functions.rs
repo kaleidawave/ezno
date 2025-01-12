@@ -5,7 +5,6 @@ use source_map::{Nullable, SourceId, SpanWithSource};
 use crate::{
 	context::{
 		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
-		get_on_ctx,
 		information::{merge_info, LocalInformation},
 		ContextType, Syntax,
 	},
@@ -941,15 +940,18 @@ where
 			}
 		}
 
-		// TODO collect here because of lifetime mutation issues from closed over
+		// TODO has to collect here because of lifetime mutation issues from closed over
 		let continues_to_close_over = function_closes_over
 			.into_iter()
 			.filter(|r| match r {
 				RootReference::Variable(id) => {
 					// Keep if body does not contain id
-					let contains = base_environment
-						.parents_iter()
-						.any(|c| get_on_ctx!(&c.variable_names).contains_key(id));
+					let contains = base_environment.parents_iter().any(|c| {
+						crate::context::get_on_ctx!(&c.variables)
+							.values()
+							.map(crate::features::variables::VariableOrImport::get_id)
+							.any(|vid| vid == *id)
+					});
 
 					crate::utilities::notify!("v-id {:?} con {:?}", id, contains);
 					contains
@@ -1061,7 +1063,7 @@ fn get_expected_parameters_from_type(
 					.into_iter()
 					.map(|p| SynthesisedParameter {
 						ty: substitute(
-							if let Type::RootPolyType(PolyNature::Parameter { fixed_to }) =
+							if let Type::RootPolyType(PolyNature::Parameter { fixed_to, .. }) =
 								types.get_type_by_id(p.ty)
 							{
 								*fixed_to

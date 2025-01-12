@@ -226,13 +226,12 @@ pub enum PolyNature {
 	/// This allows for
 	/// - event application to work on known values
 	/// - more accurate return types
-	/// - `fixed_to` can point to [`PolyNature::FunctionGeneric`]
-	Parameter { fixed_to: TypeId },
+	Parameter { fixed_to: TypeId, variable_id: crate::VariableId },
 	/// This is on a structure (`class`, `interface` and `type` alias)
 	StructureGeneric { name: String, extends: TypeId },
 	/// From `infer U`.
 	InferGeneric { name: String, extends: TypeId },
-	/// For explicit generics (or on external definitions)
+	/// For explicit generics (or on external definitions). Note can be a standalone parameter in some cases
 	FunctionGeneric { name: String, extends: TypeId },
 	/// For mapped types
 	MappedGeneric { name: String, extends: TypeId },
@@ -273,7 +272,7 @@ impl PolyNature {
 	pub fn is_inferrable(&self) -> bool {
 		matches!(
 			self,
-			Self::Parameter { fixed_to: to } | Self::FreeVariable { based_on: to, .. } | Self::CatchVariable(to)
+			Self::Parameter { fixed_to: to, .. } | Self::FreeVariable { based_on: to, .. } | Self::CatchVariable(to)
 			// TODO matches TypeId::unknown
 			if matches!(*to, TypeId::ANY_TYPE)
 		)
@@ -283,7 +282,7 @@ impl PolyNature {
 	#[must_use]
 	pub fn get_constraint(&self) -> TypeId {
 		match self {
-			PolyNature::Parameter { fixed_to: to }
+			PolyNature::Parameter { fixed_to: to, .. }
 			| PolyNature::FunctionGeneric { extends: to, .. }
 			| PolyNature::MappedGeneric { extends: to, .. }
 			| PolyNature::FreeVariable { based_on: to, .. }
@@ -405,6 +404,7 @@ pub enum Constructor {
 		on: TypeId,
 		under: properties::PropertyKey<'static>,
 		result: TypeId,
+		/// Also descibes if was from a type annotation
 		mode: AccessMode,
 	},
 	/// For await a poly type

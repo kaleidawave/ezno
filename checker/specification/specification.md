@@ -2433,6 +2433,8 @@ function func2(a: number) {
 }
 ```
 
+With advanced_numbers
+
 - This equality is always false as GreaterThan<4> and 3 have no overlap
 - Expected string, found boolean
 - This equality is always false as LessThan<2> and 6 have no overlap
@@ -2518,6 +2520,8 @@ function func(a: string, b: number) {
 }
 ```
 
+With advanced_numbers
+
 - Expected string, found true
 - Expected null, found boolean
 
@@ -2529,6 +2533,8 @@ function func(a: number) {
 	(Math.sin(a) > -1) satisfies string;
 }
 ```
+
+With advanced_numbers
 
 - Expected string, found boolean
 
@@ -2576,6 +2582,8 @@ function func(x: number) {
 }
 ```
 
+With advanced_numbers
+
 - This equality is always false as ExclusiveRange<-5, 5> and 6 have no overlap
 
 #### Transistivity
@@ -2587,6 +2595,8 @@ function func(a: number, b: number, c: number) {
   }
 }
 ```
+
+With advanced_numbers
 
 - Expected 5, found true
 
@@ -4130,9 +4140,7 @@ x.a = 4;
 x.a = "hi";
 ```
 
-> TODO message should be string
-
-- Type 4 does not meet property constraint Y\[a]
+- Type 4 does not meet property constraint string
 
 #### `as` rewrite
 
@@ -4515,7 +4523,7 @@ if (isNumber(value)) {
 
 - Expected string, found number
 
-#### Assertions annotation return type checker
+#### Assertions annotation return type checked
 
 ```ts
 function func1(param: any): asserts param is number {
@@ -4531,9 +4539,7 @@ function func2(param: any): asserts param is boolean {
 }
 ```
 
-> TODO `any` should be parameter name
-
-- Cannot return asserts any is string because the function is expected to return asserts any is number
+- Cannot return asserts param is string because the function is expected to return asserts param is number
 
 #### External predicate
 
@@ -4602,6 +4608,8 @@ for (let i = 0; i < 3; i++) {
   const x = i === 50;
 }
 ```
+
+With advanced_numbers
 
 - This equality is always false as LessThan<3> and 50 have no overlap
 

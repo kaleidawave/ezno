@@ -10,7 +10,7 @@ pub enum MathematicalOrBitwiseOperation {
 	Subtract,
 	Multiply,
 	Divide,
-	Modulo,
+	Remainder,
 	Exponent,
 	BitwiseShiftLeft,
 	BitwiseShiftRight,
@@ -66,7 +66,7 @@ pub fn evaluate_mathematical_operation(
 						MathematicalOrBitwiseOperation::Subtract => lhs - rhs,
 						MathematicalOrBitwiseOperation::Multiply => lhs * rhs,
 						MathematicalOrBitwiseOperation::Divide => lhs / rhs,
-						MathematicalOrBitwiseOperation::Modulo => lhs % rhs,
+						MathematicalOrBitwiseOperation::Remainder => lhs % rhs,
 						MathematicalOrBitwiseOperation::Exponent => lhs.powf(rhs),
 						MathematicalOrBitwiseOperation::BitwiseShiftLeft => {
 							f64::from((lhs as i32).checked_shl(rhs as u32).unwrap_or(0))

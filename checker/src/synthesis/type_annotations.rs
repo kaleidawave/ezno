@@ -799,16 +799,19 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::Is { reference, is, position: _ } => {
 			let item_type = match reference {
-				parser::type_annotations::IsItem::Reference(name) => environment
-					.variables
-					.get(name)
-					.and_then(|variable| {
-						environment
-							.info
-							.variable_current_value
-							.get(&variable.get_origin_variable_id())
-					})
-					.copied(),
+				parser::type_annotations::IsItem::Reference(name) => {
+					// Fine to do this environment?
+					environment
+						.variables
+						.get(name)
+						.and_then(|variable| {
+							environment
+								.info
+								.variable_current_value
+								.get(&variable.get_origin_variable_id())
+						})
+						.copied()
+				}
 				parser::type_annotations::IsItem::This => {
 					// TODO
 					let based_on = TypeId::UNIMPLEMENTED_ERROR_TYPE;
@@ -850,8 +853,6 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				result_union: TypeId::ERROR_TYPE,
 			});
 			checking_data.types.register_type(ty)
-			// 	crate::types::TypeExtends { item, extends },
-			// ));
 		}
 		TypeAnnotation::This(position) => {
 			checking_data.raise_unimplemented_error(

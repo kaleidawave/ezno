@@ -35,7 +35,7 @@ use crate::{
 			evaluate_equality_inequality_operation, evaluate_logical_operation_with_expression,
 			evaluate_mathematical_operation, evaluate_unary_operator, EqualityAndInequality,
 			EqualityAndInequalityResultKind, LogicalOperator, MathematicalOrBitwiseOperation,
-			UnaryOperation,
+			OperatorOptions, UnaryOperation,
 		},
 		template_literal::synthesise_template_literal_expression,
 		variables::VariableWithValue,
@@ -239,18 +239,38 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			))
 		}
 		Expression::BinaryOperation { lhs, operator, rhs, position } => {
+			fn logical_operator_from_binary_operator(
+				operator: &BinaryOperator,
+			) -> Option<LogicalOperator> {
+				match operator {
+					BinaryOperator::LogicalAnd => Some(LogicalOperator::And),
+					BinaryOperator::LogicalOr => Some(LogicalOperator::Or),
+					BinaryOperator::NullCoalescing => Some(LogicalOperator::NullCoalescing),
+					_ => None,
+				}
+			}
+
+			fn equality_inequality_operator_from_binary_operator(
+				operator: &BinaryOperator,
+			) -> Option<EqualityAndInequality> {
+				match operator {
+					BinaryOperator::StrictEqual => Some(EqualityAndInequality::StrictEqual),
+					BinaryOperator::StrictNotEqual => Some(EqualityAndInequality::StrictNotEqual),
+					BinaryOperator::Equal => Some(EqualityAndInequality::Equal),
+					BinaryOperator::NotEqual => Some(EqualityAndInequality::NotEqual),
+					BinaryOperator::GreaterThan => Some(EqualityAndInequality::GreaterThan),
+					BinaryOperator::LessThan => Some(EqualityAndInequality::LessThan),
+					BinaryOperator::LessThanEqual => Some(EqualityAndInequality::LessThanOrEqual),
+					BinaryOperator::GreaterThanEqual => {
+						Some(EqualityAndInequality::GreaterThanOrEqual)
+					}
+					_ => None,
+				}
+			}
+
 			let lhs_ty = synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE);
 
-			if let BinaryOperator::LogicalAnd
-			| BinaryOperator::LogicalOr
-			| BinaryOperator::NullCoalescing = operator
-			{
-				let operator = match operator {
-					BinaryOperator::LogicalAnd => LogicalOperator::And,
-					BinaryOperator::LogicalOr => LogicalOperator::Or,
-					BinaryOperator::NullCoalescing => LogicalOperator::NullCoalescing,
-					_ => unreachable!(),
-				};
+			if let Some(operator) = logical_operator_from_binary_operator(&operator) {
 				return evaluate_logical_operation_with_expression(
 					(lhs_ty, lhs.get_position()),
 					operator,
@@ -260,35 +280,21 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					expecting, // TODO unwrap
 				)
 				.unwrap();
-			} else if let BinaryOperator::StrictEqual
-			| BinaryOperator::StrictNotEqual
-			| BinaryOperator::Equal
-			| BinaryOperator::NotEqual
-			| BinaryOperator::GreaterThan
-			| BinaryOperator::LessThan
-			| BinaryOperator::LessThanEqual
-			| BinaryOperator::GreaterThanEqual = operator
+			} else if let Some(operator) =
+				equality_inequality_operator_from_binary_operator(operator)
 			{
 				let rhs_ty =
 					synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);
-				let operator = match operator {
-					BinaryOperator::StrictEqual => EqualityAndInequality::StrictEqual,
-					BinaryOperator::StrictNotEqual => EqualityAndInequality::StrictNotEqual,
-					BinaryOperator::Equal => EqualityAndInequality::Equal,
-					BinaryOperator::NotEqual => EqualityAndInequality::NotEqual,
-					BinaryOperator::GreaterThan => EqualityAndInequality::GreaterThan,
-					BinaryOperator::LessThan => EqualityAndInequality::LessThan,
-					BinaryOperator::LessThanEqual => EqualityAndInequality::LessThanOrEqual,
-					BinaryOperator::GreaterThanEqual => EqualityAndInequality::GreaterThanOrEqual,
-					_ => unreachable!(),
-				};
 				let result = evaluate_equality_inequality_operation(
 					lhs_ty,
 					&operator,
 					rhs_ty,
 					environment,
 					&mut checking_data.types,
-					checking_data.options.strict_casts,
+					&OperatorOptions {
+						strict_casts: checking_data.options.strict_casts,
+						advanced_numbers: checking_data.options.advanced_numbers,
+					},
 				);
 
 				if let Ok((result, warning)) = result {
@@ -360,7 +366,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				BinaryOperator::Subtract => MathematicalOrBitwiseOperation::Subtract,
 				BinaryOperator::Multiply => MathematicalOrBitwiseOperation::Multiply,
 				BinaryOperator::Divide => MathematicalOrBitwiseOperation::Divide,
-				BinaryOperator::Modulo => MathematicalOrBitwiseOperation::Modulo,
+				BinaryOperator::Remainder => MathematicalOrBitwiseOperation::Remainder,
 				BinaryOperator::Exponent => MathematicalOrBitwiseOperation::Exponent,
 				BinaryOperator::BitwiseShiftLeft => {
 					MathematicalOrBitwiseOperation::BitwiseShiftLeft
@@ -381,8 +387,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					);
 					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 				}
-				_ => {
-					unreachable!()
+				operator => {
+					unreachable!("{:?}", operator)
 				}
 			};
 			let result = evaluate_mathematical_operation(
@@ -1170,8 +1176,8 @@ fn operator_to_assignment_kind(
 		BinaryAssignmentOperator::DivideAssign => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Divide)
 		}
-		BinaryAssignmentOperator::ModuloAssign => {
-			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Modulo)
+		BinaryAssignmentOperator::RemainderAssign => {
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Remainder)
 		}
 		BinaryAssignmentOperator::ExponentAssign => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Exponent)

@@ -483,7 +483,11 @@ pub(crate) fn substitute(
 					rhs,
 					environment,
 					types,
-					false,
+					// TODO pass down
+					&crate::features::operations::OperatorOptions {
+						strict_casts: false,
+						advanced_numbers: false,
+					},
 				);
 
 				if let Ok((left, _warning)) = result {
@@ -519,6 +523,7 @@ pub(crate) fn substitute(
 				let item = substitute(item, arguments, environment, types);
 				let extends = substitute(extends, arguments, environment, types);
 
+				// Just do boolean values here
 				{
 					use crate::types::printing::print_type;
 
@@ -546,38 +551,11 @@ pub(crate) fn substitute(
 					types,
 				);
 
-				// let base = crate::types::get_larger_type(item, types);
-				// let does_extend = base == extends;
-				// crate::utilities::notify!(
-				// 	"Extends result {:?} base={:?} extends={:?}",
-				// 	does_extend,
-				// 	crate::types::printing::print_type(base, types, environment, true),
-				// 	crate::types::printing::print_type(extends, types, environment, true)
-				// );
 				if result.is_subtype() {
 					TypeId::TRUE
 				} else {
 					TypeId::FALSE
 				}
-
-				// let does_extend = get_larger_type(ty, types) == extends;
-				// crate::utilities::notify!("Extends result {:?}", does_extend);
-				// if does_extend {
-				// 	TypeId::TRUE
-				// } else {
-				// 	TypeId::FALSE
-				// }
-
-				// TODO special behavior that doesn't need to collect errors...
-				// let result = type_is_subtype(extends, ty, environment, types);
-
-				// let does_extend = matches!(result, crate::subtyping::SubTypeResult::IsSubType);
-
-				// if does_extend {
-				// 	TypeId::TRUE
-				// } else {
-				// 	TypeId::FALSE
-				// }
 			}
 			Constructor::Awaited { .. } => todo!("should have effect result"),
 			Constructor::KeyOf(on) => {
