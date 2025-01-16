@@ -12,7 +12,7 @@ use visitable_derive::Visitable;
 pub struct TemplateLiteral {
 	pub tag: Option<Box<Expression>>,
 	pub parts: Vec<(String, MultipleExpression)>,
-	pub last: String,
+	pub final_part: String,
 	pub position: Span,
 }
 
@@ -47,7 +47,7 @@ impl ASTNode for TemplateLiteral {
 			dynamic_part.to_string_from_buffer(buf, options, local);
 			buf.push('}');
 		}
-		buf.push_str_contains_new_line(self.last.as_str());
+		buf.push_str_contains_new_line(self.final_part.as_str());
 		buf.push('`');
 	}
 }
@@ -73,7 +73,12 @@ impl TemplateLiteral {
 					reader.expect_next(TSXToken::TemplateLiteralExpressionEnd)?;
 				}
 				t @ Token(TSXToken::TemplateLiteralEnd, _) => {
-					return Ok(Self { parts, last, tag, position: start.union(t.get_end()) });
+					return Ok(Self {
+						parts,
+						final_part: last,
+						tag,
+						position: start.union(t.get_end()),
+					});
 				}
 				Token(TSXToken::EOS, _) => return Err(parse_lexing_error()),
 				t => unreachable!("Token {:?}", t),

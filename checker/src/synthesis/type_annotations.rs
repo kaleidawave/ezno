@@ -707,13 +707,14 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			crate::utilities::notify!("Unknown decorator skipping {:#?}", decorator.name);
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
-		TypeAnnotation::TemplateLiteral { parts, last, .. } => {
+		TypeAnnotation::TemplateLiteral { parts, final_part, .. } => {
 			// Using the existing thing breaks because we try to do `"..." + string` and
 			// the evaluate_mathematical_operator expects literal or poly values (not just types)
 			let mut acc = TypeId::EMPTY_STRING;
 			for (static_part, dynamic_part) in parts {
-				let lhs =
-					checking_data.types.new_constant_type(Constant::String(static_part.to_owned()));
+				let lhs = checking_data.types.new_constant_type(Constant::String(
+					strings::unescape_string_content(static_part).into_owned(),
+				));
 				acc = if let TypeId::EMPTY_STRING = acc {
 					lhs
 				} else {
@@ -744,10 +745,12 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				};
 				acc = checking_data.types.register_type(Type::Constructor(constructor));
 			}
-			if last.is_empty() {
+			if final_part.is_empty() {
 				acc
 			} else {
-				let lhs = checking_data.types.new_constant_type(Constant::String(last.to_owned()));
+				let lhs = checking_data.types.new_constant_type(Constant::String(
+					strings::unescape_string_content(final_part).into_owned(),
+				));
 				if let TypeId::EMPTY_STRING = acc {
 					lhs
 				} else {

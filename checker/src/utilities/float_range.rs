@@ -228,7 +228,7 @@ impl TryFrom<std::ops::Range<f64>> for FloatRange {
 	}
 }
 
-// TODO more
+// TODO inclusive tests and more
 #[cfg(test)]
 mod tests {
 	use super::{FloatRange, InclusiveExclusive};
@@ -237,14 +237,14 @@ mod tests {
 		(InclusiveExclusive::Exclusive, a)
 	}
 
-	fn i(a: f64) -> (InclusiveExclusive, f64) {
+	fn _i(a: f64) -> (InclusiveExclusive, f64) {
 		(InclusiveExclusive::Inclusive, a)
 	}
 
 	#[test]
 	fn contained_in() {
 		let zero_to_four: FloatRange = FloatRange::try_from(0f64..4f64).unwrap();
-		assert!(FloatRange::new_single(2.into()).contained_in(zero_to_four));
+		assert!(FloatRange::new_single(2.).contained_in(zero_to_four));
 	}
 
 	#[test]

@@ -64,8 +64,6 @@ where
 	}
 }
 
-use levenshtein::levenshtein;
-
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
 	/// Custom allocator etc
@@ -799,7 +797,7 @@ pub fn get_closest<'a, 'b>(
 ) -> Option<Vec<&'a str>> {
 	const MIN_DISTANCE: usize = 2;
 	let candidates =
-		items.filter(|item| levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
+		items.filter(|item| levenshtein::levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
 	match candidates.len() {
 		0 => None,
 		1.. => Some(candidates),

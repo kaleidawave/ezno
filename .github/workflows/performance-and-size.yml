@@ -39,7 +39,7 @@ jobs:
 
       - name: Get last run
         id: get-last-run
-        run: >
+        run: |
           # First result should come up within 10 runs from main
           id=$(gh api \
             -H "Accept: application/vnd.github+json" \

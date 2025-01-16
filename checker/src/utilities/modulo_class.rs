@@ -152,6 +152,6 @@ mod tests {
 	// TODO test negatives etc
 	#[test]
 	fn gcd() {
-		assert_eq!(gcd_of_float((1. / 3.), (3. / 2.)), Ok(0.16666666666666666));
+		assert_eq!(gcd_of_float(1. / 3., 3. / 2.), Ok(0.16666666666666666));
 	}
 }

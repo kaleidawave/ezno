@@ -1781,7 +1781,7 @@ impl Expression {
 					dynamic_part.to_string_from_buffer(buf, options, local);
 					buf.push('}');
 				}
-				buf.push_str_contains_new_line(template_literal.last.as_str());
+				buf.push_str_contains_new_line(template_literal.final_part.as_str());
 				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {

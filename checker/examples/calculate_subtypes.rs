@@ -61,7 +61,7 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 	)]);
 
 	let or = types.new_or_type(generic_parameter.type_id, object);
-	let parameter = types.new_function_parameter(or, VariableId(SourceId::NULL), String::new());
+	let parameter = types.new_function_parameter(or, VariableId(SourceId::NULL, 0), "");
 
 	let five = types.new_constant_type(Constant::Number(5f64.try_into().unwrap()));
 

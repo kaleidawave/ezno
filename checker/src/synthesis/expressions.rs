@@ -224,15 +224,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			object_literal.position.with_source(environment.get_source()),
 			expecting,
 		)),
-		Expression::TemplateLiteral(TemplateLiteral { tag, parts, last, position }) => {
+		Expression::TemplateLiteral(TemplateLiteral { tag, parts, final_part, position }) => {
 			let tag = tag.as_ref().map(|expr| {
 				synthesise_expression(expr, environment, checking_data, TypeId::ANY_TYPE)
 			});
 
 			Instance::RValue(synthesise_template_literal_expression::<_, EznoParser>(
 				tag,
-				parts.iter().map(|(l, r)| (l.as_str(), r)),
-				last.as_str(),
+				parts.iter().map(|(l, r)| (strings::unescape_string_content(l), r)),
+				strings::unescape_string_content(final_part),
 				position.with_source(environment.get_source()),
 				environment,
 				checking_data,

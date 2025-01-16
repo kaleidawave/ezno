@@ -1,4 +1,5 @@
 use source_map::SpanWithSource;
+use std::borrow::Cow;
 
 use crate::{
 	context::invocation::CheckThings,
@@ -13,11 +14,12 @@ use crate::{
 	CheckingData, Constant, Environment, Type, TypeId,
 };
 
+/// Assumes that the text parts have been unesscaped
 #[allow(clippy::needless_pass_by_value)]
 pub fn synthesise_template_literal_expression<'a, T, A>(
 	tag: Option<TypeId>,
-	parts_iter: impl Iterator<Item = (&'a str, &'a A::MultipleExpression<'a>)> + 'a,
-	final_part: &'a str,
+	parts_iter: impl Iterator<Item = (Cow<'a, str>, &'a A::MultipleExpression<'a>)> + 'a,
+	final_part: Cow<'a, str>,
 	position: SpanWithSource,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
@@ -41,9 +43,9 @@ where
 		let mut static_part_count = 0u16;
 		for (static_part, dynamic_part) in parts_iter {
 			{
-				let static_part =
-					parser::strings::unescape_string_content(static_part).into_owned();
-				let value = checking_data.types.new_constant_type(Constant::String(static_part));
+				let value = checking_data
+					.types
+					.new_constant_type(Constant::String(static_part.into_owned()));
 				static_parts.append(
 					crate::types::properties::Publicity::Public,
 					crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
@@ -75,8 +77,8 @@ where
 		}
 
 		if !final_part.is_empty() {
-			let final_part = parser::strings::unescape_string_content(final_part).into_owned();
-			let value = checking_data.types.new_constant_type(Constant::String(final_part));
+			let value =
+				checking_data.types.new_constant_type(Constant::String(final_part.into_owned()));
 			static_parts.append(
 				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
@@ -141,8 +143,8 @@ where
 		// Bit weird but makes Rust happy
 		let mut acc = TypeId::EMPTY_STRING;
 		for (static_part, dynamic_part) in parts_iter {
-			let static_part = parser::strings::unescape_string_content(static_part).into_owned();
-			let lhs = checking_data.types.new_constant_type(Constant::String(static_part));
+			let lhs =
+				checking_data.types.new_constant_type(Constant::String(static_part.into_owned()));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
 				crate::features::operations::MathematicalOrBitwiseOperation::Add,
@@ -183,8 +185,8 @@ where
 		if final_part.is_empty() {
 			acc
 		} else {
-			let final_part = parser::strings::unescape_string_content(final_part).into_owned();
-			let value = checking_data.types.new_constant_type(Constant::String(final_part));
+			let value =
+				checking_data.types.new_constant_type(Constant::String(final_part.into_owned()));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
 				crate::features::operations::MathematicalOrBitwiseOperation::Add,
