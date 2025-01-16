@@ -32,11 +32,6 @@ jobs:
       - name: Install valgrind
         run: sudo apt-get install valgrind
 
-      - name: Build Ezno
-        run: cargo build --release
-        env:
-          CARGO_PROFILE_RELEASE_DEBUG: true
-
       - name: Get last run
         id: get-last-run
         run: |
@@ -47,6 +42,13 @@ jobs:
             '/repos/kaleidawave/ezno/actions/runs?branch=main&per_page=10' \
             --jq '[.workflow_runs[] | select(.path == ".github/workflows/examples.yml")][0].id')
           echo "run_id=$id" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Build Ezno
+        run: cargo build --release
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: true
 
       - name: Get base ezno
         if: github.ref_name != 'main'

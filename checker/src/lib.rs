@@ -796,8 +796,9 @@ pub fn get_closest<'a, 'b>(
 	closest_one: &'b str,
 ) -> Option<Vec<&'a str>> {
 	const MIN_DISTANCE: usize = 2;
-	let candidates =
-		items.filter(|item| levenshtein::levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
+	let candidates = items
+		.filter(|item| levenshtein::levenshtein(closest_one, item) <= MIN_DISTANCE)
+		.collect::<Vec<&str>>();
 	match candidates.len() {
 		0 => None,
 		1.. => Some(candidates),
