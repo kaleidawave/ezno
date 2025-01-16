@@ -505,7 +505,7 @@ pub(crate) fn substitute(
 				crate::types::TypeOperator::HasProperty(_, _) => {
 					unreachable!("'HasProperty' should be specialised by events")
 				}
-				crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype } => {
+				crate::types::TypeOperator::HasPrototype { lhs, rhs_prototype } => {
 					let lhs = substitute(lhs, arguments, environment, types);
 					let rhs_prototype = substitute(rhs_prototype, arguments, environment, types);
 					crate::features::instance_of_operator_rhs_prototype(

@@ -54,7 +54,6 @@ pub fn narrow_based_on_expression(
 						let type_from_name = crate::features::string_name_to_type(c);
 						if let Some(type_from_name) = type_from_name {
 							if negate {
-								crate::utilities::notify!("{:?}", from);
 								// TODO temp fix
 								let narrowed_to = if let Some(TypeId::ANY_TYPE) =
 									crate::types::get_constraint(from, types)
@@ -65,6 +64,10 @@ pub fn narrow_based_on_expression(
 										types,
 									)
 								} else {
+									crate::utilities::notify!(
+										"type_from_name={:?}",
+										type_from_name
+									);
 									let mut result = Vec::new();
 									build_union_from_filter(
 										from,
@@ -77,7 +80,27 @@ pub fn narrow_based_on_expression(
 								};
 								into.insert(origin, narrowed_to);
 							} else {
-								into.insert(origin, type_from_name);
+								let narrowed_to = if let Some(TypeId::ANY_TYPE) =
+									crate::types::get_constraint(from, types)
+								{
+									type_from_name
+								} else {
+									// crate::utilities::notify!("type_from_name={:?}", type_from_name);
+									let mut result = Vec::new();
+									build_union_from_filter(
+										from,
+										Filter::IsType(type_from_name),
+										&mut result,
+										information,
+										types,
+									);
+									if result.is_empty() {
+										type_from_name
+									} else {
+										types.new_or_type_from_iterator(result)
+									}
+								};
+								into.insert(origin, narrowed_to);
 							}
 						} else {
 							crate::utilities::notify!("Type name was (shouldn't be here)");
@@ -269,7 +292,7 @@ pub fn narrow_based_on_expression(
 					into.insert(rhs, narrowed_to);
 				}
 			}
-			Constructor::TypeOperator(TypeOperator::IsPrototype { lhs, rhs_prototype }) => {
+			Constructor::TypeOperator(TypeOperator::HasPrototype { lhs, rhs_prototype }) => {
 				let (lhs, rhs_prototype) = (*lhs, *rhs_prototype);
 				let constraint = crate::types::get_constraint(lhs, types).unwrap_or(lhs);
 				// TODO want a mix of two
@@ -280,6 +303,12 @@ pub fn narrow_based_on_expression(
 					let filter = Filter::HasPrototype(rhs_prototype);
 					let filter = if negate { Filter::Not(&filter) } else { filter };
 					build_union_from_filter(constraint, filter, &mut result, information, types);
+					crate::utilities::notify!(
+						"Here {:?} {:?} result={:?}",
+						lhs,
+						types.get_type_by_id(lhs),
+						result
+					);
 					types.new_or_type_from_iterator(result)
 				};
 				into.insert(lhs, narrowed_to);
@@ -527,22 +556,23 @@ impl Filter<'_> {
 				}
 			}
 			Filter::HasPrototype(prototype) => {
+				let ty = types.get_type_by_id(value);
 				if let Type::PartiallyAppliedGenerics(types::PartiallyAppliedGenerics {
 					on: gen_on,
 					arguments: _,
-				}) = types.get_type_by_id(value)
+				}) = ty
 				{
 					let is_equal = prototype == gen_on;
 					let allowed_match = !negate;
 					(allowed_match && is_equal) || (!allowed_match && !is_equal)
-				} else if let Type::Object(types::ObjectNature::RealDeal) =
-					types.get_type_by_id(value)
-				{
+				} else if let Type::Object(types::ObjectNature::RealDeal) = ty {
 					// This branch can be triggered by conditionals
 					let extends =
 						crate::features::extends_prototype(value, *prototype, information);
 					let allowed_match = !negate;
 					(allowed_match && extends) || (!allowed_match && !extends)
+				} else if let Some(ty) = types::helpers::get_constraint_or_alias(value, types) {
+					self.type_matches_filter(ty, information, types, negate)
 				} else {
 					let is_equal = value == *prototype;
 					let allowed_match = !negate;
@@ -609,7 +639,7 @@ pub(crate) fn build_union_from_filter(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) {
-	if let Some(constraint) = crate::types::get_constraint(on, types) {
+	if let Some(constraint) = types::helpers::get_constraint_or_alias(on, types) {
 		build_union_from_filter(constraint, filter, found, information, types);
 	} else if let TypeId::BOOLEAN_TYPE = on {
 		build_union_from_filter(TypeId::TRUE, filter, found, information, types);

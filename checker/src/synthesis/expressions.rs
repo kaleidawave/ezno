@@ -12,7 +12,7 @@ use parser::{
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	ASTNode, Expression, ExpressionOrStatementPosition,
+	strings, ASTNode, Expression, ExpressionOrStatementPosition,
 };
 use source_map::{Nullable, SpanWithSource};
 
@@ -92,7 +92,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 ) -> TypeId {
 	let instance: Instance = match expression {
 		Expression::StringLiteral(value, ..) => {
-			return checking_data.types.new_constant_type(Constant::String(value.clone()))
+			let value = strings::unescape_string_content(value).into_owned();
+			return checking_data.types.new_constant_type(Constant::String(value));
 		}
 		Expression::RegexLiteral { pattern, flags, position } => {
 			let regexp = checking_data.types.new_regexp(pattern, flags, position);

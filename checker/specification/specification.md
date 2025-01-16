@@ -3026,6 +3026,15 @@ function func(x: X | null) {
 - No property 'a' on X | null
 - Expected number, found undefined | string
 
+#### Escape sequences handled
+
+```ts
+const x: "\"" = '"';
+const y: "Hi" = `Hello\``;
+```
+
+- Type "Hello`" is not assignable to type "Hi"
+
 ### Regular expressions
 
 #### `RegExp` constructor
@@ -4612,6 +4621,43 @@ for (let i = 0; i < 3; i++) {
 With advanced_numbers
 
 - This equality is always false as LessThan<3> and 50 have no overlap
+
+#### Narrowing chains
+
+```ts
+export type User = { username: string, password: string };
+export type AuthPredicate = (username: string, password: string) => boolean;
+export type Auth = User | User[] | AuthPredicate;
+
+function run(auth: Auth)  {
+    if (Array.isArray(auth)) {
+        auth satisfies number;
+    } else if (typeof auth === "function") {
+        auth("hi", 5) satisfies string;
+    } else {
+        auth satisfies boolean;
+    }
+}
+```
+
+- Expected number, found Array\<User>
+- Argument of type 5 is not assignable to parameter of type string
+- Expected string, found boolean
+- Expected boolean, found { username: string, password: string }
+
+#### Narrowing free variable
+
+```ts
+function func(value: any) {
+  function isNumber() { return typeof value === "number" }
+
+  if (isNumber()) {
+    value satisfies string
+  }
+}
+```
+
+- Expected string, found number
 
 ### Object constraint
 

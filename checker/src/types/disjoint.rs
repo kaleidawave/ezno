@@ -213,17 +213,33 @@ pub fn types_are_disjoint(
 			}
 		} else if let Type::Constant(rhs_cst) = rhs_ty {
 			types_are_disjoint(rhs_cst.get_backing_type(), lhs, already_checked, information, types)
+		} else if let TypeId::FUNCTION_TYPE = lhs {
+			!matches!(
+				rhs_ty,
+				Type::FunctionReference(_)
+					| Type::SpecialObject(crate::types::SpecialObject::Function(..))
+			)
+		} else if let TypeId::FUNCTION_TYPE = rhs {
+			!matches!(
+				lhs_ty,
+				Type::FunctionReference(_)
+					| Type::SpecialObject(crate::types::SpecialObject::Function(..))
+			)
 		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
 			_properties,
 		)) = lhs_ty
 		{
-			// TODO check properties
+			crate::utilities::notify!(
+				"TODO check properties on object type annotation. Skipping for now"
+			);
 			false
 		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
 			_properties,
 		)) = rhs_ty
 		{
-			// TODO check properties
+			crate::utilities::notify!(
+				"TODO check properties on object type annotation. Skipping for now"
+			);
 			false
 		} else {
 			crate::utilities::notify!(

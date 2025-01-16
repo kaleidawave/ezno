@@ -18,6 +18,7 @@ use crate::{
 	CheckingData, Map,
 };
 use parser::{
+	strings,
 	type_annotations::{
 		AnnotationWithBinder, CommonTypes, TupleElementKind, TupleLiteralElement, TypeName,
 	},
@@ -52,7 +53,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			CommonTypes::Never => TypeId::NEVER_TYPE,
 		},
 		TypeAnnotation::StringLiteral(value, ..) => {
-			checking_data.types.new_constant_type(Constant::String(value.clone()))
+			let value = strings::unescape_string_content(value).into_owned();
+			checking_data.types.new_constant_type(Constant::String(value))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
 			let constant =

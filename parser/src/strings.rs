@@ -19,47 +19,41 @@ impl Quoted {
 	}
 }
 
+/// Modified version of <https://github.com/parcel-bundler/parcel/blob/f86f5f27c3a6553e70bd35652f19e6ab8d8e4e4a/crates/dev-dep-resolver/src/lib.rs#L368-L380>
 #[must_use]
-pub fn normalise_source_text(on: &str) -> Cow<'_, str> {
-	let mut buf: Option<String> = None;
-	let mut last_was_backslash = false;
-	for (idx, chr) in on.char_indices() {
-		match (buf.as_mut(), chr) {
-			(Some(buf), '\\') => {
-				if last_was_backslash {
-					buf.push(chr);
-				}
-			}
-			(None, '\\') => {
-				buf = Some(String::from(&on[..idx]));
-			}
-			(Some(buf), chr) => {
-				buf.push(chr);
-			}
-			(None, _) => {}
-		}
-		last_was_backslash = '\\' == chr;
+pub fn unescape_string_content(on: &str) -> Cow<'_, str> {
+	let mut result = Cow::Borrowed("");
+	let mut start = 0;
+	for (index, _matched) in on.match_indices('\\') {
+		result += &on[start..index];
+		start = index + 1;
 	}
 
-	match buf {
-		Some(buf) => Cow::Owned(buf),
-		None => Cow::Borrowed(on),
-	}
+	result += &on[start..];
+	result
 }
 
-/// TODO non-allocating/inline modification option
+/// Also for template literals
+/// Modified version of <https://github.com/parcel-bundler/parcel/blob/f86f5f27c3a6553e70bd35652f19e6ab8d8e4e4a/crates/dev-dep-resolver/src/lib.rs#L368-L380>
 #[must_use]
-pub fn encode_source_text(on: &str, string_delimeter: char) -> String {
-	let mut buf = String::new();
-	for (_idx, chr) in on.char_indices() {
-		if let ('"', '"') | ('\'', '\'') | ('`', '`' | '$') = (string_delimeter, chr) {
-			buf.push('\\');
-			buf.push(chr);
-		} else {
-			buf.push(chr);
-		}
+pub fn escape_string_content(on: &str, string_delimeter: char) -> Cow<'_, str> {
+	let mut result = Cow::Borrowed("");
+	let mut start = 0;
+	let to_escape: &[char] = match string_delimeter {
+		'"' => &['\\', '"'],
+		'\'' => &['\\', '\''],
+		'`' => &['\\', '`', '$'],
+		_ => panic!("Unknown string delimeter {string_delimeter:?}"),
+	};
+	for (index, matched) in on.match_indices(to_escape) {
+		result += &on[start..index];
+		result += "\\";
+		result += matched;
+		start = index + 1;
 	}
-	buf
+
+	result += &on[start..];
+	result
 }
 
 #[cfg(test)]
@@ -68,12 +62,13 @@ mod tests {
 
 	#[test]
 	fn unescape() {
-		assert_eq!(normalise_source_text("Hi \\\"Ben\\\""), "Hi \"Ben\"");
+		assert_eq!(unescape_string_content("Hi \\\"Ben\\\""), "Hi \"Ben\"");
+		assert_eq!(unescape_string_content("Hello\\`"), "Hello`");
 	}
 
 	#[test]
 	fn escape() {
-		assert_eq!(encode_source_text("Hi \"Ben\"", '"'), "Hi \\\"Ben\\\"");
-		assert_eq!(encode_source_text("Hi ${Ben} `", '`'), "Hi \\${Ben} \\`");
+		assert_eq!(escape_string_content("Hi \"Ben\"", '"'), "Hi \\\"Ben\\\"");
+		assert_eq!(escape_string_content("Hi ${Ben} `", '`'), "Hi \\${Ben} \\`");
 	}
 }

@@ -434,7 +434,7 @@ impl Constructor {
 			Constructor::TypeOperator(op) => match op {
 				// TODO union of names
 				TypeOperator::TypeOf(_) => TypeId::STRING_TYPE,
-				TypeOperator::IsPrototype { .. } | TypeOperator::HasProperty(..) => {
+				TypeOperator::HasPrototype { .. } | TypeOperator::HasProperty(..) => {
 					TypeId::BOOLEAN_TYPE
 				}
 			},
@@ -514,7 +514,7 @@ pub struct PartiallyAppliedGenerics {
 
 #[derive(Clone, Debug, binary_serialize_derive::BinarySerializable)]
 pub enum TypeOperator {
-	IsPrototype {
+	HasPrototype {
 		lhs: TypeId,
 		rhs_prototype: TypeId,
 	},
@@ -559,7 +559,7 @@ impl TypeExtends {
 				// === rhs
 				Ok(Self { item: *lhs, extends: *rhs })
 			}
-		} else if let Type::Constructor(Constructor::TypeOperator(TypeOperator::IsPrototype {
+		} else if let Type::Constructor(Constructor::TypeOperator(TypeOperator::HasPrototype {
 			lhs,
 			rhs_prototype,
 		})) = rhs_ty

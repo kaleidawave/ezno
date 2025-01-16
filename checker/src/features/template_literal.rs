@@ -41,8 +41,9 @@ where
 		let mut static_part_count = 0u16;
 		for (static_part, dynamic_part) in parts_iter {
 			{
-				let value =
-					checking_data.types.new_constant_type(Constant::String(static_part.to_owned()));
+				let static_part =
+					parser::strings::unescape_string_content(static_part).into_owned();
+				let value = checking_data.types.new_constant_type(Constant::String(static_part));
 				static_parts.append(
 					crate::types::properties::Publicity::Public,
 					crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
@@ -74,8 +75,8 @@ where
 		}
 
 		if !final_part.is_empty() {
-			let value =
-				checking_data.types.new_constant_type(Constant::String(final_part.to_owned()));
+			let final_part = parser::strings::unescape_string_content(final_part).into_owned();
+			let value = checking_data.types.new_constant_type(Constant::String(final_part));
 			static_parts.append(
 				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
@@ -140,8 +141,8 @@ where
 		// Bit weird but makes Rust happy
 		let mut acc = TypeId::EMPTY_STRING;
 		for (static_part, dynamic_part) in parts_iter {
-			let lhs =
-				checking_data.types.new_constant_type(Constant::String(static_part.to_owned()));
+			let static_part = parser::strings::unescape_string_content(static_part).into_owned();
+			let lhs = checking_data.types.new_constant_type(Constant::String(static_part));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
 				crate::features::operations::MathematicalOrBitwiseOperation::Add,
@@ -182,8 +183,8 @@ where
 		if final_part.is_empty() {
 			acc
 		} else {
-			let value =
-				checking_data.types.new_constant_type(Constant::String(final_part.to_owned()));
+			let final_part = parser::strings::unescape_string_content(final_part).into_owned();
+			let value = checking_data.types.new_constant_type(Constant::String(final_part));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
 				crate::features::operations::MathematicalOrBitwiseOperation::Add,

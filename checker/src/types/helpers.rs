@@ -393,10 +393,25 @@ pub fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 }
 
 #[must_use]
+pub fn get_aliased(on: TypeId, types: &TypeStore) -> Option<TypeId> {
+	if let Type::AliasTo { to, parameters: None, .. } = types.get_type_by_id(on) {
+		Some(*to)
+	} else {
+		None
+	}
+}
+
+#[must_use]
 pub fn get_constraint_or_alias(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
-		Type::RootPolyType(rpt) => Some(rpt.get_constraint()),
-		Type::Constructor(constr) => Some(constr.get_constraint()),
+		Type::RootPolyType(rpt) => {
+			let constraint = rpt.get_constraint();
+			Some(get_aliased(constraint, types).unwrap_or(constraint))
+		}
+		Type::Constructor(constr) => {
+			let constraint = constr.get_constraint();
+			Some(get_aliased(constraint, types).unwrap_or(constraint))
+		}
 		Type::AliasTo { to, parameters: None, .. } => Some(*to),
 		Type::Narrowed { narrowed_to, .. } => Some(*narrowed_to),
 		_ => None,

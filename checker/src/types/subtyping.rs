@@ -226,15 +226,15 @@ pub(crate) fn type_is_subtype_with_generics(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	{
-		let debug = true;
-		crate::utilities::notify!(
-			"Checking {} :>= {}, with {:?}",
-			print_type(base_type, types, information, debug),
-			print_type(ty, types, information, debug),
-			base_type_arguments
-		);
-	}
+	// {
+	// let debug = true;
+	// crate::utilities::notify!(
+	// 	"Checking {} :>= {}, with {:?}",
+	// 	print_type(base_type, types, information, debug),
+	// 	print_type(ty, types, information, debug),
+	// 	base_type_arguments
+	// );
+	// }
 
 	if base_type == TypeId::ANY_TYPE || ty == TypeId::NEVER_TYPE {
 		return SubTypeResult::IsSubType;
@@ -1464,7 +1464,9 @@ pub(crate) fn type_is_subtype_with_generics(
 						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 					}
 				} else {
-					crate::utilities::notify!("No prototype");
+					crate::utilities::notify!(
+						"No prototype on object when comparing with class => mismatch"
+					);
 					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
 				}
 			}
