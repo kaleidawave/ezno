@@ -8,7 +8,7 @@ pub(crate) fn cast_as_number(cst: &Constant, strict_casts: bool) -> Result<f64, 
 		return Err(());
 	}
 	match cst {
-		Constant::Number(number) => Ok(f64::from(*number)),
+		Constant::Number(number) => Ok(*number),
 		Constant::String(str) => match str.parse::<f64>() {
 			Ok(value) => Ok(value),
 			Err(_) => {

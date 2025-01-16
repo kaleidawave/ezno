@@ -292,7 +292,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					(*otherwise_result, crate::types::TypeExtends::from_type(*condition, types))
 				{
 					buf.push_str("asserts ");
-					if let Some(name) = crate::types::helpers::get_reference_name(&types, item) {
+					if let Some(name) = crate::types::helpers::get_reference_name(types, item) {
 						buf.push_str(name);
 					} else {
 						print_type_into_buf(item, buf, cycles, args, types, info, debug);
@@ -480,7 +480,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					write!(buf, "TypeOperator.{to:?}").unwrap();
 				}
 				Constructor::TypeExtends(TypeExtends { item, extends }) => {
-					if let Some(name) = crate::types::helpers::get_reference_name(&types, *item) {
+					if let Some(name) = crate::types::helpers::get_reference_name(types, *item) {
 						buf.push_str(name);
 					} else {
 						print_type_into_buf(*item, buf, cycles, args, types, info, debug);

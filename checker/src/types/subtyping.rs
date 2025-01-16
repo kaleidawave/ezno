@@ -1,4 +1,5 @@
 //! Type subtype checking. (making sure the RHS type contains all the properties the LHS type requires)
+#![allow(clippy::float_cmp)]
 
 use source_map::SpanWithSource;
 
@@ -2527,7 +2528,7 @@ pub fn type_is_subtype_of_property(
 					(
 						value,
 						Some(GenericChainLink::MappedPropertyLink {
-							value: &key_arguments,
+							value: key_arguments,
 							parent_link: property_generics.as_ref(),
 						}),
 					),
@@ -2988,7 +2989,7 @@ pub(crate) fn slice_matches_type(
 }
 
 // TODO keyof
-#[allow(clippy::only_used_in_recursion)]
+#[allow(clippy::only_used_in_recursion, clippy::float_cmp)]
 pub(crate) fn number_matches_type(
 	(base, base_type_arguments): (TypeId, Option<super::GenericChainLink>),
 	number: f64,

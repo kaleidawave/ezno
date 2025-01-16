@@ -67,10 +67,10 @@ fn specification_to_tests(source: &str, out: &mut File) -> Result<(), Box<dyn Er
 				let _ = existing.to_rust(out);
 			}
 			current_unit.name = text.0;
-		} else if let simple_markdown_parser::MarkdownElement::CodeBlock { language: _, content } =
+		} else if let simple_markdown_parser::MarkdownElement::CodeBlock { language: _, code } =
 			item
 		{
-			current_unit.modules = code_to_modules(content);
+			current_unit.modules = code_to_modules(code);
 		} else if let simple_markdown_parser::MarkdownElement::Paragraph(item) = item {
 			if let Some(options) = item.0.strip_prefix("With") {
 				current_unit.options = options.split(',').collect();
@@ -146,7 +146,8 @@ impl Unit<'_> {
 		{
 			write!(out, "&[")?;
 			for diagnostic in self.expected_diagnostics {
-				write!(out, "r#\"{diagnostic}\"#,", diagnostic = diagnostic.replace('\\', ""))?;
+				// Using two hashest because of private identifers
+				write!(out, "r##\"{diagnostic}\"##,", diagnostic = diagnostic.replace('\\', ""))?;
 			}
 			write!(out, "],")?;
 		}
@@ -169,11 +170,23 @@ impl Unit<'_> {
 
 /// TODO move to `simple_markdown` for links
 fn heading_to_rust_identifier(heading: &str) -> String {
-	heading
-		.replace("...", "")
-		.replace([' ', '-', '/', '.', '+'], "_")
-		.replace(['*', '\'', '`', '"', '&', '!', '(', ')', ',', ':'], "")
-		.to_lowercase()
+	let mut buf = String::with_capacity(heading.len());
+	let mut last_was_underscore = false;
+	for chr in heading.chars() {
+		if let '*' | '\'' | '`' | '"' | '&' | '!' | '(' | ')' | '[' | ']' | ',' | '|' | ':' = chr {
+			continue;
+		}
+		if let ' ' | '-' | '/' | '.' | '+' | '#' = chr {
+			if !last_was_underscore {
+				buf.push('_');
+				last_was_underscore = true;
+			}
+		} else {
+			buf.extend(chr.to_lowercase());
+			last_was_underscore = false;
+		}
+	}
+	buf
 }
 
 const DEFAULT_MODULE_PATH: &str = "main.tsx";

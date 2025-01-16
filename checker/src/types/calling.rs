@@ -1703,9 +1703,7 @@ impl FunctionType {
 
 				// Set length of spread array
 				if let Some(mut basis) = basis {
-					let length = types.new_constant_type(crate::Constant::Number(
-						(count as f64).try_into().unwrap(),
-					));
+					let length = types.new_constant_type(crate::Constant::Number(count as f64));
 
 					basis.append(
 						crate::types::properties::Publicity::Public,

@@ -89,9 +89,9 @@ where
 
 		{
 			// TODO spread
-			let static_part_array_length = checking_data.types.new_constant_type(Constant::Number(
-				f64::from(static_part_count).try_into().unwrap(),
-			));
+			let static_part_array_length = checking_data
+				.types
+				.new_constant_type(Constant::Number(f64::from(static_part_count)));
 
 			// TODO: Should there be a position here?
 			static_parts.append(

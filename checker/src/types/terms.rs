@@ -16,6 +16,8 @@ pub enum Constant {
 
 impl Constant {
 	// Not PartialEq because float
+	#[must_use]
+	#[allow(clippy::float_cmp, clippy::match_same_arms)]
 	pub fn equals(&self, other: &Self) -> bool {
 		match (self, other) {
 			(Constant::Number(a), Constant::Number(b)) if a.is_nan() && b.is_nan() => true,

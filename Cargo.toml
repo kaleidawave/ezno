@@ -39,26 +39,26 @@ path = "src/main.rs"
 # ezno-web-framework = { path = "./plugins/web" }
 
 argh = "0.1"
-base64 = "0.21"
+base64 = "0.22"
 codespan-reporting = "0.11"
 enum-variants-strings = "0.3"
 # For `StrComparison` for string comparison
-pretty_assertions = "1.3.0"
+pretty_assertions = "1.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-simple-json-parser = "0.0.2"
+simple-json-parser = "0.0"
 js-sys = "0.3"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # For updating binary
-self-replace = "1.3.7"
+self-replace = "1.3"
 # For updating binary and possibly more in the future
-native-tls = "0.2.11"
+native-tls = "0.2"
 # For CLI input across multiple lines
-multiline-term-input = "0.1.0"
+multiline-term-input = "0.1"
 # For watching files
-notify = "6.1.0"
-notify-debouncer-full = "0.3.1"
+notify = "8"
+notify-debouncer-full = "0.5"
 glob = "0.3"
 
 [dependencies.checker]
@@ -75,11 +75,11 @@ package = "ezno-parser"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = "0.2"
-wasm-bindgen-derive = "0.2.1"
-serde-wasm-bindgen = "0.6.3"
-console_error_panic_hook = "0.1.7"
+wasm-bindgen-derive = "0.3"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
 js-sys = "0.3"
-tsify = "0.4.5"
+tsify = "0.4"
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"

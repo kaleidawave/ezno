@@ -1,3 +1,5 @@
+#![allow(clippy::float_cmp)]
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InclusiveExclusive {
 	Inclusive,
@@ -30,10 +32,7 @@ pub struct FloatRange {
 
 impl Default for FloatRange {
 	fn default() -> Self {
-		Self {
-			floor: (Exclusive, f64::NEG_INFINITY.try_into().unwrap()),
-			ceiling: (Exclusive, f64::INFINITY.try_into().unwrap()),
-		}
+		Self { floor: (Exclusive, f64::NEG_INFINITY), ceiling: (Exclusive, f64::INFINITY) }
 	}
 }
 
@@ -55,10 +54,7 @@ impl FloatRange {
 
 	#[must_use]
 	pub fn new_greater_than(greater_than: f64) -> Self {
-		FloatRange {
-			floor: (Exclusive, greater_than),
-			ceiling: (Exclusive, f64::INFINITY.try_into().unwrap()),
-		}
+		FloatRange { floor: (Exclusive, greater_than), ceiling: (Exclusive, f64::INFINITY) }
 	}
 
 	#[must_use]
@@ -68,10 +64,7 @@ impl FloatRange {
 
 	#[must_use]
 	pub fn new_less_than(less_than: f64) -> Self {
-		FloatRange {
-			floor: (Exclusive, f64::NEG_INFINITY.try_into().unwrap()),
-			ceiling: (Exclusive, less_than),
-		}
+		FloatRange { floor: (Exclusive, f64::NEG_INFINITY), ceiling: (Exclusive, less_than) }
 	}
 
 	#[must_use]
@@ -80,6 +73,7 @@ impl FloatRange {
 	}
 
 	#[must_use]
+	#[allow(clippy::float_cmp)]
 	pub fn contains(self, value: f64) -> bool {
 		if self.floor.1 < value && value < self.ceiling.1 {
 			true
@@ -237,7 +231,7 @@ impl TryFrom<std::ops::Range<f64>> for FloatRange {
 // TODO more
 #[cfg(test)]
 mod tests {
-	use super::{f64, FloatRange, InclusiveExclusive};
+	use super::{FloatRange, InclusiveExclusive};
 
 	fn e(a: f64) -> (InclusiveExclusive, f64) {
 		(InclusiveExclusive::Exclusive, a)

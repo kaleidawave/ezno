@@ -13,11 +13,31 @@ const TYPES_WASM_CHECK_OUTPUT: &str = r###"
 interface WASMCheckOutput {
 	readonly diagnostics: DiagnosticsContainer,
 	get_type_at_position(path: string, pos: number): string;
-	get_type_at_position_debug(path: string, pos: number): string;
+	get_type_at_position_with_span(path: string): Module | null;
+	get_module_ast(path: string): Module | null;
 }
 "###;
 #[wasm_bindgen]
 pub struct WASMCheckOutput(checker::CheckOutput<checker::synthesis::EznoParser>);
+
+#[wasm_bindgen]
+pub struct TypeWithPosition {
+	type_as_string: String,
+	position: crate::source_map::SpanWithSource,
+}
+
+#[wasm_bindgen]
+impl TypeWithPosition {
+	#[wasm_bindgen(js_name = type_as_string, getter, skip_typescript)]
+	pub fn get_type_as_string(&self) -> String {
+		self.type_as_string.clone()
+	}
+
+	#[wasm_bindgen(js_name = position, getter, skip_typescript)]
+	pub fn get_position(&self) -> JsValue {
+		serde_wasm_bindgen::to_value(&self.position).unwrap()
+	}
+}
 
 #[wasm_bindgen]
 impl WASMCheckOutput {
@@ -30,16 +50,10 @@ impl WASMCheckOutput {
 		self.0.get_type_at_position(path, pos, false)
 	}
 
-	pub fn get_type_at_position_debug(&self, path: &str, pos: u32) -> Option<String> {
-		self.0.get_type_at_position(path, pos, true)
-	}
-
-	pub fn get_type_at_position_with_span(
-		&self,
-		path: &str,
-		pos: u32,
-	) -> Option<(String, crate::source_map::SpanWithSource)> {
-		self.0.get_type_at_position_with_span(path, pos, false)
+	pub fn get_type_at_position_with_span(&self, path: &str, pos: u32) -> Option<TypeWithPosition> {
+		self.0
+			.get_type_at_position_with_span(path, pos, false)
+			.map(|(type_as_string, position)| TypeWithPosition { type_as_string, position })
 	}
 
 	pub fn get_module_ast(&self, path: &str) -> JsValue {
@@ -101,9 +115,21 @@ impl WASMBuildOutput {
 		serde_wasm_bindgen::to_value(&self.artifacts).unwrap()
 	}
 
-	#[wasm_bindgen(js_name = check_output, getter, skip_typescript)]
-	pub fn get_diagnostics(&self) -> &WASMCheckOutput {
-		&self.check_output
+	#[wasm_bindgen(js_name = diagnostics, getter, skip_typescript)]
+	pub fn get_diagnostics(&self) -> JsValue {
+		self.check_output.get_diagnostics()
+	}
+
+	pub fn get_type_at_position(&self, path: &str, pos: u32) -> Option<String> {
+		self.check_output.get_type_at_position(path, pos)
+	}
+
+	pub fn get_type_at_position_with_span(&self, path: &str, pos: u32) -> Option<TypeWithPosition> {
+		self.check_output.get_type_at_position_with_span(path, pos)
+	}
+
+	pub fn get_module_ast(&self, path: &str) -> JsValue {
+		self.check_output.get_module_ast(path)
 	}
 }
 

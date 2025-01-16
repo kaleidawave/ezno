@@ -1,4 +1,4 @@
-use std::{borrow::Cow, convert::TryInto, str::FromStr};
+use std::{borrow::Cow, str::FromStr};
 
 use parser::{
 	ast::TypeOrConst,
@@ -114,12 +114,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::NumberLiteral(value, ..) => {
-			if let Ok(value) = f64::try_from(value.clone()) {
-				return checking_data.types.new_constant_type(Constant::Number(value));
+			return if let Ok(value) = f64::try_from(value.clone()) {
+				checking_data.types.new_constant_type(Constant::Number(value))
 			} else {
 				crate::utilities::notify!("TODO big int");
-				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
-			}
+				TypeId::UNIMPLEMENTED_ERROR_TYPE
+			};
 		}
 		Expression::BooleanLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::Boolean(*value))
@@ -200,9 +200,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			{
 				// TODO spread
-				let length = checking_data.types.new_constant_type(Constant::Number(
-					(elements.len() as f64).try_into().unwrap(),
-				));
+				let length =
+					checking_data.types.new_constant_type(Constant::Number(elements.len() as f64));
 				let value = crate::types::properties::PropertyValue::Value(length);
 
 				// TODO: Should there be a position here?
@@ -240,7 +239,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		}
 		Expression::BinaryOperation { lhs, operator, rhs, position } => {
 			fn logical_operator_from_binary_operator(
-				operator: &BinaryOperator,
+				operator: BinaryOperator,
 			) -> Option<LogicalOperator> {
 				match operator {
 					BinaryOperator::LogicalAnd => Some(LogicalOperator::And),
@@ -251,7 +250,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 
 			fn equality_inequality_operator_from_binary_operator(
-				operator: &BinaryOperator,
+				operator: BinaryOperator,
 			) -> Option<EqualityAndInequality> {
 				match operator {
 					BinaryOperator::StrictEqual => Some(EqualityAndInequality::StrictEqual),
@@ -270,7 +269,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			let lhs_ty = synthesise_expression(lhs, environment, checking_data, TypeId::ANY_TYPE);
 
-			if let Some(operator) = logical_operator_from_binary_operator(&operator) {
+			if let Some(operator) = logical_operator_from_binary_operator(*operator) {
 				return evaluate_logical_operation_with_expression(
 					(lhs_ty, lhs.get_position()),
 					operator,
@@ -281,7 +280,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				)
 				.unwrap();
 			} else if let Some(operator) =
-				equality_inequality_operator_from_binary_operator(operator)
+				equality_inequality_operator_from_binary_operator(*operator)
 			{
 				let rhs_ty =
 					synthesise_expression(rhs, environment, checking_data, TypeId::ANY_TYPE);

@@ -10,7 +10,7 @@ impl ModuloClass {
 	#[must_use]
 	pub fn new(modulo: f64, offset: f64) -> Self {
 		debug_assert!(modulo != 0.);
-		if modulo > 0f64.try_into().unwrap() {
+		if modulo > 0f64 {
 			Self { offset: offset % modulo, modulo }
 		} else {
 			// TODO think this is correct. [1]_{-3} = [2]_{3}
@@ -141,7 +141,7 @@ fn gcd_of_float(n1: f64, n2: f64) -> Result<f64, ()> {
 // hmmm
 impl Default for ModuloClass {
 	fn default() -> Self {
-		Self { modulo: f64::EPSILON.try_into().unwrap(), offset: 0. }
+		Self { modulo: f64::EPSILON, offset: 0. }
 	}
 }
 
@@ -152,9 +152,6 @@ mod tests {
 	// TODO test negatives etc
 	#[test]
 	fn gcd() {
-		assert_eq!(
-			gcd_of_float(f64::new(1. / 3.).unwrap(), f64::new(3. / 2.).unwrap()),
-			Ok(f64::new(0.16666666666666666).unwrap())
-		);
+		assert_eq!(gcd_of_float((1. / 3.), (3. / 2.)), Ok(0.16666666666666666));
 	}
 }

@@ -1,14 +1,13 @@
+use ezno_checker::types::{
+	generics::contributions::Contributions,
+	properties::{PropertyKey, Publicity},
+	TypeStore,
+};
 use ezno_checker::{
 	features::objects::ObjectBuilder,
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypingOptions},
-	types::{
-		generics::contributions::Contributions,
-		properties::{PropertyKey, Publicity},
-		TypeStore,
-	},
-	Constant, Environment, PropertyValue, RootContext, TypeId,
+	Constant, Environment, PropertyValue, RootContext, TypeId, VariableId,
 };
-use source_map::Nullable;
 
 fn main() {
 	let root = RootContext::new_with_primitive_references();
@@ -48,6 +47,8 @@ fn basics(environment: &mut Environment, types: &mut TypeStore) {
 }
 
 fn contributions(environment: &mut Environment, types: &mut TypeStore) {
+	use source_map::{Nullable, SourceId, SpanWithSource};
+
 	// TODO types API, which doesn't is less hand-holdy
 	let generic_parameter =
 		environment.new_explicit_type_parameter("T", Some(TypeId::NUMBER_TYPE), None, types);
@@ -60,22 +61,18 @@ fn contributions(environment: &mut Environment, types: &mut TypeStore) {
 	)]);
 
 	let or = types.new_or_type(generic_parameter.type_id, object);
-	let parameter = types.new_function_parameter(or);
+	let parameter = types.new_function_parameter(or, VariableId(SourceId::NULL), String::new());
 
 	let five = types.new_constant_type(Constant::Number(5f64.try_into().unwrap()));
 
 	let five_obj = {
-		let mut basis = ObjectBuilder::new(
-			None,
-			types,
-			source_map::SpanWithSource::NULL,
-			&mut environment.info,
-		);
+		let mut basis =
+			ObjectBuilder::new(None, types, SpanWithSource::NULL, &mut environment.info);
 		basis.append(
 			Publicity::Public,
 			PropertyKey::String(std::borrow::Cow::Owned("inner".to_owned())),
 			PropertyValue::Value(five),
-			source_map::SpanWithSource::NULL,
+			SpanWithSource::NULL,
 			&mut environment.info,
 		);
 		basis.build_object()

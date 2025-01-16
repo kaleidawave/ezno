@@ -112,7 +112,6 @@ pub struct Contributions<'a> {
 	pub call_site_type_arguments: Option<&'a TypeRestrictions>,
 
 	// /// From other parameters
-	// #[allow(unused)]
 	// pub existing_covariant: &'a mut X<TypeId, TypeId>,
 	/// Only for explicit generic parameters
 	pub staging_covariant: TriMap<TypeId, TypeId, SpanWithSource>,

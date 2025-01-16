@@ -415,26 +415,31 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		let (mut file_path, mut definition_file_path) = (None::<PathBuf>, None::<PathBuf>);
 
 		// TODO JSON parse error
-		let _res = simple_json_parser::parse_with_exit_signal(&package_json, |path, value| {
-			// if let Some(ref export) = export {
-			// 	todo!()
-			// } else {
-			if let [JSONKey::Slice("main")] = path {
-				if let RootJSONValue::String(s) = value {
-					file_path = Some(s.to_owned().into());
-				} else {
-					// invalid type
+		let _res = simple_json_parser::parse_with_exit_signal(
+			&package_json,
+			|path, value| {
+				// if let Some(ref export) = export {
+				// 	todo!()
+				// } else {
+				if let [JSONKey::Slice("main")] = path {
+					if let RootJSONValue::String(s) = value {
+						file_path = Some(s.to_owned().into());
+					} else {
+						// invalid type
+					}
+				} else if let [JSONKey::Slice("types")] = path {
+					if let RootJSONValue::String(s) = value {
+						definition_file_path = Some(s.to_owned().into());
+					} else {
+						// invalid type
+					}
 				}
-			} else if let [JSONKey::Slice("types")] = path {
-				if let RootJSONValue::String(s) = value {
-					definition_file_path = Some(s.to_owned().into());
-				} else {
-					// invalid type
-				}
-			}
-			// }
-			file_path.is_some() && definition_file_path.is_some()
-		});
+				// }
+				file_path.is_some() && definition_file_path.is_some()
+			},
+			false,
+			true,
+		);
 
 		file_path.ok_or(()).map(|entry| {
 			(package_root.join(entry), definition_file_path.map(|dfp| package_root.join(dfp)))

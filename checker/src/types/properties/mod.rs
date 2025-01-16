@@ -83,6 +83,7 @@ impl crate::BinarySerializable for PropertyKey<'static> {
 	}
 }
 
+#[allow(clippy::float_cmp)]
 fn float_as_u8(number: f64) -> Option<u8> {
 	if !number.is_nan() && number == number.trunc() && (0. ..256.).contains(&number) {
 		Some(number as u8)
@@ -152,11 +153,7 @@ impl PropertyKey<'_> {
 			PropertyKey::String(s) => s.parse::<usize>().ok(),
 			PropertyKey::Type(t) => {
 				if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(*t) {
-					if let Some(n) = float_as_u8(*n) {
-						Some(n as usize)
-					} else {
-						None
-					}
+					float_as_u8(*n).map(|n| n as usize)
 				} else {
 					None
 				}

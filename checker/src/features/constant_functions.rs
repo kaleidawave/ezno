@@ -130,11 +130,7 @@ pub(crate) fn call_constant_function(
 				let result = types.new_constant_type(match id {
 					"toUpperCase" => Constant::String(s.to_uppercase()),
 					"toLowerCase" => Constant::String(s.to_lowercase()),
-					"string_length" => Constant::Number(
-						(s.encode_utf16().count() as f64)
-							.try_into()
-							.map_err(|_| ConstantFunctionError::CannotComputeConstant)?,
-					),
+					"string_length" => Constant::Number(s.encode_utf16().count() as f64),
 					_ => unreachable!(),
 				});
 				Ok(ConstantOutput::Value(result))

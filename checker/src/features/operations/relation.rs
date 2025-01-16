@@ -315,7 +315,6 @@ pub fn evaluate_equality_inequality_operation(
 	}
 }
 
-#[allow(clippy::let_and_return)]
 pub fn is_null_or_undefined(
 	ty: TypeId,
 	info: &impl crate::context::InformationChain,

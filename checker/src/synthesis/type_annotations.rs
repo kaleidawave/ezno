@@ -1,7 +1,5 @@
 //! Logic for getting [`TypeId`] from [`parser::TypeAnnotation`]s
 
-use std::convert::TryInto;
-
 use super::{
 	assignments::synthesise_access_to_reference, functions::synthesise_function_annotation,
 };
@@ -57,9 +55,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
-			let constant = Constant::Number(
-				f64::try_from(value.clone()).expect("big int number type").try_into().unwrap(),
-			);
+			let constant =
+				Constant::Number(f64::try_from(value.clone()).expect("big int number type"));
 			checking_data.types.new_constant_type(constant)
 		}
 		TypeAnnotation::BooleanLiteral(value, _) => {

@@ -25,4 +25,4 @@ parser = { path = "../../parser", version = "*", package = "ezno-parser" }
 pretty_assertions = "1.3.0"
 
 [build-dependencies]
-simple-markdown-parser = { git = "https://github.com/kaleidawave/simple-markdown-parser.git", version = "0.0.0" }
+simple-markdown-parser = { version = "0.0" }

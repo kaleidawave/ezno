@@ -201,23 +201,28 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 		let mut version_name = None;
 
 		// Name comes before assets so okay here on exit signal
-		let result = parse_with_exit_signal(body, |keys, value| {
-			if let [JSONKey::Slice("name")] = keys {
-				if let RootJSONValue::String(s) = value {
-					version_name = Some(s.to_owned());
-				}
-			} else if let [JSONKey::Slice("assets"), JSONKey::Index(_), JSONKey::Slice("browser_download_url")] =
-				keys
-			{
-				if let RootJSONValue::String(s) = value {
-					if s.ends_with(EXPECTED_END) {
-						required_binary = Some(s.to_owned());
-						return true;
+		let result = parse_with_exit_signal(
+			body,
+			|keys, value| {
+				if let [JSONKey::Slice("name")] = keys {
+					if let RootJSONValue::String(s) = value {
+						version_name = Some(s.to_owned());
+					}
+				} else if let [JSONKey::Slice("assets"), JSONKey::Index(_), JSONKey::Slice("browser_download_url")] =
+					keys
+				{
+					if let RootJSONValue::String(s) = value {
+						if s.ends_with(EXPECTED_END) {
+							required_binary = Some(s.to_owned());
+							return true;
+						}
 					}
 				}
-			}
-			false
-		});
+				false
+			},
+			false,
+			false,
+		);
 
 		if let Err(JSONParseError { at, reason }) = result {
 			return Err(Box::from(format!("JSON parse error: {reason:?} @ {at}")));

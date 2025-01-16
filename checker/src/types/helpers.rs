@@ -172,9 +172,7 @@ impl Counter {
 
 	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
-			Counter::On(value) => {
-				types.new_constant_type(Constant::Number((value as f64).try_into().unwrap()))
-			}
+			Counter::On(value) => types.new_constant_type(Constant::Number(value as f64)),
 			Counter::AddTo(ty) => ty,
 		}
 	}

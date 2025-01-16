@@ -79,11 +79,11 @@ impl Default for TypeStore {
 			Type::Constant(Constant::Number(1.into())),
 			// NaN
 			Type::Constant(Constant::Number(f64::NAN)),
-			Type::Constant(Constant::Number(f64::NEG_INFINITY.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::INFINITY.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::MIN.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::MAX.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::EPSILON.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::NEG_INFINITY)),
+			Type::Constant(Constant::Number(f64::INFINITY)),
+			Type::Constant(Constant::Number(f64::MIN)),
+			Type::Constant(Constant::Number(f64::MAX)),
+			Type::Constant(Constant::Number(f64::EPSILON)),
 			Type::Constant(Constant::Number({
 				const THIRTY_TWO_ONE_BITS: i32 = -1i32;
 				THIRTY_TWO_ONE_BITS.into()
@@ -226,6 +226,7 @@ impl TypeStore {
 		self.types.len()
 	}
 
+	#[allow(clippy::float_cmp)]
 	pub fn new_constant_type(&mut self, constant: Constant) -> crate::TypeId {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {

@@ -252,7 +252,7 @@ fn number_modulo_disjoint(
 		return false;
 	};
 
-	let offset = 0f64.try_into().unwrap();
+	let offset = 0f64;
 	let this = crate::utilities::modulo_class::ModuloClass::new(*argument, offset);
 
 	// Little bit complex here because dealing with decimal types, not integers

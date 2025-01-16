@@ -1,12 +1,4 @@
-#[allow(unused)]
-use std::{
-	collections::HashSet,
-	env, fs,
-	path::{Path, PathBuf},
-	process::Command,
-	process::ExitCode,
-	time::{Duration, Instant},
-};
+use std::{env, fs, path::PathBuf, process::ExitCode, time::Duration};
 
 use crate::{
 	build::{build, BuildConfig, BuildOutput, FailedBuildOutput},
@@ -164,18 +156,6 @@ pub(crate) struct UpgradeArguments {}
 // 	watch: bool,
 // }
 
-#[allow(unused)]
-fn file_system_resolver(path: &Path) -> Option<String> {
-	// Cheaty
-	if path.to_str() == Some("BLANK") {
-		return Some(String::new());
-	}
-	match fs::read_to_string(path) {
-		Ok(source) => Some(source),
-		Err(_) => None,
-	}
-}
-
 fn run_checker<T: crate::ReadFromFS>(
 	entry_points: Vec<PathBuf>,
 	read_file: &T,
@@ -290,7 +270,6 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 
 				#[cfg(not(target_family = "wasm"))]
 				{
-					use notify::Watcher;
 					use notify_debouncer_full::new_debouncer;
 
 					let (tx, rx) = std::sync::mpsc::channel();
@@ -298,7 +277,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 						new_debouncer(Duration::from_millis(200), None, tx).unwrap();
 
 					for e in &entry_points {
-						debouncer.watcher().watch(e, notify::RecursiveMode::Recursive).unwrap();
+						debouncer.watch(e, notify::RecursiveMode::Recursive).unwrap();
 					}
 
 					let _ = run_checker(

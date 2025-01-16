@@ -321,6 +321,7 @@ pub fn new_intrinsic(intrinsic: &Intrinsic, argument: TypeId, types: &mut TypeSt
 }
 
 #[must_use]
+#[allow(clippy::float_cmp)]
 pub fn get_range_and_mod_class(
 	ty: TypeId,
 	types: &TypeStore,
@@ -436,10 +437,9 @@ impl PureNumberIntrinsic {
 				match *on {
 					TypeId::GREATER_THAN => Ok(PureNumberIntrinsic::GreaterThan(*number)),
 					TypeId::LESS_THAN => Ok(PureNumberIntrinsic::LessThan(*number)),
-					TypeId::MULTIPLE_OF => Ok(PureNumberIntrinsic::Modulo {
-						modulo: *number,
-						offset: 0f64.try_into().unwrap(),
-					}),
+					TypeId::MULTIPLE_OF => {
+						Ok(PureNumberIntrinsic::Modulo { modulo: *number, offset: 0f64 })
+					}
 					_ => todo!(),
 				}
 			} else {
