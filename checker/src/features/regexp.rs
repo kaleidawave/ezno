@@ -121,12 +121,16 @@ impl RegExp {
 			&mut environment.info,
 		);
 
-		match self.re.find(pattern) {
+		let pattern_utf16: Box<[u16]> = pattern.encode_utf16().collect();
+		let matches = self.re.find_from_utf16(&pattern_utf16, 0);
+
+		match matches.into_iter().next() {
 			Some(match_) => {
 				{
 					let index = types.new_constant_type(Constant::Number(
 						(match_.start() as f64).try_into().unwrap(),
 					));
+
 					object.append(
 						Publicity::Public,
 						PropertyKey::String("index".into()),
@@ -139,9 +143,9 @@ impl RegExp {
 				for (idx, group) in match_.groups().enumerate() {
 					let key = PropertyKey::from_usize(idx);
 					let value = match group {
-						Some(range) => {
-							types.new_constant_type(Constant::String(pattern[range].to_string()))
-						}
+						Some(range) => types.new_constant_type(Constant::String(
+							String::from_utf16(&pattern_utf16[range]).unwrap(),
+						)),
 						None => todo!(),
 					};
 
@@ -167,7 +171,7 @@ impl RegExp {
 							let key = PropertyKey::String(name.to_string().into());
 							let value = match group {
 								Some(range) => types.new_constant_type(Constant::String(
-									pattern[range].to_string(),
+									String::from_utf16(&pattern_utf16[range]).unwrap(),
 								)),
 								None => todo!(),
 							};
