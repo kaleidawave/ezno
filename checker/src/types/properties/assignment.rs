@@ -2,12 +2,12 @@ use super::{get_property_unbound, Descriptor, PropertyKey, PropertyValue, Public
 
 use crate::{
 	context::{information::ObjectProtectionState, CallCheckingBehavior},
-	diagnostics::{PropertyKeyRepresentation, TypeStringRepresentation},
+	diagnostics::PropertyKeyRepresentation,
 	events::Event,
 	features::objects::Proxy,
 	subtyping::{State, SubTypeResult},
 	types::{
-		calling::{CallingDiagnostics, CallingOutput, SynthesisedArgument},
+		calling::{CallingOutput, SynthesisedArgument},
 		get_constraint,
 		helpers::tuple_like,
 		logical::{BasedOnKey, Logical, LogicalOrValid, NeedsCalculation},
@@ -25,8 +25,8 @@ pub enum SetPropertyError {
 		position: SpanWithSource,
 	},
 	DoesNotMeetConstraint {
-		property_constraint: TypeStringRepresentation,
-		value_type: TypeStringRepresentation,
+		property_constraint: TypeId,
+		value_type: TypeId,
 		reason: crate::types::subtyping::NonEqualityReason,
 		position: SpanWithSource,
 	},
@@ -51,12 +51,12 @@ pub type SetPropertyResult = Result<(), SetPropertyError>;
 /// - Evaluates setters
 /// - This handles both objects and poly types
 /// - Only handles `PropertyValue`. See info.register for conditionals, getters etc
-pub fn set_property<B: CallCheckingBehavior>(
+pub fn set_property<B: CallCheckingBehavior, T: crate::ReadFromFS>(
 	on: TypeId,
 	(publicity, under, new): (Publicity, &PropertyKey, TypeId),
 	position: SpanWithSource,
 	environment: &mut Environment,
-	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	(behavior, diagnostics): (&mut B, &mut T),
 	types: &mut TypeStore,
 ) -> SetPropertyResult {
 	// Frozen checks
@@ -66,7 +66,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 		if let Some(ObjectProtectionState::Frozen) = object_protection {
 			// FUTURE this could have a separate error?
 			return Err(SetPropertyError::NotWriteable {
-				property: PropertyKeyRepresentation::new(under, environment, types),
+				property: PropertyKeyRepresentation::new(
+					under,
+					crate::types::printing::PrintingTypeInformation {
+						information: environment,
+						types,
+					},
+				),
 				position,
 			});
 		}
@@ -78,10 +84,10 @@ pub fn set_property<B: CallCheckingBehavior>(
 		{
 			constraint
 		} else if let Some(constraint) = get_constraint(on, types) {
-			crate::utilities::notify!(
-				"constraint={}",
-				crate::types::printing::print_type(constraint, types, environment, true)
-			);
+			// crate::utilities::notify!(
+			// 	"constraint={}",
+			// 	crate::types::printing::print_type(constraint, types, environment, true)
+			// );
 			Some(constraint)
 		} else {
 			crate::utilities::notify!("No constraint (is an object)");
@@ -97,7 +103,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 			}) = types.get_type_by_id(object_constraint)
 			{
 				return Err(SetPropertyError::NotWriteable {
-					property: PropertyKeyRepresentation::new(under, environment, types),
+					property: PropertyKeyRepresentation::new(
+						under,
+						crate::types::printing::PrintingTypeInformation {
+							information: environment,
+							types,
+						},
+					),
 					position,
 				});
 			}
@@ -156,20 +168,11 @@ pub fn set_property<B: CallCheckingBehavior>(
 						is_modifying_tuple_length
 					);
 
-					let property_constraint = TypeStringRepresentation::from_property_constraint(
-						property_constraint,
-						None,
-						environment,
-						types,
-						false,
-					);
-
-					let value_type =
-						TypeStringRepresentation::from_type_id(new, environment, types, false);
+					let property_constraint = todo!("from property contraint");
 
 					return Err(SetPropertyError::DoesNotMeetConstraint {
 						property_constraint,
-						value_type,
+						value_type: new,
 						reason,
 						position,
 					});
@@ -296,7 +299,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 	} else {
 		if get_constraint(on, types).is_some() {
 			return Err(SetPropertyError::AssigningToNonExistent {
-				property: PropertyKeyRepresentation::new(under, environment, types),
+				property: PropertyKeyRepresentation::new(
+					under,
+					crate::types::printing::PrintingTypeInformation {
+						information: environment,
+						types,
+					},
+				),
 				position,
 			});
 		}
@@ -305,7 +314,13 @@ pub fn set_property<B: CallCheckingBehavior>(
 			if object_protection.is_some() {
 				// FUTURE this could have a separate error?
 				return Err(SetPropertyError::NotWriteable {
-					property: PropertyKeyRepresentation::new(under, environment, types),
+					property: PropertyKeyRepresentation::new(
+						under,
+						crate::types::printing::PrintingTypeInformation {
+							information: environment,
+							types,
+						},
+					),
 					position,
 				});
 			}
@@ -324,9 +339,9 @@ pub fn set_property<B: CallCheckingBehavior>(
 	}
 }
 
-fn set_on_logical<B: CallCheckingBehavior>(
+fn set_on_logical<B: CallCheckingBehavior, T: crate::ReadFromFS>(
 	existing: Logical<PropertyValue>,
-	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	(behavior, diagnostics): (&mut B, &mut T),
 	environment: &mut Environment,
 	(on, generics): (TypeId, GenericChain),
 	(publicity, under, new): (Publicity, &PropertyKey, TypeId),
@@ -437,9 +452,9 @@ fn set_on_logical<B: CallCheckingBehavior>(
 ///
 /// `og` = current last value, `position` = assignment position
 #[allow(clippy::too_many_arguments)]
-fn run_setter_on_object<B: CallCheckingBehavior>(
+fn run_setter_on_object<B: CallCheckingBehavior, T: crate::ReadFromFS>(
 	(existing, descriptor): (PropertyValue, Option<Descriptor>),
-	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	(behavior, diagnostics): (&mut B, &mut T),
 	environment: &mut Environment,
 	(on, generics): (TypeId, GenericChain),
 	(publicity, under, new): (Publicity, &PropertyKey<'_>, TypeId),
@@ -481,7 +496,7 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 			// 			);
 			// 		}
 
-			// 		let property_constraint = TypeStringRepresentation::from_property_constraint(
+			// 		let property_constraint = TypeId::from_property_constraint(
 			// 			Logical::Pure(PropertyValue::Value(constraint_for_new)),
 			// 			generics,
 			// 			environment,
@@ -489,7 +504,7 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 			// 			false,
 			// 		);
 			// 		let value_type =
-			// 			TypeStringRepresentation::from_type_id(new, environment, types, false);
+			// 			TypeId::from_type_id(new, environment, types, false);
 
 			// 		// TODO generics
 			// 		return Err(SetPropertyError::DoesNotMeetConstraint {
@@ -523,7 +538,10 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 			Ok(())
 		}
 		PropertyValue::Getter(_) => Err(SetPropertyError::AssigningToGetter {
-			property: PropertyKeyRepresentation::new(under, environment, types),
+			property: PropertyKeyRepresentation::new(
+				under,
+				crate::types::printing::PrintingTypeInformation { information: environment, types },
+			),
 			position,
 		}),
 		PropertyValue::GetterAndSetter { setter, getter: _ } | PropertyValue::Setter(setter) => {
@@ -576,7 +594,13 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 			if !matches!(writable, TypeId::TRUE) {
 				crate::utilities::notify!("{:?}", writable);
 				return Err(SetPropertyError::NotWriteable {
-					property: PropertyKeyRepresentation::new(under, environment, types),
+					property: PropertyKeyRepresentation::new(
+						under,
+						crate::types::printing::PrintingTypeInformation {
+							information: environment,
+							types,
+						},
+					),
 					position,
 				});
 			}
@@ -596,12 +620,12 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 	}
 }
 
-pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
+pub(crate) fn proxy_assign<B: CallCheckingBehavior, T: crate::ReadFromFS>(
 	(Proxy { handler, over }, resolver): (Proxy, TypeId),
 	under: &PropertyKey,
 	new: TypeId,
 	position: SpanWithSource,
-	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	(behavior, diagnostics): (&mut B, &mut T),
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> SetPropertyResult {

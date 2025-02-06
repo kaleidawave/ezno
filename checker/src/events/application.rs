@@ -6,7 +6,7 @@ use super::{
 
 use crate::{
 	context::{get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior},
-	diagnostics::{TypeStringRepresentation, VariableUsedInTDZ},
+	diagnostics::VariableUsedInTDZ,
 	features::{
 		iteration::{self, IterationKind},
 		objects::SpecialObject,
@@ -14,7 +14,7 @@ use crate::{
 	},
 	subtyping::type_is_subtype,
 	types::{
-		calling::{self, CallingDiagnostics, FunctionCallingError, SynthesisedArgument, ThisValue},
+		calling::{self, FunctionCallingError, SynthesisedArgument, ThisValue},
 		generics::substitution::SubstitutionArguments,
 		is_type_truthy_falsy,
 		printing::print_type,
@@ -36,14 +36,14 @@ pub(crate) struct ApplicationInput {
 /// because `events` are flat the iteration here is a little bit unintuitive
 #[must_use]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn apply_events(
+pub(crate) fn apply_events<T: crate::ReadFromFS>(
 	events: &[Event],
 	input: &ApplicationInput,
 	mut type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut Environment,
 	target: &mut InvocationContext,
 	types: &mut TypeStore,
-	mut diagnostics: &mut CallingDiagnostics,
+	mut diagnostics: &mut T,
 ) -> Option<ApplicationResult> {
 	let mut trailing = None::<(TypeId, ApplicationResult)>;
 
@@ -93,17 +93,17 @@ pub(crate) fn apply_events(
 								if let Some(ty) = value {
 									ty
 								} else {
-									diagnostics.errors.push(
-										crate::types::calling::FunctionCallingError::VariableUsedInTDZ {
-											error: VariableUsedInTDZ {
-												variable_name: top_environment
-													.get_variable_name(*id)
-													.to_owned(),
-												position: *position,
-											},
-											call_site: input.call_site,
+									let variable_name =
+										top_environment.get_variable_name(*id).to_owned();
+									let error = crate::types::calling::FunctionCallingError::VariableUsedInTDZ {
+										error: VariableUsedInTDZ {
+											variable_name,
+											position: *position,
 										},
-									);
+										call_site: input.call_site,
+									};
+									todo!("want to emit but also need to count the diagnostic etc");
+									// diagnostics.add_error(error, top_environment);
 									TypeId::ERROR_TYPE
 								}
 							}
@@ -164,9 +164,9 @@ pub(crate) fn apply_events(
 				) else {
 					// TODO getters can fail here
 					panic!(
-						"Could not get property {under:?} at {position:?} on {}, (inference or some checking failed)",
-						print_type(on, types, top_environment, true)
+						"Could not get property {under:?} at {position:?} on {on:?}, (inference or some checking failed)",
 					);
+					// print_type(on, types, top_environment, true)
 				};
 
 				if let Some(id) = reflects_dependency {
@@ -189,14 +189,14 @@ pub(crate) fn apply_events(
 					let under = under.substitute(type_arguments, top_environment, types);
 					let new = substitute(*new, type_arguments, top_environment, types);
 
-					{
-						crate::utilities::notify!(
-							"[Event::Setter] ({})[{:?}] = {:?}",
-							crate::types::printing::print_type(on, types, top_environment, true),
-							under,
-							new
-						);
-					}
+					// {
+					// 	crate::utilities::notify!(
+					// 		"[Event::Setter] ({})[{:?}] = {:?}",
+					// 		crate::types::printing::print_type(on, types, top_environment, true),
+					// 		under,
+					// 		new
+					// 	);
+					// }
 
 					let result = set_property(
 						on,
@@ -217,14 +217,14 @@ pub(crate) fn apply_events(
 								position: _,
 							} = err
 							{
-								diagnostics.errors.push(
-									crate::types::calling::FunctionCallingError::SetPropertyConstraint {
-										property_type: property_constraint,
-										value_type,
-										assignment_position: *position,
-										call_site: input.call_site,
-									},
-								);
+								let error = crate::types::calling::FunctionCallingError::SetPropertyConstraint {
+									property_type: property_constraint,
+									value_type,
+									assignment_position: *position,
+									call_site: input.call_site,
+								};
+								todo!("want to emit but also need to count the diagnostic etc")
+								// diagnostics.add_error(error, top_environment);
 							} else {
 								unreachable!("set property check failed")
 							}
@@ -386,66 +386,67 @@ pub(crate) fn apply_events(
 						let otherwise_events_slice = &events
 							[(offset + truthy_events)..(offset + truthy_events + otherwise_events)];
 
-						let (data, (truthy_result, otherwise_result)) = target
-							.evaluate_conditionally(
-								top_environment,
-								types,
-								(condition, *position),
-								(truthy_events_slice, otherwise_events_slice),
-								(type_arguments, diagnostics),
-								|top_environment, types, target, events, data| {
-									let (type_arguments, diagnostics) = data;
-									apply_events(
-										events,
-										input,
-										type_arguments,
-										top_environment,
-										target,
-										types,
-										diagnostics,
-									)
-								},
-							);
+						todo!("Pass down type arguments");
+						// let (data, (truthy_result, otherwise_result)) = target
+						// 	.evaluate_conditionally(
+						// 		top_environment,
+						// 		types,
+						// 		(condition, *position),
+						// 		(truthy_events_slice, otherwise_events_slice),
+						// 		diagnostics
+						// 		type_arguments,
+						// 		|top_environment, types, target, diagnostics, events, data| {
+						// 			apply_events(
+						// 				events,
+						// 				input,
+						// 				type_arguments,
+						// 				top_environment,
+						// 				target,
+						// 				types,
+						// 				diagnostics,
+						// 			)
+						// 		},
+						// 	);
 
-						(type_arguments, diagnostics) = data;
+						// (type_arguments, diagnostics) = data;
 
-						match (truthy_result, otherwise_result) {
-							(Some(truthy_result), Some(otherwise_result)) => {
-								return Some(ApplicationResult::Or {
-									on: condition,
-									truthy_result: Box::new(truthy_result),
-									otherwise_result: Box::new(otherwise_result),
-								});
-							}
-							(None, Some(right)) => {
-								let negated_condition = types.new_logical_negation_type(condition);
-								trailing = Some(match trailing {
-									Some((existing_condition, existing)) => (
-										negated_condition,
-										ApplicationResult::Or {
-											on: existing_condition,
-											truthy_result: Box::new(existing),
-											otherwise_result: Box::new(right),
-										},
-									),
-									None => (negated_condition, right),
-								});
-							}
-							(Some(left), None) => {
-								trailing = Some(match trailing {
-									Some((existing_condition, existing)) => (
-										condition,
-										ApplicationResult::Or {
-											on: existing_condition,
-											truthy_result: Box::new(existing),
-											otherwise_result: Box::new(left),
-										},
-									),
-									None => (condition, left),
-								});
-							}
-							(None, None) => {}
-						}
+						// 	match (truthy_result, otherwise_result) {
+						// 		(Some(truthy_result), Some(otherwise_result)) => {
+						// 			return Some(ApplicationResult::Or {
+						// 				on: condition,
+						// 				truthy_result: Box::new(truthy_result),
+						// 				otherwise_result: Box::new(otherwise_result),
+						// 			});
+						// 		}
+						// 		(None, Some(right)) => {
+						// 			let negated_condition = types.new_logical_negation_type(condition);
+						// 			trailing = Some(match trailing {
+						// 				Some((existing_condition, existing)) => (
+						// 					negated_condition,
+						// 					ApplicationResult::Or {
+						// 						on: existing_condition,
+						// 						truthy_result: Box::new(existing),
+						// 						otherwise_result: Box::new(right),
+						// 					},
+						// 				),
+						// 				None => (negated_condition, right),
+						// 			});
+						// 		}
+						// 		(Some(left), None) => {
+						// 			trailing = Some(match trailing {
+						// 				Some((existing_condition, existing)) => (
+						// 					condition,
+						// 					ApplicationResult::Or {
+						// 						on: existing_condition,
+						// 						truthy_result: Box::new(existing),
+						// 						otherwise_result: Box::new(left),
+						// 					},
+						// 				),
+						// 				None => (condition, left),
+						// 			});
+						// 		}
+						// 		(None, None) => {}
+						// 	}
 					}
 				}
 				// Don't run condition again
@@ -620,23 +621,13 @@ pub(crate) fn apply_events(
 									if let crate::subtyping::SubTypeResult::IsNotSubType(_reason) =
 										result
 									{
-										diagnostics.errors.push(
-											FunctionCallingError::CannotCatch {
-												catch: TypeStringRepresentation::from_type_id(
-													constraint,
-													top_environment,
-													types,
-													false,
-												),
-												thrown: TypeStringRepresentation::from_type_id(
-													thrown,
-													top_environment,
-													types,
-													false,
-												),
-												thrown_position: position,
-											},
-										);
+										let error = FunctionCallingError::CannotCatch {
+											catch: constraint,
+											thrown,
+											thrown_position: position,
+										};
+										todo!("want to emit but also need to count the diagnostic etc")
+										// diagnostics.add_error(error, top_environment);
 									}
 								}
 							}
@@ -687,20 +678,21 @@ pub(crate) fn apply_events(
 					let on = substitute(*on, type_arguments, top_environment, types);
 					let under = under.substitute(type_arguments, top_environment, types);
 
-					match crate::features::delete_operator(
+					let delete_result = crate::features::delete_operator(
 						(*publicity, under),
 						on,
 						*position,
 						top_environment,
 						types,
-					) {
+					);
+					match delete_result {
 						Ok(result) => {
 							if let Some(into) = into {
 								type_arguments.arguments.insert(*into, result);
 							}
 						}
 						Err(err) => {
-							diagnostics.errors.push(match err {
+							let error = match err {
 								CannotDeleteFromError::Constraint { constraint, position } => {
 									FunctionCallingError::DeleteConstraint {
 										constraint,
@@ -711,7 +703,9 @@ pub(crate) fn apply_events(
 								CannotDeleteFromError::NonConfigurable { position: _ } => {
 									todo!()
 								}
-							});
+							};
+							todo!("want to emit but also need to count the diagnostic etc");
+							// diagnostics.add_error(error, top_environment);
 
 							if let Some(into) = into {
 								type_arguments.arguments.insert(*into, TypeId::ERROR_TYPE);
@@ -803,19 +797,12 @@ pub(crate) fn apply_events(
 							let substituted_thrown =
 								substitute(*thrown, type_arguments, top_environment, types);
 							if target.in_unconditional() {
-								let value = TypeStringRepresentation::from_type_id(
-									substituted_thrown,
-									// TODO is this okay?
-									top_environment,
-									types,
-									false,
-								);
 								let warning =
 									crate::diagnostics::TypeCheckWarning::ConditionalExceptionInvoked {
-										value,
+										value: substituted_thrown,
 										call_site: input.call_site,
 									};
-								diagnostics.warnings.push(warning);
+								// diagnostics.add_warning(warning, top_environment);
 							}
 							ApplicationResult::Throw {
 								thrown: substituted_thrown,

@@ -8,7 +8,7 @@ use parser::{
 use super::expressions::synthesise_expression;
 use crate::{
 	context::{Context, ContextType, VariableRegisterArguments},
-	diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation},
+	diagnostics::{PropertyKeyRepresentation, TypeCheckError},
 	features::{
 		self,
 		variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
@@ -37,9 +37,7 @@ pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>
 				name,
 				argument,
 				pos.with_source(environment.get_source()),
-				&mut checking_data.diagnostics_container,
-				&mut checking_data.local_type_mappings,
-				checking_data.options.record_all_assignments_and_reads,
+				checking_data,
 			);
 		}
 		parser::VariableIdentifier::Marker(..) => {
@@ -345,11 +343,10 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 					};
 					exported.named.insert(name, (id, mutability));
 				} else {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::NonTopLevelExport(
-							name.get_position().with_source(environment.get_source()),
-						),
+					let error = TypeCheckError::NonTopLevelExport(
+						name.get_position().with_source(environment.get_source()),
 					);
+					checking_data.add_error(error, environment);
 				}
 			}
 		}
@@ -398,42 +395,34 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeId::ANY_TYPE,
 									)
 								} else {
-									checking_data.diagnostics_container.add_error(
-										TypeCheckError::PropertyDoesNotExist {
-											property: match key_ty {
-												PropertyKey::String(s) => {
-													PropertyKeyRepresentation::StringKey(
-														s.to_string(),
-													)
-												}
-												PropertyKey::Type(t) => {
-													PropertyKeyRepresentation::Type(
-														printing::print_type(
-															t,
-															&checking_data.types,
-															environment,
-															false,
-														),
-													)
-												}
-											},
-											on: TypeStringRepresentation::from_type_id(
-												value,
-												environment,
-												&checking_data.types,
-												false,
-											),
-											position,
-											possibles: get_property_key_names_on_a_single_type(
-												value,
-												&checking_data.types,
-												environment,
-											)
-											.iter()
-											.map(AsRef::as_ref)
-											.collect::<Vec<&str>>(),
+									let information =
+										crate::types::printing::PrintingTypeInformation {
+											types: &checking_data.types,
+											information: environment,
+										};
+									let possibles =
+										get_property_key_names_on_a_single_type(value, information);
+									let possibles =
+										possibles.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
+									let error = TypeCheckError::PropertyDoesNotExist {
+										property: match key_ty {
+											PropertyKey::String(s) => {
+												PropertyKeyRepresentation::StringKey(s.to_string())
+											}
+											PropertyKey::Type(t) => {
+												PropertyKeyRepresentation::Type(
+													printing::print_type(t, information, false),
+												)
+											}
 										},
-									);
+										on: value,
+										position,
+										possibles,
+									};
+									let diagnostic = error.into_diagnostic(information);
+									checking_data
+										.resolver
+										.emit_diagnostic(diagnostic, &checking_data.modules.files);
 									TypeId::ANY_TYPE
 								}
 							}
@@ -476,43 +465,39 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 										TypeId::ANY_TYPE,
 									)
 								} else {
-									checking_data.diagnostics_container.add_error(
-										TypeCheckError::PropertyDoesNotExist {
-											property: match key_ty {
-												PropertyKey::String(s) => {
-													PropertyKeyRepresentation::StringKey(
-														s.to_string(),
-													)
-												}
-												PropertyKey::Type(t) => {
-													PropertyKeyRepresentation::Type(
-														printing::print_type(
-															t,
-															&checking_data.types,
-															environment,
-															false,
-														),
-													)
-												}
-											},
-											on: TypeStringRepresentation::from_type_id(
-												value,
-												environment,
-												&checking_data.types,
+									let property = match key_ty {
+										PropertyKey::String(s) => {
+											PropertyKeyRepresentation::StringKey(s.to_string())
+										}
+										PropertyKey::Type(t) => {
+											PropertyKeyRepresentation::Type(printing::print_type(
+												t,
+												crate::types::printing::PrintingTypeInformation {
+													types: &checking_data.types,
+													information: environment,
+												},
 												false,
-											),
-											position: position
-												.with_source(environment.get_source()),
-											possibles: get_property_key_names_on_a_single_type(
-												value,
-												&checking_data.types,
-												environment,
-											)
-											.iter()
-											.map(AsRef::as_ref)
-											.collect::<Vec<&str>>(),
+											))
+										}
+									};
+									let keys = get_property_key_names_on_a_single_type(
+										value,
+										crate::types::printing::PrintingTypeInformation {
+											types: &checking_data.types,
+											information: environment,
 										},
 									);
+									// TODO can this be improved..?
+									let possibles =
+										keys.iter().map(AsRef::as_ref).collect::<Vec<&str>>();
+									let position = position.with_source(environment.get_source());
+									let error = TypeCheckError::PropertyDoesNotExist {
+										property,
+										on: value,
+										position,
+										possibles,
+									};
+									checking_data.add_error(error, environment);
 
 									TypeId::ERROR_TYPE
 								}

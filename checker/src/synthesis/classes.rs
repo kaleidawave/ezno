@@ -10,8 +10,8 @@ use crate::{
 	features::functions::{
 		class_generics_to_function_generics, function_to_property, synthesise_function,
 		ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter, ReturnType,
-		SynthesisableFunction,
 	},
+	files::SynthesisableFunction,
 	types::{
 		classes::ClassValue,
 		properties::{PropertyKey, Publicity},
@@ -610,12 +610,10 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 						let actual = overloads.pop().unwrap();
 						(overloads, actual)
 					} else {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-								position: ASTNode::get_position(method)
-									.with_source(environment.get_source()),
-							},
-						);
+						let position =
+							ASTNode::get_position(method).with_source(environment.get_source());
+						let error = TypeCheckError::FunctionWithoutBodyNotAllowedHere { position };
+						checking_data.add_error(error, environment);
 						continue;
 					}
 				} else {
@@ -656,8 +654,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					overloads,
 					actual,
 					environment,
-					&mut checking_data.types,
-					&mut checking_data.diagnostics_container,
+					checking_data,
 					if let Some(ie) = internal_effect {
 						ie.into()
 					} else {
@@ -768,8 +765,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					Vec::new(),
 					actual,
 					environment,
-					&mut checking_data.types,
-					&mut checking_data.diagnostics_container,
+					checking_data,
 					if let Some(ie) = internal_effect {
 						ie.into()
 					} else {
@@ -804,8 +800,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				Some(return_type),
 			),
 			environment,
-			&mut checking_data.types,
-			&mut checking_data.diagnostics_container,
+			checking_data,
 			crate::types::functions::FunctionEffect::Unknown,
 		)
 	}
@@ -823,19 +818,18 @@ fn get_extends_as_simple_type<T: crate::ReadFromFS>(
 			// Warn if it requires parameters. e.g. Array
 			Some(if checking_data.types.get_type_by_id(ty).get_parameters().is_some() {
 				// TODO check defaults...
-				checking_data.diagnostics_container.add_error(
-					TypeCheckError::TypeNeedsTypeArguments(
-						name,
-						pos.with_source(environment.get_source()),
-					),
+				let error = TypeCheckError::TypeNeedsTypeArguments(
+					name,
+					pos.with_source(environment.get_source()),
 				);
+				checking_data.add_error(error, environment);
 				TypeId::ERROR_TYPE
 			} else {
 				ty
 			})
 		} else {
 			None
-			// checking_data.diagnostics_container.add_error(TypeCheckError::CannotFindType(
+			// checking_data.add_error(TypeCheckError::CannotFindType(
 			// 	name,
 			// 	pos.with_source(environment.get_source()),
 			// ));

@@ -5,7 +5,7 @@ use crate::{
 	events::Event,
 	features::objects::Proxy,
 	types::{
-		calling::{Callable, CallingDiagnostics, ThisValue},
+		calling::{Callable, ThisValue},
 		generics::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
 		},
@@ -692,12 +692,12 @@ pub enum AccessMode {
 /// types at some point*
 /// TODO: `optional_chain`
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn get_property<B: CallCheckingBehavior>(
+pub(crate) fn get_property<B: CallCheckingBehavior, T: crate::ReadFromFS>(
 	on: TypeId,
 	publicity: Publicity,
 	under: &PropertyKey,
 	top_environment: &mut Environment,
-	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	(behavior, diagnostics): (&mut B, &mut T),
 	types: &mut TypeStore,
 	position: SpanWithSource,
 	mode: AccessMode,
@@ -803,15 +803,15 @@ pub(crate) fn get_property<B: CallCheckingBehavior>(
 	}
 }
 
-/// Generates closure arguments, values of this and more. Runs getters
+/// Generates closure arguments, values of this and more. **Runs getters**
 ///
 /// TODO generics
-fn resolve_property_on_logical<B: CallCheckingBehavior>(
+fn resolve_property_on_logical<B: CallCheckingBehavior, T: crate::ReadFromFS>(
 	(logical, generics): (Logical<PropertyValue>, GenericChain),
 	(on, under): (TypeId, &PropertyKey),
 	environment: &mut Environment,
 	types: &mut TypeStore,
-	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	(behavior, diagnostics): (&mut B, &mut T),
 	mode: AccessMode,
 ) -> Option<(PropertyKind, TypeId)> {
 	match logical {
@@ -1127,10 +1127,10 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 	}
 }
 
-pub(crate) fn proxy_access<B: CallCheckingBehavior>(
+pub(crate) fn proxy_access<B: CallCheckingBehavior, T: crate::ReadFromFS>(
 	(Proxy { handler, over }, resolver): (Proxy, TypeId),
 	under: &PropertyKey,
-	(behavior, diagnostics): (&mut B, &mut CallingDiagnostics),
+	(behavior, diagnostics): (&mut B, &mut T),
 	environment: &mut Environment,
 	types: &mut TypeStore,
 ) -> Option<(PropertyKind, TypeId)> {

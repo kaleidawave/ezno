@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
 	context::{Environment, LocalInformation, Scope},
-	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
+	diagnostics::{TypeCheckError, TypeCheckWarning},
 	features::objects::ObjectBuilder,
 	types::{
 		generics::generic_type_arguments::GenericArguments,
@@ -71,31 +71,31 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 						// Warn if it requires parameters. e.g. Array
 						if checking_data.types.get_type_by_id(ty).get_parameters().is_some() {
 							// TODO check defaults...
-							checking_data.diagnostics_container.add_error(
-								TypeCheckError::TypeNeedsTypeArguments(
-									name,
-									position.with_source(environment.get_source()),
-								),
+							let error = TypeCheckError::TypeNeedsTypeArguments(
+								name,
+								position.with_source(environment.get_source()),
 							);
+							checking_data.add_error(error, environment);
 							TypeId::ERROR_TYPE
 						} else {
 							ty
 						}
 					} else {
 						let possibles = {
-							let mut possibles =
-								crate::get_closest(environment.get_all_named_types(), name)
-									.unwrap_or(vec![]);
+							let mut possibles = crate::utilities::get_closest(
+								environment.get_all_named_types(),
+								name,
+							)
+							.unwrap_or(vec![]);
 							possibles.sort_unstable();
 							possibles
 						};
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::CouldNotFindType(
-								name,
-								possibles,
-								position.with_source(environment.get_source()),
-							),
+						let error = TypeCheckError::CouldNotFindType(
+							name,
+							possibles,
+							position.with_source(environment.get_source()),
 						);
+						checking_data.add_error(error, environment);
 						TypeId::ERROR_TYPE
 					}
 				}
@@ -133,13 +133,12 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 							// TODO better diagnostic
 							if parameters.len() != arguments.len() {
-								checking_data.diagnostics_container.add_error(
-									TypeCheckError::GenericArgumentCountMismatch {
-										expected_count: parameters.len(),
-										count: arguments.len(),
-										position: position.with_source(environment.get_source()),
-									},
-								);
+								let error = TypeCheckError::GenericArgumentCountMismatch {
+									expected_count: parameters.len(),
+									count: arguments.len(),
+									position: position.with_source(environment.get_source()),
+								};
+								checking_data.add_error(error, environment);
 								// Continue is fine
 							}
 
@@ -203,27 +202,17 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 										if let subtyping::SubTypeResult::IsNotSubType(_matches) =
 											result
 										{
+											let position = argument_type_annotation
+												.get_position()
+												.with_source(environment.get_source());
 											let error =
 												TypeCheckError::GenericArgumentDoesNotMeetRestriction {
-													parameter_restriction:
-														TypeStringRepresentation::from_type_id(
-															parameter_restriction,
-															environment,
-															&checking_data.types,
-															checking_data.options.debug_types,
-														),
-													argument: TypeStringRepresentation::from_type_id(
-														argument,
-														environment,
-														&checking_data.types,
-														checking_data.options.debug_types,
-													),
-													position: argument_type_annotation
-														.get_position()
-														.with_source(environment.get_source()),
+													parameter_restriction,
+													argument,
+													position,
 												};
 
-											checking_data.diagnostics_container.add_error(error);
+											checking_data.add_error(error, environment);
 										}
 									}
 									let position = argument_type_annotation
@@ -291,30 +280,30 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 								checking_data.types.register_type(ty)
 							}
 						} else {
-							checking_data.diagnostics_container.add_error(
-								TypeCheckError::GenericArgumentCountMismatch {
-									expected_count: 0,
-									count: arguments.len(),
-									position: position.with_source(environment.get_source()),
-								},
-							);
+							let error = TypeCheckError::GenericArgumentCountMismatch {
+								expected_count: 0,
+								count: arguments.len(),
+								position: position.with_source(environment.get_source()),
+							};
+							checking_data.add_error(error, environment);
 							TypeId::ERROR_TYPE
 						}
 					} else {
 						let possibles = {
-							let mut possibles =
-								crate::get_closest(environment.get_all_named_types(), name)
-									.unwrap_or(vec![]);
+							let mut possibles = crate::utilities::get_closest(
+								environment.get_all_named_types(),
+								name,
+							)
+							.unwrap_or(vec![]);
 							possibles.sort_unstable();
 							possibles
 						};
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::CouldNotFindType(
-								name,
-								possibles,
-								position.with_source(environment.get_source()),
-							),
+						let error = TypeCheckError::CouldNotFindType(
+							name,
+							possibles,
+							position.with_source(environment.get_source()),
 						);
+						checking_data.add_error(error, environment);
 						TypeId::ERROR_TYPE
 					}
 				}
@@ -359,23 +348,12 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 					&checking_data.types,
 				);
 				if is_disjoint {
-					checking_data.diagnostics_container.add_warning(
-						TypeCheckWarning::TypesDoNotIntersect {
-							left: TypeStringRepresentation::from_type_id(
-								acc,
-								environment,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							right: TypeStringRepresentation::from_type_id(
-								right,
-								environment,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							position: position.with_source(environment.get_source()),
-						},
-					);
+					let warning = TypeCheckWarning::TypesDoNotIntersect {
+						left: acc,
+						right,
+						position: position.with_source(environment.get_source()),
+					};
+					checking_data.add_warning(warning, environment);
 					return TypeId::NEVER_TYPE;
 				}
 

@@ -18,7 +18,7 @@ use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	context::Environment,
-	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
+	diagnostics::{TypeCheckError, TypeCheckWarning},
 	features::{
 		self,
 		assignments::{AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement},
@@ -101,14 +101,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			match regexp {
 				Ok(regexp) => Instance::RValue(regexp),
 				Err(error) => {
-					checking_data.diagnostics_container.add_error(
-						crate::diagnostics::TypeCheckError::InvalidRegExp(
-							crate::diagnostics::InvalidRegExp {
-								error,
-								position: position.with_source(environment.get_source()),
-							},
-						),
+					let error = crate::diagnostics::TypeCheckError::InvalidRegExp(
+						crate::diagnostics::InvalidRegExp {
+							error,
+							position: position.with_source(environment.get_source()),
+						},
 					);
+					checking_data.add_error(error, environment);
 
 					return TypeId::ERROR_TYPE;
 				}
@@ -308,24 +307,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							.union(rhs_pos.without_source())
 							.with_source(environment.get_source());
 
-						checking_data.diagnostics_container.add_warning(
-							crate::TypeCheckWarning::DisjointEquality {
-								lhs: TypeStringRepresentation::from_type_id(
-									lhs_ty,
-									environment,
-									&checking_data.types,
-									false,
-								),
-								rhs: TypeStringRepresentation::from_type_id(
-									rhs_ty,
-									environment,
-									&checking_data.types,
-									false,
-								),
-								result: result == TypeId::TRUE,
-								position,
-							},
-						);
+						let warning = crate::TypeCheckWarning::DisjointEquality {
+							lhs: lhs_ty,
+							rhs: rhs_ty,
+							result: result == TypeId::TRUE,
+							position,
+						};
+						checking_data.add_warning(warning, environment);
 					}
 
 					return result;
@@ -338,24 +326,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					.union(rhs_pos.without_source())
 					.with_source(environment.get_source());
 
-				checking_data.diagnostics_container.add_error(
-					crate::TypeCheckError::InvalidEqualityOperation {
-						operator,
-						lhs: TypeStringRepresentation::from_type_id(
-							lhs_ty,
-							environment,
-							&checking_data.types,
-							false,
-						),
-						rhs: TypeStringRepresentation::from_type_id(
-							rhs_ty,
-							environment,
-							&checking_data.types,
-							false,
-						),
-						position,
-					},
-				);
+				let error = crate::TypeCheckError::InvalidEqualityOperation {
+					operator,
+					lhs: lhs_ty,
+					rhs: rhs_ty,
+					position,
+				};
+				checking_data.add_error(error, environment);
 
 				return TypeId::ERROR_TYPE;
 			}
@@ -410,24 +387,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					.union(rhs_pos.without_source())
 					.with_source(environment.get_source());
 
-				checking_data.diagnostics_container.add_error(
-					TypeCheckError::InvalidMathematicalOrBitwiseOperation {
-						operator,
-						lhs: TypeStringRepresentation::from_type_id(
-							lhs_ty,
-							environment,
-							&checking_data.types,
-							false,
-						),
-						rhs: TypeStringRepresentation::from_type_id(
-							rhs_ty,
-							environment,
-							&checking_data.types,
-							false,
-						),
-						position,
-					},
-				);
+				let error = TypeCheckError::InvalidMathematicalOrBitwiseOperation {
+					operator,
+					lhs: lhs_ty,
+					rhs: rhs_ty,
+					position,
+				};
+				checking_data.add_error(error, environment);
 				return TypeId::ERROR_TYPE;
 			}
 		}
@@ -477,18 +443,12 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					if let Ok(result) = result {
 						Instance::RValue(result)
 					} else {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::InvalidUnaryOperation {
-								operator,
-								operand: TypeStringRepresentation::from_type_id(
-									operand,
-									environment,
-									&checking_data.types,
-									false,
-								),
-								position: position.with_source(environment.get_source()),
-							},
-						);
+						let error = TypeCheckError::InvalidUnaryOperation {
+							operator,
+							operand,
+							position: position.with_source(environment.get_source()),
+						};
+						checking_data.add_error(error, environment);
 						Instance::RValue(TypeId::ERROR_TYPE)
 					}
 				}
@@ -560,8 +520,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 									) {
 										Ok(result) => Instance::RValue(result),
 										Err(err) => {
-											checking_data.diagnostics_container.add_error(
+											checking_data.add_error(
 												TypeCheckError::CannotDeleteProperty(err),
+												environment,
 											);
 											return TypeId::ERROR_TYPE;
 										}
@@ -598,9 +559,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							) {
 								Ok(result) => Instance::RValue(result),
 								Err(err) => {
-									checking_data
-										.diagnostics_container
-										.add_error(TypeCheckError::CannotDeleteProperty(err));
+									checking_data.add_error(
+										TypeCheckError::CannotDeleteProperty(err),
+										environment,
+									);
 									return TypeId::ERROR_TYPE;
 								}
 							}
@@ -991,9 +953,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::Comment { on, .. } => {
 			return synthesise_expression(on, environment, checking_data, expecting);
 		}
-		Expression::Parenthesised(inner_expression, _) => Instance::RValue(
-			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
-		),
+		Expression::Parenthesised(inner_expression, _) => {
+			return synthesise_multiple_expression(
+				inner_expression,
+				environment,
+				checking_data,
+				expecting,
+			);
+		}
 		Expression::ClassExpression(class) => Instance::RValue(synthesise_class_declaration(
 			class,
 			None,
@@ -1003,7 +970,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		)),
 		Expression::Marker { marker_id: _, position: _ } => {
 			crate::utilities::notify!("Marker expression found");
-			return TypeId::ERROR_TYPE;
+			Instance::RValue(checking_data.types.new_open_type(expecting))
 		}
 		Expression::SpecialOperators(operator, position) => match operator {
 			SpecialOperators::AsCast { value, rhs } => {
@@ -1025,25 +992,14 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							match as_cast {
 								Ok(result) => return result,
 								Err(_err) => {
-									checking_data.diagnostics_container.add_error(
-										TypeCheckError::InvalidCast {
-											position: position
-												.with_source(environment.get_source()),
-											from: TypeStringRepresentation::from_type_id(
-												to_cast,
-												environment,
-												&checking_data.types,
-												checking_data.options.debug_types,
-											),
-											to: TypeStringRepresentation::from_type_id(
-												cast_to,
-												environment,
-												&checking_data.types,
-												checking_data.options.debug_types,
-											),
-										},
-									);
-									return TypeId::ERROR_TYPE;
+									let error = TypeCheckError::InvalidCast {
+										position: position.with_source(environment.get_source()),
+										from: to_cast,
+										to: cast_to,
+									};
+									checking_data.add_error(error, environment);
+									// TODO I think this is okay
+									return cast_to;
 								}
 							}
 						}
@@ -1334,13 +1290,13 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 							true,
 							TypeId::ANY_TYPE,
 						);
-						crate::utilities::notify!(
-							"Here {:?} {:?} {:?} {:?}",
-							truthy_properties,
-							otherwise_properties,
-							print_type(*truthy_result, &checking_data.types, environment, true),
-							print_type(*otherwise_result, &checking_data.types, environment, true)
-						);
+						// crate::utilities::notify!(
+						// 	"Here {:?} {:?} {:?} {:?}",
+						// 	truthy_properties,
+						// 	otherwise_properties,
+						// 	print_type(*truthy_result, &checking_data.types, environment, true),
+						// 	print_type(*otherwise_result, &checking_data.types, environment, true)
+						// );
 
 						// Concatenate some types here if they all have the same keys
 						// && matches!(
@@ -1464,27 +1420,25 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					&checking_data.types,
 				);
 
+				// TODO only under lint=true?
 				if expecting != TypeId::ANY_TYPE
 					&& expecting != TypeId::OBJECT_TYPE
 					&& maybe_property_expecting.is_err()
 				{
-					checking_data.diagnostics_container.add_warning(
-						TypeCheckWarning::ExcessProperty {
-							position: position_with_source,
-							expected_type: TypeStringRepresentation::from_type_id(
-								expecting,
-								environment,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							excess_property_name: print_property_key(
-								&key,
-								&checking_data.types,
-								environment,
-								false,
-							),
+					let excess_property_name = print_property_key(
+						&key,
+						crate::types::printing::PrintingTypeInformation {
+							types: &checking_data.types,
+							information: environment,
 						},
+						false,
 					);
+					let warning = TypeCheckWarning::ExcessProperty {
+						position: position_with_source,
+						expected_type: expecting,
+						excess_property_name,
+					};
+					checking_data.add_warning(warning, environment);
 				}
 
 				// TODO needs improvement

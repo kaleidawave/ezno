@@ -4,9 +4,9 @@ use std::{
 };
 
 use checker::{
-	source_map::{Nullable, SourceId},
+	source_map::{MapFileStore, Nullable, SourceId, WithPathMap},
 	synthesis::EznoParser,
-	TypeCheckOptions,
+	Diagnostic, TypeCheckOptions,
 };
 
 mod specification {
@@ -29,12 +29,46 @@ const SIMPLE_DTS: Option<&str> = None;
 
 const IN_CI: bool = option_env!("CI").is_some();
 
+type Files = &'static [(&'static str, &'static str)];
+
+struct Resolver {
+	diagnostics: Vec<Diagnostic>,
+	files: Files,
+}
+
+impl checker::ReadFromFS for Resolver {
+	fn read_file(&self, path: &Path) -> Option<Vec<u8>> {
+		let definition_file_name: &str = if SIMPLE_DTS.is_some() {
+			"./checker/definitions/simple.d.ts"
+		} else {
+			checker::INTERNAL_DEFINITION_FILE_PATH
+		};
+		if path == Path::new(definition_file_name) {
+			Some(SIMPLE_DTS.unwrap().to_owned().into_bytes())
+		} else if self.files.len() == 1 {
+			Some(self.files[0].1.to_owned().into())
+		} else {
+			self.files
+				.iter()
+				.find_map(|(code_path, content)| {
+					(std::path::Path::new(code_path) == path)
+						.then_some(content.to_owned().to_owned())
+				})
+				.map(Into::into)
+		}
+	}
+
+	fn emit_diagnostic(&mut self, diagnostic: Diagnostic, _files: &MapFileStore<WithPathMap>) {
+		self.diagnostics.push(diagnostic)
+	}
+}
+
 /// Called by each test
 fn check_expected_diagnostics(
 	heading: &'static str,
 	line: usize,
 	// (Path, Content)
-	code: &[(&'static str, &'static str)],
+	files: Files,
 	expected_diagnostics: &[&'static str],
 	type_check_options: Option<TypeCheckOptions>,
 ) {
@@ -68,25 +102,12 @@ fn check_expected_diagnostics(
 	};
 	let type_definition_files = vec![definition_file_name.clone()];
 
-	let resolver = |path: &Path| -> Option<Vec<u8>> {
-		if path == definition_file_name.as_path() {
-			Some(SIMPLE_DTS.unwrap().to_owned().into_bytes())
-		} else if code.len() == 1 {
-			Some(code[0].1.to_owned().into())
-		} else {
-			code.iter()
-				.find_map(|(code_path, content)| {
-					(std::path::Path::new(code_path) == path)
-						.then_some(content.to_owned().to_owned())
-				})
-				.map(Into::into)
-		}
-	};
+	let resolver = Resolver { files, diagnostics: Vec::new() };
 
-	let result = checker::check_project::<_, EznoParser>(
+	let result = checker::check_project::<Resolver, EznoParser>(
 		vec![PathBuf::from("main.tsx")],
 		type_definition_files,
-		&resolver,
+		resolver,
 		type_check_options,
 		(),
 		None,
@@ -96,11 +117,13 @@ fn check_expected_diagnostics(
 	// panic::set_hook(old_panic_hook);
 
 	let diagnostics: Vec<String> = result
+		.resolver
 		.diagnostics
 		.into_iter()
 		.map(|diag| {
 			let (reason, pos) = diag.reason_and_position();
 			if let Some(pos) = pos {
+				// Temp catch
 				assert_ne!(pos.source, SourceId::NULL);
 				// TODO position
 				reason
@@ -114,6 +137,7 @@ fn check_expected_diagnostics(
 		eprintln!("::endgroup::");
 	}
 
+	// Could sort diagnostics here if order becomes an issue
 	if diagnostics != expected_diagnostics {
 		panic!(
 			"In '{heading}' on line {line}, found\n{}",

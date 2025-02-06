@@ -3,7 +3,7 @@
 use source_map::{Span, SpanWithSource};
 
 use crate::context::{environment::ContextLocation, AssignmentError, VariableRegisterArguments};
-use crate::diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation};
+use crate::diagnostics::{PropertyKeyRepresentation, TypeCheckError};
 use crate::subtyping::{type_is_subtype_object, SubTypeResult};
 use crate::{
 	types::{
@@ -106,24 +106,14 @@ pub fn check_variable_initialization<T: crate::ReadFromFS, A: crate::ASTImplemen
 	if let SubTypeResult::IsNotSubType(_matches) = type_is_subtype {
 		let error = crate::diagnostics::TypeCheckError::AssignmentError(
 			AssignmentError::DoesNotMeetConstraint {
-				variable_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
-					variable_declared_type,
-					environment,
-					&checking_data.types,
-					checking_data.options.debug_types,
-				),
+				variable_type: variable_declared_type,
 				variable_position: variable_declared_pos,
-				value_type: crate::diagnostics::TypeStringRepresentation::from_type_id(
-					expression_type,
-					environment,
-					&checking_data.types,
-					checking_data.options.debug_types,
-				),
+				value_type: expression_type,
 				value_position: expression_declared_pos,
 			},
 		);
 
-		checking_data.diagnostics_container.add_error(error);
+		checking_data.add_error(error, environment);
 		false
 	} else {
 		true
@@ -164,27 +154,29 @@ pub fn get_new_register_argument_under<T: crate::ReadFromFS, A: crate::ASTImplem
 			let possibles = if let PropertyKey::String(s) = under {
 				keys = get_property_key_names_on_a_single_type(
 					space,
-					&checking_data.types,
-					environment,
+					crate::types::printing::PrintingTypeInformation {
+						types: &checking_data.types,
+						information: environment,
+					},
 				);
 				let mut possibles =
-					crate::get_closest(keys.iter().map(AsRef::as_ref), s).unwrap_or(vec![]);
+					crate::utilities::get_closest(keys.iter().map(AsRef::as_ref), s)
+						.unwrap_or(vec![]);
 				possibles.sort_unstable();
 				possibles
 			} else {
 				Vec::new()
 			};
-			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
-				property: PropertyKeyRepresentation::new(under, environment, &checking_data.types),
-				on: TypeStringRepresentation::from_type_id(
-					space,
-					environment,
-					&checking_data.types,
-					false,
-				),
-				position,
-				possibles,
-			});
+			let property = PropertyKeyRepresentation::new(
+				under,
+				crate::types::printing::PrintingTypeInformation {
+					types: &checking_data.types,
+					information: environment,
+				},
+			);
+			let error =
+				TypeCheckError::PropertyDoesNotExist { property, on: space, position, possibles };
+			checking_data.add_error(error, environment);
 			TypeId::ERROR_TYPE
 		}
 	});

@@ -10,7 +10,8 @@ use parser::{
 
 use crate::{
 	context::{Context, ContextType, Scope, VariableRegisterArguments},
-	features::functions::{synthesise_function_default_value, ReturnType, SynthesisableFunction},
+	features::functions::{synthesise_function_default_value, ReturnType},
+	files::SynthesisableFunction,
 	types::{
 		functions::{
 			FunctionBehavior, FunctionType, SynthesisedParameter, SynthesisedParameters,
@@ -309,7 +310,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			}
 		} else {
 			crate::utilities::notify!("rest parameter should be array error");
-			// checking_data.diagnostics_container.add_error(
+			// checking_data.add_error(
 			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
 			// );
 			TypeId::ERROR_TYPE
@@ -326,9 +327,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				allow_reregistration: true,
 			},
 			rest_parameter.position.with_source(environment.get_source()),
-			&mut checking_data.diagnostics_container,
-			&mut checking_data.local_type_mappings,
-			checking_data.options.record_all_assignments_and_reads,
+			checking_data,
 		);
 
 		SynthesisedRestParameter {
@@ -463,7 +462,7 @@ fn synthesise_function_parameters<
 			}
 		} else {
 			crate::utilities::notify!("rest parameter should be array error");
-			// checking_data.diagnostics_container.add_error(
+			// checking_data.add_error(
 			// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
 			// );
 			TypeId::ERROR_TYPE
@@ -714,7 +713,7 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 							}
 						} else {
 							crate::utilities::notify!("rest parameter should be array error");
-							// checking_data.diagnostics_container.add_error(
+							// checking_data.add_error(
 							// 	TypeCheckError::RestParameterAnnotationShouldBeArrayType(rest_parameter.get),
 							// );
 							TypeId::ERROR_TYPE
@@ -751,17 +750,16 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 /// TODO WIP
 /// TODO also check generics?
 #[allow(clippy::too_many_arguments)]
-pub(super) fn build_overloaded_function(
+pub(super) fn build_overloaded_function<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	id: FunctionId,
 	behavior: FunctionBehavior,
 	overloads: Vec<crate::features::functions::PartialFunction>,
 	actual: crate::features::functions::PartialFunction,
 	environment: &Environment,
-	types: &mut crate::types::TypeStore,
-	diagnostics: &mut crate::DiagnosticsContainer,
+	checking_data: &mut crate::CheckingData<T, A>,
 	effect: crate::types::FunctionEffect,
 ) -> TypeId {
-	use crate::diagnostics::{TypeCheckError, TypeStringRepresentation};
+	use crate::diagnostics::TypeCheckError;
 	use crate::types::subtyping::{type_is_subtype, State, SubTypeResult};
 
 	// TODO bad
@@ -776,7 +774,7 @@ pub(super) fn build_overloaded_function(
 		effect,
 	};
 
-	let actual_func = types.new_hoisted_function_type(as_function);
+	let actual_func = checking_data.types.new_hoisted_function_type(as_function);
 
 	let mut result = actual_func;
 
@@ -785,35 +783,28 @@ pub(super) fn build_overloaded_function(
 			if let Some((base_type, position)) =
 				expected_parameters.get_parameter_type_at_index(idx)
 			{
+				let mut state = State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: None,
+					object_constraints: None,
+					others: Default::default(),
+				};
 				let res = type_is_subtype(
 					base_type,
 					op.ty,
-					&mut State {
-						already_checked: Default::default(),
-						mode: Default::default(),
-						contributions: None,
-						object_constraints: None,
-						others: Default::default(),
-					},
+					&mut state,
 					environment,
-					types,
+					&checking_data.types,
 				);
 				if let SubTypeResult::IsNotSubType(..) = res {
-					let parameter = TypeStringRepresentation::from_type_id(
-						base_type,
-						environment,
-						types,
-						false,
-					);
-					let overloaded_parameter =
-						TypeStringRepresentation::from_type_id(op.ty, environment, types, false);
-
-					diagnostics.add_error(TypeCheckError::IncompatibleOverloadParameter {
+					let error = TypeCheckError::IncompatibleOverloadParameter {
 						parameter_position: position,
 						overloaded_parameter_position: op.position,
-						parameter,
-						overloaded_parameter,
-					});
+						parameter: base_type,
+						overloaded_parameter: op.ty,
+					};
+					checking_data.add_error(error, environment);
 				}
 			} else {
 				// TODO warning
@@ -826,28 +817,23 @@ pub(super) fn build_overloaded_function(
 			Some(ReturnType(overload, overload_position)),
 		) = (actual.2, overload.2)
 		{
-			let res = type_is_subtype(
-				base,
-				overload,
-				&mut State {
-					already_checked: Default::default(),
-					mode: Default::default(),
-					contributions: None,
-					object_constraints: None,
-					others: Default::default(),
-				},
-				environment,
-				types,
-			);
+			let mut state = State {
+				already_checked: Default::default(),
+				mode: Default::default(),
+				contributions: None,
+				object_constraints: None,
+				others: Default::default(),
+			};
+			let res =
+				type_is_subtype(base, overload, &mut state, environment, &checking_data.types);
 			if let SubTypeResult::IsNotSubType(..) = res {
-				let overload =
-					TypeStringRepresentation::from_type_id(overload, environment, types, false);
-				diagnostics.add_error(TypeCheckError::IncompatibleOverloadReturnType {
+				let error = TypeCheckError::IncompatibleOverloadReturnType {
 					base_position,
 					overload_position,
-					base: TypeStringRepresentation::from_type_id(base, environment, types, false),
+					base,
 					overload,
-				});
+				};
+				checking_data.add_error(error, environment);
 			}
 		} else {
 			// TODO warning
@@ -865,10 +851,10 @@ pub(super) fn build_overloaded_function(
 		};
 
 		// TODO
-		let func = types.new_hoisted_function_type(as_function);
+		let func = checking_data.types.new_hoisted_function_type(as_function);
 
 		// IMPORTANT THAT RESULT IS ON THE RIGHT OF AND TYPE
-		result = types.new_and_type(func, result);
+		result = checking_data.types.new_and_type(func, result);
 	}
 
 	result

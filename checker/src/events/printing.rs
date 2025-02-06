@@ -6,7 +6,7 @@ use crate::{
 	events::CallingTiming,
 	types::{
 		calling::Callable,
-		printing::{print_property_key_into_buf, print_type_into_buf},
+		printing::{print_property_key_into_buf, print_type_into_buf, PrintingTypeInformation},
 		properties::PropertyKey,
 		GenericChain, TypeStore,
 	},
@@ -15,8 +15,7 @@ use crate::{
 pub fn debug_effects<C: InformationChain>(
 	buf: &mut String,
 	events: &[Event],
-	types: &TypeStore,
-	info: &C,
+	info: PrintingTypeInformation<'_, C>,
 	depth: u8,
 	debug: bool,
 ) {
@@ -37,7 +36,7 @@ pub fn debug_effects<C: InformationChain>(
 			}
 			Event::SetsVariable(variable, value, _) => {
 				write!(buf, "{variable:?}' = ").unwrap();
-				print_type_into_buf(*value, buf, &mut HashSet::new(), args, types, info, debug);
+				print_type_into_buf(*value, buf, &mut HashSet::new(), args, info, debug);
 			}
 			Event::Getter {
 				on,
@@ -48,35 +47,19 @@ pub fn debug_effects<C: InformationChain>(
 				mode: _,
 			} => {
 				buf.push_str("read ");
-				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
+				print_type_into_buf(*on, buf, &mut HashSet::new(), args, info, debug);
 				if let PropertyKey::String(_) = under {
 					buf.push('.');
 				}
-				print_property_key_into_buf(
-					under,
-					buf,
-					&mut HashSet::new(),
-					args,
-					types,
-					info,
-					debug,
-				);
+				print_property_key_into_buf(under, buf, &mut HashSet::new(), args, info, debug);
 				write!(buf, " into {reflects_dependency:?}").unwrap();
 			}
 			Event::Setter { on, under, new, publicity: _, position: _ } => {
-				print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
+				print_type_into_buf(*on, buf, &mut HashSet::new(), args, info, debug);
 				buf.push('[');
-				print_property_key_into_buf(
-					under,
-					buf,
-					&mut HashSet::default(),
-					args,
-					types,
-					info,
-					debug,
-				);
+				print_property_key_into_buf(under, buf, &mut HashSet::default(), args, info, debug);
 				buf.push_str("] = ");
-				print_type_into_buf(*new, buf, &mut HashSet::new(), args, types, info, debug);
+				print_type_into_buf(*new, buf, &mut HashSet::new(), args, info, debug);
 			}
 			Event::CallsType {
 				on,
@@ -94,7 +77,7 @@ pub fn debug_effects<C: InformationChain>(
 					}
 					Callable::Type(on) => {
 						let mut cycles = HashSet::new();
-						print_type_into_buf(*on, buf, &mut cycles, args, types, info, debug);
+						print_type_into_buf(*on, buf, &mut cycles, args, info, debug);
 					}
 				}
 				write!(buf, " into {reflects_dependency:?} ",).unwrap();
@@ -110,12 +93,12 @@ pub fn debug_effects<C: InformationChain>(
 				let otherwise_events = *otherwise_events as usize;
 
 				buf.push_str("if ");
-				print_type_into_buf(*condition, buf, &mut HashSet::new(), args, types, info, debug);
+				print_type_into_buf(*condition, buf, &mut HashSet::new(), args, info, debug);
 				buf.push_str(" then\n");
 
 				let events_if_true = &events[(idx + 1)..=(idx + truthy_events)];
 				if truthy_events != 0 {
-					debug_effects(buf, events_if_true, types, info, depth + 1, debug);
+					debug_effects(buf, events_if_true, info, depth + 1, debug);
 				}
 
 				if otherwise_events != 0 {
@@ -125,7 +108,7 @@ pub fn debug_effects<C: InformationChain>(
 						buf.push('\t');
 					}
 					buf.push_str("else\n");
-					debug_effects(buf, otherwise, types, info, depth + 1, debug);
+					debug_effects(buf, otherwise, info, depth + 1, debug);
 				}
 				idx += truthy_events + otherwise_events + 1;
 				continue;
@@ -136,13 +119,13 @@ pub fn debug_effects<C: InformationChain>(
 			Event::Iterate { iterate_over, initial: _, kind: _ } => {
 				buf.push_str("iterate\n");
 				let inner_events = &events[(idx + 1)..(idx + 1 + *iterate_over as usize)];
-				debug_effects(buf, inner_events, types, info, depth + 1, debug);
+				debug_effects(buf, inner_events, info, depth + 1, debug);
 				idx += *iterate_over as usize + 1;
 				continue;
 			}
 			Event::FinalEvent(FinalEvent::Throw { thrown, .. }) => {
 				buf.push_str("throw ");
-				print_type_into_buf(*thrown, buf, &mut HashSet::new(), args, types, info, debug);
+				print_type_into_buf(*thrown, buf, &mut HashSet::new(), args, info, debug);
 			}
 			Event::FinalEvent(FinalEvent::Break { .. }) => {
 				buf.push_str("break");
@@ -152,7 +135,7 @@ pub fn debug_effects<C: InformationChain>(
 			}
 			Event::FinalEvent(FinalEvent::Return { returned, position: _ }) => {
 				buf.push_str("return ");
-				print_type_into_buf(*returned, buf, &mut HashSet::new(), args, types, info, debug);
+				print_type_into_buf(*returned, buf, &mut HashSet::new(), args, info, debug);
 			}
 			Event::ExceptionTrap { .. } => todo!(),
 			Event::RegisterVariable { name, .. } => {
@@ -178,14 +161,13 @@ pub fn debug_effects<C: InformationChain>(
 					value,
 					position: _,
 				} => {
-					print_type_into_buf(*on, buf, &mut HashSet::new(), args, types, info, debug);
+					print_type_into_buf(*on, buf, &mut HashSet::new(), args, info, debug);
 					buf.push('[');
 					print_property_key_into_buf(
 						under,
 						buf,
 						&mut HashSet::default(),
 						args,
-						types,
 						info,
 						debug,
 					);

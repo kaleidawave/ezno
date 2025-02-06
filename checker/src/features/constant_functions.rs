@@ -4,16 +4,14 @@ use source_map::SpanWithSource;
 use crate::{
 	context::{
 		information::{InformationChain, ObjectProtectionState},
-		invocation::CheckThings,
+		invocation::CheckSyntax,
 	},
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
-		calling::{
-			Callable, CallingDiagnostics, FunctionCallingError, SynthesisedArgument, ThisValue,
-		},
+		calling::{Callable, FunctionCallingError, SynthesisedArgument, ThisValue},
 		logical::{Logical, LogicalOrValid},
-		printing::print_type,
+		printing::{print_type, PrintingTypeInformation},
 		properties::{AccessMode, Descriptor, PropertyKey, Publicity},
 		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
@@ -45,7 +43,7 @@ pub(crate) type CallSiteTypeArguments = TypeRestrictions;
 
 /// Computes a constant value
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn call_constant_function(
+pub(crate) fn call_constant_function<T: crate::ReadFromFS>(
 	id: &str,
 	this_argument: ThisValue,
 	call_site_type_args: Option<&CallSiteTypeArguments>,
@@ -54,7 +52,7 @@ pub(crate) fn call_constant_function(
 	// TODO `mut` for satisfies which needs checking. Also needed for freeze etc
 	environment: &mut Environment,
 	call_site: SpanWithSource,
-	diagnostics: &mut CallingDiagnostics,
+	diagnostics: &mut T,
 ) -> Result<ConstantOutput, ConstantFunctionError> {
 	// crate::utilities::notify!("Calling constant function {} with {:?}", name, arguments);
 	// TODO as parameter
@@ -147,11 +145,10 @@ pub(crate) fn call_constant_function(
 				print: bool,
 				debug: bool,
 				ty: TypeId,
-				types: &TypeStore,
-				environment: &Environment,
+				info: PrintingTypeInformation<'_, Environment>,
 			) -> String {
-				let print = print.then(|| print_type(ty, types, environment, false));
-				let debug = debug.then(|| print_type(ty, types, environment, true));
+				let print = print.then(|| print_type(ty, info, false));
+				let debug = debug.then(|| print_type(ty, info, true));
 
 				match (print, debug) {
 					(Some(print), Some(debug)) => format!("{print} / {debug}"),
@@ -166,7 +163,12 @@ pub(crate) fn call_constant_function(
 			if let Some(arg) = call_site_type_args {
 				let (arg, _pos) = arg.values().next().unwrap();
 				let mut buf = String::from("Types: ");
-				buf.push_str(&to_string(print, debug, *arg, types, environment));
+				buf.push_str(&to_string(
+					print,
+					debug,
+					*arg,
+					PrintingTypeInformation { types, information: environment },
+				));
 				Ok(ConstantOutput::Diagnostic(buf))
 			} else {
 				let mut buf = String::from("Types: ");
@@ -175,7 +177,12 @@ pub(crate) fn call_constant_function(
 					let arg = arg
 						.non_spread_type()
 						.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
-					buf.push_str(&to_string(print, debug, arg, types, environment));
+					buf.push_str(&to_string(
+						print,
+						debug,
+						arg,
+						PrintingTypeInformation { types, information: environment },
+					));
 					if not_at_end {
 						buf.push_str(", ");
 					}
@@ -197,7 +204,11 @@ pub(crate) fn call_constant_function(
 			if let Some(constraint) = constraint {
 				crate::utilities::notify!("constraint={:?}", constraint);
 				let debug = id == "ezno:debug_constraint";
-				let constraint_as_string = print_type(constraint, types, environment, debug);
+				let constraint_as_string = print_type(
+					constraint,
+					PrintingTypeInformation { types, information: environment },
+					debug,
+				);
 				Ok(ConstantOutput::Diagnostic(format!("Constraint is: {constraint_as_string}")))
 			} else {
 				Ok(ConstantOutput::Diagnostic("No associate constraint".to_owned()))
@@ -246,7 +257,8 @@ pub(crate) fn call_constant_function(
 					match effects {
 						FunctionEffect::SideEffects { events, .. } => {
 							let mut buf = String::from("Effects:\n");
-							debug_effects(&mut buf, events, types, environment, 0, true);
+							todo!();
+							// debug_effects(&mut buf, events, types, environment, 0, true);
 							buf
 						}
 						FunctionEffect::Constant { identifier, may_throw: _ } => {
@@ -409,7 +421,7 @@ pub(crate) fn call_constant_function(
 
 				let under = PropertyKey::from_type(property, types);
 				// TODO
-				let mut behavior = CheckThings { debug_types: true };
+				let mut behavior = CheckSyntax { debug_types: true };
 				let publicity = Publicity::Public;
 				let mode = AccessMode::Regular;
 
@@ -483,8 +495,10 @@ pub(crate) fn call_constant_function(
 								FunctionCallingError::NotConfigurable {
 									property: crate::diagnostics::PropertyKeyRepresentation::new(
 										&under,
-										environment,
-										types,
+										crate::types::printing::PrintingTypeInformation {
+											information: environment,
+											types,
+										},
 									),
 									// Should be set by parent
 									call_site,

@@ -8,7 +8,7 @@ use parser::{
 };
 
 use crate::{
-	context::invocation::CheckThings,
+	context::invocation::CheckSyntax,
 	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
@@ -100,7 +100,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		// 					);
 		// 				}
 		// 				SubTypeResult::IsNotSubType(_) => {
-		// 					checking_data.diagnostics_container.add_error(
+		// 					checking_data.add_error(
 		// 						TypeCheckError::InvalidJSXAttribute {
 		// 							attribute_name: match attribute {
 		// 								JSXAttribute::Static(name, _, _)
@@ -201,11 +201,12 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		if let Ok(ty) = environment.get_variable_handle_error(JSX_NAME, position, checking_data) {
 			ty.1
 		} else {
-			checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindVariable {
+			let error = TypeCheckError::CouldNotFindVariable {
 				variable: JSX_NAME,
 				possibles: Vec::default(),
 				position,
-			});
+			};
+			checking_data.add_error(error, environment);
 			TypeId::ERROR_TYPE
 		};
 
@@ -228,7 +229,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		args.push(SynthesisedArgument { value: child_nodes, position, spread: false });
 	}
 
-	let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+	let mut check_syntax = CheckSyntax { debug_types: checking_data.options.debug_types };
 
 	let calling_input = CallingInput {
 		called_with_new: CalledWithNew::None,
@@ -236,15 +237,15 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		max_inline: checking_data.options.max_inline_count,
 	};
 
-	let mut diagnostics = Default::default();
 	let result = Callable::Type(jsx_function).call(
 		args,
 		calling_input,
 		environment,
-		(&mut check_things, &mut diagnostics),
+		(&mut check_syntax, &mut checking_data.resolver),
 		&mut checking_data.types,
 	);
-	diagnostics.append_to(CallingContext::JSX, &mut checking_data.diagnostics_container);
+	todo!();
+	// diagnostics.append_to(CallingContext::JSX, &mut checking_data.diagnostics_container);
 
 	match result {
 		Ok(res) => {
@@ -322,7 +323,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 			}
 	// 			// 			SubTypeResult::IsNotSubType(_) => {
 	// 			// 				found_error = true;
-	// 			// 				checking_data.diagnostics_container.add_error(
+	// 			// 				checking_data.add_error(
 	// 			// 					TypeCheckError::InvalidJSXAttribute {
 	// 			// 						attribute_name: match attribute {
 	// 			// 							JSXAttribute::Static(name, _, _)
@@ -452,7 +453,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 			//     &expression.as_type(),
 			//     &mut GeneralEquality(&mut checking_data.memory),
 			// ) {
-			//     checking_data.diagnostics_container.add_error(
+			//     checking_data.add_error(
 			//         TypeCheckError::InvalidJSXInterpolatedValue {
 			//             interpolation_site: expression_position.clone().unwrap(),
 			//             expected: TypeStringRepresentation::from_type(

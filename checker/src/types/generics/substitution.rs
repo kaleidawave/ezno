@@ -225,8 +225,8 @@ pub(crate) fn substitute(
 				id
 			} else {
 				// Other root poly types cases handled by the early return
-				let on = crate::types::printing::print_type(id, types, environment, true);
-				crate::utilities::notify!("Could not find argument for {}", on);
+				// let on = crate::types::printing::print_type(id, &types, environment, true);
+				// crate::utilities::notify!("Could not find argument for {}", on);
 				TypeId::ERROR_TYPE
 			}
 		}
@@ -251,11 +251,12 @@ pub(crate) fn substitute(
 				) {
 					Ok(result) => result,
 					Err(()) => {
-						unreachable!(
-							"Cannot {:?} {operator:?} {:?} (restriction or something failed)",
-							crate::types::printing::print_type(lhs, types, environment, true),
-							crate::types::printing::print_type(rhs, types, environment, true)
-						);
+						unreachable!("restriction failed")
+						// unreachable!(
+						// 	"Cannot {:?} {operator:?} {:?} (restriction or something failed)",
+						// 	crate::types::printing::print_type(lhs, types, environment, true),
+						// 	crate::types::printing::print_type(rhs, types, environment, true)
+						// );
 					}
 				}
 			}
@@ -434,8 +435,9 @@ pub(crate) fn substitute(
 				}
 			}
 			Constructor::Image { .. } => {
-				let on = crate::types::printing::print_type(id, types, environment, true);
-				todo!("Constructor::Image {on} should be covered by events");
+				unreachable!("should be covered by events")
+				// let on = crate::types::printing::print_type(id, types, environment, true);
+				// todo!("Constructor::Image {on} should be covered by events");
 				// id
 
 				// let on = substitute(on, arguments, environment);
@@ -525,15 +527,15 @@ pub(crate) fn substitute(
 
 				// Just do boolean values here
 				{
-					use crate::types::printing::print_type;
+					// use crate::types::printing::print_type;
 
-					crate::utilities::notify!(
-						"Subtyping {} (prev {}) :>= {} ({:?})",
-						print_type(item, types, environment, true),
-						print_type(before, types, environment, true),
-						print_type(extends, types, environment, true),
-						&arguments.arguments
-					);
+					// crate::utilities::notify!(
+					// 	"Subtyping {} (prev {}) :>= {} ({:?})",
+					// 	print_type(item, types, environment, true),
+					// 	print_type(before, types, environment, true),
+					// 	print_type(extends, types, environment, true),
+					// 	&arguments.arguments
+					// );
 				}
 
 				let mut state = crate::subtyping::State {

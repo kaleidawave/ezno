@@ -1048,10 +1048,10 @@ pub(crate) fn type_is_subtype_with_generics(
 					.get_structure_restriction(TypeId::T_TYPE)
 					.expect("array T argument not set ?");
 
-				crate::utilities::notify!(
-					"Array type is {}",
-					print_type(backing_type, types, information, false)
-				);
+				// crate::utilities::notify!(
+				// 	"Array type is {}",
+				// 	print_type(backing_type, types, information, false)
+				// );
 
 				// TODO temp fix for general parameters
 				if let Type::Object(_) = subtype {
@@ -1670,15 +1670,15 @@ fn subtype_function(
 			);
 
 			if let err @ SubTypeResult::IsNotSubType(_) = result {
-				let lhs = print_type(right_param_ty, types, information, true);
-				let rhs = print_type(lhs_param.ty, types, information, true);
-				crate::utilities::notify!(
-					"Parameter invalid rhs ({:?} {:?}) <- lhs ({:?} {:?})",
-					rhs,
-					subtype_arguments,
-					lhs,
-					base_type_arguments
-				);
+				// let lhs = print_type(right_param_ty, types, information, true);
+				// let rhs = print_type(lhs_param.ty, types, information, true);
+				// crate::utilities::notify!(
+				// 	"Parameter invalid rhs ({:?} {:?}) <- lhs ({:?} {:?})",
+				// 	rhs,
+				// 	subtype_arguments,
+				// 	lhs,
+				// 	base_type_arguments
+				// );
 				// TODO don't short circuit
 				return err;
 			}

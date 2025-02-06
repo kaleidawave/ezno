@@ -1,10 +1,7 @@
-use std::{collections::HashMap, mem, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
 use checker::TypeCheckOptions;
-use parser::{
-	source_map::{SourceId, SourceMap, WithPathMap},
-	ToStringOptions,
-};
+use parser::source_map::{SourceId, SourceMap, WithPathMap};
 
 #[cfg_attr(target_family = "wasm", derive(serde::Serialize, tsify::Tsify))]
 pub struct Output {
@@ -14,12 +11,12 @@ pub struct Output {
 	pub mappings: SourceMap,
 }
 
-pub struct BuildOutput {
+pub struct BuildOutput<T> {
 	pub artifacts: Vec<Output>,
-	pub check_output: checker::CheckOutput<checker::synthesis::EznoParser>,
+	pub check_output: checker::CheckOutput<T, checker::synthesis::EznoParser>,
 }
 
-pub struct FailedBuildOutput(pub checker::CheckOutput<checker::synthesis::EznoParser>);
+pub struct FailedBuildOutput<T>(pub checker::CheckOutput<T, checker::synthesis::EznoParser>);
 
 #[cfg_attr(target_family = "wasm", derive(serde::Deserialize, tsify::Tsify), serde(default))]
 pub struct BuildConfig {
@@ -70,11 +67,11 @@ impl CheckingOutputWithoutDiagnostics {
 	}
 }
 
-pub fn build<T: crate::ReadFromFS>(
+pub fn build(
 	entry_points: Vec<PathBuf>,
-	fs_resolver: &T,
+	handler: crate::FSFunction,
 	config: BuildConfig,
-) -> Result<BuildOutput, FailedBuildOutput> {
+) -> Result<BuildOutput<crate::FSFunction>, FailedBuildOutput<crate::FSFunction>> {
 	// TODO parse options + non_standard_library & non_standard_syntax
 	let type_check_options = TypeCheckOptions {
 		store_type_mappings: true,
@@ -84,97 +81,100 @@ pub fn build<T: crate::ReadFromFS>(
 
 	let result = crate::check(
 		entry_points,
-		fs_resolver,
+		handler,
 		config.type_definition_module.as_deref(),
 		type_check_options,
 	);
 
-	if !result.diagnostics.contains_error() {
-		let checker::CheckOutput {
-			diagnostics,
-			module_contents,
-			chronometer,
-			types,
-			modules,
-			top_level_information,
-		} = result;
-		let mut data = CheckingOutputWithoutDiagnostics { module_contents, modules, types };
+	todo!()
 
-		// TODO For all modules
-		let keys = data.modules.keys().cloned().collect::<Vec<_>>();
+	// if !result.diagnostics.contains_error() {
+	// 	let checker::CheckOutput {
+	// 		diagnostics,
+	// 		module_contents,
+	// 		chronometer,
+	// 		types,
+	// 		modules,
+	// 		top_level_information,
+	// 		resolver
+	// 	} = result;
+	// 	let mut data = CheckingOutputWithoutDiagnostics { module_contents, modules, types };
 
-		let null_module = parser::Module {
-			hashbang_comment: None,
-			items: Default::default(),
-			span: parser::source_map::Nullable::NULL,
-		};
+	// 	// TODO For all modules
+	// 	let keys = data.modules.keys().cloned().collect::<Vec<_>>();
 
-		let mut artifacts = Vec::new();
-		let mut transformers = config.other_transformers.unwrap_or_default();
+	// 	let null_module = parser::Module {
+	// 		hashbang_comment: None,
+	// 		items: Default::default(),
+	// 		span: parser::source_map::Nullable::NULL,
+	// 	};
 
-		if config.tree_shake {
-			transformers
-				.expression_visitors_mut
-				.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
+	// 	let mut artifacts = Vec::new();
+	// 	let mut transformers = config.other_transformers.unwrap_or_default();
 
-			transformers
-				.statement_visitors_mut
-				.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
-		}
+	// 	if config.tree_shake {
+	// 		transformers
+	// 			.expression_visitors_mut
+	// 			.push(Box::new(crate::transformers::optimisations::ExpressionOptimiser));
 
-		for source in keys {
-			// Remove the module
-			let mut module = mem::replace(
-				&mut data.modules.get_mut(&source).unwrap().content,
-				null_module.clone(),
-			);
+	// 		transformers
+	// 			.statement_visitors_mut
+	// 			.push(Box::new(crate::transformers::optimisations::StatementOptimiser));
+	// 	}
 
-			// TODO bundle using main_module.imports
+	// 	for source in keys {
+	// 		// Remove the module
+	// 		let mut module = mem::replace(
+	// 			&mut data.modules.get_mut(&source).unwrap().content,
+	// 			null_module.clone(),
+	// 		);
 
-			module.visit_mut::<CheckingOutputWithoutDiagnostics>(
-				&mut transformers,
-				&mut data,
-				&parser::visiting::VisitOptions::default(),
-				source,
-			);
+	// 		// TODO bundle using main_module.imports
 
-			let mut to_string_options = if config.strip_whitespace {
-				ToStringOptions::minified()
-			} else {
-				ToStringOptions::default()
-			};
+	// 		module.visit_mut::<CheckingOutputWithoutDiagnostics>(
+	// 			&mut transformers,
+	// 			&mut data,
+	// 			&parser::visiting::VisitOptions::default(),
+	// 			source,
+	// 		);
 
-			// TODO temp fix
-			if config.lsp_mode {
-				to_string_options.expect_markers = true;
-			}
+	// 		let mut to_string_options = if config.strip_whitespace {
+	// 			ToStringOptions::minified()
+	// 		} else {
+	// 			ToStringOptions::default()
+	// 		};
 
-			// TODO source map creation not neccessary
+	// 		// TODO temp fix
+	// 		if config.lsp_mode {
+	// 			to_string_options.expect_markers = true;
+	// 		}
 
-			let (content, mappings) =
-				module.to_string_with_source_map(&to_string_options, source, &data.module_contents);
+	// 		// TODO source map creation not neccessary
 
-			artifacts.push(Output {
-				output_path: config.output_path.to_path_buf(),
-				content,
-				mappings: mappings.unwrap(),
-			});
-		}
+	// 		let (content, mappings) =
+	// 			module.to_string_with_source_map(&to_string_options, source, &data.module_contents);
 
-		// Reconstruct
-		let check_output = checker::CheckOutput {
-			module_contents: data.module_contents,
-			modules: data.modules,
-			types: data.types,
-			diagnostics,
-			chronometer,
-			top_level_information,
-		};
+	// 		artifacts.push(Output {
+	// 			output_path: config.output_path.to_path_buf(),
+	// 			content,
+	// 			mappings: mappings.unwrap(),
+	// 		});
+	// 	}
 
-		Ok(BuildOutput { artifacts, check_output })
-	} else {
-		Err(FailedBuildOutput(result))
-	}
+	// 	// Reconstruct
+	// 	let check_output = checker::CheckOutput {
+	// 		module_contents: data.module_contents,
+	// 		modules: data.modules,
+	// 		types: data.types,
+	// 		diagnostics,
+	// 		chronometer,
+	// 		top_level_information,
+	// 	};
+
+	// 	Ok(BuildOutput { artifacts, check_output })
+	// } else {
+	// 	Err(FailedBuildOutput(result))
+	// }
 }
 
 #[cfg(test)]

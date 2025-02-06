@@ -423,30 +423,30 @@ pub fn narrow_based_on_expression(
 							options,
 						);
 
-						crate::utilities::notify!(
-							"lhs={}, rhs={}",
-							crate::types::printing::print_type(lhs, types, information, true),
-							crate::types::printing::print_type(rhs, types, information, true)
-						);
+						// crate::utilities::notify!(
+						// 	"lhs={}, rhs={}",
+						// 	crate::types::printing::print_type(lhs, types, information, true),
+						// 	crate::types::printing::print_type(rhs, types, information, true)
+						// );
 
 						for (on, lhs_request) in lhs_requests {
 							if let Some(rhs_request) = rhs_requests.get(&on) {
 								let rhs_request = *rhs_request;
-								crate::utilities::notify!(
-									"merging lhs={}, rhs={}",
-									crate::types::printing::print_type(
-										lhs_request,
-										types,
-										information,
-										true
-									),
-									crate::types::printing::print_type(
-										rhs_request,
-										types,
-										information,
-										true
-									)
-								);
+								// crate::utilities::notify!(
+								// 	"merging lhs={}, rhs={}",
+								// 	crate::types::printing::print_type(
+								// 		lhs_request,
+								// 		types,
+								// 		information,
+								// 		true
+								// 	),
+								// 	crate::types::printing::print_type(
+								// 		rhs_request,
+								// 		types,
+								// 		information,
+								// 		true
+								// 	)
+								// );
 								let (lhs_request, rhs_request) = (
 									crate::types::get_constraint(lhs_request, types)
 										.unwrap_or(lhs_request),

@@ -1,12 +1,12 @@
 use checker::CheckOutput;
 use std::path::{Path, PathBuf};
 
-pub fn check<T: crate::ReadFromFS>(
+pub fn check(
 	entry_points: Vec<PathBuf>,
-	read_from_filesystem: &T,
+	read_from_filesystem: crate::FSFunction,
 	type_definition_module: Option<&Path>,
 	type_check_options: checker::TypeCheckOptions,
-) -> CheckOutput<checker::synthesis::EznoParser> {
+) -> CheckOutput<crate::FSFunction, checker::synthesis::EznoParser> {
 	let definitions = if let Some(tdm) = type_definition_module {
 		vec![tdm.into()]
 	} else {

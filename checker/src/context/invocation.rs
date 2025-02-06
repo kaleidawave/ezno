@@ -9,8 +9,9 @@ use crate::{
 };
 
 /// For anything that might involve a call, including gets, sets and actual calls
+/// TODO may want to combine this trait with the handler so that can do everything + emit
 pub trait CallCheckingBehavior {
-	// TODO
+	/// TODO a performance improvement as can skip (already checked values when recalling functions)
 	const CHECK_PARAMETERS: bool;
 
 	fn get_latest_info<'a>(
@@ -32,11 +33,11 @@ pub trait CallCheckingBehavior {
 }
 
 /// Top level. Evaluating directly, rather than deep in event application
-pub struct CheckThings {
+pub struct CheckSyntax {
 	pub debug_types: bool,
 }
 
-impl CallCheckingBehavior for CheckThings {
+impl CallCheckingBehavior for CheckSyntax {
 	const CHECK_PARAMETERS: bool = true;
 
 	fn get_latest_info<'a>(
@@ -183,29 +184,31 @@ impl InvocationContext {
 
 	/// TODO maybe take result -> R
 	/// TODO move to trait
-	pub(crate) fn evaluate_conditionally<I, T, R>(
+	pub(crate) fn evaluate_conditionally<I, T, R, H: crate::ReadFromFS>(
 		&mut self,
 		top_environment: &mut Environment,
 		types: &mut TypeStore,
 		(condition, condition_position): (TypeId, SpanWithSource),
 		(input_left, input_right): (T, T),
+		handler: &mut H,
 		mut data: I,
 		cb: impl for<'a> Fn(
 			&'a mut Environment,
 			&'a mut TypeStore,
 			&'a mut InvocationContext,
+			&'a mut H,
 			T,
 			&'a mut I,
 		) -> R,
 	) -> (I, (R, R)) {
 		let (truthy_info, truthy_result) =
 			self.new_conditional_target(|target: &mut InvocationContext| {
-				cb(top_environment, types, target, input_left, &mut data)
+				cb(top_environment, types, target, handler, input_left, &mut data)
 			});
 
 		let (otherwise_info, otherwise_result) =
 			self.new_conditional_target(|target: &mut InvocationContext| {
-				cb(top_environment, types, target, input_right, &mut data)
+				cb(top_environment, types, target, handler, input_right, &mut data)
 			});
 
 		// TODO all things that are

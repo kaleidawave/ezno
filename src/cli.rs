@@ -3,8 +3,8 @@ use std::{env, fs, path::PathBuf, process::ExitCode, time::Duration};
 use crate::{
 	build::{build, BuildConfig, BuildOutput, FailedBuildOutput},
 	check::check,
-	reporting::report_diagnostics_to_cli,
-	utilities::{print_to_cli, MaxDiagnostics},
+	reporting::MaxDiagnostics,
+	utilities::print_to_cli,
 };
 use argh::FromArgs;
 use checker::{CheckOutput, TypeCheckOptions};
@@ -82,7 +82,7 @@ pub(crate) struct BuildArguments {
 	#[argh(switch)]
 	pub tree_shake: bool,
 	/// maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)
-	#[argh(option, default = "MaxDiagnostics::default()")]
+	#[argh(option)]
 	pub max_diagnostics: MaxDiagnostics,
 
 	#[cfg(not(target_family = "wasm"))]
@@ -156,45 +156,44 @@ pub(crate) struct UpgradeArguments {}
 // 	watch: bool,
 // }
 
-fn run_checker<T: crate::ReadFromFS>(
+fn run_checker(
 	entry_points: Vec<PathBuf>,
-	read_file: &T,
+	handler: crate::FSFunction,
 	timings: bool,
 	definition_file: Option<PathBuf>,
 	max_diagnostics: MaxDiagnostics,
 	type_check_options: TypeCheckOptions,
 	compact_diagnostics: bool,
 ) -> ExitCode {
-	let result = check(entry_points, read_file, definition_file.as_deref(), type_check_options);
+	let result = check(entry_points, handler, definition_file.as_deref(), type_check_options);
 
-	let CheckOutput { diagnostics, module_contents, chronometer, types, .. } = result;
+	let CheckOutput { chronometer, types, yardstick, .. } = result;
 
-	let diagnostics_count = diagnostics.count();
 	let current = timings.then(std::time::Instant::now);
 
-	let result = if diagnostics.contains_error() {
-		if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
-			let count = diagnostics.into_iter().count();
-			print_to_cli(format_args!("Found {count} type errors and warnings",))
-		} else {
-			report_diagnostics_to_cli(
-				diagnostics,
-				&module_contents,
-				compact_diagnostics,
-				max_diagnostics,
-			)
-			.unwrap();
-		}
+	let result = if yardstick.errors > 0 {
+		// if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
+		// 	// let count = diagnostics.into_iter().count();
+		// 	print_to_cli(format_args!("Found {count} type errors and warnings", count=yardstick.errors))
+		// } else {
+		// 	report_diagnostics_to_cli(
+		// 		diagnostics,
+		// 		&module_contents,
+		// 		compact_diagnostics,
+		// 		max_diagnostics,
+		// 	)
+		// 	.unwrap();
+		// }
 		ExitCode::FAILURE
 	} else {
-		// May be warnings or information here
-		report_diagnostics_to_cli(
-			diagnostics,
-			&module_contents,
-			compact_diagnostics,
-			max_diagnostics,
-		)
-		.unwrap();
+		// // May be warnings or information here
+		// report_diagnostics_to_cli(
+		// 	diagnostics,
+		// 	&module_contents,
+		// 	compact_diagnostics,
+		// 	max_diagnostics,
+		// )
+		// .unwrap();
 		print_to_cli(format_args!("No type errors found 🎉"));
 		ExitCode::SUCCESS
 	};
@@ -203,9 +202,9 @@ fn run_checker<T: crate::ReadFromFS>(
 	if timings {
 		let reporting = current.unwrap().elapsed();
 		eprintln!("---\n");
-		eprintln!("Diagnostics:\t{}", diagnostics_count);
+		eprintln!("Diagnostics:\t{}", yardstick.diagnostics_count());
 		eprintln!("Types:      \t{}", types.count_of_types());
-		eprintln!("Lines:      \t{}", chronometer.lines);
+		eprintln!("Lines:      \t{}", yardstick.lines);
 		eprintln!("Cache read: \t{:?}", chronometer.cached);
 		eprintln!("FS read:    \t{:?}", chronometer.fs);
 		eprintln!("Parsed in:  \t{:?}", chronometer.parse);
@@ -216,11 +215,7 @@ fn run_checker<T: crate::ReadFromFS>(
 	result
 }
 
-pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
-	cli_arguments: &[&str],
-	read_file: T,
-	write_file: U,
-) -> ExitCode {
+pub fn run_cli(cli_arguments: &[&str], handler: crate::FSFunction) -> ExitCode {
 	let command = match FromArgs::from_args(&["ezno-cli"], cli_arguments) {
 		Ok(TopLevel { nested }) => nested,
 		Err(err) => {
@@ -280,9 +275,10 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 						debouncer.watch(e, notify::RecursiveMode::Recursive).unwrap();
 					}
 
-					let _ = run_checker(
+					// TODO want to reuse things here
+					let out = run_checker(
 						entry_points.clone(),
-						&read_file,
+						handler,
 						timings,
 						definition_file.clone(),
 						max_diagnostics,
@@ -290,29 +286,33 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 						compact_diagnostics,
 					);
 
-					for res in rx {
-						match res {
-							Ok(_e) => {
-								let _out = run_checker(
-									entry_points.clone(),
-									&read_file,
-									timings,
-									definition_file.clone(),
-									max_diagnostics,
-									type_check_options.clone(),
-									compact_diagnostics,
-								);
-							}
-							Err(error) => eprintln!("Error: {error:?}"),
-						}
-					}
+					todo!();
+
+					// let mut handler = out.clone();
+
+					// for res in rx {
+					// 	match res {
+					// 		Ok(_e) => {
+					// 			let _out = run_checker(
+					// 				entry_points.clone(),
+					// 				handler,
+					// 				timings,
+					// 				definition_file.clone(),
+					// 				max_diagnostics,
+					// 				type_check_options.clone(),
+					// 				compact_diagnostics,
+					// 			);
+					// 		}
+					// 		Err(error) => eprintln!("Error: {error:?}"),
+					// 	}
+					// }
 
 					unreachable!()
 				}
 			} else {
 				run_checker(
 					entry_points,
-					&read_file,
+					handler,
 					timings,
 					definition_file,
 					max_diagnostics,
@@ -348,7 +348,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 				lsp_mode: false,
 			};
 
-			let output = build(entry_points, &read_file, config);
+			let output = build(entry_points, handler, config);
 
 			#[cfg(not(target_family = "wasm"))]
 			if let Some(start) = start {
@@ -360,29 +360,29 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			match output {
 				Ok(BuildOutput {
 					artifacts,
-					check_output: CheckOutput { module_contents, diagnostics, .. },
+					check_output: CheckOutput { module_contents, .. },
 				}) => {
-					for output in artifacts {
-						write_file(output.output_path.as_path(), output.content);
-					}
-					report_diagnostics_to_cli(
-						diagnostics,
-						&module_contents,
-						compact_diagnostics,
-						build_config.max_diagnostics,
-					)
-					.unwrap();
+					// for output in artifacts {
+					// 	write_file(output.output_path.as_path(), output.content);
+					// }
+					// report_diagnostics_to_cli(
+					// 	diagnostics,
+					// 	&module_contents,
+					// 	compact_diagnostics,
+					// 	build_config.max_diagnostics,
+					// )
+					// .unwrap();
 					print_to_cli(format_args!("Project built successfully 🎉",));
 					ExitCode::SUCCESS
 				}
-				Err(FailedBuildOutput(CheckOutput { module_contents, diagnostics, .. })) => {
-					report_diagnostics_to_cli(
-						diagnostics,
-						&module_contents,
-						compact_diagnostics,
-						build_config.max_diagnostics,
-					)
-					.unwrap();
+				Err(FailedBuildOutput(CheckOutput { module_contents, .. })) => {
+					// report_diagnostics_to_cli(
+					// 	diagnostics,
+					// 	&module_contents,
+					// 	compact_diagnostics,
+					// 	build_config.max_diagnostics,
+					// )
+					// .unwrap();
 					ExitCode::FAILURE
 				}
 			}
@@ -431,13 +431,13 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					}
 				}
 				Err(err) => {
-					report_diagnostics_to_cli(
-						std::iter::once((err, source_id).into()),
-						&files,
-						false,
-						MaxDiagnostics::All,
-					)
-					.unwrap();
+					// report_diagnostics_to_cli(
+					// 	std::iter::once((err, source_id).into()),
+					// 	&files,
+					// 	false,
+					// 	MaxDiagnostics::All,
+					// )
+					// .unwrap();
 					ExitCode::FAILURE
 				}
 			}
@@ -456,7 +456,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			}
 		},
 		CompilerSubCommand::ASTExplorer(mut repl) => {
-			repl.run(&read_file);
+			repl.run(handler);
 			// TODO not always true
 			ExitCode::SUCCESS
 		}
