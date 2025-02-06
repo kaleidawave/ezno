@@ -28,7 +28,7 @@ use crate::{
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	types::{
-		get_constraint, helpers,
+		self,
 		logical::{Logical, LogicalOrValid},
 		properties, PartiallyAppliedGenerics, TypeStore,
 	},
@@ -63,14 +63,14 @@ pub(crate) fn string_name_to_type(name: &str) -> Option<TypeId> {
 
 /// Returns result of `typeof *on*`
 pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
-	if let Some(constraint) = get_constraint(on, types) {
+	if let Some(constraint) = types::get_constraint(on, types) {
 		if let Some(str_name) = type_to_js_string_name(constraint) {
 			// TODO make them interal types under `TypeId::*` as to not recreate types
 			types.new_constant_type(crate::Constant::String(str_name.to_owned()))
 		} else {
 			// TODO if always object or function then could get more accurate tag
-			types.register_type(crate::Type::Constructor(crate::types::Constructor::TypeOperator(
-				crate::types::TypeOperator::TypeOf(on),
+			types.register_type(crate::Type::Constructor(types::Constructor::TypeOperator(
+				types::TypeOperator::TypeOf(on),
 			)))
 		}
 	} else {
@@ -78,7 +78,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 		if let crate::Type::Constant(cst) = ty {
 			// TODO backing type
 			let name = match cst {
-				crate::Constant::NaN | crate::Constant::Number(_) => "number",
+				crate::Constant::Number(_) => "number",
 				crate::Constant::String(_) => "string",
 				crate::Constant::Boolean(_) => "boolean",
 				crate::Constant::Symbol { key: _ } => "symbol",
@@ -122,7 +122,7 @@ pub fn instance_of_operator(
 ) -> TypeId {
 	let rhs_prototype =
 		if let Type::SpecialObject(SpecialObject::Function(func, _)) = types.get_type_by_id(rhs) {
-			use crate::types::functions::FunctionBehavior;
+			use types::functions::FunctionBehavior;
 
 			let func = types.get_function_from_id(*func);
 			match &func.behavior {
@@ -140,6 +140,7 @@ pub fn instance_of_operator(
 	instance_of_operator_rhs_prototype(lhs, rhs_prototype, information, types)
 }
 
+/// TODO Lhs conditional
 pub(crate) fn instance_of_operator_rhs_prototype(
 	lhs: TypeId,
 	rhs_prototype: TypeId,
@@ -147,11 +148,18 @@ pub(crate) fn instance_of_operator_rhs_prototype(
 	types: &mut TypeStore,
 ) -> TypeId {
 	// TODO frozen prototypes
-	if let Some(constraint) = get_constraint(lhs, types) {
-		if let Type::PartiallyAppliedGenerics(crate::types::PartiallyAppliedGenerics {
+	crate::utilities::notify!("{:?}", lhs);
+	if let Some(constraint) = types::get_constraint(lhs, types) {
+		crate::utilities::notify!("constraint {:?}", lhs);
+		let raw_constraint = types::helpers::get_aliased(constraint, types).unwrap_or(constraint);
+		if raw_constraint == rhs_prototype {
+			return TypeId::TRUE;
+		}
+		let raw_constraint_ty = types.get_type_by_id(raw_constraint);
+		if let Type::PartiallyAppliedGenerics(types::PartiallyAppliedGenerics {
 			on,
 			arguments: _,
-		}) = types.get_type_by_id(constraint)
+		}) = raw_constraint_ty
 		{
 			if *on == rhs_prototype {
 				return TypeId::TRUE;
@@ -159,13 +167,19 @@ pub(crate) fn instance_of_operator_rhs_prototype(
 			crate::utilities::notify!("Here?");
 		}
 
-		types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
-			crate::types::TypeOperator::IsPrototype { lhs, rhs_prototype },
+		types.register_type(Type::Constructor(types::Constructor::TypeOperator(
+			types::TypeOperator::HasPrototype { lhs, rhs_prototype },
 		)))
-	} else if extends_prototype(lhs, rhs_prototype, information) {
-		TypeId::TRUE
+	} else if let Type::Object(types::ObjectNature::RealDeal) = types.get_type_by_id(lhs) {
+		let extends = extends_prototype(lhs, rhs_prototype, information);
+		if extends {
+			TypeId::TRUE
+		} else {
+			TypeId::FALSE
+		}
 	} else {
-		TypeId::FALSE
+		crate::utilities::notify!("TODO might be missed case");
+		TypeId::OPEN_BOOLEAN_TYPE
 	}
 }
 
@@ -176,14 +190,17 @@ pub fn await_expression<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	checking_data: &mut CheckingData<T, A>,
 	position: SpanWithSource,
 ) -> TypeId {
-	if let Some(constraint) = get_constraint(on, &checking_data.types) {
+	let types = &checking_data.types;
+	if let Some(constraint) = types::get_constraint(on, types) {
+		let raw_constraint = types::helpers::get_aliased(constraint, types).unwrap_or(constraint);
+
 		// TODO mark type as awaited
-		let inner_type = get_promise_value(constraint, &checking_data.types);
+		let inner_type = get_promise_value(raw_constraint, types);
 		if let Some(result) = inner_type {
 			crate::utilities::notify!("Queue await effect");
 			checking_data
 				.types
-				.register_type(Type::Constructor(crate::types::Constructor::Awaited { on, result }))
+				.register_type(Type::Constructor(types::Constructor::Awaited { on, result }))
 		} else {
 			crate::utilities::notify!(
 				"Await on {:?}, got {:?}",
@@ -227,9 +244,8 @@ pub(crate) fn create_closed_over_references(
 			.map(|reference| {
 				match reference {
 					RootReference::Variable(on) => {
-						let c = None::<
-							&crate::types::generics::substitution::SubstitutionArguments<'static>,
-						>;
+						let c =
+							None::<&types::generics::substitution::SubstitutionArguments<'static>>;
 						let value = get_value_of_variable(current_environment, *on, c, types);
 
 						let ty = if let Some(value) = value {
@@ -278,7 +294,7 @@ pub fn delete_operator(
 
 	{
 		let constraint =
-			environment.get_object_constraint(rhs).or_else(|| get_constraint(rhs, types));
+			environment.get_object_constraint(rhs).or_else(|| types::get_constraint(rhs, types));
 
 		if let Some(constraint) = constraint {
 			let constraint_type = types.get_type_by_id(constraint);
@@ -361,7 +377,7 @@ pub fn delete_operator(
 
 		// Cannot `delete` from non-configurable
 		if let Ok(LogicalOrValid::Logical(Logical::Pure(value))) =
-			crate::types::properties::get_property_unbound(
+			types::properties::get_property_unbound(
 				(rhs, None),
 				(publicity, &under, None),
 				false,
@@ -384,9 +400,9 @@ pub fn delete_operator(
 	// );
 
 	// TODO not great
-	let dependency = if get_constraint(rhs, types).is_some() {
-		Some(types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
-			crate::types::TypeOperator::HasProperty(rhs, under.into_owned()),
+	let dependency = if types::get_constraint(rhs, types).is_some() {
+		Some(types.register_type(Type::Constructor(types::Constructor::TypeOperator(
+			types::TypeOperator::HasProperty(rhs, under.into_owned()),
 		))))
 	} else {
 		None
@@ -404,11 +420,10 @@ pub fn in_operator(
 	types: &mut TypeStore,
 ) -> TypeId {
 	// TODO if any
-	if get_constraint(rhs, types).is_some() {
-		let dependency =
-			types.register_type(Type::Constructor(crate::types::Constructor::TypeOperator(
-				crate::types::TypeOperator::HasProperty(rhs, under.into_owned()),
-			)));
+	if types::get_constraint(rhs, types).is_some() {
+		let dependency = types.register_type(Type::Constructor(types::Constructor::TypeOperator(
+			types::TypeOperator::HasProperty(rhs, under.into_owned()),
+		)));
 
 		environment.info.events.push(crate::events::Event::Miscellaneous(
 			crate::events::MiscellaneousEvents::Has {
@@ -431,7 +446,7 @@ pub(crate) fn has_property(
 	information: &impl InformationChain,
 	types: &mut TypeStore,
 ) -> TypeId {
-	if let Some((condition, truthy, falsy)) = helpers::get_type_as_conditional(rhs, types) {
+	if let Some((condition, truthy, falsy)) = types::helpers::get_type_as_conditional(rhs, types) {
 		let truthy_result = has_property((publicity, key), truthy, information, types);
 		let otherwise_result = has_property((publicity, key), falsy, information, types);
 		types.new_conditional_type(condition, truthy_result, otherwise_result)
@@ -494,7 +509,7 @@ pub(crate) fn has_property(
 			}
 			Type::RootPolyType(_) | Type::Constructor(_) => {
 				crate::utilities::notify!("Queue event / create dependent");
-				let constraint = get_constraint(rhs, types).unwrap();
+				let constraint = types::get_constraint(rhs, types).unwrap();
 				has_property((publicity, key), constraint, information, types)
 			}
 		}

@@ -69,7 +69,7 @@ pub enum TypeAnnotation {
 	/// ?
 	TemplateLiteral {
 		parts: Vec<(String, AnnotationWithBinder)>,
-		last: String,
+		final_part: String,
 		position: Span,
 	},
 	/// Declares type as not assignable (still has interior mutability) e.g. `readonly number`
@@ -410,7 +410,7 @@ impl ASTNode for TypeAnnotation {
 				reference.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
-			Self::TemplateLiteral { parts, last, .. } => {
+			Self::TemplateLiteral { parts, final_part, .. } => {
 				buf.push('`');
 				for (static_part, dynamic_part) in parts {
 					buf.push_str_contains_new_line(static_part.as_str());
@@ -419,7 +419,7 @@ impl ASTNode for TypeAnnotation {
 					dynamic_part.to_string_from_buffer(buf, options, local);
 					buf.push('}');
 				}
-				buf.push_str_contains_new_line(last.as_str());
+				buf.push_str_contains_new_line(final_part.as_str());
 				buf.push('`');
 			}
 			Self::Symbol { unique, .. } => {
@@ -482,7 +482,7 @@ impl TypeAnnotation {
 					| TSXToken::Comma
 					| TSXToken::OpenChevron
 			) || peek.is_assignment()
-				|| (start.map_or(false, |start| {
+				|| (start.is_some_and(|start| {
 					peek.is_statement_or_declaration_start()
 						&& state
 							.line_starts
@@ -737,7 +737,11 @@ impl TypeAnnotation {
 						t => unreachable!("Token {:?}", t),
 					}
 				}
-				Self::TemplateLiteral { parts, last, position: start.union(end.unwrap()) }
+				Self::TemplateLiteral {
+					parts,
+					final_part: last,
+					position: start.union(end.unwrap()),
+				}
 			}
 			Token(TSXToken::Keyword(TSXKeyword::Readonly), start) => {
 				let readonly_type = TypeAnnotation::from_reader_with_config(
@@ -1131,7 +1135,7 @@ impl TypeAnnotationFunctionParameters {
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
 		while !matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
-			while reader.peek().map_or(false, |Token(ty, _)| ty.is_comment()) {
+			while reader.peek().is_some_and(|Token(ty, _)| ty.is_comment()) {
 				reader.next();
 			}
 			let mut decorators = Vec::<Decorator>::new();

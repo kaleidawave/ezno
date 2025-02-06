@@ -284,7 +284,7 @@ pub struct ModuleInformation<'a> {
 	pub module: &'a LocalInformation,
 }
 
-impl<'a> InformationChain for ModuleInformation<'a> {
+impl InformationChain for ModuleInformation<'_> {
 	fn get_chain_of_info(&self) -> impl Iterator<Item = &'_ LocalInformation> {
 		IntoIterator::into_iter([self.top, self.module])
 	}
@@ -383,9 +383,11 @@ pub fn merge_info(
 				if let Some(otherwise) = otherwise {
 					onto.extend(otherwise, None);
 				} else {
+					let options =
+						crate::features::narrowing::NarrowingOptions { number_intrinsics: false };
 					// Could negate existing, but starting again handles types better
 					let values = crate::features::narrowing::narrow_based_on_expression_into_vec(
-						condition, true, parents, types,
+						condition, true, parents, types, &options,
 					);
 
 					onto.narrowed_values = values;

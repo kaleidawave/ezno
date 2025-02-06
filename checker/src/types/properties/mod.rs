@@ -83,7 +83,38 @@ impl crate::BinarySerializable for PropertyKey<'static> {
 	}
 }
 
-impl<'a> PropertyKey<'a> {
+#[allow(clippy::float_cmp)]
+fn float_as_u8(number: f64) -> Option<u8> {
+	if !number.is_nan() && number == number.trunc() && (0. ..256.).contains(&number) {
+		Some(number as u8)
+	} else {
+		None
+	}
+}
+
+impl PropertyKey<'_> {
+	/// For array indexes
+	#[must_use]
+	pub fn from_usize(a: usize) -> PropertyKey<'static> {
+		if let Ok(a) = u8::try_from(a) {
+			PropertyKey::from_u8(a)
+		} else {
+			PropertyKey::String(Cow::Owned(a.to_string()))
+		}
+	}
+
+	/// For small array indexes
+	#[must_use]
+	pub fn from_u8(a: u8) -> PropertyKey<'static> {
+		// Trick to not allocate for static property keys under < 10
+		static NUMBERS: &str = "0123456789";
+		if a < 10 {
+			PropertyKey::String(Cow::Borrowed(&NUMBERS[(a as usize)..=(a as usize)]))
+		} else {
+			PropertyKey::String(Cow::Owned(a.to_string()))
+		}
+	}
+
 	#[must_use]
 	pub fn into_owned(&self) -> PropertyKey<'static> {
 		match self {
@@ -96,8 +127,11 @@ impl<'a> PropertyKey<'a> {
 		if let Type::Constant(c) = types.get_type_by_id(ty) {
 			match c {
 				Constant::Number(n) => {
-					// if n.fractional ??
-					PropertyKey::from_usize(n.into_inner() as usize)
+					if let Some(n) = float_as_u8(*n) {
+						PropertyKey::from_u8(n)
+					} else {
+						PropertyKey::String(Cow::Owned(n.to_string()))
+					}
 				}
 				Constant::String(s) => PropertyKey::String(Cow::Owned(s.to_owned())),
 				Constant::Boolean(b) => {
@@ -107,7 +141,6 @@ impl<'a> PropertyKey<'a> {
 					// Okay I think?
 					PropertyKey::Type(ty)
 				}
-				Constant::NaN => PropertyKey::String(Cow::Borrowed("NaN")),
 				Constant::Undefined => PropertyKey::String(Cow::Borrowed("undefined")),
 			}
 		} else {
@@ -120,13 +153,7 @@ impl<'a> PropertyKey<'a> {
 			PropertyKey::String(s) => s.parse::<usize>().ok(),
 			PropertyKey::Type(t) => {
 				if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(*t) {
-					// TODO is there a better way
-					#[allow(clippy::float_cmp)]
-					if n.trunc() == **n {
-						Some(**n as usize)
-					} else {
-						None
-					}
+					float_as_u8(*n).map(|n| n as usize)
 				} else {
 					None
 				}
@@ -208,21 +235,6 @@ pub(crate) fn get_simple_property_value(
 		get_logical(value)
 	} else {
 		None
-	}
-}
-
-// WIP quick hack for static property keys under < 10
-static NUMBERS: &str = "0123456789";
-
-impl<'a> PropertyKey<'a> {
-	/// For small array indexes
-	#[must_use]
-	pub fn from_usize(a: usize) -> Self {
-		if a < 10 {
-			Self::String(Cow::Borrowed(&NUMBERS[a..=a]))
-		} else {
-			Self::String(Cow::Owned(a.to_string()))
-		}
 	}
 }
 

@@ -1,3 +1,5 @@
+#![allow(non_local_definitions)]
+
 //! Contains the declaration for [`TSXToken`] which are pieces of syntax. Also
 //! - How tokens are made from consecutive characters
 //! - Keywords
@@ -38,8 +40,8 @@ use crate::{ParseError, Quoted};
     "//" => TSXToken::Comment(String::new()),
     "/=" => TSXToken::DivideAssign,
     "/*" => TSXToken::MultiLineComment(String::new()),
-    "%" => TSXToken::Modulo,
-    "%=" => TSXToken::ModuloAssign,
+    "%" => TSXToken::Remainder,
+    "%=" => TSXToken::RemainderAssign,
     "=" => TSXToken::Assign,
     "==" => TSXToken::Equal,
     "===" => TSXToken::StrictEqual,
@@ -121,8 +123,8 @@ pub enum TSXToken {
     /// `>`
     CloseChevron,
     Add, Subtract, Multiply, Divide,
-    QuestionMark, Exponent, Modulo,
-    AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, ExponentAssign, ModuloAssign,
+    QuestionMark, Exponent, Remainder,
+    AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, ExponentAssign, RemainderAssign,
     Increment, Decrement,
     BitwiseShiftLeft, BitwiseShiftRight, BitwiseShiftRightUnsigned,
     BitwiseShiftLeftAssign, BitwiseShiftRightAssign, BitwiseShiftRightUnsignedAssign,
@@ -218,7 +220,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::Subtract
 			| TSXToken::Multiply
 			| TSXToken::Divide
-			| TSXToken::Modulo
+			| TSXToken::Remainder
 			| TSXToken::QuestionMark
 			| TSXToken::BitwiseOr
 			| TSXToken::BitwiseXOr
@@ -241,7 +243,7 @@ impl tokenizer_lib::sized_tokens::SizedToken for TSXToken {
 			| TSXToken::SubtractAssign
 			| TSXToken::MultiplyAssign
 			| TSXToken::DivideAssign
-			| TSXToken::ModuloAssign
+			| TSXToken::RemainderAssign
 			| TSXToken::Exponent
 			| TSXToken::ExponentAssign
 			| TSXToken::Increment
@@ -514,7 +516,7 @@ impl TSXToken {
 				| TSXToken::AddAssign
 				| TSXToken::SubtractAssign
 				| TSXToken::DivideAssign
-				| TSXToken::ModuloAssign
+				| TSXToken::RemainderAssign
 				| TSXToken::BitwiseOrAssign
 				| TSXToken::BitwiseAndAssign
 				| TSXToken::LogicalOrAssign

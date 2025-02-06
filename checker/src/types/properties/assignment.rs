@@ -74,8 +74,19 @@ pub fn set_property<B: CallCheckingBehavior>(
 
 	// Doing this regardless of E::CHECK_PARAMETERS is how #18 works
 	{
-		let object_constraint =
-			environment.get_object_constraint(on).or_else(|| get_constraint(on, types));
+		let object_constraint = if let constraint @ Some(_) = environment.get_object_constraint(on)
+		{
+			constraint
+		} else if let Some(constraint) = get_constraint(on, types) {
+			crate::utilities::notify!(
+				"constraint={}",
+				crate::types::printing::print_type(constraint, types, environment, true)
+			);
+			Some(constraint)
+		} else {
+			crate::utilities::notify!("No constraint (is an object)");
+			None
+		};
 
 		if let Some(object_constraint) = object_constraint {
 			// crate::utilities::notify!("constraint={:?}", types.get_type_by_id(constraint));
@@ -109,6 +120,8 @@ pub fn set_property<B: CallCheckingBehavior>(
 			// );
 
 			if let Ok(LogicalOrValid::Logical(property_constraint)) = property_constraint {
+				crate::utilities::notify!("property_constraint={:?}", property_constraint);
+
 				// TODO property value is readonly
 				// TODO state is writeable etc?
 				// TODO document difference with context.writeable
@@ -123,6 +136,7 @@ pub fn set_property<B: CallCheckingBehavior>(
 					others: Default::default(),
 					object_constraints: Default::default(),
 				};
+
 				let result = crate::subtyping::type_is_subtype_of_property(
 					(&property_constraint, None),
 					new,
@@ -160,6 +174,7 @@ pub fn set_property<B: CallCheckingBehavior>(
 						position,
 					});
 				}
+
 				// if get_constraint(on, types).is_none() {
 				// 	crate::utilities::notify!("Here");
 				// 	return Err(SetPropertyError::AssigningToNonExistent {
@@ -167,7 +182,6 @@ pub fn set_property<B: CallCheckingBehavior>(
 				// 		position,
 				// 	});
 				// }
-				crate::utilities::notify!("TODO assigning to non existent");
 
 				// PropertyValue::Getter(_)
 				// | PropertyValue::Setter(_)
@@ -186,6 +200,11 @@ pub fn set_property<B: CallCheckingBehavior>(
 				// 		});
 				// 	}
 				// }
+			} else {
+				crate::utilities::notify!(
+					"More complex or non existent constraint {:?}. Skipping for now",
+					property_constraint
+				);
 			}
 		}
 	}
@@ -429,57 +448,58 @@ fn run_setter_on_object<B: CallCheckingBehavior>(
 ) -> SetPropertyResult {
 	match existing {
 		PropertyValue::Deleted | PropertyValue::Value(..) => {
-			if let (Some(_), PropertyValue::Value(constraint_for_new)) =
-				(get_constraint(on, types), existing)
-			{
-				// TODO ...?
-				let mut state = State {
-					already_checked: Default::default(),
-					mode: Default::default(),
-					contributions: Default::default(),
-					others: Default::default(),
-					object_constraints: Default::default(),
-				};
-				let result = crate::subtyping::type_is_subtype_with_generics(
-					(constraint_for_new, generics),
-					(new, None),
-					&mut state,
-					environment,
-					types,
-				);
-				if let SubTypeResult::IsNotSubType(reason) = result {
-					{
-						crate::utilities::notify!(
-							"{} {:?}",
-							crate::types::printing::print_type(
-								constraint_for_new,
-								types,
-								environment,
-								true
-							),
-							generics
-						);
-					}
+			// let constraint = get_constraint(on, types);
+			// if let (Some(_), PropertyValue::Value(constraint_for_new)) =
+			// 	(constraint, existing)
+			// {
+			// 	// TODO ...?
+			// 	let mut state = State {
+			// 		already_checked: Default::default(),
+			// 		mode: Default::default(),
+			// 		contributions: Default::default(),
+			// 		others: Default::default(),
+			// 		object_constraints: Default::default(),
+			// 	};
+			// 	let result = crate::subtyping::type_is_subtype_with_generics(
+			// 		(constraint_for_new, generics),
+			// 		(new, None),
+			// 		&mut state,
+			// 		environment,
+			// 		types,
+			// 	);
+			// 	if let SubTypeResult::IsNotSubType(reason) = result {
+			// 		{
+			// 			crate::utilities::notify!(
+			// 				"{} {:?}",
+			// 				crate::types::printing::print_type(
+			// 					constraint_for_new,
+			// 					types,
+			// 					environment,
+			// 					true
+			// 				),
+			// 				generics
+			// 			);
+			// 		}
 
-					let property_constraint = TypeStringRepresentation::from_property_constraint(
-						Logical::Pure(PropertyValue::Value(constraint_for_new)),
-						generics,
-						environment,
-						types,
-						false,
-					);
-					let value_type =
-						TypeStringRepresentation::from_type_id(new, environment, types, false);
+			// 		let property_constraint = TypeStringRepresentation::from_property_constraint(
+			// 			Logical::Pure(PropertyValue::Value(constraint_for_new)),
+			// 			generics,
+			// 			environment,
+			// 			types,
+			// 			false,
+			// 		);
+			// 		let value_type =
+			// 			TypeStringRepresentation::from_type_id(new, environment, types, false);
 
-					// TOOD generics
-					return Err(SetPropertyError::DoesNotMeetConstraint {
-						property_constraint,
-						value_type,
-						reason,
-						position,
-					});
-				}
-			}
+			// 		// TODO generics
+			// 		return Err(SetPropertyError::DoesNotMeetConstraint {
+			// 			property_constraint,
+			// 			value_type,
+			// 			reason,
+			// 			position,
+			// 		});
+			// 	}
+			// }
 
 			let value = if let Some(descriptor) = descriptor {
 				PropertyValue::Configured { on: Box::new(PropertyValue::Value(new)), descriptor }
@@ -610,7 +630,7 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 			SynthesisedArgument { spread: false, value: resolver, position },
 		];
 		let input = CallingInput {
-			// TOOD special
+			// TODO special
 			called_with_new: CalledWithNew::GetterOrSetter { this_type: handler },
 			// TODO
 			call_site: source_map::Nullable::NULL,

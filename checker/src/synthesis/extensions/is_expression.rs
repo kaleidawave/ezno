@@ -57,6 +57,7 @@ pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
 	returned.unwrap_or(TypeId::UNDEFINED_TYPE)
 }
 
+/// `name` for type annotation
 pub(crate) fn new_is_type<T: crate::ReadFromFS>(
 	item: TypeId,
 	rhs: &parser::TypeAnnotation,

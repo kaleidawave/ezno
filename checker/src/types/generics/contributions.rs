@@ -45,11 +45,7 @@ impl CovariantContribution {
 				types.new_constant_type(crate::Constant::String(slice))
 			}
 			CovariantContribution::Number(number) => {
-				if let Ok(number) = number.try_into() {
-					types.new_constant_type(crate::Constant::Number(number))
-				} else {
-					TypeId::NAN
-				}
+				types.new_constant_type(crate::Constant::Number(number))
 			}
 			CovariantContribution::CaseInsensitive(on) => {
 				let inner = on.into_type(types);
@@ -116,14 +112,13 @@ pub struct Contributions<'a> {
 	pub call_site_type_arguments: Option<&'a TypeRestrictions>,
 
 	// /// From other parameters
-	// #[allow(unused)]
 	// pub existing_covariant: &'a mut X<TypeId, TypeId>,
 	/// Only for explicit generic parameters
 	pub staging_covariant: TriMap<TypeId, TypeId, SpanWithSource>,
 	pub staging_contravariant: TriMap<TypeId, CovariantContribution, ContributionDepth>,
 }
 
-impl<'a> Contributions<'a> {
+impl Contributions<'_> {
 	/// TODO return position?
 	#[must_use]
 	pub fn get_standard_restriction(&self, under: TypeId) -> Option<TypeId> {

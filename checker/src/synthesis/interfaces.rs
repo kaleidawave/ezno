@@ -220,7 +220,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					let position_with_source = position.with_source(environment.get_source());
 
 					let function = synthesise_function_annotation(
-						type_parameters,
+						type_parameters.as_deref(),
 						parameters,
 						return_type.as_ref(),
 						environment,

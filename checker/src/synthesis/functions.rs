@@ -243,7 +243,22 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				parameter_constraint
 			};
 
-			let ty = checking_data.types.new_function_parameter(parameter_constraint);
+			// WIP
+			let id = crate::VariableId(
+				environment.get_source(),
+				if let Some(parameter) = parameter.name.as_ref() {
+					parameter.get_position().start
+				} else {
+					0
+				},
+			);
+			let name = parameter
+				.name
+				.as_ref()
+				.map(WithComment::get_ast_ref)
+				.map_or_else(|| format!("parameter{idx}"), get_parameter_name);
+
+			let ty = checking_data.types.new_function_parameter(parameter_constraint, id, &name);
 
 			if let Some(name) = &parameter.name {
 				register_variable(
@@ -261,12 +276,6 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 				);
 			};
 
-			let name = parameter
-				.name
-				.as_ref()
-				.map(WithComment::get_ast_ref)
-				.map_or_else(|| format!("parameter{idx}"), get_parameter_name);
-
 			SynthesisedParameter {
 				ty,
 				is_optional: parameter.is_optional,
@@ -279,6 +288,12 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 	let rest_parameter = reference_parameters.rest_parameter.as_ref().map(|rest_parameter| {
 		let parameter_constraint =
 			synthesise_type_annotation(&rest_parameter.type_annotation, environment, checking_data);
+
+		// WIP
+		let id = crate::VariableId(environment.get_source(), rest_parameter.position.start);
+		let name = &rest_parameter.name;
+		let ty = checking_data.types.new_function_parameter(parameter_constraint, id, name);
+		// environment.info.object_constraints.insert(ty, parameter_constraint);
 
 		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
@@ -299,10 +314,6 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			// );
 			TypeId::ERROR_TYPE
 		};
-
-		let ty = checking_data.types.new_function_parameter(parameter_constraint);
-
-		// environment.info.object_constraints.insert(ty, parameter_constraint);
 
 		environment.register_variable_handle_error(
 			&rest_parameter.name,
@@ -382,7 +393,10 @@ fn synthesise_function_parameters<
 				parameter_constraint
 			};
 
-			let ty = checking_data.types.new_function_parameter(parameter_constraint);
+			let id =
+				crate::VariableId(environment.get_source(), parameter.name.get_position().start);
+			let name = variable_field_to_string(parameter.name.get_ast_ref());
+			let ty = checking_data.types.new_function_parameter(parameter_constraint, id, &name);
 
 			let (optional, variable_ty) = match &parameter.additionally {
 				Some(ParameterData::WithDefaultValue(expression)) => {
@@ -413,8 +427,6 @@ fn synthesise_function_parameters<
 				},
 			);
 
-			let name = variable_field_to_string(parameter.name.get_ast_ref());
-
 			SynthesisedParameter {
 				name,
 				is_optional: optional,
@@ -431,6 +443,11 @@ fn synthesise_function_parameters<
 			rest_parameter.type_annotation.as_ref().map_or(TypeId::ANY_TYPE, |annotation| {
 				synthesise_type_annotation(annotation, environment, checking_data)
 			});
+
+		let id = crate::VariableId(environment.get_source(), rest_parameter.position.start);
+		let name = variable_field_to_string(&rest_parameter.name);
+		let ty = checking_data.types.new_function_parameter(parameter_constraint, id, &name);
+		// environment.info.object_constraints.insert(variable_ty, parameter_constraint);
 
 		let item_type = if let TypeId::ERROR_TYPE = parameter_constraint {
 			TypeId::ERROR_TYPE
@@ -452,10 +469,6 @@ fn synthesise_function_parameters<
 			TypeId::ERROR_TYPE
 		};
 
-		let variable_ty = checking_data.types.new_function_parameter(parameter_constraint);
-
-		// environment.info.object_constraints.insert(variable_ty, parameter_constraint);
-
 		register_variable(
 			&rest_parameter.name,
 			environment,
@@ -464,7 +477,7 @@ fn synthesise_function_parameters<
 				// TODO constant parameter option
 				constant: false,
 				space: Some(parameter_constraint),
-				initial_value: Some(variable_ty),
+				initial_value: Some(ty),
 				// :<)
 				allow_reregistration: true,
 			},
@@ -474,7 +487,7 @@ fn synthesise_function_parameters<
 
 		SynthesisedRestParameter {
 			item_type,
-			ty: variable_ty,
+			ty,
 			name,
 			position: rest_parameter.position.with_source(environment.get_source()),
 		}
@@ -585,7 +598,7 @@ fn get_parameter_name(parameter: &parser::VariableField) -> String {
 /// This synthesise is for function types, references and interfaces.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn synthesise_function_annotation<T: crate::ReadFromFS, S: ContextType>(
-	type_parameters: &Option<Vec<TypeParameter>>,
+	type_parameters: Option<&[TypeParameter]>,
 	parameters: &parser::type_annotations::TypeAnnotationFunctionParameters,
 	// This Option rather than Option because function type references are always some
 	return_type: Option<&TypeAnnotation>,

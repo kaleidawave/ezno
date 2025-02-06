@@ -127,10 +127,7 @@ impl RegExp {
 		match matches.into_iter().next() {
 			Some(match_) => {
 				{
-					let index = types.new_constant_type(Constant::Number(
-						(match_.start() as f64).try_into().unwrap(),
-					));
-
+					let index = types.new_constant_type(Constant::Number(match_.start() as f64));
 					object.append(
 						Publicity::Public,
 						PropertyKey::String("index".into()),
@@ -198,9 +195,7 @@ impl RegExp {
 				}
 
 				{
-					let length = types.new_constant_type(Constant::Number(
-						f64::from(self.groups).try_into().unwrap(),
-					));
+					let length = types.new_constant_type(Constant::Number(f64::from(self.groups)));
 
 					object.append(
 						Publicity::Public,
@@ -290,8 +285,7 @@ impl RegExp {
 		}
 
 		{
-			let length = types
-				.new_constant_type(Constant::Number(f64::from(self.groups).try_into().unwrap()));
+			let length = types.new_constant_type(Constant::Number(f64::from(self.groups)));
 
 			object.append(
 				Publicity::Public,

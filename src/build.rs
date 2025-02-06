@@ -182,7 +182,6 @@ mod tests {
 	use super::*;
 
 	#[test]
-	#[ignore = "not fixed implemented"]
 	fn tree_shaking() {
 		let source = r#"
 	function make_observable(obj) {
@@ -210,16 +209,25 @@ mod tests {
 
 		let config = BuildConfig { tree_shake: true, ..Default::default() };
 
-		if let Ok(output) = build(
+		let build_result = build(
 			vec!["index.tsx".into()],
 			&|_path: &std::path::Path| Some(source.to_owned()),
 			config,
-		) {
-			let first_source = &output.artifacts[0].content;
-			// TODO assert output equal
-			panic!("{first_source:?}");
-		} else {
-			panic!("build failed")
+		);
+
+		match build_result {
+			Ok(output) => {
+				let first_source = &output.artifacts[0].content;
+				let expectation = "function make_observable(obj){return new Proxy(obj,{get(on,prop,_rec){return on[prop]}})}function get_a(){return 1};const obj={a(){return get_a()},b:null,c:2};const value=make_observable(obj);const a_value=value.a();const c_value=value.c";
+
+				pretty_assertions::assert_eq!(first_source, expectation);
+			}
+			Err(output) => {
+				panic!(
+					"build failed:\n{diagnostics:#?}",
+					diagnostics = output.0.diagnostics.get_diagnostics()
+				);
+			}
 		}
 	}
 }

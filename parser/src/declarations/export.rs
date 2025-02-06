@@ -77,8 +77,7 @@ impl ASTNode for ExportDeclaration {
 			Token(TSXToken::Keyword(TSXKeyword::Default), _) => {
 				reader.next();
 				if options.type_definition_module
-					&& reader.peek().map_or(
-						false,
+					&& reader.peek().is_some_and(
 						|t| matches!(t.0, TSXToken::Keyword(kw) if kw.is_in_function_header()),
 					) {
 					let is_async = reader

@@ -3,7 +3,7 @@ A fast and correct TypeScript type checker and compiler with additional experime
 > [!IMPORTANT]
 > Ezno is in active development and **does not currently support enough features to check existing projects** (see [blocking issues](https://github.com/kaleidawave/ezno/labels/blocking)). Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
 
-<!-- ![project lines of code](https://projects.kaleidawave.workers.dev/project/ezno/badge) -->
+<!-- ![project lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno/badge) -->
 
 What Ezno is:
 - A type checker for JavaScript usable through a CLI ([with a LSP also in the works](https://github.com/kaleidawave/ezno/issues/22))
@@ -12,7 +12,7 @@ What Ezno is:
 - A *imperative* type system that tracks and evaluates the side effects of functions and control flow structures. It is similar to an interpreter, but acts with types instead of *values* and does not run IO, side effects, etc.
 - A collection of experiments of types. Many are being worked out and are in the prototype stage. Some of the new behaviors benefit JavaScript specifically and others could be applied to other languages
 - Written in Rust
-- [Fast](https://github.com/kaleidawave/ezno/actions/workflows/performance-and-size.yml) and [Small](https://github.com/kaleidawave/ezno/actions/workflows/lines-of-code.yml)
+- [Fast](https://kaleidawave-getlatestgithubrun.web.val.run/kaleidawave/ezno/main?workflow=performance) and [Small](https://kaleidawave-getlatestgithubrun.web.val.run/kaleidawave/ezno/main?workflow=lines-of-code)
 - Open source! [You can help build Ezno!](https://github.com/kaleidawave/ezno/issues?q=is%3Aopen+label%3Agood-first-issue%2Cfeedback-needed)
 - A challenge to the status quo of type checking, optimisations and compilation through deeper static analysis beyond syntax analysis!
 
@@ -29,6 +29,8 @@ Read more about Ezno (in chronological order)
 - [A preview of the checker](https://kaleidawave.github.io/posts/a-preview-of-the-checker/)
 - [The quest continues](https://kaleidawave.github.io/posts/the-quest-continues/)
 - [Sets, types and type checking](https://kaleidawave.github.io/posts/sets-types-and-type-checking/) (*general post*)
+- [Experimental types](https://kaleidawave.github.io/posts/experimental-types/)
+- [Mapped types and properties](https://kaleidawave.github.io/posts/mapped-types/)
 
 ---
 
@@ -36,10 +38,10 @@ This project is a workspace consisting of a few crates:
 
 | Crate | Lines Of Code | Contains |
 |---|---|---|
-| checker | ![checker lines of code](https://projects.kaleidawave.workers.dev/project/ezno-checker/badge) | Stores for types and contexts, type checking logic and optional synthesis over the parser AST |
-| parser | ![parser lines of code](https://projects.kaleidawave.workers.dev/project/ezno-parser/badge) | AST definitions, logic for parsing, AST to string and visiting |
-<!-- | ezno-web-framework | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
-<!-- | ezno-lsp | ![](https://projects.kaleidawave.workers.dev/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
+| checker | ![checker lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno-checker/badge) | Stores for types and contexts, type checking logic and optional synthesis over the parser AST |
+| parser | ![parser lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno-parser/badge) | AST definitions, logic for parsing, AST to string and visiting |
+<!-- | ezno-web-framework | ![](https://kaleidawave-projectinformation.web.val.run/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
+<!-- | ezno-lsp | ![](https://kaleidawave-projectinformation.web.val.run/project/framework/badge) | Visitors and code generation for JSX and reactive expression transformations. | -->
 
 ## Help contribute
 

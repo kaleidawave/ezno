@@ -38,7 +38,7 @@ pub fn evaluate_logical_operation_with_expression<
 					let mut result = Vec::new();
 					narrowing::build_union_from_filter(
 						constraint,
-						narrowing::FASLY,
+						narrowing::FALSY,
 						&mut result,
 						env,
 						&checking_data.types,
@@ -60,7 +60,7 @@ pub fn evaluate_logical_operation_with_expression<
 					let mut result = Vec::new();
 					narrowing::build_union_from_filter(
 						constraint,
-						narrowing::NOT_FASLY,
+						narrowing::NOT_FALSY,
 						&mut result,
 						env,
 						&checking_data.types,

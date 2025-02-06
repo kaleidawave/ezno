@@ -139,7 +139,7 @@ pub fn types_are_disjoint(
 			number_range_disjoint(args, rhs, types)
 		} else if let Type::Constructor(Constructor::BinaryOperator {
 			lhs: _lhs,
-			operator: MathematicalOrBitwiseOperation::Modulo,
+			operator: MathematicalOrBitwiseOperation::Remainder,
 			rhs,
 			result: _,
 		}) = lhs_ty
@@ -150,15 +150,15 @@ pub fn types_are_disjoint(
 			) = (types.get_type_by_id(*rhs), rhs_ty)
 			{
 				crate::utilities::notify!("{:?}", (num, lhs_mod));
-				// Modulos return negative for negative number :(
+				// Remainders return negative for negative number :(
 				// Checking whether out of range here
-				num.abs() > **lhs_mod
+				num.abs() > *lhs_mod
 			} else {
 				false
 			}
 		} else if let Type::Constructor(Constructor::BinaryOperator {
 			lhs: _lhs,
-			operator: MathematicalOrBitwiseOperation::Modulo,
+			operator: MathematicalOrBitwiseOperation::Remainder,
 			rhs,
 			result: _,
 		}) = rhs_ty
@@ -169,9 +169,9 @@ pub fn types_are_disjoint(
 			) = (types.get_type_by_id(*rhs), lhs_ty)
 			{
 				crate::utilities::notify!("{:?}", (num, rhs_mod));
-				// Modulos return negative for negative number :(
+				// Remainders return negative for negative number :(
 				// Checking whether out of range here
-				num.abs() > **rhs_mod
+				num.abs() > *rhs_mod
 			} else {
 				false
 			}
@@ -201,7 +201,7 @@ pub fn types_are_disjoint(
 			types_are_disjoint(lhs, rhs, already_checked, information, types)
 		} else if let Type::Constant(lhs_cst) = lhs_ty {
 			if let Type::Constant(rhs_cst) = rhs_ty {
-				lhs_cst != rhs_cst
+				!lhs_cst.equals(rhs_cst)
 			} else {
 				types_are_disjoint(
 					lhs_cst.get_backing_type(),
@@ -213,17 +213,33 @@ pub fn types_are_disjoint(
 			}
 		} else if let Type::Constant(rhs_cst) = rhs_ty {
 			types_are_disjoint(rhs_cst.get_backing_type(), lhs, already_checked, information, types)
+		} else if let TypeId::FUNCTION_TYPE = lhs {
+			!matches!(
+				rhs_ty,
+				Type::FunctionReference(_)
+					| Type::SpecialObject(crate::types::SpecialObject::Function(..))
+			)
+		} else if let TypeId::FUNCTION_TYPE = rhs {
+			!matches!(
+				lhs_ty,
+				Type::FunctionReference(_)
+					| Type::SpecialObject(crate::types::SpecialObject::Function(..))
+			)
 		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
 			_properties,
 		)) = lhs_ty
 		{
-			// TODO check properties
+			crate::utilities::notify!(
+				"TODO check properties on object type annotation. Skipping for now"
+			);
 			false
 		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
 			_properties,
 		)) = rhs_ty
 		{
-			// TODO check properties
+			crate::utilities::notify!(
+				"TODO check properties on object type annotation. Skipping for now"
+			);
 			false
 		} else {
 			crate::utilities::notify!(
@@ -252,7 +268,7 @@ fn number_modulo_disjoint(
 		return false;
 	};
 
-	let offset = 0f64.try_into().unwrap();
+	let offset = 0f64;
 	let this = crate::utilities::modulo_class::ModuloClass::new(*argument, offset);
 
 	// Little bit complex here because dealing with decimal types, not integers

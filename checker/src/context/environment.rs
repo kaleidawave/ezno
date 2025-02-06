@@ -79,7 +79,7 @@ impl DynamicBoundaryKind {
 	}
 }
 
-impl<'a> ContextType for Syntax<'a> {
+impl ContextType for Syntax<'_> {
 	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
 		GeneralContext::Syntax(et)
 	}
@@ -238,16 +238,16 @@ impl Scope {
 	}
 }
 
-impl<'a> Environment<'a> {
+impl Environment<'_> {
 	/// Handles all assignments, including updates and destructuring
 	///
 	/// Will evaluate the expression with the right timing and conditions, including never if short circuit
-	pub fn assign_handle_errors<'b, T: crate::ReadFromFS, A: crate::ASTImplementation>(
+	pub fn assign_handle_errors<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		lhs: Assignable<A>,
 		operator: AssignmentKind,
 		// Can be `None` for increment and decrement
-		expression: Option<&'b A::Expression<'b>>,
+		expression: Option<&'a A::Expression<'a>>,
 		assignment_position: Span,
 		checking_data: &mut CheckingData<T, A>,
 	) -> TypeId {
@@ -1337,11 +1337,11 @@ impl<'a> Environment<'a> {
 		None
 	}
 
-	pub fn declare_interface<'b, A: crate::ASTImplementation>(
+	pub fn declare_interface<'a, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
-		parameters: Option<&'b [A::TypeParameter<'b>]>,
-		extends: Option<&'b [A::TypeAnnotation<'b>]>,
+		parameters: Option<&'a [A::TypeParameter<'a>]>,
+		extends: Option<&'a [A::TypeAnnotation<'a>]>,
 		types: &mut TypeStore,
 	) -> Result<DeclareInterfaceResult, AlreadyExists> {
 		// Interface merging
@@ -1396,10 +1396,10 @@ impl<'a> Environment<'a> {
 	}
 
 	/// Registers the class type
-	pub fn declare_class<'b, A: crate::ASTImplementation>(
+	pub fn declare_class<'a, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
-		type_parameters: Option<&'b [A::TypeParameter<'b>]>,
+		type_parameters: Option<&'a [A::TypeParameter<'a>]>,
 		types: &mut TypeStore,
 	) -> Result<TypeId, AlreadyExists> {
 		{
@@ -1460,10 +1460,10 @@ impl<'a> Environment<'a> {
 		Ok(class_type)
 	}
 
-	pub fn declare_alias<'b, A: crate::ASTImplementation>(
+	pub fn declare_alias<'a, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
-		parameters: Option<&'b [A::TypeParameter<'b>]>,
+		parameters: Option<&'a [A::TypeParameter<'a>]>,
 		_position: Span,
 		types: &mut TypeStore,
 	) -> Result<TypeId, AlreadyExists> {
@@ -1493,11 +1493,11 @@ impl<'a> Environment<'a> {
 	}
 
 	// TODO copy this logic for interface and class
-	pub fn register_alias<'b, U: crate::ReadFromFS, A: crate::ASTImplementation>(
+	pub fn register_alias<'a, U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		on: TypeId,
-		ast_parameters: Option<&'b [A::TypeParameter<'b>]>,
-		to: &'b A::TypeAnnotation<'b>,
+		ast_parameters: Option<&'a [A::TypeParameter<'a>]>,
+		to: &'a A::TypeAnnotation<'a>,
 		position: Span,
 		checking_data: &mut CheckingData<U, A>,
 	) {

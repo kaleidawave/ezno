@@ -1,4 +1,4 @@
-![visiting-proc-macro lines of code](https://projects.kaleidawave.workers.dev/project/ezno-parser-visitable-derive/badge)
+<!-- ![visiting-proc-macro lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno-parser-visitable-derive/badge) -->
 
 A package which generates mutable and immutable *visiting* implementations for AST nodes.
 

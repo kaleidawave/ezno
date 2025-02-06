@@ -233,13 +233,13 @@ impl BinarySerializable for TypeId {
 	}
 }
 
-impl BinarySerializable for ordered_float::NotNan<f64> {
+impl BinarySerializable for f64 {
 	fn serialize(self, buf: &mut Vec<u8>) {
-		buf.extend_from_slice(&self.into_inner().to_le_bytes());
+		buf.extend_from_slice(&self.to_le_bytes());
 	}
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, _source: SourceId) -> Self {
-		Self::new(f64::from_le_bytes([
+		f64::from_le_bytes([
 			iter.next().unwrap(),
 			iter.next().unwrap(),
 			iter.next().unwrap(),
@@ -248,8 +248,7 @@ impl BinarySerializable for ordered_float::NotNan<f64> {
 			iter.next().unwrap(),
 			iter.next().unwrap(),
 			iter.next().unwrap(),
-		]))
-		.unwrap()
+		])
 	}
 }
 

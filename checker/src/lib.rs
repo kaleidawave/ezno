@@ -64,8 +64,6 @@ where
 	}
 }
 
-use levenshtein::levenshtein;
-
 pub trait ASTImplementation: Sized {
 	type ParseOptions;
 	/// Custom allocator etc
@@ -578,7 +576,7 @@ fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	let current = checking_data.options.measure_time.then(std::time::Instant::now);
 
 	// TODO abstract using similar to import logic
-	let is_js = path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.ends_with("js"));
+	let is_js = path.extension().and_then(|s| s.to_str()).is_some_and(|s| s.ends_with("js"));
 
 	let parse_options = A::parse_options(
 		is_js,
@@ -798,8 +796,9 @@ pub fn get_closest<'a, 'b>(
 	closest_one: &'b str,
 ) -> Option<Vec<&'a str>> {
 	const MIN_DISTANCE: usize = 2;
-	let candidates =
-		items.filter(|item| levenshtein(closest_one, item) <= MIN_DISTANCE).collect::<Vec<&str>>();
+	let candidates = items
+		.filter(|item| levenshtein::levenshtein(closest_one, item) <= MIN_DISTANCE)
+		.collect::<Vec<&str>>();
 	match candidates.len() {
 		0 => None,
 		1.. => Some(candidates),

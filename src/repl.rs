@@ -165,7 +165,7 @@ pub(crate) fn run_repl(_arguments: ReplArguments) {
 pub(crate) fn run_repl(arguments: ReplArguments) {
 	use crate::utilities::print_to_cli;
 
-	print_to_cli(format_args!("Entering Repl. Exit with `close()`"));
+	print_to_cli(format_args!("Entering REPL\n.Use #exist, .exit or close() to leave"));
 
 	let mut system = match ReplSystem::new(arguments, crate::utilities::FSFunction) {
 		Ok(system) => system,
@@ -185,7 +185,7 @@ pub(crate) fn run_repl(arguments: ReplArguments) {
 		let input = crate::utilities::cli_input_resolver("");
 		if input.is_empty() {
 			continue;
-		} else if input.trim() == "close()" {
+		} else if let "#exit" | ".exit" | "close()" = input.trim() {
 			break;
 		}
 		system.execute_statement(input)

@@ -18,8 +18,8 @@ use self::{
 };
 
 use super::{
-	tokens::token_as_identifier, ASTNode, Block, FunctionBase, JSXRoot, ParseError, ParseOptions,
-	Span, TSXToken, Token, TokenReader, TypeAnnotation,
+	jsx::JSXRoot, tokens::token_as_identifier, ASTNode, Block, FunctionBase, ParseError,
+	ParseOptions, Span, TSXToken, Token, TokenReader, TypeAnnotation,
 };
 
 #[cfg(feature = "extras")]
@@ -234,7 +234,7 @@ impl Expression {
 	) -> ParseResult<Self> {
 		if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
 			let next_is_not_expression_like = peek.is_expression_delimiter()
-				|| start.map_or(false, |start| {
+				|| start.is_some_and(|start| {
 					peek.is_statement_or_declaration_start()
 						&& state
 							.line_starts
@@ -1781,7 +1781,7 @@ impl Expression {
 					dynamic_part.to_string_from_buffer(buf, options, local);
 					buf.push('}');
 				}
-				buf.push_str_contains_new_line(template_literal.last.as_str());
+				buf.push_str_contains_new_line(template_literal.final_part.as_str());
 				buf.push('`');
 			}
 			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
@@ -1861,8 +1861,7 @@ fn function_header_ish(
 ) -> bool {
 	kw.is_in_function_header()
 		|| (kw.is_special_function_header()
-			&& reader.peek().map_or(
-				false,
+			&& reader.peek().is_some_and(
 				|Token(t, _)| matches!(t, TSXToken::Keyword(kw) if kw.is_in_function_header()),
 			))
 }

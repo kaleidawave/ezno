@@ -1,4 +1,5 @@
 use source_map::SpanWithSource;
+use std::borrow::Cow;
 
 use crate::{
 	context::invocation::CheckThings,
@@ -13,11 +14,12 @@ use crate::{
 	CheckingData, Constant, Environment, Type, TypeId,
 };
 
+/// Assumes that the text parts have been unesscaped
 #[allow(clippy::needless_pass_by_value)]
 pub fn synthesise_template_literal_expression<'a, T, A>(
 	tag: Option<TypeId>,
-	parts_iter: impl Iterator<Item = (&'a str, &'a A::MultipleExpression<'a>)> + 'a,
-	final_part: &'a str,
+	parts_iter: impl Iterator<Item = (Cow<'a, str>, &'a A::MultipleExpression<'a>)> + 'a,
+	final_part: Cow<'a, str>,
 	position: SpanWithSource,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, A>,
@@ -41,8 +43,9 @@ where
 		let mut static_part_count = 0u16;
 		for (static_part, dynamic_part) in parts_iter {
 			{
-				let value =
-					checking_data.types.new_constant_type(Constant::String(static_part.to_owned()));
+				let value = checking_data
+					.types
+					.new_constant_type(Constant::String(static_part.into_owned()));
 				static_parts.append(
 					crate::types::properties::Publicity::Public,
 					crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
@@ -75,7 +78,7 @@ where
 
 		if !final_part.is_empty() {
 			let value =
-				checking_data.types.new_constant_type(Constant::String(final_part.to_owned()));
+				checking_data.types.new_constant_type(Constant::String(final_part.into_owned()));
 			static_parts.append(
 				crate::types::properties::Publicity::Public,
 				crate::types::properties::PropertyKey::from_usize(static_part_count.into()),
@@ -89,9 +92,9 @@ where
 
 		{
 			// TODO spread
-			let static_part_array_length = checking_data.types.new_constant_type(Constant::Number(
-				f64::from(static_part_count).try_into().unwrap(),
-			));
+			let static_part_array_length = checking_data
+				.types
+				.new_constant_type(Constant::Number(f64::from(static_part_count)));
 
 			// TODO: Should there be a position here?
 			static_parts.append(
@@ -141,7 +144,7 @@ where
 		let mut acc = TypeId::EMPTY_STRING;
 		for (static_part, dynamic_part) in parts_iter {
 			let lhs =
-				checking_data.types.new_constant_type(Constant::String(static_part.to_owned()));
+				checking_data.types.new_constant_type(Constant::String(static_part.into_owned()));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
 				crate::features::operations::MathematicalOrBitwiseOperation::Add,
@@ -183,7 +186,7 @@ where
 			acc
 		} else {
 			let value =
-				checking_data.types.new_constant_type(Constant::String(final_part.to_owned()));
+				checking_data.types.new_constant_type(Constant::String(final_part.into_owned()));
 			let result = super::operations::evaluate_mathematical_operation(
 				acc,
 				crate::features::operations::MathematicalOrBitwiseOperation::Add,

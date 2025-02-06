@@ -11,6 +11,16 @@ These can all be ran as tests using the markdown to Rust test code transpiler in
 - Blocks can be split into files with a `// in file.ts` comment, below which all code is in the `file.ts` file. Default is `main.tsx`
 - **Code in blocks is indented with tabs not spaces**
 
+Run
+```shell
+# Base
+cargo test -p ezno-checker-specification
+# Base + staging
+cargo test -p ezno-checker-specification -F staging
+# Base + staging + to_implement
+cargo test -p ezno-checker-specification -F all
+```
+
 ---
 Other tests unrelated to specific checking features can be found in `checker/tests`
 
