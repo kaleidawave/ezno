@@ -969,13 +969,15 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			let location = function.header.get_location().map(|location| match location {
 				parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
 				parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
+				parser::functions::FunctionLocationModifier::Test => "test".to_owned(),
 			});
+			let name = function.name.as_option_str().map(ToOwned::to_owned);
 			Instance::RValue(register_expression_function(
 				expecting,
 				is_async,
 				is_generator,
 				location,
-				function.name.as_option_str().map(ToOwned::to_owned),
+				name,
 				function,
 				environment,
 				checking_data,

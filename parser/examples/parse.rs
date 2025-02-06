@@ -75,8 +75,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	)
 }
 
-const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
-
 fn parse_path(
 	path: &Path,
 	timings: bool,
@@ -88,12 +86,27 @@ fn parse_path(
 	display_keywords: bool,
 	fs: &mut Files,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
+
 	let source = std::fs::read_to_string(path)?;
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
-	let result = Module::from_string_with_options(source.clone(), *parse_options, None);
+	let extension: &str = path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or_default();
+	let type_annotations = extension.contains("ts");
+	let jsx = extension.contains('x');
+
+	let parse_options = ParseOptions { jsx, type_annotations, ..*parse_options };
+
+	let on = source.clone();
+	// Run in thread as stack is large and can oveflow
+	let result = std::thread::Builder::new()
+		.stack_size(EIGHT_MEGA_BYTES)
+		.spawn(move || Module::from_string_with_options(on, parse_options, None))
+		.unwrap()
+		.join()
+		.unwrap();
 
 	match result {
 		Ok((module, state)) => {
@@ -137,7 +150,7 @@ fn parse_path(
 						&resolved_path,
 						timings,
 						parse_imports,
-						parse_options,
+						&parse_options,
 						print_ast,
 						print_source_maps,
 						to_string_options,

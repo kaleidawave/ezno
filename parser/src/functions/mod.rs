@@ -366,6 +366,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 pub enum FunctionLocationModifier {
 	Server,
 	Worker,
+	Test,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -404,6 +405,8 @@ impl ASTNode for FunctionHeader {
 				Some(FunctionLocationModifier::Server)
 			} else if reader.is_keyword_advance("worker") {
 				Some(FunctionLocationModifier::Worker)
+			} else if reader.is_keyword_advance("test") {
+				Some(FunctionLocationModifier::Test)
 			} else {
 				None
 			}
@@ -517,7 +520,7 @@ impl MethodHeader {
 
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
 		let after = reader.after_identifier();
-		if let Some('<' | '(' | '}' | ',' | ':') = after.chars().next() {
+		if let Some('<' | '(' | '}' | ',' | ':' | '[') = after.chars().next() {
 			MethodHeader::default()
 		} else if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
 			match kind {

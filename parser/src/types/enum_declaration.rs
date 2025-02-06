@@ -1,4 +1,4 @@
-use crate::{derive_ASTNode, ASTNode, Expression};
+use crate::{declarations::classes::ClassMember, derive_ASTNode, ASTNode, Expression};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
@@ -36,7 +36,8 @@ impl ASTNode for EnumDeclaration {
 				continue;
 			}
 			members.push(EnumMember::from_reader(reader)?);
-			if !reader.is_operator_advance(",") {
+			let comma_delimited = reader.is_operator_advance(",");
+			if !comma_delimited {
 				reader.expect_semi_colon()?;
 			}
 		}
@@ -79,27 +80,51 @@ impl ASTNode for EnumDeclaration {
 
 #[derive(Debug, Clone, PartialEq, Visitable)]
 #[apply(derive_ASTNode)]
-pub enum EnumMember {
-	Variant { name: String, value: Option<Expression>, position: Span },
+pub enum EnumMemberValue {
+	ClassMembers(Vec<crate::Decorated<ClassMember>>),
+	Value(Expression),
+	None,
+}
+
+#[derive(Debug, Clone, PartialEq, Visitable)]
+#[apply(derive_ASTNode)]
+pub struct EnumMember {
+	pub name: String,
+	pub value: EnumMemberValue,
+	pub position: Span,
 }
 
 impl ASTNode for EnumMember {
 	fn get_position(&self) -> Span {
-		match self {
-			EnumMember::Variant { position, .. } => *position,
-		}
+		self.position
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.get_start();
 		let name = reader.parse_identifier("enum member name", true)?.to_owned();
-		let (position, value) = if reader.is_operator_advance("=") {
+		let value = if reader.is_operator_advance("=") {
 			let expression = Expression::from_reader(reader)?;
-			(start.union(expression.get_position()), Some(expression))
+			EnumMemberValue::Value(expression)
+		} else if reader.is_operator_advance("{") {
+			let mut members: Vec<crate::Decorated<ClassMember>> = Vec::new();
+			loop {
+				reader.skip();
+				if reader.starts_with('}') {
+					break;
+				}
+				let value = crate::Decorated::<ClassMember>::from_reader(reader)?;
+				if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
+					reader.expect_semi_colon()?;
+				}
+				members.push(value);
+			}
+			let _end = reader.expect('}')?;
+			EnumMemberValue::ClassMembers(members)
 		} else {
-			(start.with_length(name.len()), None)
+			EnumMemberValue::None
 		};
-		Ok(EnumMember::Variant { name, value, position })
+		let position = start.union(reader.get_end());
+		Ok(EnumMember { name, value, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -108,14 +133,14 @@ impl ASTNode for EnumMember {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		match self {
-			EnumMember::Variant { name, value, .. } => {
-				buf.push_str(name);
-				if let Some(value) = value {
-					buf.push_str(if options.pretty { " = " } else { "=" });
-					value.to_string_from_buffer(buf, options, local);
-				}
+		buf.push_str(&self.name);
+		match &self.value {
+			EnumMemberValue::Value(value) => {
+				buf.push_str(if options.pretty { " = " } else { "=" });
+				value.to_string_from_buffer(buf, options, local);
 			}
+			EnumMemberValue::ClassMembers(_members) => todo!(),
+			EnumMemberValue::None => {}
 		}
 	}
 }

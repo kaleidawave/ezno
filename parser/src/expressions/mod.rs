@@ -325,6 +325,8 @@ impl Expression {
 					current = current["server".len()..].trim_start();
 				} else if current.starts_with("worker") {
 					current = current["worker".len()..].trim_start();
+				} else if current.starts_with("test") {
+					current = current["test".len()..].trim_start();
 				}
 				if current.starts_with("function") {
 					Expression::ExpressionFunction(ExpressionFunction::from_reader(reader)?)
@@ -496,36 +498,34 @@ impl Expression {
 						.map(Expression::IsExpression);
 				}
 
-				let name = reader.parse_identifier("variable reference expression", true);
+				let name = reader.parse_identifier("variable reference expression", true)?;
 
-				if let Ok(name) = name {
-					if reader.get_options().interpolation_points && name == crate::marker::MARKER {
-						let position = start.with_length(0);
-						let marker_id = reader.new_partial_point_marker(position);
-						Expression::Marker { marker_id, position }
-					} else {
-						let position = start.with_length(name.len());
-						if crate::lexer::utilities::trim_whitespace_not_newlines(
-							reader.get_current(),
-						)
-						.starts_with("=>")
-						{
-							let identifier =
-								crate::VariableIdentifier::Standard(name.to_owned(), position);
-							let is_async = false;
-							return ArrowFunction::from_reader_with_first_parameter(
-								reader, is_async, identifier,
-							)
-							.map(Expression::ArrowFunction);
-						}
-						Expression::VariableReference(name.to_owned(), position)
-					}
+				if reader.get_options().interpolation_points && name == crate::marker::MARKER {
+					let position = start.with_length(0);
+					let marker_id = reader.new_partial_point_marker(position);
+					Expression::Marker { marker_id, position }
 				} else {
-					return Err(ParseError::new(
-						ParseErrors::ExpectedExpression,
-						reader.next_item_span(),
-					));
+					let position = start.with_length(name.len());
+					if crate::lexer::utilities::trim_whitespace_not_newlines(reader.get_current())
+						.starts_with("=>")
+					{
+						let identifier =
+							crate::VariableIdentifier::Standard(name.to_owned(), position);
+						let is_async = false;
+						return ArrowFunction::from_reader_with_first_parameter(
+							reader, is_async, identifier,
+						)
+						.map(Expression::ArrowFunction);
+					}
+					Expression::VariableReference(name.to_owned(), position)
 				}
+				// if let Ok(name) = name {
+				// } else {
+				// 	return Err(ParseError::new(
+				// 		ParseErrors::ExpectedExpression,
+				// 		reader.next_item_span(),
+				// 	));
+				// }
 			}
 		};
 
@@ -660,7 +660,9 @@ impl Expression {
 				};
 
 				// TODO double check whitespace inbetween
-				let is_equal_after = reader.get_current()[operator_str.len()..].starts_with('=');
+				let is_equal_after =
+					crate::lexer::utilities::get_after_operator(reader, operator_str)
+						.starts_with('=');
 				if let (true, Ok(operator)) =
 					(is_equal_after, BinaryAssignmentOperator::try_from(operator))
 				{
@@ -798,26 +800,8 @@ impl Expression {
 					is_optional,
 				};
 			} else if reader.starts_with_slice("?.") || reader.starts_with('.') {
-				/// Looks to see if next is not like a property identifier, returns how many characters
-				/// it skipped over for position information
-				fn get_not_identifier_length(on: &str) -> Option<usize> {
-					for (idx, c) in on.char_indices() {
-						if c == '#' || crate::lexer::utilities::is_valid_identifier(c) {
-							return None;
-						} else if !c.is_whitespace() {
-							let after = &on[idx..];
-							return if after.starts_with("//") || after.starts_with("/*") {
-								None
-							} else {
-								Some(idx)
-							};
-						}
-					}
-
-					// Else nothing exists
-					Some(0)
-				}
-
+				// Looks to see if next is not like a property identifier, returns how many characters
+				// it skipped over for position information
 				if AssociativityDirection::LeftToRight
 					.should_return(return_precedence, MEMBER_ACCESS_PRECEDENCE)
 				{
@@ -840,7 +824,7 @@ impl Expression {
 				let property = if let Some(Some(length)) = reader
 					.get_options()
 					.partial_syntax
-					.then(|| get_not_identifier_length(reader.get_current()))
+					.then(|| crate::lexer::utilities::get_not_identifier_length(reader))
 				{
 					let position =
 						source_map::Start(top.get_position().get_end().0).with_length(length);

@@ -402,13 +402,9 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 		return if reader.is_operator_advance(end) {
 			Ok((nodes, None))
 		} else {
-			let current = reader.get_current();
-			let position = reader.get_start().with_length(1);
+			let (found, position) = crate::lexer::utilities::next_item(reader);
 			Err(ParseError::new(
-				ParseErrors::UnexpectedCharacter {
-					expected: &[','],
-					found: current.chars().next(),
-				},
+				ParseErrors::UnexpectedCharacter { expected: &[','], found: found.chars().next() },
 				position,
 			))
 		};

@@ -100,12 +100,10 @@ impl ASTNode for JSXElement {
 							let position = start.with_length(content.len() + 2);
 							JSXAttribute::Static(key, content.to_owned(), position)
 						} else {
-							let error_position = start.with_length(
-								crate::lexer::utilities::next_empty_occurance(reader.get_current()),
-							);
+							let (_found, position) = crate::lexer::utilities::next_item(reader);
 							return Err(ParseError::new(
 								ParseErrors::ExpectedJSXAttribute,
-								error_position,
+								position,
 							));
 						};
 						attributes.push(attribute);
@@ -135,8 +133,7 @@ impl ASTNode for JSXElement {
 			let content = reader
 				.parse_until("</")
 				.map_err(|()| {
-					// TODO might be a problem
-					let position = reader.get_start().with_length(reader.get_current().len());
+					let (_found, position) = crate::lexer::utilities::next_item(reader);
 					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 				})?
 				.to_owned();
@@ -266,10 +263,8 @@ impl ASTNode for JSXAttribute {
 				let position = start.with_length(content.len() + 2);
 				Ok(JSXAttribute::Static(key, content.to_owned(), position))
 			} else {
-				let error_position = start.with_length(
-					crate::lexer::utilities::next_empty_occurance(reader.get_current()),
-				);
-				Err(ParseError::new(ParseErrors::ExpectedJSXAttribute, error_position))
+				let (_found, position) = crate::lexer::utilities::next_item(reader);
+				Err(ParseError::new(ParseErrors::ExpectedJSXAttribute, position))
 			}
 		} else {
 			// Boolean attributes
@@ -455,8 +450,7 @@ impl ASTNode for JSXNode {
 			let content = reader
 				.parse_until("-->")
 				.map_err(|()| {
-					// TODO might be a problem
-					let position = reader.get_start().with_length(reader.get_current().len());
+					let (_found, position) = crate::lexer::utilities::next_item(reader);
 					ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 				})?
 				.to_owned();
@@ -468,8 +462,7 @@ impl ASTNode for JSXNode {
 			Ok(JSXNode::Element(element))
 		} else {
 			let (content, _) = reader.parse_until_one_of_no_advance(&["<", "{"]).map_err(|()| {
-				// TODO might be a problem
-				let position = reader.get_start().with_length(reader.get_current().len());
+				let (_found, position) = crate::lexer::utilities::next_item(reader);
 				ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 			})?;
 			let position = start.with_length(content.len());

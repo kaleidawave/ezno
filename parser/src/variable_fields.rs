@@ -375,11 +375,8 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 
 			Ok(Self::Name(standard, annotation, default_value, position))
 		} else {
-			let current = reader.get_current();
-			let until_empty = crate::lexer::utilities::next_empty_occurance(current);
-			let position = reader.get_start().with_length(until_empty);
-			let error =
-				ParseErrors::ExpectedOperator { expected: ";", found: &current[..until_empty] };
+			let (found, position) = crate::lexer::utilities::next_item(reader);
+			let error = ParseErrors::ExpectedOperator { expected: ";", found };
 			Err(ParseError::new(error, position))
 		}
 	}

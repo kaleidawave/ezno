@@ -73,9 +73,15 @@ impl<'a> Lexer<'a> {
 		self.options.type_annotations
 	}
 
+	// TODO want to remove where public
 	#[must_use]
-	pub fn get_current(&self) -> &'a str {
+	pub(crate) fn get_current(&self) -> &'a str {
 		&self.script[self.head as usize..]
+	}
+
+	#[must_use]
+	pub fn source_size(&self) -> u32 {
+		self.script.len() as u32
 	}
 
 	#[must_use]
@@ -134,6 +140,7 @@ impl<'a> Lexer<'a> {
 				.next()
 				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
 		{
+			self.state.last_new_lines = 0;
 			self.head += length as u32;
 			true
 		} else {
@@ -304,10 +311,10 @@ impl<'a> Lexer<'a> {
 			let statement_or_declaration_prefixes =
 				&["const", "let", "function", "class", "if", "for", "while"];
 			for prefix in statement_or_declaration_prefixes {
-				if current.starts_with(prefix) && {
-					let after = &current[prefix.len()..];
-					!after.starts_with(utilities::is_valid_identifier)
-				} {
+				// Starts with prefix and is not other identifer
+				let not_identifer = current.starts_with(prefix)
+					&& !current[prefix.len()..].starts_with(utilities::is_valid_identifier);
+				if not_identifer {
 					return true;
 				}
 			}
@@ -327,6 +334,7 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		let matches = current.starts_with(operator);
 		if matches {
+			self.state.last_new_lines = 0;
 			self.head += operator.len() as u32;
 		}
 		matches
@@ -348,6 +356,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub fn advance(&mut self, count: u32) {
+		self.state.last_new_lines = 0;
 		self.head += count;
 	}
 
@@ -450,16 +459,16 @@ impl<'a> Lexer<'a> {
 						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
 						if !is_valid {
 							let value = &current[..idx];
-							let result = if !check_reserved
-								|| crate::lexer::utilities::is_valid_variable_identifier(value)
-							{
-								self.head += idx as u32;
-								Ok(value)
-							} else {
+							let is_invalid = check_reserved
+								&& !crate::lexer::utilities::is_valid_variable_identifier(value);
+							let result = if is_invalid {
 								Err(ParseError::new(
 									ParseErrors::ReservedIdentifier,
 									start.with_length(value.len()),
 								))
+							} else {
+								self.head += idx as u32;
+								Ok(value)
 							};
 							return result;
 						}
@@ -530,18 +539,20 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
+	/// Also counts up new lines
 	pub fn parse_until_one_of_no_advance(
 		&mut self,
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
 		let current = self.get_current();
-		for (i, _) in current.char_indices() {
+		for (i, chr) in current.char_indices() {
 			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
 				self.head += i as u32;
 				let content = &current[..i];
-				self.state.last_new_lines =
-					content.chars().filter(|char| matches!(char, '\n')).count() as u32;
 				return Ok((content, until));
+			}
+			if let '\n' = chr {
+				self.state.last_new_lines += 1;
 			}
 		}
 		Err(())
@@ -1078,7 +1089,6 @@ impl<'a> Lexer<'a> {
 
 	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
 	pub fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
-		// let last = self.state.last_new_lines;
 		// TODO order
 		let semi_colon_like = self.starts_with_slice("//")
 			|| self.is_operator_advance(";")
@@ -1224,6 +1234,7 @@ pub(crate) mod utilities {
 			slice.starts_with("generator ")
 				|| slice.starts_with("worker ")
 				|| slice.starts_with("server ")
+				|| slice.starts_with("test ")
 		})
 	}
 
@@ -1239,6 +1250,14 @@ pub(crate) mod utilities {
 		}
 	}
 
+	pub fn next_item<'a>(reader: &super::Lexer<'a>) -> (&'a str, crate::Span) {
+		let current = reader.get_current();
+		let until_empty = self::next_empty_occurance(current);
+		let position = reader.get_start().with_length(until_empty);
+		let found = &current[..until_empty];
+		(found, position)
+	}
+
 	pub fn expected_one_of_items(
 		reader: &super::Lexer,
 		expected: &'static [&'static str],
@@ -1248,5 +1267,28 @@ pub(crate) mod utilities {
 		let position = reader.get_start().with_length(found.len());
 		let reason = crate::ParseErrors::ExpectedOneOfItems { expected, found };
 		crate::ParseError::new(reason, position)
+	}
+
+	pub fn get_not_identifier_length(reader: &super::Lexer) -> Option<usize> {
+		let on = reader.get_current();
+		for (idx, c) in on.char_indices() {
+			if c == '#' || crate::lexer::utilities::is_valid_identifier(c) {
+				return None;
+			} else if !c.is_whitespace() {
+				let after = &on[idx..];
+				return if after.starts_with("//") || after.starts_with("/*") {
+					None
+				} else {
+					Some(idx)
+				};
+			}
+		}
+
+		// Else nothing exists
+		Some(0)
+	}
+
+	pub fn get_after_operator<'a>(reader: &super::Lexer<'a>, item: &str) -> &'a str {
+		&reader.get_current()[item.len()..]
 	}
 }

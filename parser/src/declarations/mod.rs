@@ -6,7 +6,7 @@ pub use import_export::{export, import};
 
 pub use super::types::{
 	declare_variable::DeclareVariableDeclaration,
-	enum_declaration::{EnumDeclaration, EnumMember},
+	enum_declaration::{EnumDeclaration, EnumMember, EnumMemberValue},
 	interface::InterfaceDeclaration,
 	type_alias::TypeAlias,
 };

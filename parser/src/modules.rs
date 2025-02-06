@@ -40,7 +40,7 @@ impl ASTNode for Module {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let span = Span { start: 0, source: (), end: reader.get_current().len() as u32 };
+		let span = Span { start: 0, source: (), end: reader.source_size() };
 		let hashbang_comment = if reader.is_operator_advance("#!") {
 			let hashbang_comment = reader.parse_comment_literal(false)?;
 			Some(hashbang_comment.to_owned())
@@ -51,10 +51,8 @@ impl ASTNode for Module {
 		if reader.is_finished() {
 			Ok(Module { hashbang_comment, items, span })
 		} else {
-			Err(crate::ParseError::new(
-				crate::ParseErrors::ExpectedEndOfSource { found: reader.get_current() },
-				reader.get_start().union(reader.get_end()),
-			))
+			let (found, position) = crate::lexer::utilities::next_item(reader);
+			Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
 		}
 	}
 }

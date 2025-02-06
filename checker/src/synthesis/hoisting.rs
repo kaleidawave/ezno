@@ -785,6 +785,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let location = function.header.get_location().map(|location| match location {
 					parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
 					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
+					parser::functions::FunctionLocationModifier::Test => "test".to_owned(),
 				});
 
 				let value = if function.name.is_declare {

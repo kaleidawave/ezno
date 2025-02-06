@@ -111,7 +111,8 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 				options.add_indent(local.depth + 1, buf);
 			}
 			member.to_string_from_buffer(buf, options, local);
-			if !options.pretty && !at_end {
+			// TODO can skip !pretty if it next is not []
+			if !at_end {
 				buf.push(';');
 			}
 		}

@@ -648,8 +648,7 @@ impl TypeAnnotation {
 			let result;
 			loop {
 				let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
-					// TODO might be a problem
-					let position = reader.get_start().with_length(reader.get_current().len());
+					let (_found, position) = crate::lexer::utilities::next_item(reader);
 					ParseError::new(ParseErrors::UnexpectedEnd, position)
 				})?;
 				if let "${" = found {
