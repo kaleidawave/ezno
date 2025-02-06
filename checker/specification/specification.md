@@ -2433,6 +2433,8 @@ function func2(a: number) {
 }
 ```
 
+With advanced_numbers
+
 - This equality is always false as GreaterThan<4> and 3 have no overlap
 - Expected string, found boolean
 - This equality is always false as LessThan<2> and 6 have no overlap
@@ -2518,6 +2520,8 @@ function func(a: string, b: number) {
 }
 ```
 
+With advanced_numbers
+
 - Expected string, found true
 - Expected null, found boolean
 
@@ -2529,6 +2533,8 @@ function func(a: number) {
 	(Math.sin(a) > -1) satisfies string;
 }
 ```
+
+With advanced_numbers
 
 - Expected string, found boolean
 
@@ -2576,6 +2582,8 @@ function func(x: number) {
 }
 ```
 
+With advanced_numbers
+
 - This equality is always false as ExclusiveRange<-5, 5> and 6 have no overlap
 
 #### Transistivity
@@ -2588,9 +2596,11 @@ function func(a: number, b: number, c: number) {
 }
 ```
 
+With advanced_numbers
+
 - Expected 5, found true
 
-### Operators across conditions
+#### Operators across conditions
 
 ```ts
 function func(param: boolean) {
@@ -2622,6 +2632,14 @@ function func3(p1: Not<string>, p2: Not<number>) {
 ```
 
 - This equality is always false as "hi" and Not\<string> have no overlap
+
+#### NaN
+
+```ts
+const value: string = 0 / 0 + 1;
+```
+
+- Type NaN is not assignable to type string
 
 ### Statements, declarations and expressions
 
@@ -3007,6 +3025,15 @@ function func(x: X | null) {
 
 - No property 'a' on X | null
 - Expected number, found undefined | string
+
+#### Escape sequences handled
+
+```ts
+const x: "\"" = '"';
+const y: "Hi" = `Hello\``;
+```
+
+- Type "Hello`" is not assignable to type "Hi"
 
 ### Regular expressions
 
@@ -4098,12 +4125,12 @@ type Required<T> = {
 #### Readonly
 
 ```ts
-type Mutable<T> = {
+type Immutable<T> = {
 	readonly [P in keyof T]: T[P];
 };
 
 interface Y { a: string }
-declare let x: Mutable<Y>;
+declare let x: Immutable<Y>;
 x.a = "hi";
 ```
 
@@ -4118,13 +4145,11 @@ type Mutable<T> = {
 
 interface Y { readonly a: string }
 declare let x: Mutable<Y>;
-x.a = "hi";
 x.a = 4;
+x.a = "hi";
 ```
 
-<!-- TODO this is incorrect!!!!, should be string -->
-
-- Type 4 does not meet property constraint "hi"
+- Type 4 does not meet property constraint string
 
 #### `as` rewrite
 
@@ -4497,6 +4522,19 @@ function func(param: boolean) {
 #### Assertions annotation
 
 ```ts
+declare function isNumber(param: any): asserts param is number;
+declare const value: any;
+
+if (isNumber(value)) {
+	value satisfies string;
+}
+```
+
+- Expected string, found number
+
+#### Assertions annotation return type checked
+
+```ts
 function func1(param: any): asserts param is number {
 	if (typeof param !== "string") {
 		throw "bad"
@@ -4510,9 +4548,7 @@ function func2(param: any): asserts param is boolean {
 }
 ```
 
-> TODO `any` should be parameter name
-
-- Cannot return asserts any is string because the function is expected to return asserts any is number
+- Cannot return asserts param is string because the function is expected to return asserts param is number
 
 #### External predicate
 
@@ -4582,7 +4618,46 @@ for (let i = 0; i < 3; i++) {
 }
 ```
 
+With advanced_numbers
+
 - This equality is always false as LessThan<3> and 50 have no overlap
+
+#### Narrowing chains
+
+```ts
+export type User = { username: string, password: string };
+export type AuthPredicate = (username: string, password: string) => boolean;
+export type Auth = User | User[] | AuthPredicate;
+
+function run(auth: Auth)  {
+    if (Array.isArray(auth)) {
+        auth satisfies number;
+    } else if (typeof auth === "function") {
+        auth("hi", 5) satisfies string;
+    } else {
+        auth satisfies boolean;
+    }
+}
+```
+
+- Expected number, found Array\<User>
+- Argument of type 5 is not assignable to parameter of type string
+- Expected string, found boolean
+- Expected boolean, found { username: string, password: string }
+
+#### Narrowing free variable
+
+```ts
+function func(value: any) {
+  function isNumber() { return typeof value === "number" }
+
+  if (isNumber()) {
+    value satisfies string
+  }
+}
+```
+
+- Expected string, found number
 
 ### Object constraint
 
@@ -4749,13 +4824,13 @@ proxy1.a satisfies string;
 #### Proxy subtyping
 
 ```ts
-const proxy1 = new Proxy({}, { get(_target, prop, _receiver) { return prop } });
+const proxy1 = new Proxy({}, { get(_target, prop, receiver) { return prop } });
 
 proxy1 satisfies { a: "a", b: "b" };
 proxy1 satisfies { c: "d" };
 ```
 
-- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, _receiver: any) => any } ]
+- Expected { c: "d" }, found Proxy [ {}, { get: (_target: any, prop: any, receiver: any) => any } ]
 
 #### Proxy across functions
 

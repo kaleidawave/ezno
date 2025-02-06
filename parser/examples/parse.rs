@@ -93,19 +93,7 @@ fn parse_path(
 
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
-	let mut local_parse_options = *parse_options;
-	if let Some(extension) = path.extension().and_then(std::ffi::OsStr::to_str) {
-		local_parse_options.type_annotations = extension.contains("ts");
-		local_parse_options.jsx = extension.contains('x');
-	}
-
-	let on = source.clone();
-	let result = std::thread::Builder::new()
-		.stack_size(EIGHT_MEGA_BYTES)
-		.spawn(move || Module::from_string_with_options(on, local_parse_options, None))
-		.unwrap()
-		.join()
-		.unwrap();
+	let result = Module::from_string_with_options(source.clone(), *parse_options, None);
 
 	match result {
 		Ok((module, state)) => {

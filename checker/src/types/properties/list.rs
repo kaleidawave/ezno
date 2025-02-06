@@ -81,7 +81,11 @@ pub fn get_properties_on_single_type(
 					} else {
 						// TODO temp fix
 						if idx >= properties.len() {
-							crate::utilities::notify!("Here! {:?}", properties);
+							crate::utilities::notify!(
+								"Here! idx {:?} > properties {:?}",
+								idx,
+								properties
+							);
 							continue;
 						}
 						properties[idx] = value;

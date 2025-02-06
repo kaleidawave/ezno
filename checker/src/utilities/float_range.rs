@@ -1,4 +1,4 @@
-type BetterF64 = ordered_float::NotNan<f64>;
+#![allow(clippy::float_cmp)]
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InclusiveExclusive {
@@ -26,28 +26,25 @@ impl InclusiveExclusive {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FloatRange {
-	pub floor: (InclusiveExclusive, BetterF64),
-	pub ceiling: (InclusiveExclusive, BetterF64),
+	pub floor: (InclusiveExclusive, f64),
+	pub ceiling: (InclusiveExclusive, f64),
 }
 
 impl Default for FloatRange {
 	fn default() -> Self {
-		Self {
-			floor: (Exclusive, f64::NEG_INFINITY.try_into().unwrap()),
-			ceiling: (Exclusive, f64::INFINITY.try_into().unwrap()),
-		}
+		Self { floor: (Exclusive, f64::NEG_INFINITY), ceiling: (Exclusive, f64::INFINITY) }
 	}
 }
 
 // TODO try_from (assert ceiling > floor etc)
 impl FloatRange {
 	#[must_use]
-	pub fn new_single(on: BetterF64) -> Self {
+	pub fn new_single(on: f64) -> Self {
 		Self { floor: (Inclusive, on), ceiling: (Inclusive, on) }
 	}
 
 	#[must_use]
-	pub fn as_single(self) -> Option<BetterF64> {
+	pub fn as_single(self) -> Option<f64> {
 		if let FloatRange { floor: (Inclusive, floor), ceiling: (Inclusive, ceiling) } = self {
 			(floor == ceiling).then_some(floor)
 		} else {
@@ -56,33 +53,28 @@ impl FloatRange {
 	}
 
 	#[must_use]
-	pub fn new_greater_than(greater_than: BetterF64) -> Self {
-		FloatRange {
-			floor: (Exclusive, greater_than),
-			ceiling: (Exclusive, f64::INFINITY.try_into().unwrap()),
-		}
+	pub fn new_greater_than(greater_than: f64) -> Self {
+		FloatRange { floor: (Exclusive, greater_than), ceiling: (Exclusive, f64::INFINITY) }
 	}
 
 	#[must_use]
-	pub fn get_greater_than(self) -> Option<BetterF64> {
+	pub fn get_greater_than(self) -> Option<f64> {
 		(self.floor.1 != f64::NEG_INFINITY).then_some(self.floor.1)
 	}
 
 	#[must_use]
-	pub fn new_less_than(less_than: BetterF64) -> Self {
-		FloatRange {
-			floor: (Exclusive, f64::NEG_INFINITY.try_into().unwrap()),
-			ceiling: (Exclusive, less_than),
-		}
+	pub fn new_less_than(less_than: f64) -> Self {
+		FloatRange { floor: (Exclusive, f64::NEG_INFINITY), ceiling: (Exclusive, less_than) }
 	}
 
 	#[must_use]
-	pub fn get_less_than(self) -> Option<BetterF64> {
+	pub fn get_less_than(self) -> Option<f64> {
 		(self.ceiling.1 != f64::INFINITY).then_some(self.ceiling.1)
 	}
 
 	#[must_use]
-	pub fn contains(self, value: BetterF64) -> bool {
+	#[allow(clippy::float_cmp)]
+	pub fn contains(self, value: f64) -> bool {
 		if self.floor.1 < value && value < self.ceiling.1 {
 			true
 		} else if self.floor.1 == value {
@@ -174,10 +166,17 @@ impl FloatRange {
 		let (l_floor, l_ceiling, r_floor, r_ceiling) =
 			(self.floor.1, self.ceiling.1, other.floor.1, other.ceiling.1);
 		// there may be a faster way but being lazy
-		let corners =
-			[l_floor * r_floor, l_floor * r_ceiling, r_floor * l_ceiling, l_ceiling * r_ceiling];
-		let floor = *corners.iter().min().unwrap();
-		let ceiling = *corners.iter().max().unwrap();
+		let initial = l_floor * r_floor;
+		let mut floor = initial;
+		let mut ceiling = initial;
+		let other_corners = &[l_floor * r_ceiling, r_floor * l_ceiling, l_ceiling * r_ceiling];
+		for corner in other_corners {
+			if *corner < floor {
+				floor = *corner;
+			} else if *corner > ceiling {
+				ceiling = *corner;
+			}
+		}
 
 		let floor_bound = self.floor.0.mix(other.floor.0);
 		let ceiling_bound = self.ceiling.0.mix(other.ceiling.0);
@@ -185,14 +184,14 @@ impl FloatRange {
 	}
 
 	#[must_use]
-	pub fn contains_multiple_of(self, multiple_of: BetterF64) -> bool {
+	pub fn contains_multiple_of(self, multiple_of: f64) -> bool {
 		let (floor, ceiling) = (self.floor.1, self.ceiling.1);
 
 		let floor = floor / multiple_of;
 		let ceiling = ceiling / multiple_of;
 
 		// TODO >= ?
-		ceiling.floor() > *floor
+		ceiling.floor() > floor
 	}
 
 	// This will try to get cover
@@ -212,38 +211,40 @@ impl FloatRange {
 	// TODO more :)
 }
 
-impl From<std::ops::Range<BetterF64>> for FloatRange {
-	fn from(range: std::ops::Range<BetterF64>) -> FloatRange {
-		FloatRange { floor: (Exclusive, range.start), ceiling: (Exclusive, range.end) }
-	}
-}
+#[derive(Debug)]
+pub struct FloatIsNan;
+
 impl TryFrom<std::ops::Range<f64>> for FloatRange {
-	type Error = ordered_float::FloatIsNan;
+	type Error = FloatIsNan;
 
 	fn try_from(range: std::ops::Range<f64>) -> Result<Self, Self::Error> {
-		let floor = ordered_float::NotNan::new(range.start)?;
-		let ceiling = ordered_float::NotNan::new(range.end)?;
-		Ok(FloatRange { floor: (Exclusive, floor), ceiling: (Exclusive, ceiling) })
+		let floor = range.start;
+		let ceiling = range.end;
+		if floor.is_nan() || ceiling.is_nan() {
+			Err(FloatIsNan)
+		} else {
+			Ok(FloatRange { floor: (Exclusive, floor), ceiling: (Exclusive, ceiling) })
+		}
 	}
 }
 
-// TODO more
+// TODO inclusive tests and more
 #[cfg(test)]
 mod tests {
-	use super::{BetterF64, FloatRange, InclusiveExclusive};
+	use super::{FloatRange, InclusiveExclusive};
 
-	fn e(a: f64) -> (InclusiveExclusive, BetterF64) {
-		(InclusiveExclusive::Exclusive, a.try_into().unwrap())
+	fn e(a: f64) -> (InclusiveExclusive, f64) {
+		(InclusiveExclusive::Exclusive, a)
 	}
 
-	fn i(a: f64) -> (InclusiveExclusive, BetterF64) {
-		(InclusiveExclusive::Inclusive, a.try_into().unwrap())
+	fn _i(a: f64) -> (InclusiveExclusive, f64) {
+		(InclusiveExclusive::Inclusive, a)
 	}
 
 	#[test]
 	fn contained_in() {
 		let zero_to_four: FloatRange = FloatRange::try_from(0f64..4f64).unwrap();
-		assert!(FloatRange::new_single(2.into()).contained_in(zero_to_four));
+		assert!(FloatRange::new_single(2.).contained_in(zero_to_four));
 	}
 
 	#[test]

@@ -82,10 +82,13 @@ pub(crate) fn print_to_cli(arguments: Arguments) {
 
 #[cfg(not(target_family = "wasm"))]
 pub(crate) fn print_to_cli(arguments: Arguments) {
-	use std::io;
+	use std::io::{self, Write};
+	let stdout = io::stdout();
+	let mut stdout = stdout.lock();
 
-	println!("{arguments}");
-	io::Write::flush(&mut io::stdout()).unwrap();
+	// Ignore errors here for now
+	let _ = writeln!(stdout, "{arguments}");
+	let _ = Write::flush(&mut stdout);
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -141,8 +144,7 @@ impl checker::ReadFromFS for FSFunction {
 }
 
 // yes i implemented it only using `native_tls`...
-// TODO or(..., debug_assertions)
-#[cfg(not(target_family = "wasm"))]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	use native_tls::{TlsConnector, TlsStream};
 	use std::io::{BufRead, BufReader, BufWriter, Read, Write};
@@ -160,11 +162,16 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 			"GET {path} HTTP/1.1\r\n\
         Host: {root}\r\n\
         Connection: close\r\n\
-        User-Agent: ezno-self-update\r\n\
-        \r\n"
+        User-Agent: ezno-self-update\r\n"
 		);
 
 		tls_stream.write_all(request.as_bytes())?;
+		if let "api.github.com" = path {
+			tls_stream.write_all(
+				b"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n",
+			)?;
+		}
+		tls_stream.write_all(b"\r\n")?;
 
 		Ok(tls_stream)
 	}
@@ -197,23 +204,28 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 		let mut version_name = None;
 
 		// Name comes before assets so okay here on exit signal
-		let result = parse_with_exit_signal(body, |keys, value| {
-			if let [JSONKey::Slice("name")] = keys {
-				if let RootJSONValue::String(s) = value {
-					version_name = Some(s.to_owned());
-				}
-			} else if let [JSONKey::Slice("assets"), JSONKey::Index(_), JSONKey::Slice("browser_download_url")] =
-				keys
-			{
-				if let RootJSONValue::String(s) = value {
-					if s.ends_with(EXPECTED_END) {
-						required_binary = Some(s.to_owned());
-						return true;
+		let result = parse_with_exit_signal(
+			body,
+			|keys, value| {
+				if let [JSONKey::Slice("name")] = keys {
+					if let RootJSONValue::String(s) = value {
+						version_name = Some(s.to_owned());
+					}
+				} else if let [JSONKey::Slice("assets"), JSONKey::Index(_), JSONKey::Slice("browser_download_url")] =
+					keys
+				{
+					if let RootJSONValue::String(s) = value {
+						if s.ends_with(EXPECTED_END) {
+							required_binary = Some(s.to_owned());
+							return true;
+						}
 					}
 				}
-			}
-			false
-		});
+				false
+			},
+			false,
+			false,
+		);
 
 		if let Err(JSONParseError { at, reason }) = result {
 			return Err(Box::from(format!("JSON parse error: {reason:?} @ {at}")));
@@ -279,14 +291,12 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	}
 
 	// Read and discard headers
-	let mut headers = String::new();
 	loop {
 		let mut line = String::new();
 		reader.read_line(&mut line)?;
-		if line == "\r\n" {
+		if let "\r\n" = line.as_str() {
 			break;
 		}
-		headers.push_str(&line);
 	}
 
 	// Open the file to write the body

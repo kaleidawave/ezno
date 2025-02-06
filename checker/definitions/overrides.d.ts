@@ -359,6 +359,8 @@ interface PropertyDescriptor {
     enumerable?: boolean;
 }
 
+declare class Date { }
+
 declare class Object {
     @Constant
     static setPrototypeOf(on: object, to: object): object;
@@ -457,42 +459,31 @@ declare const document: Document;
 // declare function createItem(a: any);
 
 // ↓↓ Ezno testing functions ↓↓
-@Constant
-declare function print_type<T>(...args: Array<T>): void;
-@Constant
-declare function debug_type<T>(...args: Array<T>): void;
-@Constant
-declare function print_and_debug_type<T>(...args: Array<T>): void;
-@Constant
-declare function print_constraint(t: any): void;
-@Constant
-declare function debug_type_rust(t: any): void;
-@Constant
-declare function debug_type_rust_independent(t: any): void;
+@Constant("ezno:print_type")
+declare function print_type<T>(...args: Array<T>): void
+@Constant("ezno:debug_type")
+declare function debug_type<T>(...args: Array<T>): void
+@Constant("ezno:debug_type_independent")
+declare function debug_type_independent<T>(...args: Array<T>): void
+@Constant("ezno:print_and_debug_type")
+declare function print_and_debug_type<T>(...args: Array<T>): void
+@Constant("ezno:debug_type_rust")
+declare function debug_type_rust(t: any): void
+@Constant("ezno:debug_type_rust_independent")
+declare function debug_type_rust_independent(t: any): void
 
-@Constant
-declare function debug_effects_rust(t: () => {}): void;
-@Constant
-declare function debug_effects(t: () => {}): void;
+@Constant("ezno:print_constraint")
+declare function print_constraint(t: any): void
+@Constant("ezno:debug_constraint")
+declare function debug_constraint(a: any);
 
-@Constant
-declare function is_dependent(t: any): void;
-@Constant
-declare function print_environment_state<T>(): any;
+@Constant("ezno:debug_effects")
+declare function debug_effects(t: () => {}): void
+@Constant("ezno:debug_effects_rust")
+declare function debug_effects_rust(t: () => {}): void
 
-@Constant
-declare function debug_context(): void;
-@Constant
-declare function context_id(): void;
-@Constant
-declare function context_id_chain(): void;
-@Constant
-declare function debug_type_independent(t: any): void;
-
-// A function, as it should be!
-@Constant
-declare function satisfies<T>(t: T): T;
-
-@Constant
-declare function compile_type_to_object<T>(): any;
+@Constant("ezno:is_dependent")
+declare function is_dependent(t: any): void
+@Constant("ezno:print_environment_state")
+declare function print_environment_state<T>(): any
 // ↑↑ Ezno Functions ↑↑

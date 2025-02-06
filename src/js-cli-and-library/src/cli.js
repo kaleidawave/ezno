@@ -2,14 +2,14 @@
 
 import { initSync, run_cli, parse_module, ReplSystem } from "../build/ezno_lib.js";
 import { readFileSync, writeFileSync } from "node:fs";
-import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import * as readline from 'node:readline/promises';
 
 const wasmPath = new URL("./shared/ezno_lib_bg.wasm", import.meta.url);
 if (wasmPath.protocol === "https:") {
-    initSync(await fetch(wasmPath).then(response => response.arrayBuffer()))
+    initSync({ module: await fetch(wasmPath).then(response => response.arrayBuffer()) });
 } else {
-    initSync(readFileSync(wasmPath));
+    initSync({ module: readFileSync(wasmPath) });
 }
 
 const onDeno = typeof Deno !== "undefined";

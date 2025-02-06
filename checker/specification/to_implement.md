@@ -541,20 +541,6 @@ a satisfies string;
 
 - Expected string, found [7, 6]
 
-#### Optional interface property
-
-> TODO needs `Logical`-ish `PropertyValue`
-
-```ts
-declare const global: { a?: string };
-
-("a" in global) satisfies string;
-(global.a) satisfies 2;
-```
-
-- Expected string, found boolean
-- Expected 2, found string | undefined
-
 ### Runtime
 
 #### Free variable + anytime calls
@@ -606,7 +592,7 @@ class MyClass {
 ((new MyClass).getA() satisfies 3);
 ```
 
-- Cannot get private property "#a"
+- Cannot get private property '#a'
 - Expected 3, found 2
 
 #### Implements

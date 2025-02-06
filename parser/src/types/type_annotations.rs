@@ -57,7 +57,7 @@ pub enum TypeAnnotation {
 	/// ?
 	TemplateLiteral {
 		parts: Vec<(String, AnnotationWithBinder)>,
-		last: String,
+		final_part: String,
 		position: Span,
 	},
 	/// Declares type as not assignable (still has interior mutability) e.g. `readonly number`
@@ -398,7 +398,7 @@ impl ASTNode for TypeAnnotation {
 				reference.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
-			Self::TemplateLiteral { parts, last, .. } => {
+			Self::TemplateLiteral { parts, final_part, .. } => {
 				buf.push('`');
 				for (static_part, dynamic_part) in parts {
 					buf.push_str_contains_new_line(static_part.as_str());
@@ -407,7 +407,7 @@ impl ASTNode for TypeAnnotation {
 					dynamic_part.to_string_from_buffer(buf, options, local);
 					buf.push('}');
 				}
-				buf.push_str_contains_new_line(last.as_str());
+				buf.push_str_contains_new_line(final_part.as_str());
 				buf.push('`');
 			}
 			Self::Symbol { unique, .. } => {
@@ -659,7 +659,7 @@ impl TypeAnnotation {
 				} else {
 					result = Self::TemplateLiteral {
 						parts,
-						last: content.to_owned(),
+						final_part: content.to_owned(),
 						position: start.union(reader.get_end()),
 					};
 					break;

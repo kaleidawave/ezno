@@ -4,7 +4,7 @@ use source_map::{Nullable, Span, SpanWithSource};
 
 use crate::{
 	features::{functions::ClosureId, objects::SpecialObject, regexp::RegExp},
-	Constant, Environment, FunctionId, Map as SmallMap, TypeId,
+	Constant, Environment, FunctionId, Map as SmallMap, TypeId, VariableId,
 };
 
 use super::{
@@ -25,6 +25,10 @@ pub struct TypeStore {
 
 	/// Some types are prototypes but have generic parameters but
 	pub(crate) lookup_generic_map: HashMap<TypeId, LookUpGenericMap>,
+
+	/// For free variables and parameters. For diagnostics (extends and assetion printing).
+	/// Not held on context because this is more accessible
+	pub(crate) parameter_names: HashMap<VariableId, String>,
 
 	/// Contains all the function types
 	///
@@ -74,12 +78,12 @@ impl Default for TypeStore {
 			// one
 			Type::Constant(Constant::Number(1.into())),
 			// NaN
-			Type::Constant(Constant::NaN),
-			Type::Constant(Constant::Number(f64::NEG_INFINITY.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::INFINITY.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::MIN.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::MAX.try_into().unwrap())),
-			Type::Constant(Constant::Number(f64::EPSILON.try_into().unwrap())),
+			Type::Constant(Constant::Number(f64::NAN)),
+			Type::Constant(Constant::Number(f64::NEG_INFINITY)),
+			Type::Constant(Constant::Number(f64::INFINITY)),
+			Type::Constant(Constant::Number(f64::MIN)),
+			Type::Constant(Constant::Number(f64::MAX)),
+			Type::Constant(Constant::Number(f64::EPSILON)),
 			Type::Constant(Constant::Number({
 				const THIRTY_TWO_ONE_BITS: i32 = -1i32;
 				THIRTY_TWO_ONE_BITS.into()
@@ -208,6 +212,7 @@ impl Default for TypeStore {
 		Self {
 			types,
 			lookup_generic_map,
+			parameter_names: Default::default(),
 			functions: Default::default(),
 			called_functions: Default::default(),
 			closure_counter: 0,
@@ -221,6 +226,7 @@ impl TypeStore {
 		self.types.len()
 	}
 
+	#[allow(clippy::float_cmp)]
 	pub fn new_constant_type(&mut self, constant: Constant) -> crate::TypeId {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
@@ -229,9 +235,9 @@ impl TypeStore {
 			Constant::Number(number) if number == 1f64 => TypeId::ONE,
 			Constant::Number(number) if number == f64::NEG_INFINITY => TypeId::NEG_INFINITY,
 			Constant::Number(number) if number == f64::INFINITY => TypeId::INFINITY,
+			Constant::Number(number) if number.is_nan() => TypeId::NAN,
 			Constant::Boolean(true) => TypeId::TRUE,
 			Constant::Boolean(false) => TypeId::FALSE,
-			Constant::NaN => TypeId::NAN,
 			_ => {
 				let ty = Type::Constant(constant);
 				// TODO maybe separate id
@@ -451,7 +457,6 @@ impl TypeStore {
 		self.register_type(Type::FunctionReference(id))
 	}
 
-	/// TODO WIP
 	#[allow(clippy::similar_names)]
 	pub(crate) fn new_property_on_type_annotation(
 		&mut self,
@@ -466,7 +471,7 @@ impl TypeStore {
 				on: indexee,
 				under,
 				result: TypeId::ANY_TYPE,
-				mode: AccessMode::Regular,
+				mode: AccessMode::FromTypeAnnotation,
 			});
 			self.register_type(ty)
 		} else {
@@ -479,7 +484,7 @@ impl TypeStore {
 			);
 			if let Ok(prop) = result {
 				match prop {
-					LogicalOrValid::Logical(Logical::Pure(ty)) => ty.as_get_type(self),
+					LogicalOrValid::Logical(Logical::Pure(value)) => value.as_get_type(self),
 					value => {
 						crate::utilities::notify!("value={:?}", value);
 						TypeId::UNIMPLEMENTED_ERROR_TYPE
@@ -505,7 +510,14 @@ impl TypeStore {
 		Ok(self.register_type(ty))
 	}
 
-	pub fn new_function_parameter(&mut self, parameter_constraint: TypeId) -> TypeId {
+	pub fn new_function_parameter(
+		&mut self,
+		parameter_constraint: TypeId,
+		variable_id: VariableId,
+		name: &str,
+	) -> TypeId {
+		self.parameter_names.insert(variable_id, name.to_owned());
+
 		// TODO this has problems if there are two generic types. Aka `(a: T, b: T) -> T`. Although I have
 		// no idea why this is possible so should be fine?
 		if let Type::RootPolyType(PolyNature::FunctionGeneric { .. }) =
@@ -515,6 +527,7 @@ impl TypeStore {
 		} else {
 			self.register_type(Type::RootPolyType(crate::types::PolyNature::Parameter {
 				fixed_to: parameter_constraint,
+				variable_id,
 			}))
 		}
 	}
@@ -591,7 +604,7 @@ impl TypeStore {
 
 	/// *Dangerous* . TODO WIP
 	pub(crate) fn _set_inferred_constraint(&mut self, ty: TypeId, constraint: TypeId) {
-		if let Some(Type::RootPolyType(PolyNature::Parameter { fixed_to })) =
+		if let Some(Type::RootPolyType(PolyNature::Parameter { fixed_to, variable_id: _ })) =
 			self.types.get_mut(ty.0 as usize)
 		{
 			*fixed_to = constraint;
@@ -649,5 +662,9 @@ impl TypeStore {
 			.enumerate()
 			.skip(TypeId::INTERNAL_TYPE_COUNT)
 			.map(|(idx, ty)| (TypeId(idx as u16), ty))
+	}
+
+	pub(crate) fn get_parameter_name(&self, id: VariableId) -> &str {
+		self.parameter_names.get(&id).map(String::as_str).unwrap_or_default()
 	}
 }

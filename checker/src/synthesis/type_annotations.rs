@@ -1,7 +1,5 @@
 //! Logic for getting [`TypeId`] from [`parser::TypeAnnotation`]s
 
-use std::convert::TryInto;
-
 use super::{
 	assignments::synthesise_access_to_reference, functions::synthesise_function_annotation,
 };
@@ -20,6 +18,7 @@ use crate::{
 	CheckingData, Map,
 };
 use parser::{
+	strings,
 	type_annotations::{
 		AnnotationWithBinder, CommonTypes, TupleElementKind, TupleLiteralElement, TypeName,
 	},
@@ -54,12 +53,12 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			CommonTypes::Never => TypeId::NEVER_TYPE,
 		},
 		TypeAnnotation::StringLiteral(value, ..) => {
-			checking_data.types.new_constant_type(Constant::String(value.clone()))
+			let value = strings::unescape_string_content(value).into_owned();
+			checking_data.types.new_constant_type(Constant::String(value))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
-			let constant = Constant::Number(
-				f64::try_from(value.clone()).expect("big int number type").try_into().unwrap(),
-			);
+			let constant =
+				Constant::Number(f64::try_from(value.clone()).expect("big int number type"));
 			checking_data.types.new_constant_type(constant)
 		}
 		TypeAnnotation::BooleanLiteral(value, _) => {
@@ -708,13 +707,14 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			crate::utilities::notify!("Unknown decorator skipping {:#?}", decorator.name);
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
-		TypeAnnotation::TemplateLiteral { parts, last, .. } => {
+		TypeAnnotation::TemplateLiteral { parts, final_part, .. } => {
 			// Using the existing thing breaks because we try to do `"..." + string` and
 			// the evaluate_mathematical_operator expects literal or poly values (not just types)
 			let mut acc = TypeId::EMPTY_STRING;
 			for (static_part, dynamic_part) in parts {
-				let lhs =
-					checking_data.types.new_constant_type(Constant::String(static_part.to_owned()));
+				let lhs = checking_data.types.new_constant_type(Constant::String(
+					strings::unescape_string_content(static_part).into_owned(),
+				));
 				acc = if let TypeId::EMPTY_STRING = acc {
 					lhs
 				} else {
@@ -745,10 +745,12 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				};
 				acc = checking_data.types.register_type(Type::Constructor(constructor));
 			}
-			if last.is_empty() {
+			if final_part.is_empty() {
 				acc
 			} else {
-				let lhs = checking_data.types.new_constant_type(Constant::String(last.to_owned()));
+				let lhs = checking_data.types.new_constant_type(Constant::String(
+					strings::unescape_string_content(final_part).into_owned(),
+				));
 				if let TypeId::EMPTY_STRING = acc {
 					lhs
 				} else {
@@ -799,16 +801,19 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		}
 		TypeAnnotation::Is { reference, is, position: _ } => {
 			let item_type = match reference {
-				parser::type_annotations::IsItem::Reference(name) => environment
-					.variables
-					.get(name)
-					.and_then(|variable| {
-						environment
-							.info
-							.variable_current_value
-							.get(&variable.get_origin_variable_id())
-					})
-					.copied(),
+				parser::type_annotations::IsItem::Reference(name) => {
+					// Fine to do this environment?
+					environment
+						.variables
+						.get(name)
+						.and_then(|variable| {
+							environment
+								.info
+								.variable_current_value
+								.get(&variable.get_origin_variable_id())
+						})
+						.copied()
+				}
 				parser::type_annotations::IsItem::This => {
 					// TODO
 					let based_on = TypeId::UNIMPLEMENTED_ERROR_TYPE;
@@ -850,8 +855,6 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				result_union: TypeId::ERROR_TYPE,
 			});
 			checking_data.types.register_type(ty)
-			// 	crate::types::TypeExtends { item, extends },
-			// ));
 		}
 		TypeAnnotation::This(position) => {
 			checking_data.raise_unimplemented_error(

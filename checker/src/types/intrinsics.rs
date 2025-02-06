@@ -321,6 +321,7 @@ pub fn new_intrinsic(intrinsic: &Intrinsic, argument: TypeId, types: &mut TypeSt
 }
 
 #[must_use]
+#[allow(clippy::float_cmp)]
 pub fn get_range_and_mod_class(
 	ty: TypeId,
 	types: &TypeStore,
@@ -415,14 +416,12 @@ pub fn get_range_and_mod_class(
 	}
 }
 
-type BetterF64 = ordered_float::NotNan<f64>;
-
 /// Unit. No combinations at this point
 #[derive(Debug)]
 pub enum PureNumberIntrinsic {
-	GreaterThan(BetterF64),
-	LessThan(BetterF64),
-	Modulo { modulo: BetterF64, offset: BetterF64 },
+	GreaterThan(f64),
+	LessThan(f64),
+	Modulo { modulo: f64, offset: f64 },
 }
 
 impl PureNumberIntrinsic {
@@ -438,10 +437,9 @@ impl PureNumberIntrinsic {
 				match *on {
 					TypeId::GREATER_THAN => Ok(PureNumberIntrinsic::GreaterThan(*number)),
 					TypeId::LESS_THAN => Ok(PureNumberIntrinsic::LessThan(*number)),
-					TypeId::MULTIPLE_OF => Ok(PureNumberIntrinsic::Modulo {
-						modulo: *number,
-						offset: 0f64.try_into().unwrap(),
-					}),
+					TypeId::MULTIPLE_OF => {
+						Ok(PureNumberIntrinsic::Modulo { modulo: *number, offset: 0f64 })
+					}
 					_ => todo!(),
 				}
 			} else {

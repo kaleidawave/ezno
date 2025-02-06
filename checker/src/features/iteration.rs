@@ -59,6 +59,10 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		max_inline: checking_data.options.max_inline_count,
 	};
 
+	let options = crate::features::narrowing::NarrowingOptions {
+		number_intrinsics: checking_data.options.advanced_numbers,
+	};
+
 	match behavior {
 		IterationBehavior::While(condition) => {
 			let (condition, result, ..) = environment.new_lexical_environment_fold_into_parent(
@@ -77,6 +81,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						false,
 						environment,
 						&mut checking_data.types,
+						&options,
 					);
 
 					crate::utilities::notify!("{:?}", values);
@@ -256,6 +261,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 											false,
 											environment,
 											&mut checking_data.types,
+											&options,
 										);
 
 									crate::utilities::notify!(
@@ -307,6 +313,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 							false,
 							environment,
 							&mut checking_data.types,
+							&options,
 						);
 
 						environment.info.narrowed_values = values;
@@ -365,10 +372,13 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				checking_data,
 			);
 
+			// TODO not parameter. Is free variable
 			let variable =
 				checking_data.types.register_type(Type::RootPolyType(PolyNature::Parameter {
-					// TODO can do `"prop1" | "prop2" | "prop3" | ...`
+					// TODO can do `"prop1" | "prop2" | "prop3" | ...`. Item of rhs.
 					fixed_to: TypeId::STRING_TYPE,
+					// TODO temp
+					variable_id: VariableId(environment.get_source(), 0),
 				}));
 
 			let ((), result, ..) = environment.new_lexical_environment_fold_into_parent(
@@ -770,7 +780,7 @@ impl LoopStructure {
 	}
 
 	pub fn known_to_never_exist(self, types: &TypeStore) -> bool {
-		self.calculate_iterations_f64(types).map_or(false, f64::is_infinite)
+		self.calculate_iterations_f64(types).is_ok_and(f64::is_infinite)
 	}
 
 	fn calculate_iterations_f64(self, types: &TypeStore) -> Result<f64, Self> {

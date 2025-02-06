@@ -53,11 +53,7 @@ pub fn evaluate_unary_operator(
 					UnaryOperation::Negation => -value,
 					UnaryOperation::LogicalNot => unreachable!(),
 				};
-				let value = ordered_float::NotNan::try_from(value);
-				Ok(match value {
-					Ok(value) => types.new_constant_type(Constant::Number(value)),
-					Err(_) => TypeId::NAN,
-				})
+				Ok(types.new_constant_type(Constant::Number(value)))
 			} else {
 				match operator {
 					UnaryOperation::BitwiseNot => super::evaluate_mathematical_operation(

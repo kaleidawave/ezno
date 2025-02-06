@@ -3,7 +3,6 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{
-		get_on_ctx,
 		information::{InformationChain, ObjectProtectionState},
 		invocation::CheckThings,
 	},
@@ -104,9 +103,7 @@ pub(crate) fn call_constant_function(
 				"abs" => num.abs(),
 				_ => unreachable!(),
 			};
-
-			let Ok(num) = result.try_into() else { return Ok(ConstantOutput::Value(TypeId::NAN)) };
-			Ok(ConstantOutput::Value(types.new_constant_type(Constant::Number(num))))
+			Ok(ConstantOutput::Value(types.new_constant_type(Constant::Number(result))))
 		}
 		"imul" => {
 			if let [x, y] = arguments {
@@ -114,7 +111,7 @@ pub(crate) fn call_constant_function(
 					(types.get_type_by_id(x.value), types.get_type_by_id(y.value))
 				{
 					// TODO is this correct, what about overflow?
-					let result = (x.into_inner() as i32) * (y.into_inner() as i32);
+					let result = (*x as i32) * (*y as i32);
 					Ok(ConstantOutput::Value(
 						types.new_constant_type(Constant::Number(result.into())),
 					))
@@ -133,11 +130,7 @@ pub(crate) fn call_constant_function(
 				let result = types.new_constant_type(match id {
 					"toUpperCase" => Constant::String(s.to_uppercase()),
 					"toLowerCase" => Constant::String(s.to_lowercase()),
-					"string_length" => Constant::Number(
-						(s.encode_utf16().count() as f64)
-							.try_into()
-							.map_err(|_| ConstantFunctionError::CannotComputeConstant)?,
-					),
+					"string_length" => Constant::Number(s.encode_utf16().count() as f64),
 					_ => unreachable!(),
 				});
 				Ok(ConstantOutput::Value(result))
@@ -146,14 +139,10 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
-		"debug_number" => {
-			let arg = arguments.iter().next().unwrap();
-			Ok(ConstantOutput::Diagnostic(format!(
-				"number: {:?}",
-				crate::types::intrinsics::get_range_and_mod_class(arg.value, types)
-			)))
-		}
-		"print_type" | "debug_type" | "print_and_debug_type" | "debug_type_independent" => {
+		"ezno:print_type"
+		| "ezno:debug_type"
+		| "ezno:print_and_debug_type"
+		| "ezno:debug_type_independent" => {
 			fn to_string(
 				print: bool,
 				debug: bool,
@@ -194,7 +183,7 @@ pub(crate) fn call_constant_function(
 				Ok(ConstantOutput::Diagnostic(buf))
 			}
 		}
-		"print_constraint" => {
+		"ezno:print_constraint" | "ezno:debug_constraint" => {
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::CannotComputeConstant)?
@@ -206,13 +195,15 @@ pub(crate) fn call_constant_function(
 				.find_map(|i| i.object_constraints.get(&ty).copied());
 
 			if let Some(constraint) = constraint {
-				let constraint_as_string = print_type(constraint, types, environment, false);
+				crate::utilities::notify!("constraint={:?}", constraint);
+				let debug = id == "ezno:debug_constraint";
+				let constraint_as_string = print_type(constraint, types, environment, debug);
 				Ok(ConstantOutput::Diagnostic(format!("Constraint is: {constraint_as_string}")))
 			} else {
 				Ok(ConstantOutput::Diagnostic("No associate constraint".to_owned()))
 			}
 		}
-		"debug_type_rust" | "debug_type_rust_independent" => {
+		"ezno:debug_type_rust" | "ezno:debug_type_rust_independent" => {
 			let id = arguments
 				.first()
 				.ok_or(ConstantFunctionError::CannotComputeConstant)?
@@ -222,7 +213,7 @@ pub(crate) fn call_constant_function(
 			let ty = types.get_type_by_id(id);
 			Ok(ConstantOutput::Diagnostic(format!("Type is: {id:?} = {ty:?}")))
 		}
-		"debug_effects" | "debug_effects_rust" => {
+		"ezno:debug_effects" | "ezno:debug_effects_rust" => {
 			let ty = arguments
 				.first()
 				.ok_or(ConstantFunctionError::CannotComputeConstant)?
@@ -662,19 +653,12 @@ pub(crate) fn call_constant_function(
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}
 		}
-		// "RegExp:constructor" => {
-		// 	crate::utilities::notify!("TODO check argument");
-		// 	if let Some(arg) = arguments.first() {
-		// 		Ok(ConstantOutput::Value(features::regular_expressions::new_regexp(features::regular_expressions::TypeIdOrString::TypeId(arg), types, environment)))
-		// 	} else {
-		// 		Err(ConstantFunctionError::CannotComputeConstant)
-		// 	}
-		// }
 		// TODO
 		"JSON:parse" => {
 			crate::utilities::notify!("TODO JSON:parse");
 			Err(ConstantFunctionError::CannotComputeConstant)
 		}
+		// TODO
 		"JSON:stringify" => {
 			crate::utilities::notify!("TODO JSON:stringify");
 			Err(ConstantFunctionError::CannotComputeConstant)
@@ -752,32 +736,32 @@ pub(crate) fn call_constant_function(
 		// 		Ok(ConstantOutput::Diagnostic(output))
 		// 	}
 		// }
-		"debug_state" => {
-			Ok(ConstantOutput::Diagnostic(format!("State={:?}", environment.info.state)))
-		}
-		"debug_context" => Ok(ConstantOutput::Diagnostic(environment.debug())),
-		"context_id" => Ok(ConstantOutput::Diagnostic(format!("in {:?}", environment.context_id))),
-		"context_id_chain" => Ok(ConstantOutput::Diagnostic({
-			use std::fmt::Write;
-			let mut buf = format!("{:?}", environment.context_id);
-			for ctx in environment.parents_iter().skip(1) {
-				write!(&mut buf, " <- {:?}", get_on_ctx!(ctx.context_id))
-					.map_err(|_| ConstantFunctionError::CannotComputeConstant)?;
-			}
-			buf
-		})),
-		"is_dependent" => Ok(ConstantOutput::Diagnostic(format!(
-			"is dependent {:?}",
-			types
-				.get_type_by_id(
-					arguments
-						.first()
-						.ok_or(ConstantFunctionError::CannotComputeConstant)?
-						.non_spread_type()
-						.map_err(|()| ConstantFunctionError::CannotComputeConstant)?
-				)
-				.is_dependent()
-		))),
+		// "debug_state" => {
+		// 	Ok(ConstantOutput::Diagnostic(format!("State={:?}", environment.info.state)))
+		// }
+		// "debug_context" => Ok(ConstantOutput::Diagnostic(environment.debug())),
+		// "context_id" => Ok(ConstantOutput::Diagnostic(format!("in {:?}", environment.context_id))),
+		// "context_id_chain" => Ok(ConstantOutput::Diagnostic({
+		// 	use std::fmt::Write;
+		// 	let mut buf = format!("{:?}", environment.context_id);
+		// 	for ctx in environment.parents_iter().skip(1) {
+		// 		write!(&mut buf, " <- {:?}", get_on_ctx!(ctx.context_id))
+		// 			.map_err(|_| ConstantFunctionError::CannotComputeConstant)?;
+		// 	}
+		// 	buf
+		// })),
+		// "is_dependent" => Ok(ConstantOutput::Diagnostic(format!(
+		// 	"is dependent {:?}",
+		// 	types
+		// 		.get_type_by_id(
+		// 			arguments
+		// 				.first()
+		// 				.ok_or(ConstantFunctionError::CannotComputeConstant)?
+		// 				.non_spread_type()
+		// 				.map_err(|()| ConstantFunctionError::CannotComputeConstant)?
+		// 		)
+		// 		.is_dependent()
+		// ))),
 		// "compile_type_to_object" => {
 		// 	if let Some(value) = call_site_type_args {
 		// 		let value = crate::types::others::create_object_for_type(

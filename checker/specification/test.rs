@@ -1,21 +1,13 @@
-#![allow(unused)]
 use std::{
-	collections::HashSet,
 	panic,
 	path::{Path, PathBuf},
-	process,
-	sync::{Arc, Mutex},
 };
 
 use checker::{
-	diagnostics,
 	source_map::{Nullable, SourceId},
 	synthesis::EznoParser,
 	TypeCheckOptions,
 };
-
-// This is here as it is used in the included `/specification.rs`
-use parser::ASTNode;
 
 mod specification {
 	use super::{check_expected_diagnostics, TypeCheckOptions};

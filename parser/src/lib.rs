@@ -17,6 +17,7 @@ pub mod number;
 pub mod options;
 pub mod property_key;
 pub mod statements;
+pub mod strings;
 pub mod types;
 mod variable_fields;
 pub mod visiting;
@@ -40,6 +41,7 @@ pub use options::*;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements::Statement;
+pub use strings::Quoted;
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
 	type_declarations::{self, TypeParameter},
@@ -61,23 +63,6 @@ attribute_alias! {
 		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 		#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))];
-}
-
-/// What surrounds a string
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[apply(derive_ASTNode!)]
-pub enum Quoted {
-	Single,
-	Double,
-}
-
-impl Quoted {
-	fn as_char(self) -> char {
-		match self {
-			Quoted::Single => '\'',
-			Quoted::Double => '"',
-		}
-	}
 }
 
 #[derive(Debug, Clone, Copy)]

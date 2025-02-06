@@ -609,8 +609,7 @@ fn call_logical<B: CallCheckingBehavior>(
 					// TODO just for debugging. These have their constant things called every time AND queue an event
 					let is_independent_function = const_fn_ident.ends_with("independent");
 
-					let call_anyway = const_fn_ident.starts_with("debug")
-						|| const_fn_ident.starts_with("print")
+					let call_anyway = const_fn_ident.starts_with("ezno")
 						|| is_independent_function
 						|| matches!(
 							const_fn_ident.as_str(),
@@ -1704,9 +1703,7 @@ impl FunctionType {
 
 				// Set length of spread array
 				if let Some(mut basis) = basis {
-					let length = types.new_constant_type(crate::Constant::Number(
-						(count as f64).try_into().unwrap(),
-					));
+					let length = types.new_constant_type(crate::Constant::Number(count as f64));
 
 					basis.append(
 						crate::types::properties::Publicity::Public,
@@ -2012,18 +2009,19 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 							// crate::utilities::notify!("(pairing explicit generics for) Generic parameter = {:?}", parameter_type);
 
 							let ty = checking_data.types.get_type_by_id(parameter_type);
-							let parameter_type = if let Type::RootPolyType(
-								PolyNature::Parameter { fixed_to },
-							) = ty
-							{
-								*fixed_to
-							} else {
-								crate::utilities::notify!(
-									"Parameter is not `PolyNature::Parameter`? {:?}",
+							let parameter_type =
+								if let Type::RootPolyType(PolyNature::Parameter {
+									fixed_to, ..
+								}) = ty
+								{
+									*fixed_to
+								} else {
+									crate::utilities::notify!(
+									"Parameter is not `PolyNature::Parameter` when pairing arguments? Got {:?}",
 									ty
 								);
-								parameter_type
-							};
+									parameter_type
+								};
 
 							if let Some(arguments) = type_arguments.clone() {
 								if let Some((ty, _)) = arguments.get(&parameter_type) {

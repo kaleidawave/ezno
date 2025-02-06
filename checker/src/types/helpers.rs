@@ -48,11 +48,28 @@ pub(crate) fn _assign_to_tuple(_ty: TypeId) -> TypeId {
 	// if let PropertyKey::Type(slice) =
 }
 
+pub(crate) fn get_reference_name(types: &TypeStore, ty: TypeId) -> Option<&str> {
+	match types.get_type_by_id(ty) {
+		Type::RootPolyType(
+			PolyNature::Parameter { variable_id, .. }
+			| PolyNature::FreeVariable {
+				reference: crate::types::RootReference::Variable(variable_id),
+				..
+			},
+		) => Some(types.get_parameter_name(*variable_id)),
+		Type::RootPolyType(PolyNature::FreeVariable {
+			reference: crate::types::RootReference::This,
+			..
+		}) => Some("this"),
+		_ => None,
+	}
+}
+
 pub fn get_array_length(
 	ctx: &impl InformationChain,
 	on: TypeId,
 	types: &TypeStore,
-) -> Result<ordered_float::NotNan<f64>, Option<TypeId>> {
+) -> Result<f64, Option<TypeId>> {
 	let length_property = properties::PropertyKey::String(std::borrow::Cow::Borrowed("length"));
 	let id = properties::get_simple_property_value(ctx, on, &length_property, types).ok_or(None)?;
 	if let Type::Constant(Constant::Number(n)) = types.get_type_by_id(id) {
@@ -155,9 +172,7 @@ impl Counter {
 
 	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
-			Counter::On(value) => {
-				types.new_constant_type(Constant::Number((value as f64).try_into().unwrap()))
-			}
+			Counter::On(value) => types.new_constant_type(Constant::Number(value as f64)),
 			Counter::AddTo(ty) => ty,
 		}
 	}
@@ -315,7 +330,7 @@ pub fn type_equal(lhs: TypeId, rhs: TypeId, types: &TypeStore) -> bool {
 	} else if let (Type::Constant(lhs), Type::Constant(rhs)) =
 		(types.get_type_by_id(lhs), types.get_type_by_id(rhs))
 	{
-		lhs == rhs
+		lhs.equals(rhs)
 	} else {
 		false
 	}
@@ -378,10 +393,25 @@ pub fn get_larger_type(on: TypeId, types: &TypeStore) -> TypeId {
 }
 
 #[must_use]
+pub fn get_aliased(on: TypeId, types: &TypeStore) -> Option<TypeId> {
+	if let Type::AliasTo { to, parameters: None, .. } = types.get_type_by_id(on) {
+		Some(*to)
+	} else {
+		None
+	}
+}
+
+#[must_use]
 pub fn get_constraint_or_alias(on: TypeId, types: &TypeStore) -> Option<TypeId> {
 	match types.get_type_by_id(on) {
-		Type::RootPolyType(rpt) => Some(rpt.get_constraint()),
-		Type::Constructor(constr) => Some(constr.get_constraint()),
+		Type::RootPolyType(rpt) => {
+			let constraint = rpt.get_constraint();
+			Some(get_aliased(constraint, types).unwrap_or(constraint))
+		}
+		Type::Constructor(constr) => {
+			let constraint = constr.get_constraint();
+			Some(get_aliased(constraint, types).unwrap_or(constraint))
+		}
 		Type::AliasTo { to, parameters: None, .. } => Some(*to),
 		Type::Narrowed { narrowed_to, .. } => Some(*narrowed_to),
 		_ => None,

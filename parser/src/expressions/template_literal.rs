@@ -8,7 +8,7 @@ use visitable_derive::Visitable;
 pub struct TemplateLiteral {
 	pub tag: Option<Box<Expression>>,
 	pub parts: Vec<(String, MultipleExpression)>,
-	pub last: String,
+	pub final_part: String,
 	pub position: Span,
 }
 
@@ -57,7 +57,7 @@ impl ASTNode for TemplateLiteral {
 					reader.advance((idx + '`'.len_utf8()) as u32);
 					return Ok(Self {
 						parts,
-						last: current[..idx].to_owned(),
+						final_part: current[..idx].to_owned(),
 						tag,
 						position: start.union(reader.get_end()),
 					});
@@ -107,7 +107,7 @@ impl ASTNode for TemplateLiteral {
 			dynamic_part.to_string_from_buffer(buf, options, local);
 			buf.push('}');
 		}
-		buf.push_str_contains_new_line(self.last.as_str());
+		buf.push_str_contains_new_line(self.final_part.as_str());
 		buf.push('`');
 	}
 }
