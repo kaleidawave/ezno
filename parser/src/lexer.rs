@@ -485,8 +485,14 @@ impl<'a> Lexer<'a> {
 		}
 
 		// If left over
-		self.head += current.len() as u32;
-		Ok(current)
+		let is_invalid =
+			check_reserved && !crate::lexer::utilities::is_valid_variable_identifier(current);
+		if is_invalid {
+			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(current.len())))
+		} else {
+			self.head += current.len() as u32;
+			Ok(current)
+		}
 	}
 
 	// Will append the length on `until`
