@@ -158,7 +158,8 @@ impl ASTNode for Statement {
 			))
 		} else if reader.get_options().partial_syntax && reader.starts_with_expression_delimiter() {
 			// Prevents cycic recursion
-			Err(ParseError::new(ParseErrors::ExpectedExpression, reader.next_item_span()))
+			let (_found, position) = crate::lexer::utilities::next_item(reader);
+			Err(ParseError::new(ParseErrors::ExpectedExpression, position))
 		} else {
 			let expression = MultipleExpression::from_reader(reader)?;
 			Ok(Statement::Expression(expression))

@@ -141,10 +141,10 @@ impl ASTNode for ClassMember {
 			Ok(ClassMember::Method(is_static, function))
 		} else {
 			if !header.is_no_modifiers() {
-				// TODO ""
+				let (found, position) = crate::lexer::utilities::next_item(reader);
 				return Err(crate::ParseError::new(
-					crate::ParseErrors::ExpectedOperator { expected: "(", found: "" },
-					reader.next_item_span(),
+					crate::ParseErrors::ExpectedOperator { expected: "(", found },
+					position,
 				));
 			}
 			let is_optional = reader.is_operator_advance("?:");

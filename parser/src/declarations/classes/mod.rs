@@ -73,6 +73,9 @@ impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> AST
 			let value = Decorated::<ClassMember>::from_reader(reader)?;
 			if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
 				reader.expect_semi_colon()?;
+			} else {
+				// Skip anyway
+				let _ = reader.is_operator_advance(";");
 			}
 			members.push(value);
 		}

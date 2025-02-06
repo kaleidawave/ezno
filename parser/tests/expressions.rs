@@ -148,12 +148,12 @@ function Component(item) {
 
 	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
-	eprintln!("Module: {module:#?}");
+	eprintln!("Module: {module:?}");
 
 	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
 
-	eprintln!("{input:?}");
-	eprintln!("{output:?}");
+	eprintln!("{input}");
+	eprintln!("{output}");
 
 	assert_eq!(output, input);
 }

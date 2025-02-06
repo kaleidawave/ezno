@@ -539,16 +539,19 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
-	/// Also counts up new lines
+	/// Similar to `parse_until_one_of`. Does not add the matched lenght to head
 	pub fn parse_until_one_of_no_advance(
 		&mut self,
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
+		self.state.last_new_lines = 0;
 		let current = self.get_current();
 		for (i, chr) in current.char_indices() {
 			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
 				self.head += i as u32;
 				let content = &current[..i];
+				// self.state.last_new_lines =
+				//    content.chars().filter(|char| matches!(char, '\n')).count() as u32;
 				return Ok((content, until));
 			}
 			if let '\n' = chr {
@@ -1143,12 +1146,6 @@ impl<'a> Lexer<'a> {
 		} else {
 			(false, None)
 		}
-	}
-
-	// TODO test
-	#[must_use]
-	pub fn next_item_span(&self) -> Span {
-		self.get_start().with_length(utilities::next_empty_occurance(self.get_current()))
 	}
 }
 

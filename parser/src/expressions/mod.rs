@@ -311,8 +311,12 @@ impl Expression {
 				if is_generic_arguments {
 					let arrow_function = ArrowFunction::from_reader(reader)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
+				} else if reader.get_options().jsx {
+					JSXRoot::from_reader(reader).map(Expression::JSXRoot)?
+				} else {
+					let (_found, position) = crate::lexer::utilities::next_item(reader);
+					return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
 				}
-				JSXRoot::from_reader(reader).map(Expression::JSXRoot)?
 			} else if reader.starts_with('`') {
 				TemplateLiteral::from_reader(reader).map(Expression::TemplateLiteral)?
 			} else if crate::lexer::utilities::is_function_header(reader.get_current()) {

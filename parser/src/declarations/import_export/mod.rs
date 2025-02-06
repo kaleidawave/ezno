@@ -67,13 +67,10 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 				let name = crate::VariableIdentifier::Standard(name, position);
 				Ok(Self { just_type, name, alias: None, position, _marker: Default::default() })
 			} else {
+				let (found, position) = crate::lexer::utilities::next_item(reader);
 				Err(ParseError::new(
-					ParseErrors::ExpectedKeyword {
-						expected: "as",
-						// TODO
-						found: reader.get_current(),
-					},
-					reader.next_item_span(),
+					ParseErrors::ExpectedKeyword { expected: "as", found },
+					position,
 				))
 			}
 		} else {

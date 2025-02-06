@@ -125,7 +125,6 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 			let position = start.with_length(length as usize);
 			Ok(Self::NumberLiteral(value, position))
 		} else if reader.is_operator_advance("[") {
-			dbg!(reader.last_was_from_new_line());
 			let expression = Expression::from_reader(reader)?;
 			let end = reader.expect(']')?;
 			Ok(Self::Computed(Box::new(expression), start.union(end)))
