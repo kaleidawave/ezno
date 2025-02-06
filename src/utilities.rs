@@ -82,10 +82,13 @@ pub(crate) fn print_to_cli(arguments: Arguments) {
 
 #[cfg(not(target_family = "wasm"))]
 pub(crate) fn print_to_cli(arguments: Arguments) {
-	use std::io;
+	use std::io::{self, Write};
+	let stdout = io::stdout();
+    let mut stdout = stdout.lock();
 
-	println!("{arguments}");
-	io::Write::flush(&mut io::stdout()).unwrap();
+	// Ignore errors here for now
+	let _ = writeln!(stdout, "{arguments}");
+	let _ = Write::flush(&mut stdout);
 }
 
 #[derive(Debug, Copy, Clone)]
