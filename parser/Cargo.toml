@@ -58,6 +58,10 @@ source-map = { version = "0.15", features = [
   "self-rust-tokenize",
 ] }
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+tsify = "0.4.5"
+wasm-bindgen = "0.2"
+
 [dev-dependencies]
 pretty_assertions = "1.3.0"
 match_deref = "0.1.1"
