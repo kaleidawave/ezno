@@ -49,8 +49,9 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 			) | StatementOrDeclaration::Declaration(Declaration::Function(..))
 		)
 	}) {
-		checking_data.diagnostics_container.add_warning(TypeCheckWarning::Unreachable(
+		let warning = TypeCheckWarning::Unreachable(
 			element.get_position().with_source(environment.get_source()),
-		));
+		);
+		checking_data.add_warning(warning, environment);
 	}
 }

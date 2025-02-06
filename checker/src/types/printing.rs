@@ -17,55 +17,49 @@ use crate::{
 	PropertyValue,
 };
 
+pub struct PrintingTypeInformation<'a, T: InformationChain> {
+	pub types: &'a TypeStore,
+	pub information: &'a T,
+}
+
+impl<T: InformationChain> std::clone::Clone for PrintingTypeInformation<'_, T> {
+	fn clone(&self) -> Self {
+		Self { types: self.types, information: self.information }
+	}
+}
+
+impl<T: InformationChain> std::marker::Copy for PrintingTypeInformation<'_, T> {}
+
 #[must_use]
-pub fn print_type(
+pub fn print_type<T: InformationChain>(
 	id: TypeId,
-	types: &TypeStore,
-	info_chain: &impl InformationChain,
+	info: PrintingTypeInformation<T>,
 	debug: bool,
 ) -> String {
 	let mut buf = String::new();
-	print_type_into_buf(
-		id,
-		&mut buf,
-		&mut HashSet::new(),
-		GenericChain::None,
-		types,
-		info_chain,
-		debug,
-	);
+	print_type_into_buf(id, &mut buf, &mut HashSet::new(), GenericChain::None, info, debug);
 	buf
 }
 
 #[must_use]
-pub fn print_type_with_type_arguments(
+pub fn print_type_with_type_arguments<T: InformationChain>(
 	id: TypeId,
 	type_arguments: GenericChain,
-	types: &TypeStore,
-	info_chain: &impl InformationChain,
+	info: PrintingTypeInformation<T>,
 	debug: bool,
 ) -> String {
 	let mut buf = String::new();
-	print_type_into_buf(
-		id,
-		&mut buf,
-		&mut HashSet::new(),
-		type_arguments,
-		types,
-		info_chain,
-		debug,
-	);
+	print_type_into_buf(id, &mut buf, &mut HashSet::new(), type_arguments, info, debug);
 	buf
 }
 
 /// Recursion safe + reuses buffer
-pub fn print_type_into_buf<C: InformationChain>(
+pub fn print_type_into_buf<T: InformationChain>(
 	ty: TypeId,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
 	args: GenericChain,
-	types: &TypeStore,
-	info: &C,
+	info: PrintingTypeInformation<T>,
 	debug: bool,
 ) {
 	use std::fmt::Write;
@@ -76,7 +70,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 		return;
 	}
 
-	let r#type = types.get_type_by_id(ty);
+	let r#type = info.types.get_type_by_id(ty);
 	match r#type {
 		Type::And(a, b) => {
 			// let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
@@ -84,25 +78,24 @@ pub fn print_type_into_buf<C: InformationChain>(
 			// 	crate::utilities::notify!("{:?}", value);
 			// }
 
-			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
+			print_type_into_buf(*a, buf, cycles, args, info, debug);
 			buf.push_str(" & ");
-			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
+			print_type_into_buf(*b, buf, cycles, args, info, debug);
 		}
 		Type::Or(a, b) => {
 			// let value = crate::types::intrinsics::get_range_and_mod_class(ty, types);
 			// if value.0.is_some() || value.1.is_some() {
 			// 	crate::utilities::notify!("{:?}", value);
 			// }
-
-			print_type_into_buf(*a, buf, cycles, args, types, info, debug);
+			print_type_into_buf(*a, buf, cycles, args, info, debug);
 			buf.push_str(" | ");
-			print_type_into_buf(*b, buf, cycles, args, types, info, debug);
+			print_type_into_buf(*b, buf, cycles, args, info, debug);
 		}
 		Type::Narrowed { narrowed_to, from } => {
 			if debug {
 				write!(buf, "(narrowed from {from:?}) ").unwrap();
 			}
-			print_type_into_buf(*narrowed_to, buf, cycles, args, types, info, debug);
+			print_type_into_buf(*narrowed_to, buf, cycles, args, info, debug);
 		}
 		Type::RootPolyType(nature) => match nature {
 			PolyNature::MappedGeneric { name, extends } => {
@@ -115,7 +108,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				{
 					write!(buf, "{property}").unwrap();
 				} else {
-					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*extends, buf, cycles, args, info, debug);
 				}
 			}
 			PolyNature::FunctionGeneric { name, .. }
@@ -133,7 +126,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 					match arg {
 						CovariantContribution::TypeId(id) => {
-							print_type_into_buf(id, buf, cycles, args, types, info, debug);
+							print_type_into_buf(id, buf, cycles, args, info, debug);
 						}
 						arg => {
 							crate::utilities::notify!("TODO print {:?}", arg);
@@ -141,7 +134,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 
 					// for (more, arg) in structure_args.iter().nendiate() {
-					// 	print_type_into_buf(*arg, buf, cycles, args, types, info, debug);
+					// 	print_type_into_buf(*arg, buf, cycles, args, info, debug);
 					// 	if more {
 					// 		buf.push_str(" | ");
 					// 	}
@@ -158,7 +151,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				buf.push_str(name);
 				if *extends != TypeId::ANY_TYPE {
 					buf.push_str(" extends ");
-					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*extends, buf, cycles, args, info, debug);
 				}
 			}
 			PolyNature::FreeVariable { based_on: to, .. } => {
@@ -166,25 +159,25 @@ pub fn print_type_into_buf<C: InformationChain>(
 					// FV = free variable
 					write!(buf, "(FV {}) @ ", ty.0).unwrap();
 				}
-				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*to, buf, cycles, args, info, debug);
 			}
 			PolyNature::Parameter { fixed_to: to, variable_id: _ } => {
 				if debug {
 					write!(buf, "(param {}) @ ", ty.0).unwrap();
 				}
-				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*to, buf, cycles, args, info, debug);
 			}
 			PolyNature::Open(to) => {
 				if debug {
 					write!(buf, "(open {}) ", ty.0).unwrap();
 				}
-				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*to, buf, cycles, args, info, debug);
 			}
 			PolyNature::Error(to) => {
 				if debug {
 					buf.push_str("(error) ");
 				}
-				print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*to, buf, cycles, args, info, debug);
 			}
 			PolyNature::RecursiveFunction(..) => {
 				todo!()
@@ -199,7 +192,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				if debug {
 					write!(buf, "(CV {ty:?}) ").unwrap();
 				}
-				print_type_into_buf(*constraint, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*constraint, buf, cycles, args, info, debug);
 			}
 		},
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics { on, arguments }) => {
@@ -211,12 +204,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 			// 		arguments.get_structure_restriction(TypeId::NUMBER_CEILING_GENERIC).unwrap();
 			// 	if let TypeId::NEG_INFINITY = floor {
 			// 		buf.push_str("LessThan<");
-			// 		print_type_into_buf(ceiling, buf, cycles, args, types, info, debug);
+			// 		print_type_into_buf(ceiling, buf, cycles, args, info, debug);
 			// 		buf.push('>');
 			// 		return;
 			// 	} else if let TypeId::INFINITY = ceiling {
 			// 		buf.push_str("GreaterThan<");
-			// 		print_type_into_buf(floor, buf, cycles, args, types, info, debug);
+			// 		print_type_into_buf(floor, buf, cycles, args, info, debug);
 			// 		buf.push('>');
 			// 		return;
 			// 	}
@@ -224,16 +217,16 @@ pub fn print_type_into_buf<C: InformationChain>(
 
 			if debug {
 				write!(buf, "SG({:?})(", ty.0).unwrap();
-				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*on, buf, cycles, args, info, debug);
 				buf.push(')');
 				match arguments {
 					GenericArguments::ExplicitRestrictions(type_restrictions) => {
 						buf.push('<');
 						let nendiate = type_restrictions.iter().nendiate();
 						for (not_at_end, (from, (arg, _))) in nendiate {
-							print_type_into_buf(*from, buf, cycles, args, types, info, debug);
+							print_type_into_buf(*from, buf, cycles, args, info, debug);
 							buf.push_str(" = ");
-							print_type_into_buf(*arg, buf, cycles, args, types, info, debug);
+							print_type_into_buf(*arg, buf, cycles, args, info, debug);
 							if not_at_end {
 								buf.push_str(", ");
 							}
@@ -248,20 +241,20 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 				}
 			} else if let Type::Class { .. } | Type::Interface { .. } | Type::AliasTo { .. } =
-				types.get_type_by_id(*on)
+				info.types.get_type_by_id(*on)
 			{
 				if debug {
-					write!(buf, "SG over ({:?})", types.get_type_by_id(*on)).unwrap();
+					write!(buf, "SG over ({:?})", info.types.get_type_by_id(*on)).unwrap();
 				}
 
 				// on can be sometimes be generic
-				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*on, buf, cycles, args, info, debug);
 				match arguments {
 					GenericArguments::ExplicitRestrictions(type_restrictions) => {
 						buf.push('<');
 						let nendiate = type_restrictions.values().nendiate();
 						for (not_at_end, (arg, _)) in nendiate {
-							print_type_into_buf(*arg, buf, cycles, args, types, info, debug);
+							print_type_into_buf(*arg, buf, cycles, args, info, debug);
 							if not_at_end {
 								buf.push_str(", ");
 							}
@@ -272,12 +265,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 			} else {
 				if debug {
-					write!(buf, "SG over ({:?})", types.get_type_by_id(*on)).unwrap();
+					write!(buf, "SG over ({:?})", info.types.get_type_by_id(*on)).unwrap();
 				}
 
 				let new_arguments = arguments.clone();
 				let args = GenericChainLink::append(ty, args.as_ref(), &new_arguments);
-				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*on, buf, cycles, args, info, debug);
 			}
 		}
 		// TODO these can vary
@@ -288,23 +281,25 @@ pub fn print_type_into_buf<C: InformationChain>(
 				otherwise_result,
 				result_union: _,
 			} => {
-				if let (TypeId::NEVER_TYPE, Ok(crate::types::TypeExtends { item, extends })) =
-					(*otherwise_result, crate::types::TypeExtends::from_type(*condition, types))
-				{
+				if let (TypeId::NEVER_TYPE, Ok(crate::types::TypeExtends { item, extends })) = (
+					*otherwise_result,
+					crate::types::TypeExtends::from_type(*condition, info.types),
+				) {
 					buf.push_str("asserts ");
-					if let Some(name) = crate::types::helpers::get_reference_name(types, item) {
+					if let Some(name) = crate::types::helpers::get_reference_name(info.types, item)
+					{
 						buf.push_str(name);
 					} else {
-						print_type_into_buf(item, buf, cycles, args, types, info, debug);
+						print_type_into_buf(item, buf, cycles, args, info, debug);
 					}
 					buf.push_str(" is ");
-					print_type_into_buf(extends, buf, cycles, args, types, info, debug);
+					print_type_into_buf(extends, buf, cycles, args, info, debug);
 					return;
 				}
 
 				// TODO nested on constructor
 				let is_standard_generic = matches!(
-					types.get_type_by_id(*condition),
+					info.types.get_type_by_id(*condition),
 					Type::RootPolyType(
 						PolyNature::InferGeneric { .. }
 							| PolyNature::MappedGeneric { .. }
@@ -315,12 +310,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 
 				// WIP!
 				{
-					if let Some(narrowed_value) = info.get_narrowed(*condition) {
+					if let Some(narrowed_value) = info.information.get_narrowed(*condition) {
 						if let crate::Decidable::Known(condition) =
-							crate::types::is_type_truthy_falsy(narrowed_value, types)
+							crate::types::is_type_truthy_falsy(narrowed_value, info.types)
 						{
 							let value = if condition { truthy_result } else { otherwise_result };
-							print_type_into_buf(*value, buf, cycles, args, types, info, debug);
+							print_type_into_buf(*value, buf, cycles, args, info, debug);
 							return;
 						}
 					}
@@ -330,18 +325,18 @@ pub fn print_type_into_buf<C: InformationChain>(
 					if debug {
 						write!(buf, "?#{} ", ty.0).unwrap();
 					}
-					print_type_into_buf(*condition, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*condition, buf, cycles, args, info, debug);
 					buf.push_str(" ? ");
 				}
-				print_type_into_buf(*truthy_result, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*truthy_result, buf, cycles, args, info, debug);
 				buf.push_str(if debug || is_standard_generic { " : " } else { " | " });
-				print_type_into_buf(*otherwise_result, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*otherwise_result, buf, cycles, args, info, debug);
 			}
 			Constructor::KeyOf(on) => {
 				// if get_constraint(*on, types).is_some() {
 				// TODO try get and |
 				buf.push_str("keyof ");
-				print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*on, buf, cycles, args, info, debug);
 				// } else {
 				// 	let properties = get_properties_on_type(*on, types);
 				// 	if properties.is_empty() {
@@ -350,12 +345,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 				// 		let mut iter = properties.into_iter();
 				// 		let (_, key, _) = iter.next().unwrap();
 				// 		print_property_key_into_buf(
-				// 			&key, buf, cycles, args, types, info, debug,
+				// 			&key, buf, cycles, args, info, debug,
 				// 		);
 				// 		for (_, key, _) in iter {
 				// 			buf.push_str(" | ");
 				// 			print_property_key_into_buf(
-				// 				&key, buf, cycles, args, types, info, debug,
+				// 				&key, buf, cycles, args, info, debug,
 				// 			);
 				// 		}
 				// 	}
@@ -373,7 +368,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 
 				// crate::utilities::notify!("after {:?}", types.get_type_by_id(on));
 
-				let is_explicit_generic = crate::types::is_explicit_generic(on, types);
+				let is_explicit_generic = crate::types::is_explicit_generic(on, info.types);
 
 				if let (AccessMode::FromTypeAnnotation, false) = (mode, is_explicit_generic) {
 					// TODO args on both?
@@ -381,8 +376,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 						(on, args),
 						(Publicity::Public, under, args),
 						false,
-						info,
-						types,
+						info.information,
+						info.types,
 					);
 					crate::utilities::notify!("result={:?}", result);
 					if let Ok(prop) = result {
@@ -390,8 +385,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 							crate::types::logical::LogicalOrValid::Logical(
 								crate::types::logical::Logical::Pure(value),
 							) => {
-								let result = value.as_get_type(types);
-								print_type_into_buf(result, buf, cycles, args, types, info, debug);
+								let result = value.as_get_type(info.types);
+								print_type_into_buf(result, buf, cycles, args, info, debug);
 								return;
 							}
 							value => {
@@ -404,7 +399,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				}
 
 				if is_explicit_generic || matches!(mode, AccessMode::FromTypeAnnotation) {
-					print_type_into_buf(on, buf, cycles, args, types, info, debug);
+					print_type_into_buf(on, buf, cycles, args, info, debug);
 					buf.push('[');
 					match under {
 						PropertyKey::String(s) => {
@@ -413,20 +408,20 @@ pub fn print_type_into_buf<C: InformationChain>(
 							buf.push('"');
 						}
 						PropertyKey::Type(t) => {
-							print_type_into_buf(*t, buf, cycles, args, types, info, debug);
+							print_type_into_buf(*t, buf, cycles, args, info, debug);
 						}
 					};
 					buf.push(']');
 				} else if let Some(Type::PartiallyAppliedGenerics(sgs)) =
-					get_constraint(on, types).map(|ty| types.get_type_by_id(ty))
+					get_constraint(on, info.types).map(|ty| info.types.get_type_by_id(ty))
 				{
 					let new_arguments = sgs.arguments.clone();
 					let args = GenericChainLink::append(ty, args.as_ref(), &new_arguments);
-					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*result, buf, cycles, args, info, debug);
 				} else {
 					if debug {
 						buf.push_str("(property on ");
-						print_type_into_buf(on, buf, cycles, args, types, info, debug);
+						print_type_into_buf(on, buf, cycles, args, info, debug);
 						buf.push_str(" under ");
 						match under {
 							PropertyKey::String(s) => {
@@ -435,14 +430,14 @@ pub fn print_type_into_buf<C: InformationChain>(
 								buf.push('"');
 							}
 							PropertyKey::Type(t) => {
-								print_type_into_buf(*t, buf, cycles, args, types, info, debug);
+								print_type_into_buf(*t, buf, cycles, args, info, debug);
 							}
 						}
 						write!(buf, "{ty:?}").unwrap();
 						buf.push_str(") ");
 					}
 
-					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*result, buf, cycles, args, info, debug);
 				}
 			}
 			Constructor::BinaryOperator {
@@ -450,8 +445,10 @@ pub fn print_type_into_buf<C: InformationChain>(
 				operator: crate::features::operations::MathematicalOrBitwiseOperation::Remainder,
 				rhs,
 				result: _,
-			} if matches!(types.get_type_by_id(*rhs), Type::Constant(_)) => {
-				if let Type::Constant(crate::Constant::Number(num)) = types.get_type_by_id(*rhs) {
+			} if matches!(info.types.get_type_by_id(*rhs), Type::Constant(_)) => {
+				if let Type::Constant(crate::Constant::Number(num)) =
+					info.types.get_type_by_id(*rhs)
+				{
 					write!(buf, "ExclusiveRange<-{num}, {num}>").unwrap();
 				} else {
 					unreachable!()
@@ -459,12 +456,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 			}
 			constructor if debug => match constructor {
 				Constructor::BinaryOperator { lhs, operator, rhs, result: _ } => {
-					print_type_into_buf(*lhs, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*lhs, buf, cycles, args, info, debug);
 					write!(buf, " ({ty:?}){operator:?} ").unwrap();
-					print_type_into_buf(*rhs, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*rhs, buf, cycles, args, info, debug);
 				}
 				Constructor::CanonicalRelationOperator { lhs, operator, rhs } => {
-					print_type_into_buf(*lhs, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*lhs, buf, cycles, args, info, debug);
 					let operator = match operator {
 						crate::features::operations::CanonicalEqualityAndInequality::StrictEqual => {
 							"==="
@@ -474,47 +471,48 @@ pub fn print_type_into_buf<C: InformationChain>(
 						}
 					};
 					write!(buf, " ({ty}){operator} ", ty = ty.0).unwrap();
-					print_type_into_buf(*rhs, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*rhs, buf, cycles, args, info, debug);
 				}
 				Constructor::TypeOperator(to) => {
 					write!(buf, "TypeOperator.{to:?}").unwrap();
 				}
 				Constructor::TypeExtends(TypeExtends { item, extends }) => {
-					if let Some(name) = crate::types::helpers::get_reference_name(types, *item) {
+					if let Some(name) = crate::types::helpers::get_reference_name(info.types, *item)
+					{
 						buf.push_str(name);
 					} else {
-						print_type_into_buf(*item, buf, cycles, args, types, info, debug);
+						print_type_into_buf(*item, buf, cycles, args, info, debug);
 					}
 					buf.push_str(" extends ");
-					print_type_into_buf(*extends, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*extends, buf, cycles, args, info, debug);
 				}
 				Constructor::Image { on: _, with: _, result } => {
 					// TODO arguments
 					write!(buf, "(func result {}) (*args*)", ty.0).unwrap();
 					buf.push_str(" -> ");
-					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*result, buf, cycles, args, info, debug);
 				}
 				Constructor::Property { on, under, result, mode } => {
 					buf.push('(');
-					print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*on, buf, cycles, args, info, debug);
 					buf.push_str(")[");
-					print_property_key_into_buf(under, buf, cycles, args, types, info, debug);
+					print_property_key_into_buf(under, buf, cycles, args, info, debug);
 					buf.push(']');
 					if let AccessMode::DoNotBindThis = mode {
 						buf.push_str(" no binding of `this`");
 					};
 					buf.push_str(" = ");
-					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*result, buf, cycles, args, info, debug);
 				}
 				Constructor::Awaited { on, result } => {
 					if debug {
 						buf.push_str("Awaited<");
-						print_type_into_buf(*on, buf, cycles, args, types, info, debug);
+						print_type_into_buf(*on, buf, cycles, args, info, debug);
 						buf.push_str(", R=");
-						print_type_into_buf(*result, buf, cycles, args, types, info, debug);
+						print_type_into_buf(*result, buf, cycles, args, info, debug);
 						buf.push('>');
 					} else {
-						print_type_into_buf(*result, buf, cycles, args, types, info, debug);
+						print_type_into_buf(*result, buf, cycles, args, info, debug);
 					}
 				}
 				Constructor::ConditionalResult { .. } | Constructor::KeyOf(..) => {
@@ -525,7 +523,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				if let Constructor::BinaryOperator { result: TypeId::STRING_TYPE, .. } = constructor
 				{
 					let slice =
-						crate::types::helpers::TemplatelLiteralExpansion::from_type(ty, types);
+						crate::types::helpers::TemplatelLiteralExpansion::from_type(ty, info.types);
 					if let Some(single) = slice.as_single_string() {
 						buf.push('"');
 						buf.push_str(single);
@@ -535,7 +533,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						for (s, ty) in &slice.parts {
 							buf.push_str(s);
 							buf.push_str("${");
-							print_type_into_buf(*ty, buf, cycles, args, types, info, debug);
+							print_type_into_buf(*ty, buf, cycles, args, info, debug);
 							buf.push('}');
 						}
 						buf.push_str(&slice.rest);
@@ -543,8 +541,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 					}
 					return;
 				}
-				let base = get_constraint(ty, types).unwrap();
-				print_type_into_buf(base, buf, cycles, args, types, info, debug);
+				let base = get_constraint(ty, info.types).unwrap();
+				print_type_into_buf(base, buf, cycles, args, info, debug);
 			}
 		},
 		t @ (Type::Class { name, type_parameters: _, .. }
@@ -554,7 +552,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				write!(buf, "{name}#{}", ty.0).unwrap();
 				if let Type::AliasTo { to, .. } = t {
 					buf.push_str(" = ");
-					print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*to, buf, cycles, args, info, debug);
 				} else if let Type::Class { .. } = t {
 					buf.push_str(" (class)");
 				}
@@ -565,14 +563,14 @@ pub fn print_type_into_buf<C: InformationChain>(
 			// TODO under option
 			// if let Type::AliasTo { to, .. } = t {
 			// 	buf.push_str(" = ");
-			// 	print_type_into_buf(*to, buf, cycles, args, types, info, debug);
+			// 	print_type_into_buf(*to, buf, cycles, args, info, debug);
 			// }
 
 			// TODO only if not partially applied generic
 			// if let (true, Some(parameters)) = (debug, parameters) {
 			// 	buf.push('{');
 			// 	for param in parameters {
-			// 		print_type_into_buf(*param, buf, cycles, args, types, info_chain, debug);
+			// 		print_type_into_buf(*param, buf, cycles, args, info_chain, debug);
 			// 		buf.push_str(", ");
 			// 	}
 			// 	buf.push('}');
@@ -587,10 +585,12 @@ pub fn print_type_into_buf<C: InformationChain>(
 		}
 		Type::FunctionReference(func_id)
 		| Type::SpecialObject(SpecialObject::Function(func_id, _)) => {
-			let func = types.functions.get(func_id).unwrap();
+			let func = info.types.functions.get(func_id).unwrap();
 
 			if let FunctionBehavior::Constructor { ref name, prototype, .. } = func.behavior {
-				if let Type::Constant(crate::Constant::String(name)) = types.get_type_by_id(*name) {
+				if let Type::Constant(crate::Constant::String(name)) =
+					info.types.get_type_by_id(*name)
+				{
 					if debug {
 						write!(buf, "constructor(for#{})@{name}#{}", prototype.0, ty.0).unwrap();
 					} else {
@@ -620,7 +620,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					r#type
 				{
 					buf.push_str(", this ");
-					print_type_into_buf(*p, buf, cycles, args, types, info, debug);
+					print_type_into_buf(*p, buf, cycles, args, info, debug);
 				}
 				buf.push_str(") = ");
 			}
@@ -661,17 +661,17 @@ pub fn print_type_into_buf<C: InformationChain>(
 			for (not_at_end, param) in func.parameters.parameters.iter().nendiate() {
 				buf.push_str(&param.name);
 				buf.push_str(": ");
-				print_type_into_buf(param.ty, buf, cycles, args, types, info, debug);
+				print_type_into_buf(param.ty, buf, cycles, args, info, debug);
 				if func.parameters.rest_parameter.is_some() || not_at_end {
 					buf.push_str(", ");
 				}
 			}
 			if let Some(ref rest_parameter) = func.parameters.rest_parameter {
 				buf.push_str("...");
-				print_type_into_buf(rest_parameter.ty, buf, cycles, args, types, info, debug);
+				print_type_into_buf(rest_parameter.ty, buf, cycles, args, info, debug);
 			}
 			buf.push_str(") => ");
-			print_type_into_buf(func.return_type, buf, cycles, args, types, info, debug);
+			print_type_into_buf(func.return_type, buf, cycles, args, info, debug);
 		}
 		Type::Object(kind) => {
 			if debug {
@@ -681,11 +681,13 @@ pub fn print_type_into_buf<C: InformationChain>(
 					write!(buf, "(anom {}) ", ty.0).unwrap();
 				}
 			}
-			let prototype =
-				info.get_chain_of_info().find_map(|info| info.prototypes.get(&ty).copied());
+			let prototype = info
+				.information
+				.get_chain_of_info()
+				.find_map(|info| info.prototypes.get(&ty).copied());
 
 			if let Some(TypeId::ARRAY_TYPE) = prototype {
-				match get_array_length(info, ty, types) {
+				match get_array_length(info.information, ty, info.types) {
 					Ok(n) => {
 						buf.push('[');
 						for i in 0..(n as usize) {
@@ -693,14 +695,14 @@ pub fn print_type_into_buf<C: InformationChain>(
 								buf.push_str(", ");
 							}
 							let value = get_simple_property_value(
-								info,
+								info.information,
 								ty,
 								&PropertyKey::from_usize(i),
-								types,
+								info.types,
 							);
 
 							if let Some(value) = value {
-								print_type_into_buf(value, buf, cycles, args, types, info, debug);
+								print_type_into_buf(value, buf, cycles, args, info, debug);
 							} else {
 								// TODO sometimes the above is not always `None` as `None` can occur for complex keys...
 								buf.push_str("*empty*");
@@ -718,8 +720,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 						if debug {
 							let properties = get_properties_on_single_type(
 								ty,
-								types,
-								info,
+								info.types,
+								info.information,
 								false,
 								TypeId::ANY_TYPE,
 							);
@@ -735,7 +737,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 				{
 					// crate::utilities::notify!("P during print {:?}", prototype);
 					buf.push('[');
-					print_type_into_buf(prototype, buf, cycles, args, types, info, debug);
+					print_type_into_buf(prototype, buf, cycles, args, info, debug);
 					buf.push_str("] ");
 				} else {
 					// crate::utilities::notify!("no P on {:?} during print", id);
@@ -744,8 +746,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 				let filter_enumerable = false;
 				let properties = get_properties_on_single_type(
 					ty,
-					types,
-					info,
+					info.types,
+					info.information,
 					filter_enumerable,
 					TypeId::ANY_TYPE,
 				);
@@ -781,74 +783,60 @@ pub fn print_type_into_buf<C: InformationChain>(
 
 					match value.inner_simple() {
 						PropertyValue::Value(value) => {
-							print_property_key_into_buf(
-								&key, buf, cycles, args, types, info, debug,
-							);
+							print_property_key_into_buf(&key, buf, cycles, args, info, debug);
 							buf.push_str(if is_optional { "?: " } else { ": " });
-							print_type_into_buf(*value, buf, cycles, args, types, info, debug);
+							print_type_into_buf(*value, buf, cycles, args, info, debug);
 						}
 						PropertyValue::Getter(getter) => {
-							print_property_key_into_buf(
-								&key, buf, cycles, args, types, info, debug,
-							);
+							print_property_key_into_buf(&key, buf, cycles, args, info, debug);
 							buf.push_str(if is_optional { "?: " } else { ": " });
 							buf.push_str("(getter) ");
 							print_type_into_buf(
-								getter.get_return_type(types),
+								getter.get_return_type(info.types),
 								buf,
 								cycles,
 								args,
-								types,
 								info,
 								debug,
 							);
 						}
 						PropertyValue::GetterAndSetter { getter, setter } => {
-							print_property_key_into_buf(
-								&key, buf, cycles, args, types, info, debug,
-							);
+							print_property_key_into_buf(&key, buf, cycles, args, info, debug);
 							buf.push_str(if is_optional { "?: " } else { ": " });
 							buf.push_str("(getter) ");
 							print_type_into_buf(
-								getter.get_return_type(types),
+								getter.get_return_type(info.types),
 								buf,
 								cycles,
 								args,
-								types,
 								info,
 								debug,
 							);
 							buf.push_str(" + (setter) ");
 							print_type_into_buf(
-								setter.get_first_argument(types),
+								setter.get_first_argument(info.types),
 								buf,
 								cycles,
 								args,
-								types,
 								info,
 								debug,
 							);
 						}
 						PropertyValue::Setter(setter) => {
-							print_property_key_into_buf(
-								&key, buf, cycles, args, types, info, debug,
-							);
+							print_property_key_into_buf(&key, buf, cycles, args, info, debug);
 							buf.push_str(if is_optional { "?: " } else { ": " });
 							buf.push_str("(setter) ");
 							print_type_into_buf(
-								setter.get_first_argument(types),
+								setter.get_first_argument(info.types),
 								buf,
 								cycles,
 								args,
-								types,
 								info,
 								debug,
 							);
 						}
 						PropertyValue::Deleted => {
-							print_property_key_into_buf(
-								&key, buf, cycles, args, types, info, debug,
-							);
+							print_property_key_into_buf(&key, buf, cycles, args, info, debug);
 							buf.push_str(if is_optional { "?: " } else { ": " });
 							buf.push_str("never");
 						}
@@ -874,9 +862,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 			SpecialObject::Proxy(Proxy { handler, over }) => {
 				// Copies from node behavior
 				buf.push_str("Proxy [ ");
-				print_type_into_buf(*over, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*over, buf, cycles, args, info, debug);
 				buf.push_str(", ");
-				print_type_into_buf(*handler, buf, cycles, args, types, info, debug);
+				print_type_into_buf(*handler, buf, cycles, args, info, debug);
 				buf.push_str(" ]");
 			}
 			SpecialObject::Import(exports) => {
@@ -886,8 +874,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 					buf.push_str(": ");
 					match mutability {
 						crate::features::variables::VariableMutability::Constant => {
-							let value = get_value_of_constant_import_variable(*variable, info);
-							print_type_into_buf(value, buf, cycles, args, types, info, debug);
+							let value =
+								get_value_of_constant_import_variable(*variable, info.information);
+							print_type_into_buf(value, buf, cycles, args, info, debug);
 						}
 						crate::features::variables::VariableMutability::Mutable {
 							reassignment_constraint: _,
@@ -910,10 +899,9 @@ pub fn print_type_into_buf<C: InformationChain>(
 }
 
 #[must_use]
-pub fn print_property_key<C: InformationChain>(
+pub fn print_property_key<T: InformationChain>(
 	key: &PropertyKey,
-	types: &TypeStore,
-	info: &C,
+	info: PrintingTypeInformation<T>,
 	debug: bool,
 ) -> String {
 	let mut string = String::new();
@@ -922,27 +910,25 @@ pub fn print_property_key<C: InformationChain>(
 		&mut string,
 		&mut HashSet::new(),
 		GenericChain::None,
-		types,
 		info,
 		debug,
 	);
 	string
 }
 
-pub(crate) fn print_property_key_into_buf<C: InformationChain>(
+pub(crate) fn print_property_key_into_buf<T: InformationChain>(
 	key: &PropertyKey,
 	buf: &mut String,
 	cycles: &mut HashSet<TypeId>,
 	args: GenericChain,
-	types: &TypeStore,
-	info: &C,
+	info: PrintingTypeInformation<T>,
 	debug: bool,
 ) {
 	match key {
 		PropertyKey::String(s) => buf.push_str(s),
 		PropertyKey::Type(t) => {
 			buf.push('[');
-			print_type_into_buf(*t, buf, cycles, args, types, info, debug);
+			print_type_into_buf(*t, buf, cycles, args, info, debug);
 			buf.push(']');
 		}
 	}

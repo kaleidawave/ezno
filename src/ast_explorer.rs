@@ -6,7 +6,8 @@ use argh::FromArgs;
 use enum_variants_strings::EnumVariantsStrings;
 use parser::{source_map::FileSystem, ASTNode, Expression, Module, ToStringOptions};
 
-use crate::{reporting::report_diagnostics_to_cli, utilities::print_to_cli};
+use crate::utilities::print_to_cli;
+use checker::ReadFromFS;
 
 /// REPL for printing out AST from user input
 #[derive(FromArgs, Debug)]
@@ -21,15 +22,15 @@ pub(crate) struct ExplorerArguments {
 
 impl ExplorerArguments {
 	#[cfg(target_family = "wasm")]
-	pub(crate) fn run<T: crate::ReadFromFS>(&mut self, _fs_resolver: &T) {
+	pub(crate) fn run(&mut self) {
 		panic!("Cannot run ast-explorer in WASM because of input callback. Consider reimplementing using library");
 	}
 
 	#[allow(clippy::needless_continue)]
 	#[cfg(not(target_family = "wasm"))]
-	pub(crate) fn run<T: crate::ReadFromFS>(&mut self, fs_resolver: &T) {
+	pub(crate) fn run(&mut self, handler: crate::FSFunction) {
 		if let Some(ref file) = self.file {
-			let content = fs_resolver.read_file(file);
+			let content = handler.read_file(file);
 			if let Some(content) = content {
 				self.nested.run(String::from_utf8(content).unwrap(), Some(file.to_owned()));
 			} else {
@@ -53,14 +54,17 @@ impl ExplorerArguments {
 						}
 					};
 				} else if let Some(path) = input.strip_prefix("#load-file ") {
-					let input = match std::fs::read_to_string(path.trim()) {
-						Ok(string) => string,
-						Err(err) => {
-							print_to_cli(format_args!("{err:?}"));
+					let input = match handler
+						.read_file(&std::path::PathBuf::from(path.trim().to_owned()))
+					{
+						Some(string) => string,
+						// Err(err) => {
+						None => {
+							// print_to_cli(format_args!("{err:?}"));
 							continue;
 						}
 					};
-					self.nested.run(input, Some(PathBuf::from(path)));
+					self.nested.run(String::from_utf8(input).unwrap(), Some(PathBuf::from(path)));
 				} else {
 					self.nested.run(input, None);
 				}
@@ -131,13 +135,16 @@ impl ExplorerSubCommand {
 						}
 					}
 					// TODO temp
-					Err(err) => report_diagnostics_to_cli(
-						std::iter::once((err, source_id).into()),
-						&fs,
-						false,
-						crate::utilities::MaxDiagnostics::All,
-					)
-					.unwrap(),
+					Err(err) => {
+						todo!();
+						// 	report_diagnostics_to_cli(
+						// 	std::iter::once((err, source_id).into()),
+						// 	&fs,
+						// 	false,
+						// 	crate::utilities::MaxDiagnostics::All,
+						// )
+						// .unwrap(),
+					}
 				}
 			}
 			ExplorerSubCommand::FullAST(cfg) => {
@@ -165,14 +172,16 @@ impl ExplorerSubCommand {
 							print_to_cli(format_args!("{res:#?}"));
 						}
 					}
-					// TODO temp
-					Err(err) => report_diagnostics_to_cli(
-						std::iter::once((err, source_id).into()),
-						&fs,
-						false,
-						crate::utilities::MaxDiagnostics::All,
-					)
-					.unwrap(),
+					Err(err) => {
+						todo!();
+						// 	report_diagnostics_to_cli(
+						// 	std::iter::once((err, source_id).into()),
+						// 	&fs,
+						// 	false,
+						// 	crate::utilities::MaxDiagnostics::All,
+						// )
+						// .unwrap(),
+					}
 				}
 			}
 			ExplorerSubCommand::Prettifier(_) | ExplorerSubCommand::Uglifier(_) => {
@@ -189,13 +198,16 @@ impl ExplorerSubCommand {
 						};
 						print_to_cli(format_args!("{}", module.to_string(&options)));
 					}
-					Err(err) => report_diagnostics_to_cli(
-						std::iter::once((err, source_id).into()),
-						&fs,
-						false,
-						crate::utilities::MaxDiagnostics::All,
-					)
-					.unwrap(),
+					Err(err) => {
+						todo!();
+						// 	report_diagnostics_to_cli(
+						// 	std::iter::once((err, source_id).into()),
+						// 	&fs,
+						// 	false,
+						// 	crate::utilities::MaxDiagnostics::All,
+						// )
+						// .unwrap(),
+					}
 				}
 			}
 		}

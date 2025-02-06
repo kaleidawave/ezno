@@ -4,8 +4,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
 	context::{get_on_ctx, information::ReturnState},
 	diagnostics::{
-		NotInLoopOrCouldNotFindLabel, PropertyKeyRepresentation, TypeCheckError,
-		TypeStringRepresentation, VariableUsedInTDZ,
+		NotInLoopOrCouldNotFindLabel, PropertyKeyRepresentation, TypeCheckError, VariableUsedInTDZ,
 	},
 	events::{Event, FinalEvent, RootReference},
 	features::{
@@ -19,6 +18,7 @@ use crate::{
 	},
 	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
 	types::{
+		printing::PrintingTypeInformation,
 		properties::{
 			get_property_key_names_on_a_single_type, AccessMode, PropertyKey, PropertyKind,
 			Publicity,
@@ -29,7 +29,7 @@ use crate::{
 };
 
 use super::{
-	get_value_of_variable, invocation::CheckThings, AssignmentError, ClosedOverReferencesInScope,
+	get_value_of_variable, invocation::CheckSyntax, AssignmentError, ClosedOverReferencesInScope,
 	Context, ContextType, Environment, GeneralContext, InformationChain,
 };
 
@@ -314,24 +314,14 @@ impl Environment<'_> {
 
 							new
 						} else {
-							checking_data.diagnostics_container.add_error(
+							let error =
 								crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
 									operator,
-									lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-										existing,
-										self,
-										&checking_data.types,
-										false,
-									),
-									rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-										rhs,
-										self,
-										&checking_data.types,
-										false,
-									),
+									lhs: existing,
+									rhs,
 									position: assignment_position.with_source(self.get_source()),
-								},
-							);
+								};
+							checking_data.add_error(error, self);
 							TypeId::ERROR_TYPE
 						}
 					}
@@ -378,24 +368,14 @@ impl Environment<'_> {
 								AssignmentReturnStatus::New => new,
 							}
 						} else {
-							checking_data.diagnostics_container.add_error(
+							let error =
 								crate::TypeCheckError::InvalidMathematicalOrBitwiseOperation {
 									operator,
-									lhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-										existing,
-										self,
-										&checking_data.types,
-										false,
-									),
-									rhs: crate::diagnostics::TypeStringRepresentation::from_type_id(
-										TypeId::ONE,
-										self,
-										&checking_data.types,
-										false,
-									),
+									lhs: existing,
+									rhs: TypeId::ONE,
 									position,
-								},
-							);
+								};
+							checking_data.add_error(error, self);
 							TypeId::ERROR_TYPE
 						}
 					}
@@ -521,23 +501,18 @@ impl Environment<'_> {
 					position,
 				} => {
 					// TODO conditionaly
-					let mut diagnostics = Default::default();
 					let result = crate::types::properties::get_property(
 						rhs,
 						Publicity::Public,
 						&key,
 						self,
 						(
-							&mut CheckThings { debug_types: checking_data.options.debug_types },
-							&mut diagnostics,
+							&mut CheckSyntax { debug_types: checking_data.options.debug_types },
+							&mut checking_data.resolver,
 						),
 						&mut checking_data.types,
 						position,
 						AccessMode::DoNotBindThis,
-					);
-					diagnostics.append_to(
-						crate::types::calling::CallingContext::Getter,
-						&mut checking_data.diagnostics_container,
 					);
 
 					let rhs_value = if let Some((_, value)) = result {
@@ -554,34 +529,32 @@ impl Environment<'_> {
 						let possibles = if let PropertyKey::String(s) = &key {
 							keys = get_property_key_names_on_a_single_type(
 								rhs,
-								&checking_data.types,
-								self,
+								PrintingTypeInformation {
+									types: &checking_data.types,
+									information: self,
+								},
 							);
 							let mut possibles =
-								crate::get_closest(keys.iter().map(AsRef::as_ref), s)
+								crate::utilities::get_closest(keys.iter().map(AsRef::as_ref), s)
 									.unwrap_or(vec![]);
 							possibles.sort_unstable();
 							possibles
 						} else {
 							Vec::new()
 						};
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::PropertyDoesNotExist {
-								property: PropertyKeyRepresentation::new(
-									&key,
-									self,
-									&checking_data.types,
-								),
-								on: TypeStringRepresentation::from_type_id(
-									rhs,
-									self,
-									&checking_data.types,
-									false,
-								),
-								position,
-								possibles,
-							},
-						);
+						let error = TypeCheckError::PropertyDoesNotExist {
+							property: PropertyKeyRepresentation::new(
+								&key,
+								PrintingTypeInformation {
+									types: &checking_data.types,
+									information: self,
+								},
+							),
+							on: rhs,
+							position,
+							possibles,
+						};
+						checking_data.add_error(error, self);
 
 						TypeId::ERROR_TYPE
 					};
@@ -673,9 +646,7 @@ impl Environment<'_> {
 		match result {
 			Ok(()) => {}
 			Err(error) => {
-				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::AssignmentError(error));
+				checking_data.add_error(TypeCheckError::AssignmentError(error), self);
 			}
 		}
 	}
@@ -726,15 +697,8 @@ impl Environment<'_> {
 
 							if let SubTypeResult::IsNotSubType(_mismatches) = result {
 								return Err(AssignmentError::DoesNotMeetConstraint {
-									variable_type: TypeStringRepresentation::from_type_id(
-										reassignment_constraint,
-										self,
-										types,
-										false,
-									),
-									value_type: TypeStringRepresentation::from_type_id(
-										new_type, self, types, false,
-									),
+									variable_type: reassignment_constraint,
+									value_type: new_type,
 									variable_position,
 									value_position: assignment_position,
 								});
@@ -823,23 +787,17 @@ impl Environment<'_> {
 		// 		checking_data,
 		// 	))
 		// } else {
-		let mut diagnostics = Default::default();
+		let mut check_syntax = CheckSyntax { debug_types: checking_data.options.debug_types };
 		let get_property = crate::types::properties::get_property(
 			on,
 			publicity,
 			under,
 			self,
-			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			(&mut check_syntax, &mut checking_data.resolver),
 			&mut checking_data.types,
 			position,
 			mode,
 		);
-		diagnostics.append_to(
-			crate::types::calling::CallingContext::Getter,
-			&mut checking_data.diagnostics_container,
-		);
-
-		// };
 
 		if let Some((kind, result)) = get_property {
 			Ok(match kind {
@@ -852,25 +810,24 @@ impl Environment<'_> {
 		} else {
 			let keys;
 			let possibles = if let PropertyKey::String(s) = under {
-				keys = get_property_key_names_on_a_single_type(on, &checking_data.types, self);
+				keys = get_property_key_names_on_a_single_type(
+					on,
+					PrintingTypeInformation { types: &checking_data.types, information: self },
+				);
 				let mut possibles =
-					crate::get_closest(keys.iter().map(AsRef::as_ref), s).unwrap_or(vec![]);
+					crate::utilities::get_closest(keys.iter().map(AsRef::as_ref), s)
+						.unwrap_or(vec![]);
 				possibles.sort_unstable();
 				possibles
 			} else {
 				Vec::new()
 			};
-			checking_data.diagnostics_container.add_error(TypeCheckError::PropertyDoesNotExist {
-				property: PropertyKeyRepresentation::new(under, self, &checking_data.types),
-				on: crate::diagnostics::TypeStringRepresentation::from_type_id(
-					on,
-					self,
-					&checking_data.types,
-					false,
-				),
-				position,
-				possibles,
-			});
+			let property = PropertyKeyRepresentation::new(
+				under,
+				PrintingTypeInformation { types: &checking_data.types, information: self },
+			);
+			let error = TypeCheckError::PropertyDoesNotExist { property, on, position, possibles };
+			checking_data.add_error(error, self);
 			Err(())
 		}
 	}
@@ -889,13 +846,14 @@ impl Environment<'_> {
 			} else {
 				let possibles = {
 					let mut possibles =
-						crate::get_closest(self.get_all_variable_names(), name).unwrap_or(vec![]);
+						crate::utilities::get_closest(self.get_all_variable_names(), name)
+							.unwrap_or(vec![]);
 					possibles.sort_unstable();
 					possibles
 				};
-				checking_data.diagnostics_container.add_error(
-					TypeCheckError::CouldNotFindVariable { variable: name, possibles, position },
-				);
+				let error =
+					TypeCheckError::CouldNotFindVariable { variable: name, possibles, position };
+				checking_data.add_error(error, self);
 				return Err(TypeId::ERROR_TYPE);
 			}
 		};
@@ -913,7 +871,7 @@ impl Environment<'_> {
 		// 			}
 		// 		}) {
 		// 			if current_context != context {
-		// 				checking_data.diagnostics_container.add_error(
+		// 				checking_data.add_error(
 		// 					TypeCheckError::VariableNotDefinedInContext {
 		// 						variable: name,
 		// 						expected_context: context,
@@ -1089,12 +1047,11 @@ impl Environment<'_> {
 			if let Some(current_value) = current_value {
 				Ok(VariableWithValue(og_var.clone(), current_value))
 			} else {
-				checking_data.diagnostics_container.add_error(TypeCheckError::VariableUsedInTDZ(
-					VariableUsedInTDZ {
-						variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
-						position,
-					},
-				));
+				let error = TypeCheckError::VariableUsedInTDZ(VariableUsedInTDZ {
+					variable_name: self.get_variable_name(og_var.get_id()).to_owned(),
+					position,
+				});
+				checking_data.add_error(error, self);
 				Ok(VariableWithValue(og_var.clone(), TypeId::ERROR_TYPE))
 			}
 		}
@@ -1158,24 +1115,13 @@ impl Environment<'_> {
 					type_is_subtype(expected, returned, &mut state, self, &checking_data.types);
 
 				if let SubTypeResult::IsNotSubType(_) = result {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::ReturnedTypeDoesNotMatch {
-							expected_return_type: TypeStringRepresentation::from_type_id(
-								expected,
-								self,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							returned_type: TypeStringRepresentation::from_type_id(
-								returned,
-								self,
-								&checking_data.types,
-								checking_data.options.debug_types,
-							),
-							annotation_position: position.with_source(self.get_source()),
-							returned_position,
-						},
-					);
+					let error = TypeCheckError::ReturnedTypeDoesNotMatch {
+						expected_return_type: expected,
+						returned_type: returned,
+						annotation_position: position.with_source(self.get_source()),
+						returned_position,
+					};
+					checking_data.add_error(error, self);
 
 					// Add the expected return type instead here
 					// if it fell through to another then it could be bad
@@ -1260,26 +1206,27 @@ impl Environment<'_> {
 		checking_data: &mut CheckingData<T, A>,
 	) {
 		// For setters
-		let mut diagnostics = Default::default();
 		let result = crate::types::properties::set_property(
 			on,
 			(publicity, under, new),
 			setter_position,
 			self,
-			(&mut CheckThings { debug_types: checking_data.options.debug_types }, &mut diagnostics),
+			(
+				&mut CheckSyntax { debug_types: checking_data.options.debug_types },
+				&mut checking_data.resolver,
+			),
 			&mut checking_data.types,
 		);
-		diagnostics.append_to(
-			crate::types::calling::CallingContext::Setter,
-			&mut checking_data.diagnostics_container,
-		);
+		// TODO add_errors
+		// diagnostics.append_to(
+		// 	crate::types::calling::CallingContext::Setter,
+		// 	&mut checking_data.diagnostics_container,
+		// );
 
 		match result {
 			Ok(()) => {}
 			Err(error) => {
-				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::SetPropertyError(error));
+				checking_data.add_error(TypeCheckError::SetPropertyError(error), self);
 			}
 		}
 	}
@@ -1552,9 +1499,10 @@ impl Environment<'_> {
 			if disjoint {
 				ty
 			} else {
-				checking_data.diagnostics_container.add_error(TypeCheckError::CyclicTypeAlias {
+				let error = TypeCheckError::CyclicTypeAlias {
 					position: position.with_source(self.get_source()),
-				});
+				};
+				checking_data.add_error(error, self);
 				TypeId::ERROR_TYPE
 			}
 		};

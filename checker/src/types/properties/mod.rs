@@ -531,13 +531,12 @@ pub(crate) fn key_matches(
 }
 
 #[must_use]
-pub fn get_property_as_string(
+pub fn get_property_as_string<T: crate::context::InformationChain>(
 	property: &PropertyKey,
-	types: &TypeStore,
-	environment: &Environment,
+	info: crate::types::printing::PrintingTypeInformation<T>,
 ) -> String {
 	match property {
 		PropertyKey::String(s) => s.to_string(),
-		PropertyKey::Type(t) => crate::types::printing::print_type(*t, types, environment, false),
+		PropertyKey::Type(t) => crate::types::printing::print_type(*t, info, false),
 	}
 }

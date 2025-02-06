@@ -14,13 +14,11 @@ use crate::{
 	context::{environment::DeclareInterfaceResult, Environment, VariableRegisterArguments},
 	diagnostics::TypeCheckError,
 	features::{
-		functions::{
-			synthesise_declare_statement_function, synthesise_hoisted_statement_function,
-			SynthesisableFunction,
-		},
+		functions::{synthesise_declare_statement_function, synthesise_hoisted_statement_function},
 		modules::{import_items, ImportKind, NamePair},
 		variables::VariableMutability,
 	},
+	files::SynthesisableFunction,
 	synthesis::type_annotations::get_annotation_from_declaration,
 	CheckingData, ReadFromFS, TypeId,
 };
@@ -62,11 +60,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					if let Ok(DeclareInterfaceResult::Merging { ty: _, in_same_context: true }) =
 						&result
 					{
-						checking_data.diagnostics_container.add_warning(
+						let warning =
 							crate::diagnostics::TypeCheckWarning::MergingInterfaceInSameContext {
 								position: interface.position.with_source(environment.get_source()),
-							},
-						);
+							};
+						checking_data.add_warning(warning, environment);
 					}
 
 					if let Ok(
@@ -90,14 +88,14 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 						}
 					} else {
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: interface.name.as_option_str().unwrap_or_default().to_owned(),
-								position: interface
-									.get_position()
-									.with_source(environment.get_source()),
-							},
-						);
+						let position =
+							interface.get_position().with_source(environment.get_source());
+						let name = interface.name.as_option_str().unwrap_or_default().to_owned();
+						let error = crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name,
+							position,
+						};
+						checking_data.add_error(error, environment);
 					}
 				}
 				Declaration::Class(Decorated { on: class, .. })
@@ -129,14 +127,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 						}
 					} else {
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: class.name.as_option_str().unwrap_or_default().to_owned(),
-								position: class
-									.get_position()
-									.with_source(environment.get_source()),
-							},
-						);
+						let name = class.name.as_option_str().unwrap_or_default().to_owned();
+						let position = class.get_position().with_source(environment.get_source());
+						let error = crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name,
+							position,
+						};
+						checking_data.add_error(error, environment);
 					}
 				}
 				Declaration::TypeAlias(alias)
@@ -169,14 +166,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							}
 						}
 					} else {
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: alias.name.as_option_str().unwrap_or_default().to_owned(),
-								position: alias
-									.get_position()
-									.with_source(environment.get_source()),
-							},
-						);
+						let name = alias.name.as_option_str().unwrap_or_default().to_owned();
+						let position = alias.get_position().with_source(environment.get_source());
+						let error = crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name,
+							position,
+						};
+						checking_data.add_error(error, environment);
 					}
 				}
 				Declaration::Import(import) => {
@@ -282,12 +278,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					..
 				}) => {
 					if checking_data.options.extra_syntax {
-						checking_data.diagnostics_container.add_warning(
+						let warning =
 							crate::diagnostics::TypeCheckWarning::ItemMustBeUsedWithFlag {
 								item: "enum",
 								position: r#enum.position.with_source(environment.get_source()),
-							},
-						);
+							};
+						checking_data.add_warning(warning, environment);
 					}
 
 					// TODO WIP implementation
@@ -306,12 +302,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						checking_data.types.update_alias(ty, TypeId::NUMBER_TYPE);
 					} else {
 						let position = r#enum.get_position().with_source(environment.get_source());
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: r#enum.name.clone(),
-								position,
-							},
-						);
+						let name = r#enum.name.clone();
+						let error = crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name,
+							position,
+						};
+						checking_data.add_error(error, environment);
 					}
 				}
 				Declaration::DeclareVariable(_)
@@ -401,9 +397,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						name,
 						argument,
 						name_position,
-						&mut checking_data.diagnostics_container,
-						&mut checking_data.local_type_mappings,
-						checking_data.options.record_all_assignments_and_reads,
+						checking_data,
 					);
 				}
 				Declaration::Export(Decorated {
@@ -411,11 +405,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					..
 				}) => {
 					// TODO under definition file
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-							position: position.with_source(environment.get_source()),
-						},
-					);
+					let position = position.with_source(environment.get_source());
+					let error = TypeCheckError::FunctionWithoutBodyNotAllowedHere { position };
+					checking_data.add_error(error, environment);
 					continue;
 				}
 				Declaration::TypeAlias(alias)
@@ -625,12 +617,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								(overloads, actual)
 							} else {
 								// TODO what about `checking_data.options.lsp_mode`?
-								checking_data.diagnostics_container.add_error(
-									TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-										position: ASTNode::get_position(function)
-											.with_source(environment.get_source()),
-									},
-								);
+								let position = ASTNode::get_position(function)
+									.with_source(environment.get_source());
+								let error =
+									TypeCheckError::FunctionWithoutBodyNotAllowedHere { position };
+								checking_data.add_error(error, environment);
 								continue;
 							}
 						} else {
@@ -659,8 +650,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							overloads,
 							actual,
 							environment,
-							&mut checking_data.types,
-							&mut checking_data.diagnostics_container,
+							checking_data,
 							if let Some(ie) = internal_effect {
 								ie.into()
 							} else {
@@ -689,9 +679,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							name,
 							argument,
 							name_position,
-							&mut checking_data.diagnostics_container,
-							&mut checking_data.local_type_mappings,
-							checking_data.options.record_all_assignments_and_reads,
+							checking_data,
 						);
 					}
 				}
@@ -715,9 +703,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						&r#enum.name,
 						argument,
 						r#enum.get_position().with_source(environment.get_source()),
-						&mut checking_data.diagnostics_container,
-						&mut checking_data.local_type_mappings,
-						checking_data.options.record_all_assignments_and_reads,
+						checking_data,
 					);
 				}
 				Declaration::DeclareVariable(DeclareVariableDeclaration {

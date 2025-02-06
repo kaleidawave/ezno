@@ -6,8 +6,7 @@ use crate::{
 		information::{get_value_of_constant_import_variable, LocalInformation},
 		VariableRegisterArguments,
 	},
-	parse_source, CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings,
-	VariableId,
+	CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings, VariableId,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};
@@ -118,31 +117,31 @@ pub fn import_items<
 	type_only: bool,
 ) {
 	if !matches!(environment.context_type.scope, crate::Scope::Module { .. }) {
-		checking_data.diagnostics_container.add_error(
-			crate::diagnostics::TypeCheckError::NotTopLevelImport(
-				import_position.with_source(environment.get_source()),
-			),
+		let error = crate::diagnostics::TypeCheckError::NotTopLevelImport(
+			import_position.with_source(environment.get_source()),
 		);
+		checking_data.add_error(error, environment);
 		return;
 	}
 
 	let exports = import_file(partial_import_path, environment, checking_data);
 
 	if let Err(ref err) = exports {
-		checking_data.diagnostics_container.add_error(
-			crate::diagnostics::TypeCheckError::CannotOpenFile {
-				file: err.clone(),
-				import_position: Some(import_position.with_source(environment.get_source())),
-				possibles: checking_data
-					.modules
-					.files
-					.get_paths()
-					.keys()
-					.filter_map(|path| path.to_str())
-					.collect(),
-				partial_import_path,
-			},
-		);
+		let possibles = checking_data
+			.modules
+			.files
+			.get_paths()
+			.keys()
+			.filter_map(|path| path.to_str())
+			.collect();
+		let error: crate::diagnostics::Diagnostic = crate::diagnostics::CannotOpenFile {
+			file: err.clone(),
+			import_position: Some(import_position.with_source(environment.get_source())),
+			possibles,
+			partial_import_path,
+		}
+		.into();
+		checking_data.resolver.emit_diagnostic(error, &checking_data.modules.files);
 	}
 
 	let current_source = environment.get_source();
@@ -158,40 +157,36 @@ pub fn import_items<
 				environment.info.variable_current_value.insert(id, *item);
 				let existing = environment.variables.insert(default_name.to_owned(), v);
 				if let Some(existing) = existing {
-					checking_data.diagnostics_container.add_error(
-						crate::diagnostics::TypeCheckError::DuplicateImportName {
-							import_position: position.with_source(current_source),
-							existing_position: match existing {
-								VariableOrImport::Variable { declared_at, .. } => declared_at,
-								VariableOrImport::MutableImport { import_specified_at, .. }
-								| VariableOrImport::ConstantImport {
-									import_specified_at, ..
-								} => import_specified_at,
-							},
-						},
-					);
+					let existing_position = match existing {
+						VariableOrImport::Variable { declared_at, .. } => declared_at,
+						VariableOrImport::MutableImport { import_specified_at, .. }
+						| VariableOrImport::ConstantImport { import_specified_at, .. } => import_specified_at,
+					};
+					let error = crate::diagnostics::TypeCheckError::DuplicateImportName {
+						import_position: position.with_source(current_source),
+						existing_position,
+					};
+					checking_data.add_error(error, environment);
 				}
 			} else {
-				checking_data.diagnostics_container.add_error(
-					crate::diagnostics::TypeCheckError::NoDefaultExport {
-						position: position.with_source(current_source),
-						partial_import_path,
-					},
-				);
+				let error = crate::diagnostics::TypeCheckError::NoDefaultExport {
+					position: position.with_source(current_source),
+					partial_import_path,
+				};
+				checking_data.add_error(error, environment);
 			}
 		} else {
+			let arguments = VariableRegisterArguments {
+				constant: true,
+				initial_value: Some(TypeId::ERROR_TYPE),
+				space: None,
+				allow_reregistration: false,
+			};
 			environment.register_variable_handle_error(
 				default_name,
-				VariableRegisterArguments {
-					constant: true,
-					initial_value: Some(TypeId::ERROR_TYPE),
-					space: None,
-					allow_reregistration: false,
-				},
+				arguments,
 				position.with_source(current_source),
-				&mut checking_data.diagnostics_container,
-				&mut checking_data.local_type_mappings,
-				checking_data.options.record_all_assignments_and_reads,
+				checking_data,
 			);
 		}
 	}
@@ -208,19 +203,19 @@ pub fn import_items<
 					if exported_variable.is_none() && exported_type.is_none() {
 						let possibles = {
 							let mut possibles =
-								crate::get_closest(exports.keys(), part.value).unwrap_or(vec![]);
+								crate::utilities::get_closest(exports.keys(), part.value)
+									.unwrap_or(vec![]);
 							possibles.sort_unstable();
 							possibles
 						};
 						let position = part.position.with_source(current_source);
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::FieldNotExported {
-								file: partial_import_path,
-								position,
-								importing: part.value,
-								possibles,
-							},
-						);
+						let error = crate::diagnostics::TypeCheckError::FieldNotExported {
+							file: partial_import_path,
+							position,
+							importing: part.value,
+							possibles,
+						};
+						checking_data.add_error(error, environment);
 
 						// Register error
 						environment.register_variable_handle_error(
@@ -232,9 +227,7 @@ pub fn import_items<
 								allow_reregistration: false,
 							},
 							position,
-							&mut checking_data.diagnostics_container,
-							&mut checking_data.local_type_mappings,
-							checking_data.options.record_all_assignments_and_reads,
+							checking_data,
 						);
 					}
 
@@ -261,26 +254,22 @@ pub fn import_items<
 						crate::utilities::notify!("{:?}", part.r#as.to_owned());
 						let existing = environment.variables.insert(part.r#as.to_owned(), v);
 						if let Some(existing) = existing {
-							checking_data.diagnostics_container.add_error(
-								crate::diagnostics::TypeCheckError::DuplicateImportName {
-									import_position: part
-										.position
-										.with_source(environment.get_source()),
-									existing_position: match existing {
-										VariableOrImport::Variable { declared_at, .. } => {
-											declared_at
-										}
-										VariableOrImport::MutableImport {
-											import_specified_at,
-											..
-										}
-										| VariableOrImport::ConstantImport {
-											import_specified_at,
-											..
-										} => import_specified_at,
-									},
+							let error = crate::diagnostics::TypeCheckError::DuplicateImportName {
+								import_position: part
+									.position
+									.with_source(environment.get_source()),
+								existing_position: match existing {
+									VariableOrImport::Variable { declared_at, .. } => declared_at,
+									VariableOrImport::MutableImport {
+										import_specified_at, ..
+									}
+									| VariableOrImport::ConstantImport {
+										import_specified_at,
+										..
+									} => import_specified_at,
 								},
-							);
+							};
+							checking_data.add_error(error, environment);
 						}
 						if also_export {
 							if let Scope::Module { ref mut exported, .. } =
@@ -309,9 +298,7 @@ pub fn import_items<
 							allow_reregistration: false,
 						},
 						declared_at,
-						&mut checking_data.diagnostics_container,
-						&mut checking_data.local_type_mappings,
-						checking_data.options.record_all_assignments_and_reads,
+						checking_data,
 					);
 				}
 			}
@@ -335,9 +322,7 @@ pub fn import_items<
 					allow_reregistration: false,
 				},
 				position.with_source(current_source),
-				&mut checking_data.diagnostics_container,
-				&mut checking_data.local_type_mappings,
-				checking_data.options.record_all_assignments_and_reads,
+				checking_data,
 			);
 		}
 		ImportKind::Everything => {
@@ -375,14 +360,15 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				.get(&existing)
 				.expect("existing file, but not synthesised")))
 		} else {
-			let content = checking_data.modules.file_reader.read_file(full_importer);
+			let content = checking_data.resolver.read_file(full_importer);
 			if let Some(content) = content {
 				let content = String::from_utf8(content).expect("invalid entry point encoding");
 				let source = checking_data
 					.modules
 					.files
 					.new_source_id(full_importer.to_path_buf(), content.clone());
-				let module = parse_source(full_importer, source, content, checking_data);
+				let module =
+					crate::files::parse_source(full_importer, source, content, checking_data);
 
 				match module {
 					Ok(module) => {
@@ -473,7 +459,7 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		let result = get_package_from_node_modules(
 			to_import,
 			&checking_data.modules.current_working_directory,
-			checking_data.modules.file_reader,
+			&checking_data.resolver,
 		);
 		if let Ok((path, definition_file)) = result {
 			crate::utilities::notify!("Reading path from package {}", path.display());
@@ -489,7 +475,7 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			Ok(Ok(synthesised_module.exported.clone()))
 		}
 		Some(Err(error)) => {
-			checking_data.diagnostics_container.add_error(error);
+			checking_data.resolver.emit_diagnostic(error.into(), &checking_data.modules.files);
 			Ok(Err(InvalidModule))
 		}
 		None => Err(CouldNotOpenFile(PathBuf::from(to_import.to_owned()))),

@@ -16,9 +16,8 @@ use crate::{
 	},
 	features::{functions::ClosedOverVariables, operations::CanonicalEqualityAndInequality},
 	types::{
-		calling::{CallingContext, CallingDiagnostics},
-		properties::get_properties_on_single_type,
-		substitute, Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
+		calling::CallingContext, properties::get_properties_on_single_type, substitute,
+		Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
 	},
 	CheckingData, Constant, Type, TypeId, VariableId,
 };
@@ -120,8 +119,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_info,
 			);
 
-			let mut diagnostics = CallingDiagnostics::default();
-
 			run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				&events,
@@ -130,12 +127,9 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
-				&mut diagnostics,
+				&mut checking_data.resolver,
 				&mut checking_data.types,
 			);
-
-			diagnostics
-				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	crate::utilities::notify!("Loop returned {:?}", early_return);
@@ -186,8 +180,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&loop_info,
 			);
 
-			let mut diagnostics = CallingDiagnostics::default();
-
 			run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: true },
 				&events,
@@ -196,12 +188,9 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
-				&mut diagnostics,
+				&mut checking_data.resolver,
 				&mut checking_data.types,
 			);
-
-			diagnostics
-				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -344,8 +333,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				environment.info.variable_current_value.insert(var, start);
 			}
 
-			let mut diagnostics = CallingDiagnostics::default();
-
 			run_iteration_block(
 				IterationKind::Condition { under: fixed_iterations.ok(), postfix_condition: false },
 				&events,
@@ -354,12 +341,10 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
-				&mut diagnostics,
+				&mut checking_data.resolver,
 				&mut checking_data.types,
 			);
 
-			diagnostics
-				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
 			// }
@@ -399,8 +384,6 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 			let (LocalInformation { events, .. }, closes_over) = result.unwrap();
 
-			let mut diagnostics = CallingDiagnostics::default();
-
 			run_iteration_block(
 				IterationKind::Properties { on, variable },
 				&events,
@@ -409,12 +392,9 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				&mut SubstitutionArguments::new_arguments_for_use_in_loop(),
 				environment,
 				&mut InvocationContext::new_empty(),
-				&mut diagnostics,
+				&mut checking_data.resolver,
 				&mut checking_data.types,
 			);
-
-			diagnostics
-				.append_to(CallingContext::Iteration, &mut checking_data.diagnostics_container);
 
 			// if let ApplicationResult::Interrupt(early_return) = run_iteration_block {
 			// 	todo!("{early_return:?}")
@@ -476,7 +456,7 @@ pub enum RunBehavior {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn run_iteration_block(
+pub(crate) fn run_iteration_block<T: crate::ReadFromFS>(
 	condition: IterationKind,
 	events: &[Event],
 	input: &ApplicationInput,
@@ -484,7 +464,7 @@ pub(crate) fn run_iteration_block(
 	type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut Environment,
 	invocation_context: &mut InvocationContext,
-	errors: &mut CallingDiagnostics,
+	errors: &mut T,
 	types: &mut TypeStore,
 ) -> Option<ApplicationResult> {
 	// {
@@ -617,7 +597,7 @@ pub(crate) fn run_iteration_block(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_iteration_loop(
+fn run_iteration_loop<T: crate::ReadFromFS>(
 	invocation_context: &mut InvocationContext,
 	iterations: usize,
 	events: &[Event],
@@ -625,7 +605,7 @@ fn run_iteration_loop(
 	type_arguments: &mut SubstitutionArguments,
 	top_environment: &mut Environment,
 	types: &mut TypeStore,
-	errors: &mut CallingDiagnostics,
+	errors: &mut T,
 	// For `for in` (TODO for of)
 	mut each_iteration: impl for<'a> FnMut(&'a mut SubstitutionArguments, &mut TypeStore),
 ) -> Option<ApplicationResult> {
@@ -685,27 +665,27 @@ fn evaluate_unknown_iteration_for_loop(
 		}
 	};
 
-	let mut calling_diagnostics = CallingDiagnostics::default();
-
 	// Make rest of scope aware of changes under the loop
 	// TODO can skip if at the end of a function
 	let _res = invocation_context.new_unknown_target(|invocation_context| {
 		// TODO
 		let max_inline = 10;
+		let input = ApplicationInput {
+			this_value: crate::types::calling::ThisValue::UseParent,
+			call_site: BaseSpan::NULL,
+			max_inline,
+		};
 
-		apply_events(
-			events,
-			&ApplicationInput {
-				this_value: crate::types::calling::ThisValue::UseParent,
-				call_site: BaseSpan::NULL,
-				max_inline,
-			},
-			type_arguments,
-			top_environment,
-			invocation_context,
-			types,
-			&mut calling_diagnostics,
-		)
+		todo!("diagnostics down")
+		// apply_events(
+		// 	events,
+		// 	&input,
+		// 	type_arguments,
+		// 	top_environment,
+		// 	invocation_context,
+		// 	types,
+		// 	diagnostics,
+		// )
 	});
 
 	// add event

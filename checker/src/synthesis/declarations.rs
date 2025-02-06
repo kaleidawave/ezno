@@ -112,30 +112,29 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 
 				if let Scope::Module { ref mut exported, .. } = environment.context_type.scope {
 					if exported.default.is_some() {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::DoubleDefaultExport(
-								position.with_source(environment.get_source()),
-							),
+						let error = TypeCheckError::DoubleDefaultExport(
+							position.with_source(environment.get_source()),
 						);
+						checking_data.add_error(error, environment);
 					} else {
 						exported.default = Some(result);
 					}
 				} else {
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::NonTopLevelExport(
-							position.with_source(environment.get_source()),
-						),
+					let error = TypeCheckError::NonTopLevelExport(
+						position.with_source(environment.get_source()),
 					);
+					checking_data.add_error(error, environment);
 				}
 			}
 			parser::declarations::ExportDeclaration::TSDefaultFunctionDeclaration {
 				position,
 				..
 			} => {
-				checking_data.diagnostics_container.add_error(
+				checking_data.add_error(
 					TypeCheckError::FunctionWithoutBodyNotAllowedHere {
 						position: position.with_source(environment.get_source()),
 					},
+					environment,
 				);
 			}
 		},

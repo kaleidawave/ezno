@@ -4,31 +4,31 @@ use std::{mem, path::PathBuf};
 use source_map::{FileSystem, MapFileStore, SourceId, WithPathMap};
 
 use crate::{
-	add_definition_files_to_root, types::printing::print_type, CheckingData, DiagnosticsContainer,
-	RootContext, TypeId,
+	add_definition_files_to_root, types::printing::print_type, CheckingData, RootContext, TypeId,
 };
 
 use super::{block::synthesise_block, expressions::synthesise_multiple_expression};
 
-pub struct State<'a, T: crate::ReadFromFS> {
-	checking_data: CheckingData<'a, T, super::EznoParser>,
+pub struct State<T: crate::ReadFromFS> {
+	checking_data: CheckingData<T, super::EznoParser>,
 	root: RootContext,
 	source: SourceId,
 }
 
-impl<'a, T: crate::ReadFromFS> State<'a, T> {
-	pub fn new(
-		resolver: &'a T,
-		type_definition_files: Vec<PathBuf>,
-	) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
+impl<T: crate::ReadFromFS> State<T> {
+	pub fn new(resolver: T, type_definition_files: Vec<PathBuf>) -> Result<Self, ()> {
+		// ) -> Result<Self, MapFileStore<WithPathMap>> {
 		let mut root = RootContext::new_with_primitive_references();
 		let mut checking_data =
 			CheckingData::new(Default::default(), resolver, Default::default(), ());
 
 		add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
-		if checking_data.diagnostics_container.contains_error() {
-			Err((checking_data.diagnostics_container, checking_data.modules.files))
+		// if checking_data.diagnostics_container.contains_error() {
+		// 	Err((checking_data.diagnostics_container, checking_data.modules.files))
+		// } else {
+		if checking_data.error_occured() {
+			Err(())
 		} else {
 			let source =
 				checking_data.modules.files.new_source_id("CLI.tsx".into(), String::default());
@@ -36,10 +36,7 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 		}
 	}
 
-	pub fn check_item(
-		&mut self,
-		item: &parser::Module,
-	) -> Result<(Option<String>, DiagnosticsContainer), DiagnosticsContainer> {
+	pub fn check_item(&mut self, item: &parser::Module) -> Result<Option<String>, ()> {
 		let (ty, ..) = self.root.new_lexical_environment_fold_into_parent(
 			crate::Scope::PassThrough { source: self.source },
 			&mut self.checking_data,
@@ -59,18 +56,22 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 						checking_data,
 						TypeId::ANY_TYPE,
 					);
-					Some(print_type(result, &checking_data.types, environment, false))
+					let information = crate::types::printing::PrintingTypeInformation {
+						types: &checking_data.types,
+						information: environment,
+					};
+					Some(print_type(result, information, false))
 				} else {
 					synthesise_block(&item.items, environment, checking_data);
 					None
 				}
 			},
 		);
-		let dc = mem::take(&mut self.checking_data.diagnostics_container);
-		if dc.contains_error() {
-			Err(dc)
+		// let dc = mem::take(&mut self.checking_data.diagnostics_container);
+		if self.checking_data.error_occured() {
+			Err(())
 		} else {
-			Ok((ty, dc))
+			Ok(ty)
 		}
 	}
 

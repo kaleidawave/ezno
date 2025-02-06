@@ -8,9 +8,10 @@ use crate::{
 		information::{merge_info, LocalInformation},
 		ContextType, Syntax,
 	},
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::TypeCheckError,
 	events::RootReference,
 	features::{create_closed_over_references, objects::ObjectBuilder},
+	files::SynthesisableFunction,
 	subtyping::{type_is_subtype_object, SubTypeResult},
 	types::{
 		self,
@@ -191,7 +192,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		},
 	);
 
-	let at = A::expression_position(expression).with_source(environment.get_source());
+	let position = A::expression_position(expression).with_source(environment.get_source());
 
 	{
 		let result = type_is_subtype_object(
@@ -202,23 +203,12 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		);
 
 		if let SubTypeResult::IsNotSubType(_) = result {
-			let expected = TypeStringRepresentation::from_type_id(
-				parameter_ty,
-				environment,
-				&checking_data.types,
-				false,
-			);
-
-			let found = TypeStringRepresentation::from_type_id(
-				value,
-				environment,
-				&checking_data.types,
-				false,
-			);
-
-			checking_data
-				.diagnostics_container
-				.add_error(TypeCheckError::InvalidDefaultParameter { at, expected, found });
+			let error = TypeCheckError::InvalidDefaultParameter {
+				position,
+				expected: parameter_ty,
+				found: value,
+			};
+			checking_data.add_error(error, environment);
 		}
 	}
 
@@ -250,7 +240,7 @@ pub fn synthesise_function_default_value<'a, T: crate::ReadFromFS, A: ASTImpleme
 		out.unwrap().0,
 		None,
 		&mut checking_data.types,
-		at,
+		position,
 	);
 
 	result
@@ -264,66 +254,6 @@ pub struct PartialFunction(
 	pub SynthesisedParameters,
 	pub Option<ReturnType>,
 );
-
-/// Covers both actual functions and
-pub trait SynthesisableFunction<A: crate::ASTImplementation> {
-	fn id(&self, source_id: SourceId) -> FunctionId {
-		FunctionId(source_id, self.get_position().start)
-	}
-
-	/// For debugging only
-	fn get_name(&self) -> Option<&str>;
-
-	/// For debugging only
-	fn get_position(&self) -> source_map::Span;
-
-	// TODO temp
-	fn has_body(&self) -> bool;
-
-	// /// For detecting what is inside
-	// fn get_body_span(&self) -> source_map::Span;
-
-	/// **THIS FUNCTION IS EXPECTED TO PUT THE TYPE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESISING THEM**
-	fn type_parameters<T: ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, A>,
-	) -> Option<GenericTypeParameters>;
-
-	fn this_constraint<T: ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, A>,
-	) -> Option<TypeId>;
-
-	/// For object literals
-	fn super_constraint<T: ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, A>,
-	) -> Option<TypeId>;
-
-	/// **THIS FUNCTION IS EXPECTED TO PUT THE PARAMETERS INTO THE ENVIRONMENT WHILE SYNTHESISING THEM**
-	fn parameters<T: ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, A>,
-		expected_parameters: Option<&SynthesisedParameters>,
-	) -> SynthesisedParameters;
-
-	fn return_type_annotation<T: ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, A>,
-	) -> Option<ReturnType>;
-
-	/// Returned type is extracted from events, thus doesn't expect anything in return
-	fn body<T: ReadFromFS>(
-		&self,
-		environment: &mut Environment,
-		checking_data: &mut CheckingData<T, A>,
-	);
-}
 
 /// TODO might be generic if [`FunctionBehavior`] becomes generic
 pub enum FunctionRegisterBehavior<'a, A: crate::ASTImplementation> {
@@ -476,14 +406,14 @@ where
 				base_environment,
 			);
 
-			if let Some((or, _)) =
-				expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))
-			{
-				crate::utilities::notify!(
-					"First expected parameter {:?}",
-					print_type(or, &checking_data.types, base_environment, true)
-				);
-			}
+			// if let Some((or, _)) =
+			// 	expected_parameters.as_ref().and_then(|a| a.get_parameter_type_at_index(0))
+			// {
+			// 	crate::utilities::notify!(
+			// 		"First expected parameter {:?}",
+			// 		print_type(or, &checking_data.types, base_environment, true)
+			// 	);
+			// }
 
 			FunctionKind {
 				behavior: FunctionBehavior::ArrowFunction { is_async },
@@ -865,26 +795,15 @@ where
 					);
 
 					if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::ReturnedTypeDoesNotMatch {
-								expected_return_type: TypeStringRepresentation::from_type_id(
-									expected,
-									base_environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								returned_type: TypeStringRepresentation::from_type_id(
-									returned,
-									base_environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								annotation_position: position,
-								returned_position: function
-									.get_position()
-									.with_source(base_environment.get_source()),
-							},
-						);
+						let error = TypeCheckError::ReturnedTypeDoesNotMatch {
+							expected_return_type: expected,
+							returned_type: returned,
+							annotation_position: position,
+							returned_position: function
+								.get_position()
+								.with_source(base_environment.get_source()),
+						};
+						checking_data.add_error(error, base_environment);
 					}
 				}
 			}

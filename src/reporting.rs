@@ -3,11 +3,34 @@ use codespan_reporting::{
 	term::{emit, Config, DisplayStyle},
 };
 
-use checker::source_map::{MapFileStore, PathMap, SourceId};
+use checker::source_map::{MapFileStore, SourceId, WithPathMap};
 
-use crate::utilities::MaxDiagnostics;
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum MaxDiagnostics {
+	All,
+	FixedTo(u16),
+}
 
-fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
+impl argh::FromArgValue for MaxDiagnostics {
+	fn from_arg_value(value: &str) -> Result<Self, String> {
+		if value == "all" {
+			Ok(Self::All)
+		} else {
+			match std::str::FromStr::from_str(value) {
+				Ok(value) => Ok(Self::FixedTo(value)),
+				Err(reason) => Err(reason.to_string()),
+			}
+		}
+	}
+}
+
+impl Default for MaxDiagnostics {
+	fn default() -> Self {
+		Self::FixedTo(30)
+	}
+}
+
+fn checker_kind_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	match kind {
 		checker::DiagnosticKind::Error => Severity::Error,
 		checker::DiagnosticKind::Warning => Severity::Warning,
@@ -23,7 +46,7 @@ fn checker_diagnostic_to_codespan_diagnostic(
 ) -> Diagnostic<SourceId> {
 	match diagnostic {
 		checker::Diagnostic::Global { reason, kind } => Diagnostic {
-			severity: ezno_diagnostic_to_severity(&kind),
+			severity: checker_kind_to_severity(&kind),
 			code: None,
 			message: reason,
 			labels: Vec::new(),
@@ -40,7 +63,7 @@ fn checker_diagnostic_to_codespan_diagnostic(
 			};
 
 			Diagnostic {
-				severity: ezno_diagnostic_to_severity(&kind),
+				severity: checker_kind_to_severity(&kind),
 				code: None,
 				message,
 				labels,
@@ -49,7 +72,7 @@ fn checker_diagnostic_to_codespan_diagnostic(
 		}
 		checker::Diagnostic::PositionWithAdditionalLabels { reason, position, labels, kind } => {
 			let mut diagnostic = Diagnostic {
-				severity: ezno_diagnostic_to_severity(&kind),
+				severity: checker_kind_to_severity(&kind),
 				code: None,
 				message: String::new(),
 				labels: Vec::new(),
@@ -74,43 +97,50 @@ fn checker_diagnostic_to_codespan_diagnostic(
 	}
 }
 
-pub(crate) fn report_diagnostics_to_cli<T: PathMap, I>(
-	diagnostics: I,
-	fs: &MapFileStore<T>,
-	compact: bool,
-	maximum: MaxDiagnostics,
-) -> Result<(), codespan_reporting::files::Error>
-where
-	I: IntoIterator<Item = checker::Diagnostic>,
-	I::IntoIter: ExactSizeIterator,
-{
-	// TODO custom here
-	let config = Config {
-		display_style: if compact { DisplayStyle::Short } else { DisplayStyle::Rich },
-		..Config::default()
-	};
-
+pub struct DiagnosticEmitter {
 	#[cfg(not(target_family = "wasm"))]
-	let mut writer = codespan_reporting::term::termcolor::BufferedStandardStream::stderr(
-		codespan_reporting::term::termcolor::ColorChoice::Auto,
-	);
+	writer: codespan_reporting::term::termcolor::BufferedStandardStream,
+}
 
-	let files = fs.into_code_span_store();
-	let diagnostics = diagnostics.into_iter();
-	let count = diagnostics.len();
-	let maximum = match maximum {
-		MaxDiagnostics::All => usize::MAX,
-		MaxDiagnostics::FixedTo(n) => n as usize,
-	};
-	let diagnostics = diagnostics.into_iter().take(maximum);
+impl DiagnosticEmitter {
+	pub fn new() -> Self {
+		Self {
+			// maximum,
+			// configuration: Config {
+			// 	display_style: if compact { DisplayStyle::Short } else { DisplayStyle::Rich },
+			// 	..Config::default()
+			// },
+			#[cfg(not(target_family = "wasm"))]
+			writer: codespan_reporting::term::termcolor::BufferedStandardStream::stderr(
+				codespan_reporting::term::termcolor::ColorChoice::Auto,
+			),
+		}
+	}
 
-	for diagnostic in diagnostics {
+	// pub fn should_emit(&self) -> bool {
+	// 	match self.maximum {
+	// 		MaxDiagnostics::All => true,
+	// 		MaxDiagnostics::FixedTo(n) => todo!(),
+	// 	}
+	// }
+
+	pub fn emit(&mut self, diagnostic: checker::Diagnostic, fs: &MapFileStore<WithPathMap>) {
+		let files = fs.into_code_span_store();
+
+		// TODO temp
+		let compact = false;
+		let config = Config {
+			display_style: if compact { DisplayStyle::Short } else { DisplayStyle::Rich },
+			..Config::default()
+		};
+
+		// let compact = matches!(self.configuration.display_style, DisplayStyle::Short);
 		let diagnostic = checker_diagnostic_to_codespan_diagnostic(diagnostic, compact);
 
 		#[cfg(target_family = "wasm")]
 		{
 			let mut buffer = codespan_reporting::term::termcolor::Buffer::ansi();
-			emit(&mut buffer, &config, &files, &diagnostic)?;
+			emit(&mut buffer, &config, &files, &diagnostic).unwrap();
 			let output =
 				String::from_utf8(buffer.into_inner()).expect("invalid string from diagnostic");
 			crate::utilities::print_to_cli(format_args!("{output}"));
@@ -118,19 +148,24 @@ where
 
 		#[cfg(not(target_family = "wasm"))]
 		{
-			emit(&mut writer, &config, &files, &diagnostic)?;
+			emit(&mut self.writer, &config, &files, &diagnostic).unwrap();
 		}
 	}
 
-	#[cfg(not(target_family = "wasm"))]
-	std::io::Write::flush(&mut writer).unwrap();
+	pub fn _finish(&mut self, emitted: u16) {
+		#[cfg(not(target_family = "wasm"))]
+		std::io::Write::flush(&mut self.writer).unwrap();
 
-	if count > maximum {
-		crate::utilities::print_to_cli(format_args!(
-			"... and {difference} other errors and warnings",
-			difference = count - maximum
-		));
+		// TODO print that there was no erros?
+		// if let MaxDiagnostics::FixedTo(maximum) = self.maximum {
+		// 	if emitted > maximum {
+		// 		crate::utilities::print_to_cli(format_args!(
+		// 			"... and {difference} other errors and warnings",
+		// 			difference = emitted - maximum
+		// 		));
+		// 	}
+		// }
+
+		// Ok(())
 	}
-
-	Ok(())
 }

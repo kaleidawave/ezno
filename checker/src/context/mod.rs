@@ -15,9 +15,7 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::environment::ExpectedReturnType,
-	diagnostics::{
-		CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, VariableUsedInTDZ,
-	},
+	diagnostics::{CannotRedeclareVariable, TypeCheckError, VariableUsedInTDZ},
 	events::RootReference,
 	features::{
 		assignments::Reference,
@@ -26,7 +24,7 @@ use crate::{
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{FunctionType, PolyNature, Type, TypeId, TypeStore},
-	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
+	CheckingData, FunctionId, TypeMappings, VariableId,
 };
 
 use self::environment::{DynamicBoundaryKind, FunctionScope};
@@ -255,33 +253,44 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn register_variable_handle_error(
+	pub fn register_variable_handle_error<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&mut self,
 		name: &str,
 		argument: VariableRegisterArguments,
 		declared_at: SpanWithSource,
-		diagnostics_container: &mut DiagnosticsContainer,
-		type_mappings: &mut TypeMappings,
-		record_event: bool,
+		checking_data: &mut CheckingData<U, A>,
 	) {
 		if argument.allow_reregistration {
 			if let Some(existing) = self.variables.get(name) {
-				type_mappings.var_aliases.insert(declared_at.start, existing.get_id());
+				checking_data
+					.local_type_mappings
+					.var_aliases
+					.insert(declared_at.start, existing.get_id());
 			}
 		}
 
 		if let Some(reassignment_constraint) = argument.space {
 			let id = crate::VariableId(self.get_source(), declared_at.start);
-			type_mappings.variables_to_constraints.0.insert(id, reassignment_constraint);
+			checking_data
+				.local_type_mappings
+				.variables_to_constraints
+				.0
+				.insert(id, reassignment_constraint);
 		}
 
-		let register_variable = self.register_variable(name, declared_at, argument, record_event);
+		let register_variable = self.register_variable(
+			name,
+			declared_at,
+			argument,
+			checking_data.options.record_all_assignments_and_reads,
+		);
 
 		if let Err(CannotRedeclareVariable { name }) = register_variable {
-			diagnostics_container.add_error(TypeCheckError::CannotRedeclareVariable {
+			let error = TypeCheckError::CannotRedeclareVariable {
 				name: name.to_owned(),
 				position: declared_at,
-			});
+			};
+			checking_data.add_error(error, &*self);
 		}
 	}
 
@@ -773,7 +782,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn get_type_by_name_handle_errors<U, A: crate::ASTImplementation>(
+	pub fn get_type_by_name_handle_errors<U: crate::ReadFromFS, A: crate::ASTImplementation>(
 		&self,
 		name: &str,
 		pos: SpanWithSource,
@@ -783,15 +792,12 @@ impl<T: ContextType> Context<T> {
 			val
 		} else {
 			let possibles = {
-				let mut possibles =
-					crate::get_closest(self.get_all_named_types(), name).unwrap_or(vec![]);
+				let mut possibles = crate::utilities::get_closest(self.get_all_named_types(), name)
+					.unwrap_or(vec![]);
 				possibles.sort_unstable();
 				possibles
 			};
-			checking_data
-				.diagnostics_container
-				.add_error(TypeCheckError::CouldNotFindType(name, possibles, pos));
-
+			checking_data.add_error(TypeCheckError::CouldNotFindType(name, possibles, pos), self);
 			TypeId::ERROR_TYPE
 		}
 	}
@@ -997,9 +1003,9 @@ pub enum AssignmentError {
 	},
 	/// Covers both assignment and declaration
 	DoesNotMeetConstraint {
-		variable_type: TypeStringRepresentation,
+		variable_type: TypeId,
 		variable_position: SpanWithSource,
-		value_type: TypeStringRepresentation,
+		value_type: TypeId,
 		value_position: SpanWithSource,
 	},
 	// PropertyConstraint {

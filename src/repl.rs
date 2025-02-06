@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use argh::FromArgs;
 use parser::{visiting::VisitorsMut, ASTNode, Expression, Module, SourceId, Statement};
 
-use crate::reporting::report_diagnostics_to_cli;
-
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -26,18 +24,19 @@ pub struct ReplArguments {
 pub struct ReplSystem {
 	arguments: ReplArguments,
 	source: SourceId,
-	state: checker::synthesis::interactive::State<'static, crate::utilities::FSFunction>,
+	state: checker::synthesis::interactive::State<crate::FSFunction>,
 }
 
-pub type ReplSystemErr = (
-	checker::DiagnosticsContainer,
-	crate::source_map::MapFileStore<crate::source_map::WithPathMap>,
-);
+pub type ReplSystemErr = ();
+// pub type ReplSystemErr = (
+// 	checker::DiagnosticsContainer,
+// 	crate::source_map::MapFileStore<crate::source_map::WithPathMap>,
+// );
 
 impl ReplSystem {
 	pub fn new(
 		arguments: ReplArguments,
-		file_system_resolver: crate::utilities::FSFunction,
+		file_system_resolver: crate::FSFunction,
 	) -> Result<ReplSystem, ReplSystemErr> {
 		let definitions = if let Some(tdm) = arguments.type_definition_module.clone() {
 			std::iter::once(tdm).collect()
@@ -45,11 +44,7 @@ impl ReplSystem {
 			std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
 		};
 
-		// TOOD
-		let static_file_system_resolver = Box::leak(Box::new(file_system_resolver));
-
-		let state =
-			checker::synthesis::interactive::State::new(static_file_system_resolver, definitions)?;
+		let state = checker::synthesis::interactive::State::new(file_system_resolver, definitions)?;
 		let source = state.get_source_id();
 
 		Ok(ReplSystem { arguments, source, state })
@@ -64,11 +59,11 @@ impl ReplSystem {
 	#[wasm_bindgen(js_name = "new_system")]
 	pub fn new_js(
 		repl_arguments: wasm_bindgen::JsValue,
-		cb: &js_sys::Function,
+		cb: js_sys::Function,
 	) -> Option<ReplSystem> {
 		let repl_arguments: ReplArguments =
 			serde_wasm_bindgen::from_value(repl_arguments).expect("invalid ReplArguments");
-		let cb = crate::utilities::FSFunction(cb.clone());
+		let cb = crate::utilities::FSFunction(cb);
 		Self::new(repl_arguments, cb).ok()
 	}
 
@@ -117,38 +112,41 @@ impl ReplSystem {
 				let result = self.state.check_item(&item);
 
 				match result {
-					Ok((last_ty, diagnostics)) => {
-						report_diagnostics_to_cli(
-							diagnostics,
-							self.state.get_fs_ref(),
-							false,
-							crate::utilities::MaxDiagnostics::All,
-						)
-						.unwrap();
+					Ok(last_ty) => {
+						todo!();
+						// report_diagnostics_to_cli(
+						// 	diagnostics,
+						// 	self.state.get_fs_ref(),
+						// 	false,
+						// 	crate::utilities::MaxDiagnostics::All,
+						// )
+						// .unwrap();
 
 						if let Some(last_ty) = last_ty {
 							crate::utilities::print_to_cli(format_args!("{last_ty}"));
 						}
 					}
 					Err(diagnostics) => {
-						report_diagnostics_to_cli(
-							diagnostics,
-							self.state.get_fs_ref(),
-							false,
-							crate::utilities::MaxDiagnostics::All,
-						)
-						.unwrap();
+						todo!();
+						// report_diagnostics_to_cli(
+						// 	diagnostics,
+						// 	self.state.get_fs_ref(),
+						// 	false,
+						// 	crate::utilities::MaxDiagnostics::All,
+						// )
+						// .unwrap();
 					}
 				}
 			}
 			Err(err) => {
-				report_diagnostics_to_cli(
-					std::iter::once((err, self.source).into()),
-					self.state.get_fs_ref(),
-					false,
-					crate::utilities::MaxDiagnostics::All,
-				)
-				.unwrap();
+				todo!();
+				// report_diagnostics_to_cli(
+				// 	std::iter::once((err, self.source).into()),
+				// 	self.state.get_fs_ref(),
+				// 	false,
+				// 	crate::utilities::MaxDiagnostics::All,
+				// )
+				// .unwrap();
 			}
 		}
 	}
@@ -167,16 +165,18 @@ pub(crate) fn run_repl(arguments: ReplArguments) {
 
 	print_to_cli(format_args!("Entering REPL\n.Use #exist, .exit or close() to leave"));
 
-	let mut system = match ReplSystem::new(arguments, crate::utilities::FSFunction) {
+	let mut system = match ReplSystem::new(arguments, crate::FSFunction::new()) {
 		Ok(system) => system,
-		Err((diagnostics, fs)) => {
-			report_diagnostics_to_cli(
-				diagnostics,
-				&fs,
-				false,
-				crate::utilities::MaxDiagnostics::All,
-			)
-			.unwrap();
+		Err(..) => {
+			todo!();
+			// (diagnostics, fs)
+			// report_diagnostics_to_cli(
+			// 	diagnostics,
+			// 	&fs,
+			// 	false,
+			// 	crate::utilities::MaxDiagnostics::All,
+			// )
+			// .unwrap();
 			return;
 		}
 	};

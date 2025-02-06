@@ -1,21 +1,17 @@
 //! Contains type checking errors, warnings and related structures
 use crate::{
 	context::{environment::Label, AssignmentError, InformationChain},
-	diagnostics,
 	features::{modules::CouldNotOpenFile, CannotDeleteFromError},
 	types::{
 		calling::FunctionCallingError,
-		printing::print_type_with_type_arguments,
+		printing::{print_type, print_type_into_buf, PrintingTypeInformation},
 		properties::{assignment::SetPropertyError, PropertyKey},
-		GenericChain, GenericChainLink,
+		TypeId, TypeStore,
 	},
+	utilities::get_possibles_message,
 };
 use source_map::{SourceId, SpanWithSource};
-use std::{
-	fmt::{self, Debug, Display},
-	iter,
-	path::PathBuf,
-};
+use std::{fmt::Debug, iter, path::PathBuf};
 
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(rename_all = "lowercase"))]
@@ -66,6 +62,34 @@ pub struct NotInLoopOrCouldNotFindLabel {
 	pub position: SpanWithSource,
 }
 
+pub struct CannotOpenFile<'a> {
+	pub file: CouldNotOpenFile,
+	pub import_position: Option<SpanWithSource>,
+	pub possibles: Vec<&'a str>,
+	pub partial_import_path: &'a str,
+}
+
+impl<'a> From<CannotOpenFile<'a>> for Diagnostic {
+	fn from(err: CannotOpenFile<'a>) -> Self {
+		let CannotOpenFile { file, import_position, possibles, partial_import_path } = err;
+		if let Some(import_position) = import_position {
+			Diagnostic::PositionWithAdditionalLabels {
+				reason: format!("Cannot find {partial_import_path}"),
+				position: import_position,
+				kind: DiagnosticKind::Error,
+				labels: map_error_empty(possibles, |possibles| {
+					vec![(get_possibles_message(&possibles), import_position)]
+				}),
+			}
+		} else {
+			Diagnostic::Global {
+				reason: format!("Cannot find file {}", file.0.display()),
+				kind: DiagnosticKind::Error,
+			}
+		}
+	}
+}
+
 impl Diagnostic {
 	pub fn sources(&self) -> impl Iterator<Item = SourceId> + '_ {
 		use either::{Left, Right};
@@ -106,80 +130,15 @@ impl Diagnostic {
 	}
 }
 
-/// TODO this is one variant, others should pipe strait to stdout or put it on a channel etc
-#[derive(Default)]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize), serde(transparent))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
-pub struct DiagnosticsContainer {
-	diagnostics: Vec<Diagnostic>,
-	// Quick way to check whether a error was added
-	#[cfg_attr(feature = "serde-serialize", serde(skip_serializing))]
-	contains_error: bool,
+pub fn type_diagnostic<T: crate::context::InformationChain>(
+	buf: &mut String,
+	id: TypeId,
+	info: PrintingTypeInformation<T>,
+	// debug: bool,
+) {
+	let debug = false;
+	print_type_into_buf(id, buf, &mut std::collections::HashSet::new(), None, info, debug)
 }
-
-// TODO the add methods are the same...
-impl DiagnosticsContainer {
-	#[must_use]
-	pub fn new() -> Self {
-		Self { diagnostics: Default::default(), contains_error: false }
-	}
-
-	pub fn add_error<T: Into<Diagnostic>>(&mut self, error: T) {
-		self.contains_error = true;
-		self.diagnostics.push(error.into());
-	}
-
-	pub fn add_warning<T: Into<Diagnostic>>(&mut self, warning: T) {
-		self.diagnostics.push(warning.into());
-	}
-
-	pub fn add_info<T: Into<Diagnostic>>(&mut self, info: T) {
-		self.diagnostics.push(info.into());
-	}
-
-	#[must_use]
-	pub fn contains_error(&self) -> bool {
-		self.contains_error
-	}
-
-	pub fn sources(&self) -> impl Iterator<Item = SourceId> + '_ {
-		self.diagnostics.iter().flat_map(diagnostics::Diagnostic::sources)
-	}
-
-	#[doc(hidden)]
-	#[must_use]
-	pub fn get_diagnostics(self) -> Vec<Diagnostic> {
-		self.diagnostics
-	}
-
-	pub fn into_result(self) -> Result<Self, Self> {
-		if self.contains_error {
-			Err(self)
-		} else {
-			Ok(self)
-		}
-	}
-
-	#[must_use]
-	pub fn count(&self) -> usize {
-		self.diagnostics.len()
-	}
-}
-
-impl IntoIterator for DiagnosticsContainer {
-	type Item = Diagnostic;
-
-	type IntoIter = std::vec::IntoIter<Diagnostic>;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.diagnostics.into_iter()
-	}
-}
-
-use crate::types::{printing::print_type, TypeId, TypeStore};
-
-/// TODO could be more things, for instance a property missing etc
-pub struct TypeStringRepresentation(String);
 
 pub enum PropertyKeyRepresentation {
 	Type(String),
@@ -187,143 +146,111 @@ pub enum PropertyKeyRepresentation {
 }
 
 impl PropertyKeyRepresentation {
-	pub fn new(
+	pub fn new<T: crate::context::InformationChain>(
 		under: &PropertyKey,
-		environment: &impl InformationChain,
-		types: &TypeStore,
+		info: PrintingTypeInformation<T>,
 	) -> PropertyKeyRepresentation {
 		match under.clone() {
 			PropertyKey::String(s) => PropertyKeyRepresentation::StringKey(s.to_string()),
-			PropertyKey::Type(t) => {
-				PropertyKeyRepresentation::Type(print_type(t, types, environment, false))
-			}
+			PropertyKey::Type(t) => PropertyKeyRepresentation::Type(print_type(t, info, false)),
 		}
 	}
 }
 
-impl TypeStringRepresentation {
-	#[must_use]
-	pub fn from_type_id(
-		id: TypeId,
-		ctx: &impl InformationChain,
-		types: &TypeStore,
-		debug_mode: bool,
-	) -> Self {
-		let value = print_type(id, types, ctx, debug_mode);
-		Self(value)
-	}
+// impl TypeId {
+// 	/// TODO working it out
+// 	pub(crate) fn from_property_constraint(
+// 		property_constraint: crate::types::logical::Logical<crate::PropertyValue>,
+// 		generics: GenericChain,
+// 		ctx: &impl InformationChain,
+// 		types: &TypeStore,
+// 		debug_mode: bool,
+// 	) -> TypeId {
+// 		match property_constraint {
+// 			crate::types::logical::Logical::Pure(constraint) => match constraint.inner_simple() {
+// 				crate::PropertyValue::Value(v) => {
+// 					let value =
+// 						print_type_with_type_arguments(*v, generics, types, ctx, debug_mode);
+// 					Self(value)
+// 				}
+// 				crate::PropertyValue::GetterAndSetter { .. }
+// 				| crate::PropertyValue::Getter(_)
+// 				| crate::PropertyValue::Setter(_) => Self("getter/setter".to_owned()),
+// 				crate::PropertyValue::Deleted => Self("never".to_owned()),
+// 				crate::PropertyValue::ConditionallyExists { .. }
+// 				| crate::PropertyValue::Configured { .. } => unreachable!(),
+// 			},
+// 			crate::types::logical::Logical::Or { condition, left, right } => {
+// 				let left_right = (*left, *right);
+// 				// if let (Ok(left), Ok(right)) = left_right {
+// 				// 	let mut left =
+// 				// 		Self::from_property_constraint(left, None, ctx, types, debug_mode);
+// 				// 	let right = Self::from_property_constraint(right, None, ctx, types, debug_mode);
 
-	#[must_use]
-	pub fn from_type_id_with_generics(
-		id: TypeId,
-		type_arguments: GenericChain,
-		ctx: &impl InformationChain,
-		types: &TypeStore,
-		debug_mode: bool,
-	) -> Self {
-		let value = print_type_with_type_arguments(id, type_arguments, types, ctx, debug_mode);
-		Self(value)
-	}
+// 				// 	crate::utilities::notify!("Here?");
+// 				// 	left.0.push_str(" | ");
+// 				// 	left.0.push_str(&right.0);
+// 				// 	Self(left.0)
+// 				// } else {
+// 				crate::utilities::notify!("Printing {:?} base on {:?}", left_right, condition);
+// 				Self("TODO or".to_owned())
+// 				// }
+// 			}
+// 			crate::types::logical::Logical::Implies { on, antecedent } => {
+// 				if generics.is_some() {
+// 					crate::utilities::notify!("TODO chaining");
+// 				}
+// 				let generics = Some(GenericChainLink::PartiallyAppliedGenericArgumentsLink {
+// 					parent_link: None,
+// 					value: &antecedent,
+// 					from: TypeId::UNIMPLEMENTED_ERROR_TYPE,
+// 				});
+// 				Self::from_property_constraint(*on, generics, ctx, types, debug_mode)
+// 			}
+// 			crate::types::logical::Logical::BasedOnKey(
+// 				crate::types::logical::BasedOnKey::Left { value, key_arguments },
+// 			) => {
+// 				let property_generics = GenericChainLink::MappedPropertyLink {
+// 					parent_link: generics.as_ref(),
+// 					value: &key_arguments,
+// 				};
+// 				// let value = *value;
+// 				// if let crate::types::logical::Logical::Pure(ref value) = value {
 
-	/// TODO working it out
-	pub(crate) fn from_property_constraint(
-		property_constraint: crate::types::logical::Logical<crate::PropertyValue>,
-		generics: GenericChain,
-		ctx: &impl InformationChain,
-		types: &TypeStore,
-		debug_mode: bool,
-	) -> TypeStringRepresentation {
-		match property_constraint {
-			crate::types::logical::Logical::Pure(constraint) => match constraint.inner_simple() {
-				crate::PropertyValue::Value(v) => {
-					let value =
-						print_type_with_type_arguments(*v, generics, types, ctx, debug_mode);
-					Self(value)
-				}
-				crate::PropertyValue::GetterAndSetter { .. }
-				| crate::PropertyValue::Getter(_)
-				| crate::PropertyValue::Setter(_) => Self("getter/setter".to_owned()),
-				crate::PropertyValue::Deleted => Self("never".to_owned()),
-				crate::PropertyValue::ConditionallyExists { .. }
-				| crate::PropertyValue::Configured { .. } => unreachable!(),
-			},
-			crate::types::logical::Logical::Or { condition, left, right } => {
-				let left_right = (*left, *right);
-				// if let (Ok(left), Ok(right)) = left_right {
-				// 	let mut left =
-				// 		Self::from_property_constraint(left, None, ctx, types, debug_mode);
-				// 	let right = Self::from_property_constraint(right, None, ctx, types, debug_mode);
+// 				// 	if let crate::types::properties::PropertyValue::Value(value) = value.inner_simple() {
+// 				// 		let value = if let Some(crate::types::CovariantContribution::TypeId(value)) =
+// 				// 			property_generics.get_argument_covariant(*value)
+// 				// 		{
+// 				// 			value
+// 				// 		} else {
+// 				// 			*value
+// 				// 		};
 
-				// 	crate::utilities::notify!("Here?");
-				// 	left.0.push_str(" | ");
-				// 	left.0.push_str(&right.0);
-				// 	Self(left.0)
-				// } else {
-				crate::utilities::notify!("Printing {:?} base on {:?}", left_right, condition);
-				Self("TODO or".to_owned())
-				// }
-			}
-			crate::types::logical::Logical::Implies { on, antecedent } => {
-				if generics.is_some() {
-					crate::utilities::notify!("TODO chaining");
-				}
-				let generics = Some(GenericChainLink::PartiallyAppliedGenericArgumentsLink {
-					parent_link: None,
-					value: &antecedent,
-					from: TypeId::UNIMPLEMENTED_ERROR_TYPE,
-				});
-				Self::from_property_constraint(*on, generics, ctx, types, debug_mode)
-			}
-			crate::types::logical::Logical::BasedOnKey(
-				crate::types::logical::BasedOnKey::Left { value, key_arguments },
-			) => {
-				let property_generics = GenericChainLink::MappedPropertyLink {
-					parent_link: generics.as_ref(),
-					value: &key_arguments,
-				};
-				// let value = *value;
-				// if let crate::types::logical::Logical::Pure(ref value) = value {
+// 				// 		let ty = types.get_type_by_id(value);
+// 				// 		crate::utilities::notify!("{:?}", ty);
 
-				// 	if let crate::types::properties::PropertyValue::Value(value) = value.inner_simple() {
-				// 		let value = if let Some(crate::types::CovariantContribution::TypeId(value)) =
-				// 			property_generics.get_argument_covariant(*value)
-				// 		{
-				// 			value
-				// 		} else {
-				// 			*value
-				// 		};
-
-				// 		let ty = types.get_type_by_id(value);
-				// 		crate::utilities::notify!("{:?}", ty);
-
-				// 		// Skip interface stuff
-				// 		if let crate::Type::Constructor(crate::types::Constructor::Property { result, .. }) = ty {
-				// 			let value = print_type_with_type_arguments(*result, Some(property_generics), types, ctx, debug_mode);
-				// 			return Self(value)
-				// 		}
-				// 	}
-				// }
-				// crate::utilities::notify!("{:?}", value);
-				Self::from_property_constraint(
-					*value,
-					Some(property_generics),
-					ctx,
-					types,
-					debug_mode,
-				)
-			}
-			crate::types::logical::Logical::BasedOnKey(
-				crate::types::logical::BasedOnKey::Right(_right),
-			) => Self("TODO BasedOnKey::Right".to_owned()),
-		}
-	}
-}
-
-impl Display for TypeStringRepresentation {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(&self.0)
-	}
-}
+// 				// 		// Skip interface stuff
+// 				// 		if let crate::Type::Constructor(crate::types::Constructor::Property { result, .. }) = ty {
+// 				// 			let value = print_type_with_type_arguments(*result, Some(property_generics), types, ctx, debug_mode);
+// 				// 			return Self(value)
+// 				// 		}
+// 				// 	}
+// 				// }
+// 				// crate::utilities::notify!("{:?}", value);
+// 				Self::from_property_constraint(
+// 					*value,
+// 					Some(property_generics),
+// 					ctx,
+// 					types,
+// 					debug_mode,
+// 				)
+// 			}
+// 			crate::types::logical::Logical::BasedOnKey(
+// 				crate::types::logical::BasedOnKey::Right(_right),
+// 			) => Self("TODO BasedOnKey::Right".to_owned()),
+// 		}
+// 	}
+// }
 
 pub(crate) struct NoEnvironmentSpecified;
 
@@ -345,7 +272,7 @@ pub(crate) enum TypeCheckError<'a> {
 	SuperCallError(FunctionCallingError),
 	/// When accessing
 	PropertyDoesNotExist {
-		on: TypeStringRepresentation,
+		on: TypeId,
 		property: PropertyKeyRepresentation,
 		position: SpanWithSource,
 		possibles: Vec<&'a str>,
@@ -368,8 +295,8 @@ pub(crate) enum TypeCheckError<'a> {
 	AssignmentError(AssignmentError),
 	SetPropertyError(SetPropertyError),
 	ReturnedTypeDoesNotMatch {
-		expected_return_type: TypeStringRepresentation,
-		returned_type: TypeStringRepresentation,
+		expected_return_type: TypeId,
+		returned_type: TypeId,
 		/// Can be `None` if it is inferred parameters
 		annotation_position: SpanWithSource,
 		returned_position: SpanWithSource,
@@ -384,31 +311,31 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 	/// For the `satisfies` keyword
 	NotSatisfied {
-		at: SpanWithSource,
-		expected: TypeStringRepresentation,
-		found: TypeStringRepresentation,
+		position: SpanWithSource,
+		expected: TypeId,
+		found: TypeId,
 	},
 	/// Catch type is not compatible with thrown type
 	CatchTypeDoesNotMatch {
-		at: SpanWithSource,
-		expected: TypeStringRepresentation,
-		found: TypeStringRepresentation,
+		position: SpanWithSource,
+		expected: TypeId,
+		found: TypeId,
 	},
 	/// Something the checker does not supported
 	Unsupported {
 		thing: &'static str,
-		at: SpanWithSource,
+		position: SpanWithSource,
 	},
 	InvalidDefaultParameter {
-		at: SpanWithSource,
-		expected: TypeStringRepresentation,
-		found: TypeStringRepresentation,
+		position: SpanWithSource,
+		expected: TypeId,
+		found: TypeId,
 	},
 	/// TODO temp, needs more info
 	#[allow(dead_code)]
 	FunctionDoesNotMeetConstraint {
-		function_constraint: TypeStringRepresentation,
-		function_type: TypeStringRepresentation,
+		function_constraint: TypeId,
+		function_type: TypeId,
 		position: SpanWithSource,
 	},
 	CannotRedeclareVariable {
@@ -417,8 +344,8 @@ pub(crate) enum TypeCheckError<'a> {
 	},
 	/// This is for structure generics (type annotations)
 	GenericArgumentDoesNotMeetRestriction {
-		parameter_restriction: TypeStringRepresentation,
-		argument: TypeStringRepresentation,
+		parameter_restriction: TypeId,
+		argument: TypeId,
 		position: SpanWithSource,
 	},
 	/// This is for structure generics (type annotations)
@@ -439,12 +366,6 @@ pub(crate) enum TypeCheckError<'a> {
 		position: SpanWithSource,
 		partial_import_path: &'a str,
 	},
-	CannotOpenFile {
-		file: CouldNotOpenFile,
-		import_position: Option<SpanWithSource>,
-		possibles: Vec<&'a str>,
-		partial_import_path: &'a str,
-	},
 	/// WIP
 	#[allow(dead_code)]
 	VariableNotDefinedInContext {
@@ -462,27 +383,27 @@ pub(crate) enum TypeCheckError<'a> {
 	VariableUsedInTDZ(VariableUsedInTDZ),
 	InvalidMathematicalOrBitwiseOperation {
 		operator: crate::features::operations::MathematicalOrBitwiseOperation,
-		lhs: TypeStringRepresentation,
-		rhs: TypeStringRepresentation,
+		lhs: TypeId,
+		rhs: TypeId,
 		position: SpanWithSource,
 	},
 	// Only for `<` `>` etc
 	InvalidEqualityOperation {
 		operator: crate::features::operations::EqualityAndInequality,
-		lhs: TypeStringRepresentation,
-		rhs: TypeStringRepresentation,
+		lhs: TypeId,
+		rhs: TypeId,
 		position: SpanWithSource,
 	},
 	InvalidUnaryOperation {
 		operator: crate::features::operations::UnaryOperation,
-		operand: TypeStringRepresentation,
+		operand: TypeId,
 		position: SpanWithSource,
 	},
 	#[allow(dead_code)]
 	InvalidCast {
 		position: SpanWithSource,
-		from: TypeStringRepresentation,
-		to: TypeStringRepresentation,
+		from: TypeId,
+		to: TypeId,
 	},
 	/// TODO Position = Function body position. Could it be better
 	/// TODO maybe warning?
@@ -491,37 +412,20 @@ pub(crate) enum TypeCheckError<'a> {
 	IncompatibleOverloadParameter {
 		parameter_position: SpanWithSource,
 		overloaded_parameter_position: SpanWithSource,
-		parameter: TypeStringRepresentation,
-		overloaded_parameter: TypeStringRepresentation,
+		parameter: TypeId,
+		overloaded_parameter: TypeId,
 	},
 	IncompatibleOverloadReturnType {
 		base_position: SpanWithSource,
 		overload_position: SpanWithSource,
-		base: TypeStringRepresentation,
-		overload: TypeStringRepresentation,
+		base: TypeId,
+		overload: TypeId,
 	},
 	FunctionWithoutBodyNotAllowedHere {
 		position: SpanWithSource,
 	},
 	CannotDeleteProperty(CannotDeleteFromError),
 	InvalidRegExp(InvalidRegExp),
-}
-
-#[allow(clippy::useless_format)]
-#[must_use]
-pub fn get_possibles_message(possibles: &[&str]) -> String {
-	match possibles {
-		[] => format!(""),
-		[a] => format!("Did you mean '{a}'?"),
-		[a @ .., b] => {
-			let mut iter = a.iter();
-			let first = format!("'{first}'", first = iter.next().unwrap());
-			format!(
-				"Did you mean {items} or '{b}'?",
-				items = iter.fold(first, |acc, item| format!("{acc}, '{item}'"))
-			)
-		}
-	}
 }
 
 fn map_error_empty<U, T: Default>(n: Vec<U>, cb: impl FnOnce(Vec<U>) -> T) -> T {
@@ -532,52 +436,129 @@ fn map_error_empty<U, T: Default>(n: Vec<U>, cb: impl FnOnce(Vec<U>) -> T) -> T 
 	}
 }
 
-impl From<TypeCheckError<'_>> for Diagnostic {
-	fn from(error: TypeCheckError<'_>) -> Self {
-		let kind = super::DiagnosticKind::Error;
-		match error {
+pub struct UnimplementedWarning {
+	pub item: &'static str,
+	pub position: SpanWithSource,
+}
+
+impl From<UnimplementedWarning> for Diagnostic {
+	fn from(UnimplementedWarning { position, item }: UnimplementedWarning) -> Self {
+		Diagnostic::Position {
+			reason: format!("Unsupported: {item}"),
+			position,
+			kind: DiagnosticKind::Warning,
+		}
+	}
+}
+
+pub enum TypeCheckWarning {
+	AwaitUsedOnNonPromise(SpanWithSource),
+	/// TODO could be an error at some point
+	DeadBranch {
+		expression_span: SpanWithSource,
+		expression_value: bool,
+	},
+	ExcessProperty {
+		position: SpanWithSource,
+		expected_type: TypeId,
+		excess_property_name: String,
+	},
+	IgnoringAsExpression(SpanWithSource),
+	UselessExpression {
+		expression_span: SpanWithSource,
+		// TODO other branch information
+	},
+	MergingInterfaceInSameContext {
+		position: SpanWithSource,
+	},
+	TypesDoNotIntersect {
+		left: TypeId,
+		right: TypeId,
+		position: SpanWithSource,
+	},
+	InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
+	/// TODO WIP
+	ConditionalExceptionInvoked {
+		value: TypeId,
+		/// Should be set
+		call_site: SpanWithSource,
+	},
+	Unreachable(SpanWithSource),
+	DisjointEquality {
+		lhs: TypeId,
+		rhs: TypeId,
+		result: bool,
+		position: SpanWithSource,
+	},
+	ItemMustBeUsedWithFlag {
+		item: &'static str,
+		position: SpanWithSource,
+	},
+}
+
+impl<'a> TypeCheckError<'a> {
+	pub fn into_diagnostic<T: crate::context::InformationChain>(
+		self,
+		information: PrintingTypeInformation<T>,
+	) -> Diagnostic {
+		let kind = DiagnosticKind::Error;
+		match self {
 			TypeCheckError::CouldNotFindVariable { variable, possibles, position } => {
-				Diagnostic::PositionWithAdditionalLabels {
-					reason: format!("Could not find variable '{variable}' in scope"),
-					labels: map_error_empty(possibles, |possibles| vec![(
-						get_possibles_message(&possibles),
-						position,
-					)]),
-					position,
-					kind,
-				}
-			}
-			TypeCheckError::CouldNotFindType(reference, possibles, position) => Diagnostic::PositionWithAdditionalLabels {
-				reason: format!("Could not find type '{reference}'"),
-				position,
-				labels: map_error_empty(possibles, |possibles| vec![(
+				let labels = map_error_empty(possibles, |possibles| vec![(
 					get_possibles_message(&possibles),
 					position,
-				)]),
-				kind,
-			},
-			TypeCheckError::PropertyDoesNotExist { property, on, position, possibles } => {
+				)]);
 				Diagnostic::PositionWithAdditionalLabels {
-					reason: match property {
-						PropertyKeyRepresentation::Type(ty) => format!("No property of type {ty} on {on}"),
-						PropertyKeyRepresentation::StringKey(property) => format!("No property '{property}' on {on}"),
-					},
+					reason: format!("Could not find variable '{variable}' in scope"),
+					labels,
 					position,
-					labels: map_error_empty(possibles, |possibles| vec![(
-						get_possibles_message(&possibles),
-						position,
-					)]),
 					kind,
 				}
 			}
-			TypeCheckError::FunctionCallingError(error) => function_calling_error_diagnostic(error, kind, ""),
-			TypeCheckError::JSXCallingError(error) => function_calling_error_diagnostic(error, kind, " (in JSX)"),
-			TypeCheckError::GetterCallingError(error) => function_calling_error_diagnostic(error, kind, " (in getter)"),
-			TypeCheckError::SetterCallingError(error) => function_calling_error_diagnostic(error, kind, " (in setter)"),
+			TypeCheckError::CouldNotFindType(reference, possibles, position) => {
+				let labels = map_error_empty(possibles, |possibles| vec![(
+					get_possibles_message(&possibles),
+					position,
+				)]);
+				Diagnostic::PositionWithAdditionalLabels {
+				reason: format!("Could not find type '{reference}'"),
+				position,
+				labels,
+				kind,
+			}},
+			TypeCheckError::PropertyDoesNotExist { property, on, position, possibles } => {
+				let labels = map_error_empty(possibles, |possibles| vec![(
+					get_possibles_message(&possibles),
+					position,
+				)]);
+				let mut reason: String = match property {
+					PropertyKeyRepresentation::Type(ty) => {
+						format!("No property of type '{ty}'")
+						// let mut source: String = "No property of type ";
+						// type_diagnostic(&mut source, ty, information);
+						// source
+					}
+					PropertyKeyRepresentation::StringKey(property) => format!("No property '{property}'"),
+				};
+				{
+					reason.push_str(" on ");
+					type_diagnostic(&mut reason, on, information);
+				}
+				Diagnostic::PositionWithAdditionalLabels {
+					reason,
+					position,
+					labels,
+					kind,
+				}
+			}
+			TypeCheckError::FunctionCallingError(error) => function_calling_error_diagnostic(error, kind, information, ""),
+			TypeCheckError::JSXCallingError(error) => function_calling_error_diagnostic(error, kind, information, " (in JSX)"),
+			TypeCheckError::GetterCallingError(error) => function_calling_error_diagnostic(error, kind, information, " (in getter)"),
+			TypeCheckError::SetterCallingError(error) => function_calling_error_diagnostic(error, kind, information, " (in setter)"),
 			TypeCheckError::TemplateLiteralCallingError(error) => {
-				function_calling_error_diagnostic(error, kind, " (in template literal)")
+				function_calling_error_diagnostic(error, kind, information, " (in template literal)")
 			},
-			TypeCheckError::SuperCallError(error) => function_calling_error_diagnostic(error, kind, " (in super call)"),
+			TypeCheckError::SuperCallError(error) => function_calling_error_diagnostic(error, kind, information, " (in super call)"),
 			TypeCheckError::AssignmentError(error) => match error {
 				AssignmentError::DoesNotMeetConstraint {
 					variable_type,
@@ -585,12 +566,20 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					value_type,
 					value_position,
 				} => Diagnostic::PositionWithAdditionalLabels {
-					reason: format!(
-						"Type {value_type} is not assignable to type {variable_type}",
-					),
+					reason: {
+						let mut reason = "Type ".to_owned();
+						type_diagnostic(&mut reason, value_type, information);
+						reason.push_str(" is not assignable to type ");
+						type_diagnostic(&mut reason, variable_type, information);
+						reason
+					},
 					position: value_position,
 					labels: vec![(
-						format!("Variable declared with type {variable_type}"),
+						{
+							let mut reason = "Variable declared with type ".to_owned();
+							type_diagnostic(&mut reason, variable_type, information);
+							reason
+						},
 						variable_position,
 					)],
 					kind,
@@ -607,7 +596,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				// 	kind,
 				// },
 				AssignmentError::Constant(position) => Diagnostic::Position {
-					reason: "Cannot assign to constant".into(),
+					reason: "Cannot assign to constant".to_owned(),
 					position,
 					kind,
 				},
@@ -632,11 +621,20 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				expected_return_type,
 				returned_type,
 			} => Diagnostic::PositionWithAdditionalLabels {
-				reason: format!(
-					"Cannot return {returned_type} because the function is expected to return {expected_return_type}"
-				),
+				reason: {
+					let mut source = "Cannot return ".to_owned();
+					type_diagnostic(&mut source, returned_type, information);
+					source.push_str(" because the function is expected to return ");
+					type_diagnostic(&mut source, expected_return_type, information);
+					source
+				},
 				labels: vec![(
-					format!("Function annotated to return {expected_return_type} here"),
+					{
+						let mut source = "Function annotated to return ".to_owned();
+						type_diagnostic(&mut source, returned_type, information);
+						source.push_str(" here");
+						source
+					},
 					annotation_position,
 				)],
 				position: returned_position,
@@ -645,19 +643,31 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 			TypeCheckError::InvalidDefaultParameter {
 				expected,
 				found,
-				at,
+				position,
 			} => Diagnostic::Position {
-				reason: format!( "Cannot use a default value of type {found} for parameter of type {expected}"),
-				position: at,
+				reason: {
+					let mut source = "Cannot use a default value of type ".to_owned();
+					type_diagnostic(&mut source, found, information);
+					source.push_str(" for parameter of type ");
+					type_diagnostic(&mut source, expected, information);
+					source
+				},
+				position,
 				kind,
 			},
 			TypeCheckError::CatchTypeDoesNotMatch {
 				expected,
 				found,
-				at,
+				position,
 			} => Diagnostic::Position {
-				reason: format!( "Cannot catch type {found} because the try block throws {expected}" ),
-				position: at,
+				reason: {
+					let mut source = "Cannot catch type ".to_owned();
+					type_diagnostic(&mut source, expected, information);
+					source.push_str(" because the try block throws ");
+					type_diagnostic(&mut source, found, information);
+					source
+				},
+				position,
 				kind,
 			},
 			TypeCheckError::NonTopLevelExport(position) => Diagnostic::Position {
@@ -676,16 +686,16 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					)]),
 				}
 			}
-			TypeCheckError::RestParameterAnnotationShouldBeArrayType(pos) => {
+			TypeCheckError::RestParameterAnnotationShouldBeArrayType(position) => {
 				Diagnostic::Position {
 					reason: "Rest parameter annotation should be array type".to_owned(),
-					position: pos,
+					position,
 					kind,
 				}
 			}
-			TypeCheckError::Unsupported { thing, at } => Diagnostic::Position {
+			TypeCheckError::Unsupported { thing, position } => Diagnostic::Position {
 				reason: format!("Unsupported: {thing}"),
-				position: at,
+				position,
 				kind,
 			},
 			TypeCheckError::FunctionDoesNotMeetConstraint {
@@ -693,15 +703,25 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				function_type,
 				position,
 			} => Diagnostic::Position {
-				reason: format!(
-					"{function_constraint} constraint on function does not match synthesised form {function_type}",
-				),
+				reason: {
+					let mut source = String::new();
+					type_diagnostic(&mut source, function_constraint, information);
+					source.push_str(" constraint on function does not match synthesised from ");
+					type_diagnostic(&mut source, function_type, information);
+					source
+				},
 				position,
 				kind,
 			},
-			TypeCheckError::NotSatisfied { at, expected, found } => Diagnostic::Position {
-				reason: format!("Expected {expected}, found {found}"),
-				position: at,
+			TypeCheckError::NotSatisfied { position, expected, found } => Diagnostic::Position {
+				reason: {
+					let mut source = "Expected ".to_owned();
+					type_diagnostic(&mut source, expected, information);
+					source.push_str(", found ");
+					type_diagnostic(&mut source, found, information);
+					source
+				},
+				position,
 				kind,
 			},
 			TypeCheckError::CannotRedeclareVariable { name, position } => {
@@ -716,9 +736,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				parameter_restriction,
 				position,
 			} => Diagnostic::Position {
-				reason: format!(
-					"Generic argument {argument} does not match {parameter_restriction}"
-				),
+				reason: {
+					let mut source = "Generic argument ".to_owned();
+					type_diagnostic(&mut source, argument, information);
+					source.push_str(" does not match ");
+					type_diagnostic(&mut source, parameter_restriction, information);
+					source
+				},
 				position,
 				kind,
 			},
@@ -761,19 +785,6 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind
 			},
-			TypeCheckError::CannotOpenFile { file, import_position, possibles, partial_import_path } => if let Some(import_position) = import_position {
-				Diagnostic::PositionWithAdditionalLabels {
-					reason: format!("Cannot find {partial_import_path}"),
-					position: import_position,
-					kind,
-					labels: map_error_empty(possibles, |possibles| vec![(
-						get_possibles_message(&possibles),
-						import_position,
-					)])
-				}
-			} else {
-				Diagnostic::Global { reason: format!("Cannot find file {}", file.0.display()), kind }
-			},
 			TypeCheckError::VariableNotDefinedInContext {
 				variable,
 				expected_context,
@@ -784,8 +795,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				position,
 				kind,
 			},
-			TypeCheckError::TypeNeedsTypeArguments(ty, position) => Diagnostic::Position {
-				reason: format!("Type {ty} requires type arguments"),
+			TypeCheckError::TypeNeedsTypeArguments(name, position) => Diagnostic::Position {
+				reason: format!("Type {name} requires type arguments"),
+				// reason: {
+				// 	let mut reason = " ".to_owned();
+				// 	reason.push_str(" ");
+				// 	reason
+				// },
 				position,
 				kind,
 			},
@@ -800,8 +816,14 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 				kind,
 			},
 			TypeCheckError::InvalidMathematicalOrBitwiseOperation { operator, lhs, rhs, position } => Diagnostic::Position {
-				// TODO temp
-				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
+				reason:  {
+					let mut reason = "Cannot ".to_owned();
+					type_diagnostic(&mut reason, lhs, information);
+					// TODO temp
+					// write!(&mut reason, " {operator:?} with ");
+					type_diagnostic(&mut reason, rhs, information);
+					reason
+				},
 				position,
 				kind,
 			},
@@ -812,14 +834,26 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 			} => {
 				Diagnostic::Position {
 					// TODO temp
-					reason: format!("Cannot {operator:?} {operand}"),
+					reason:  {
+						let mut reason = "Cannot ".to_owned();
+						type_diagnostic(&mut reason, operand, information);
+						// TODO temp
+						// write!(&mut reason, " {operator:?}");
+						reason
+					},
 					position,
 					kind,
 				}
 			},
 			TypeCheckError::InvalidEqualityOperation { operator, lhs, rhs, position } => Diagnostic::Position {
-				// TODO temp
-				reason: format!("Cannot {lhs} {operator:?} {rhs}"),
+				reason:  {
+					let mut reason = "Cannot ".to_owned();
+					type_diagnostic(&mut reason, lhs, information);
+					// TODO temp
+					// write!(&mut reason, " {operator:?} with ");
+					type_diagnostic(&mut reason, rhs, information);
+					reason
+				},
 				position,
 				kind,
 			},
@@ -836,7 +870,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 			}
 			TypeCheckError::InvalidCast { position, from, to } => {
 				Diagnostic::Position {
-					reason: format!("Cannot cast {from} to {to}"),
+					reason: {
+						let mut reason = "Cannot cast ".to_owned();
+						type_diagnostic(&mut reason, from, information);
+						reason.push_str(" to ");
+						type_diagnostic(&mut reason, to, information);
+						reason
+					},
 					position,
 					kind,
 				}
@@ -848,12 +888,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					kind,
 				}
 			},
-			TypeCheckError::IncompatibleOverloadParameter { parameter_position, overloaded_parameter_position, parameter, overloaded_parameter } => Diagnostic::PositionWithAdditionalLabels {
+			TypeCheckError::IncompatibleOverloadParameter { parameter_position, overloaded_parameter_position, parameter, overloaded_parameter } =>
+			 Diagnostic::PositionWithAdditionalLabels {
 				reason: format!(
-					"Overload with parameter of {overloaded_parameter} does not meet base parameter {parameter}"
+					"Overload with parameter of {overloaded_parameter:?} does not meet base parameter {parameter:?}"
 				),
 				labels: vec![(
-					format!("Function has base type {parameter} here"),
+					format!("Function has base type {parameter:?} here"),
 					parameter_position,
 				)],
 				position: overloaded_parameter_position,
@@ -861,10 +902,10 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 			},
 			TypeCheckError::IncompatibleOverloadReturnType { base_position, overload_position, base, overload } => Diagnostic::PositionWithAdditionalLabels {
 				reason: format!(
-					"Cannot return {overload} in overload because base function is expected to return {base}"
+					"Cannot return {overload:?} in overload because base function is expected to return {base:?}"
 				),
 				labels: vec![(
-					format!("Function annotated to return {base} here"),
+					format!("Function annotated to return {base:?} here"),
 					base_position,
 				)],
 				position: overload_position,
@@ -886,7 +927,7 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 			}
 			TypeCheckError::CannotDeleteProperty(CannotDeleteFromError::Constraint { constraint, position }) => {
 				Diagnostic::Position {
-					reason: format!("Cannot delete from object constrained to {constraint}"),
+					reason: format!("Cannot delete from object constrained to {constraint:?}"),
 					position,
 					kind,
 				}
@@ -918,9 +959,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 					reason: _,
 					position,
 				} => Diagnostic::Position {
-					reason: format!(
-						"Type {value_type} does not meet property constraint {property_constraint}"
-					),
+					reason: {
+						let mut reason = "Type ".to_owned();
+						type_diagnostic(&mut reason, value_type, information);
+						reason.push_str(" does not meet property constraint ");
+						type_diagnostic(&mut reason, property_constraint, information);
+						reason
+					},
 					position,
 					kind,
 				},
@@ -956,60 +1001,13 @@ impl From<TypeCheckError<'_>> for Diagnostic {
 	}
 }
 
-pub enum TypeCheckWarning {
-	AwaitUsedOnNonPromise(SpanWithSource),
-	/// TODO could be an error at some point
-	DeadBranch {
-		expression_span: SpanWithSource,
-		expression_value: bool,
-	},
-	ExcessProperty {
-		position: SpanWithSource,
-		expected_type: TypeStringRepresentation,
-		excess_property_name: String,
-	},
-	IgnoringAsExpression(SpanWithSource),
-	Unimplemented {
-		item: &'static str,
-		position: SpanWithSource,
-	},
-	UselessExpression {
-		expression_span: SpanWithSource,
-		// TODO other branch information
-	},
-	MergingInterfaceInSameContext {
-		position: SpanWithSource,
-	},
-	TypesDoNotIntersect {
-		left: TypeStringRepresentation,
-		right: TypeStringRepresentation,
-		position: SpanWithSource,
-	},
-	InvalidOrUnimplementedDefinitionFileItem(SpanWithSource),
-	/// TODO WIP
-	ConditionalExceptionInvoked {
-		value: TypeStringRepresentation,
-		/// Should be set
-		call_site: SpanWithSource,
-	},
-	Unreachable(SpanWithSource),
-	DisjointEquality {
-		lhs: TypeStringRepresentation,
-		rhs: TypeStringRepresentation,
-		result: bool,
-		position: SpanWithSource,
-	},
-	ItemMustBeUsedWithFlag {
-		item: &'static str,
-		position: SpanWithSource,
-	},
-}
-
-impl From<TypeCheckWarning> for Diagnostic {
-	fn from(warning: TypeCheckWarning) -> Self {
+impl TypeCheckWarning {
+	pub fn into_diagnostic<T: crate::context::InformationChain>(
+		self,
+		information: PrintingTypeInformation<T>,
+	) -> Diagnostic {
 		let kind = super::DiagnosticKind::Warning;
-
-		match warning {
+		match self {
 			TypeCheckWarning::AwaitUsedOnNonPromise(position) => Diagnostic::Position {
 				reason: "Unnecessary await expression / type is not promise".to_owned(),
 				position,
@@ -1023,22 +1021,15 @@ impl From<TypeCheckWarning> for Diagnostic {
 				}
 			}
 			TypeCheckWarning::ExcessProperty { position, expected_type, excess_property_name } => {
-				Diagnostic::Position {
-					reason: format!(
-						"'{excess_property_name}' is not a property of {expected_type}"
-					),
-					position,
-					kind,
-				}
+				let mut reason = format!("'{excess_property_name}' is not a property of ");
+				type_diagnostic(&mut reason, expected_type, information);
+				Diagnostic::Position { reason, position, kind }
 			}
 			TypeCheckWarning::IgnoringAsExpression(position) => Diagnostic::Position {
 				reason: "'as' expressions are ignore by the checker".to_owned(),
 				position,
 				kind,
 			},
-			TypeCheckWarning::Unimplemented { item, position } => {
-				Diagnostic::Position { reason: format!("Unsupported: {item}"), position, kind }
-			}
 			TypeCheckWarning::ItemMustBeUsedWithFlag { item, position } => Diagnostic::Position {
 				reason: format!("{item} must be used with 'extras' option"),
 				position,
@@ -1056,7 +1047,13 @@ impl From<TypeCheckWarning> for Diagnostic {
 			},
 			TypeCheckWarning::TypesDoNotIntersect { left, right, position } => {
 				Diagnostic::Position {
-					reason: format!("No intersection between types {left} and {right}"),
+					reason: {
+						let mut reason = "No intersection between types ".to_owned();
+						type_diagnostic(&mut reason, left, information);
+						reason.push_str(" and ");
+						type_diagnostic(&mut reason, right, information);
+						reason
+					},
 					position,
 					kind,
 				}
@@ -1072,17 +1069,21 @@ impl From<TypeCheckWarning> for Diagnostic {
 				Diagnostic::Position { reason: "Unreachable statement".to_owned(), position, kind }
 			}
 			TypeCheckWarning::ConditionalExceptionInvoked { value, call_site } => {
-				Diagnostic::Position {
-					reason: format!("Conditional '{value}' was thrown in function"),
-					position: call_site,
-					kind,
-				}
+				let mut reason: String = "Conditional '".to_owned();
+				type_diagnostic(&mut reason, value, information);
+				reason.push_str("' was thrown in function");
+				Diagnostic::Position { reason, position: call_site, kind }
 			}
 			TypeCheckWarning::DisjointEquality { lhs, rhs, position, result } => {
 				Diagnostic::Position {
-					reason: format!(
-						"This equality is always {result} as {lhs} and {rhs} have no overlap"
-					),
+					reason: {
+						let mut reason: String = format!("This equality is always {result} as ");
+						type_diagnostic(&mut reason, lhs, information);
+						reason.push_str(" and ");
+						type_diagnostic(&mut reason, rhs, information);
+						reason.push_str(" have no overlap");
+						reason
+					},
 					position,
 					kind,
 				}
@@ -1133,9 +1134,10 @@ pub struct CannotRedeclareVariable<'a> {
 }
 
 /// `context` is the what kind of a function call the error happened in. (for example tagged template literals or JSX)
-fn function_calling_error_diagnostic(
+fn function_calling_error_diagnostic<C: crate::context::InformationChain>(
 	error: FunctionCallingError,
 	kind: crate::DiagnosticKind,
+	information: PrintingTypeInformation<'_, C>,
 	context: &str,
 ) -> Diagnostic {
 	match error {
@@ -1148,20 +1150,44 @@ fn function_calling_error_diagnostic(
 		} => {
 			if let Some((restriction_pos, restriction)) = restriction {
 				Diagnostic::PositionWithAdditionalLabels {
-					reason: format!("Argument of type {argument_type} is not assignable to parameter of type {restriction}{context}"),
+					reason: {
+						let mut source = "Argument of type ".to_owned();
+						type_diagnostic(&mut source, argument_type, information);
+						source.push_str(" is not assignable to parameter of type ");
+						type_diagnostic(&mut source, restriction, information);
+						source.push_str(context);
+						source
+					},
 					position: argument_position,
 					labels: vec![(
-						format!("{parameter_type} was specialised with type {restriction}"),
+						{
+							let mut label = String::new();
+							type_diagnostic(&mut label, parameter_type, information);
+							label.push_str(" was specialised with type ");
+							type_diagnostic(&mut label, restriction, information);
+							label
+						},
 						restriction_pos,
 					)],
 					kind,
 				}
 			} else {
 				Diagnostic::PositionWithAdditionalLabels {
-					reason: format!( "Argument of type {argument_type} is not assignable to parameter of type {parameter_type}{context}"),
+					reason: {
+						let mut source = "Argument of type ".to_owned();
+						type_diagnostic(&mut source, argument_type, information);
+						source.push_str(" is not assignable to parameter of type ");
+						type_diagnostic(&mut source, parameter_type, information);
+						source.push_str(context);
+						source
+					},
 					position: argument_position,
 					labels: vec![(
-						format!("Parameter has type {parameter_type}"),
+						{
+							let mut source = "Parameter has type ".to_owned();
+							type_diagnostic(&mut source, parameter_type, information);
+							source
+						},
 						parameter_position,
 					)],
 					kind,
@@ -1173,10 +1199,7 @@ fn function_calling_error_diagnostic(
 				reason: format!("Missing argument{context}"),
 				position: call_site,
 				kind,
-				labels: vec![(
-					"(non-optional) Parameter declared here".into(),
-					parameter_position,
-				)],
+				labels: vec![("(non-optional) Parameter declared here".into(), parameter_position)],
 			}
 		}
 		FunctionCallingError::ExcessArguments { count: _, position } => {
@@ -1190,14 +1213,15 @@ fn function_calling_error_diagnostic(
 			} else {
 				format!("Expected {expected_count} type arguments, but got {count}{context}")
 			};
-			Diagnostic::Position {
-				position,
-				kind,
-				reason
-			}
+			Diagnostic::Position { position, kind, reason }
 		}
 		FunctionCallingError::NotCallable { calling, call_site } => Diagnostic::Position {
-			reason: format!("Cannot call type {calling}{context}"),
+			reason: {
+				let mut source = "Cannot call type ".to_owned();
+				type_diagnostic(&mut source, calling, information);
+				source.push_str(context);
+				source
+			},
 			position: call_site,
 			kind,
 		},
@@ -1229,14 +1253,15 @@ fn function_calling_error_diagnostic(
 			kind,
 			position,
 		},
-		FunctionCallingError::VariableUsedInTDZ { error: VariableUsedInTDZ { position, variable_name }, call_site } => {
-			Diagnostic::PositionWithAdditionalLabels {
-				reason: format!("Variable '{variable_name}' used before declaration{context}"),
-				position: call_site,
-				kind,
-				labels: vec![("Variable referenced here".to_owned(), position)],
-			}
-		}
+		FunctionCallingError::VariableUsedInTDZ {
+			error: VariableUsedInTDZ { position, variable_name },
+			call_site,
+		} => Diagnostic::PositionWithAdditionalLabels {
+			reason: format!("Variable '{variable_name}' used before declaration{context}"),
+			position: call_site,
+			kind,
+			labels: vec![("Variable referenced here".to_owned(), position)],
+		},
 		FunctionCallingError::SetPropertyConstraint {
 			property_type,
 			value_type,
@@ -1247,48 +1272,74 @@ fn function_calling_error_diagnostic(
 			position: call_site,
 			kind,
 			labels: vec![(
-				format!("Type {value_type} does not meet property constraint {property_type}"),
+				{
+					let mut source = "Type ".to_owned();
+					type_diagnostic(&mut source, value_type, information);
+					source.push_str(" does not meet property constraint ");
+					type_diagnostic(&mut source, property_type, information);
+					source
+				},
 				assignment_position,
 			)],
 		},
 		FunctionCallingError::MismatchedThis { call_site, expected, found } => {
 			Diagnostic::Position {
-				reason: format!("The 'this' context of the function is expected to be {expected}, found {found}{context}"),
+				reason: {
+					let mut source =
+						"The 'this' context of the function is expected to be ".to_owned();
+					type_diagnostic(&mut source, expected, information);
+					source.push_str(" found ");
+					type_diagnostic(&mut source, found, information);
+					source.push_str(context);
+					source
+				},
 				position: call_site,
 				kind,
 			}
 		}
 		FunctionCallingError::CannotCatch { catch, thrown, thrown_position } => {
 			Diagnostic::Position {
-				reason: format!("Cannot throw {thrown} in block that expects {catch}{context}"),
+				reason: {
+					let mut source = "Cannot throw ".to_owned();
+					type_diagnostic(&mut source, thrown, information);
+					source.push_str(" in block that expects ");
+					type_diagnostic(&mut source, catch, information);
+					source.push_str(context);
+					source
+				},
 				position: thrown_position,
 				kind,
 			}
 		}
 		FunctionCallingError::DeleteConstraint { constraint, delete_position, call_site: _ } => {
 			Diagnostic::Position {
-				reason: format!("Cannot delete from object constrained to {constraint}"),
+				reason: {
+					let mut source = "Cannot delete from object constrained to ".to_owned();
+					type_diagnostic(&mut source, constraint, information);
+					source.push_str(context);
+					source
+				},
 				position: delete_position,
 				kind,
 			}
 		}
-		FunctionCallingError::NotConfigurable {
-			property,
-			call_site,
-		} => {
+		FunctionCallingError::NotConfigurable { property, call_site } => {
 			Diagnostic::Position {
-				reason: match property {
-					PropertyKeyRepresentation::Type(ty) => format!("Property of type '{ty}' not configurable"),
-					PropertyKeyRepresentation::StringKey(property) => format!("Property '{property}' not configurable"),
-				},
+				reason: todo!(),
+				// reason: match property {
+				// 	PropertyKeyRepresentation::Type(ty) => format!("Property of type '{ty}' not configurable"),
+				// 	PropertyKeyRepresentation::StringKey(property) => format!("Property '{property}' not configurable"),
+				// },
 				position: call_site,
 				kind,
 			}
 		}
-		FunctionCallingError::InvalidRegExp(InvalidRegExp { error, position }) => Diagnostic::Position {
-			reason: format!("Invalid regular expression: {error}"),
-			position,
-			kind,
+		FunctionCallingError::InvalidRegExp(InvalidRegExp { error, position }) => {
+			Diagnostic::Position {
+				reason: format!("Invalid regular expression: {error}"),
+				position,
+				kind,
+			}
 		}
 	}
 }

@@ -440,7 +440,7 @@ impl PureNumberIntrinsic {
 					TypeId::MULTIPLE_OF => {
 						Ok(PureNumberIntrinsic::Modulo { modulo: *number, offset: 0f64 })
 					}
-					_ => todo!(),
+					_ => unreachable!(),
 				}
 			} else {
 				Err(())

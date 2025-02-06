@@ -2,7 +2,7 @@ use source_map::SpanWithSource;
 use std::borrow::Cow;
 
 use crate::{
-	context::invocation::CheckThings,
+	context::invocation::CheckSyntax,
 	features::objects::ObjectBuilder,
 	types::{
 		calling::{
@@ -116,23 +116,20 @@ where
 			},
 		);
 
-		let mut check_things = CheckThings { debug_types: checking_data.options.debug_types };
+		let mut check_syntax = CheckSyntax { debug_types: checking_data.options.debug_types };
 
 		let input = CallingInput {
 			called_with_new: crate::types::calling::CalledWithNew::None,
 			call_site: position,
 			max_inline: checking_data.options.max_inline_count,
 		};
-		let mut diagnostics = Default::default();
 		let result = Callable::Type(tag).call(
 			arguments,
 			input,
 			environment,
-			(&mut check_things, &mut diagnostics),
+			(&mut check_syntax, &mut checking_data.resolver),
 			&mut checking_data.types,
 		);
-		diagnostics
-			.append_to(CallingContext::TemplateLiteral, &mut checking_data.diagnostics_container);
 		match result {
 			Ok(res) => {
 				application_result_to_return_type(res.result, environment, &mut checking_data.types)

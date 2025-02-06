@@ -4,7 +4,7 @@ use source_map::{Nullable, SpanWithSource};
 
 use crate::{
 	context::VariableRegisterArguments,
-	diagnostics::{TypeCheckError, TypeStringRepresentation},
+	diagnostics::TypeCheckError,
 	events::{Event, FinalEvent, Trapped},
 	subtyping::type_is_subtype_object,
 	CheckingData, Decidable, Environment, Scope, Type, TypeId,
@@ -153,7 +153,7 @@ pub fn new_try_context<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	// environment
 }
 
-fn check_catch_type<'a, T, A: crate::ASTImplementation>(
+fn check_catch_type<'a, T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	catch_annotation: &'a A::TypeAnnotation<'a>,
 	catch_type: TypeId,
 	thrown_type: TypeId,
@@ -164,26 +164,14 @@ fn check_catch_type<'a, T, A: crate::ASTImplementation>(
 		type_is_subtype_object(catch_type, thrown_type, environment, &mut checking_data.types);
 
 	if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
-		let expected = TypeStringRepresentation::from_type_id(
-			thrown_type,
-			environment,
-			&checking_data.types,
-			false,
-		);
-		let found = TypeStringRepresentation::from_type_id(
-			catch_type,
-			environment,
-			&checking_data.types,
-			false,
-		);
-
-		let at =
+		let position =
 			A::type_annotation_position(catch_annotation).with_source(environment.get_source());
 
-		checking_data.diagnostics_container.add_error(TypeCheckError::CatchTypeDoesNotMatch {
-			at,
-			expected,
-			found,
-		});
+		let error = TypeCheckError::CatchTypeDoesNotMatch {
+			expected: catch_type,
+			found: thrown_type,
+			position,
+		};
+		checking_data.add_error(error, &*environment);
 	}
 }

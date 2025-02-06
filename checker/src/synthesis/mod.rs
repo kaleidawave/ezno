@@ -294,12 +294,6 @@ impl From<(parser::ParseError, SourceId)> for Diagnostic {
 	}
 }
 
-impl crate::GenericTypeParameter for parser::TypeParameter {
-	fn get_name(&self) -> &str {
-		&self.name
-	}
-}
-
 pub trait StatementOrExpressionVariable {
 	fn get_variable_id(&self, under: SourceId) -> Option<VariableId>;
 }

@@ -103,16 +103,20 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			);
 		}
 		Statement::Switch(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
+			let error = TypeCheckError::Unsupported {
 				thing: "Switch statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
+				position: stmt.get_position().with_source(environment.get_source()),
+			};
+			checking_data.add_error(error, environment);
 		}
 		Statement::WithStatement(stmt) => {
-			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
-				thing: "With statement",
-				at: stmt.get_position().with_source(environment.get_source()),
-			});
+			checking_data.add_error(
+				TypeCheckError::Unsupported {
+					thing: "With statement",
+					position: stmt.get_position().with_source(environment.get_source()),
+				},
+				environment,
+			);
 		}
 		Statement::WhileLoop(stmt) => synthesise_iteration(
 			IterationBehavior::While(&stmt.condition),
@@ -208,15 +212,13 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		Statement::Continue(label, position) => {
 			if let Err(err) = environment.add_continue(label.as_deref(), *position) {
 				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::NotInLoopOrCouldNotFindLabel(err));
+					.add_error(TypeCheckError::NotInLoopOrCouldNotFindLabel(err), environment);
 			}
 		}
 		Statement::Break(label, position) => {
 			if let Err(err) = environment.add_break(label.as_deref(), *position) {
 				checking_data
-					.diagnostics_container
-					.add_error(TypeCheckError::NotInLoopOrCouldNotFindLabel(err));
+					.add_error(TypeCheckError::NotInLoopOrCouldNotFindLabel(err), environment);
 			}
 		}
 		Statement::Throw(stmt) => {

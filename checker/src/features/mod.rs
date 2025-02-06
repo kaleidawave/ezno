@@ -25,7 +25,6 @@ use source_map::SpanWithSource;
 
 use crate::{
 	context::{get_value_of_variable, ClosedOverReferencesInScope, InformationChain},
-	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	types::{
 		self,
@@ -253,7 +252,7 @@ pub(crate) fn create_closed_over_references(
 						} else {
 							// TODO think we are getting rid of this
 							// let name = function_environment.get_variable_name(*on);
-							// checking_data.diagnostics_container.add_error(
+							// checking_data.add_error(
 							// 	TypeCheckError::UnreachableVariableClosedOver(
 							// 		name.to_string(),
 							// 		function
@@ -276,7 +275,7 @@ pub(crate) fn create_closed_over_references(
 }
 
 pub enum CannotDeleteFromError {
-	Constraint { constraint: TypeStringRepresentation, position: SpanWithSource },
+	Constraint { constraint: TypeId, position: SpanWithSource },
 	NonConfigurable { position: SpanWithSource },
 }
 
@@ -305,8 +304,6 @@ pub fn delete_operator(
 				..
 			}) = constraint_type
 			{
-				let constraint =
-					TypeStringRepresentation::from_type_id(constraint, environment, types, false);
 				return Err(CannotDeleteFromError::Constraint { constraint, position });
 			}
 
@@ -343,12 +340,6 @@ pub fn delete_operator(
 							| PropertyValue::Setter(_) => {
 								crate::utilities::notify!(
 									"Cannot delete property because of constraint"
-								);
-								let constraint = TypeStringRepresentation::from_type_id(
-									constraint,
-									environment,
-									types,
-									false,
 								);
 								return Err(CannotDeleteFromError::Constraint {
 									constraint,
@@ -579,7 +570,7 @@ pub mod tsc {
 	pub fn check_satisfies<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 		expr_ty: TypeId,
 		to_satisfy: TypeId,
-		at: SpanWithSource,
+		position: SpanWithSource,
 		environment: &mut Environment,
 		checking_data: &mut CheckingData<T, A>,
 	) {
@@ -601,21 +592,12 @@ pub mod tsc {
 			&checking_data.types,
 		);
 		if result.is_mismatch() {
-			let expected = diagnostics::TypeStringRepresentation::from_type_id(
-				to_satisfy,
-				environment,
-				&checking_data.types,
-				false,
-			);
-			let found = diagnostics::TypeStringRepresentation::from_type_id(
-				expr_ty,
-				environment,
-				&checking_data.types,
-				false,
-			);
-			checking_data
-				.diagnostics_container
-				.add_error(diagnostics::TypeCheckError::NotSatisfied { at, expected, found });
+			let error = diagnostics::TypeCheckError::NotSatisfied {
+				position,
+				expected: to_satisfy,
+				found: expr_ty,
+			};
+			checking_data.add_error(error, environment);
 		}
 	}
 }

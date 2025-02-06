@@ -91,58 +91,6 @@ pub(crate) fn print_to_cli(arguments: Arguments) {
 	let _ = Write::flush(&mut stdout);
 }
 
-#[derive(Debug, Copy, Clone)]
-pub(crate) enum MaxDiagnostics {
-	All,
-	FixedTo(u16),
-}
-
-impl argh::FromArgValue for MaxDiagnostics {
-	fn from_arg_value(value: &str) -> Result<Self, String> {
-		if value == "all" {
-			Ok(Self::All)
-		} else {
-			match std::str::FromStr::from_str(value) {
-				Ok(value) => Ok(Self::FixedTo(value)),
-				Err(reason) => Err(reason.to_string()),
-			}
-		}
-	}
-}
-
-impl Default for MaxDiagnostics {
-	fn default() -> Self {
-		Self::FixedTo(30)
-	}
-}
-
-#[cfg(target_family = "wasm")]
-pub struct FSFunction(pub js_sys::Function);
-
-#[cfg(target_family = "wasm")]
-impl checker::ReadFromFS for FSFunction {
-	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>> {
-		self.0
-			.call1(
-				&wasm_bindgen::JsValue::null(),
-				&wasm_bindgen::JsValue::from(path.display().to_string()),
-			)
-			.ok()
-			.and_then(|s| s.as_string())
-			.map(|s| s.into_bytes())
-	}
-}
-
-#[cfg(not(target_family = "wasm"))]
-pub struct FSFunction;
-
-#[cfg(not(target_family = "wasm"))]
-impl checker::ReadFromFS for FSFunction {
-	fn read_file(&self, path: &std::path::Path) -> Option<Vec<u8>> {
-		std::fs::read(path).ok()
-	}
-}
-
 // yes i implemented it only using `native_tls`...
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {

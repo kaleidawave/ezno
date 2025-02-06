@@ -20,12 +20,11 @@ where
 {
 	if let Decidable::Known(result) = is_type_truthy_falsy(condition, &checking_data.types) {
 		// TODO could be better
-		checking_data.diagnostics_container.add_warning(
-			crate::diagnostics::TypeCheckWarning::DeadBranch {
-				expression_span: position.with_source(environment.get_source()),
-				expression_value: result,
-			},
-		);
+		let warning = crate::diagnostics::TypeCheckWarning::DeadBranch {
+			expression_span: position.with_source(environment.get_source()),
+			expression_value: result,
+		};
+		checking_data.add_warning(warning, environment);
 
 		return if result {
 			then_evaluate(environment, checking_data)
