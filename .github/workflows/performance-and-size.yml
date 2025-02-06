@@ -186,9 +186,10 @@ jobs:
             
             echo "::group::Callgrind"
             {
-              valgrind --tool=callgrind --callgrind-out-file=cpu-out $compiler check demo.tsx --max-diagnostics 0
+              valgrind --tool=callgrind --callgrind-out-file=./cpu-out $compiler check demo.tsx --max-diagnostics 0
             } || true
-            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never cpu_out)"
+            ls
+            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never ./cpu_out)"
             echo "::endgroup::"
             
             echo "::group::Valgrind"

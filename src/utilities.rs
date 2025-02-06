@@ -84,7 +84,7 @@ pub(crate) fn print_to_cli(arguments: Arguments) {
 pub(crate) fn print_to_cli(arguments: Arguments) {
 	use std::io::{self, Write};
 	let stdout = io::stdout();
-    let mut stdout = stdout.lock();
+	let mut stdout = stdout.lock();
 
 	// Ignore errors here for now
 	let _ = writeln!(stdout, "{arguments}");
