@@ -961,7 +961,7 @@ impl Expression {
 				top = Self::SpecialOperators(operation, position);
 			} else {
 				#[cfg(feature = "extras")]
-				if reader.is_operator_advance("!") {
+				if reader.is_operator_advance("!") && reader.get_options().type_annotations {
 					// if options.type_annotations
 					let position = top.get_position().union(reader.get_end());
 					top = Self::SpecialOperators(
