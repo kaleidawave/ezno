@@ -956,24 +956,24 @@ impl<'a> Lexer<'a> {
 
 		// TODO account for string literals and comments
 		// TODO account for utf16
-		for (idx, chr) in current.as_bytes().iter().enumerate() {
+		for (idx, chr) in current.char_indices() {
 			match state {
 				State::None => {
-					if let b'(' | b'{' | b'[' | b'<' = chr {
-						open_chevrons |= u64::from(*chr == b'<');
+					if let '(' | '{' | '[' | '<' = chr {
+						open_chevrons |= u64::from(chr == '<');
 						open_chevrons <<= 1;
 						bracket_count += 1;
-					} else if let b')' | b'}' | b']' | b'>' = chr {
+					} else if let ')' | '}' | ']' | '>' = chr {
 						// TODO WIP
 						open_chevrons >>= 1;
 						let last_was_open_chevron = (open_chevrons & 1) != 0;
 						if last_was_open_chevron {
-							if let b')' | b'}' | b']' = chr {
+							if let ')' | '}' | ']' = chr {
 								// Extra removal
 								open_chevrons >>= 1;
 								bracket_count = bracket_count.saturating_sub(1);
 							}
-						} else if let b'>' = chr {
+						} else if let '>' = chr {
 							continue;
 						}
 
@@ -981,11 +981,11 @@ impl<'a> Lexer<'a> {
 						if bracket_count == 0 {
 							return current[(idx + 1)..].trim_start();
 						}
-					} else if let b'"' = chr {
+					} else if let '"' = chr {
 						state = State::StringLiteral { escaped: false, quoted: Quoted::Double };
-					} else if let b'\'' = chr {
+					} else if let '\'' = chr {
 						state = State::StringLiteral { escaped: false, quoted: Quoted::Single };
-					} else if let b'/' = chr {
+					} else if let '/' = chr {
 						if current[idx..].starts_with("/*") {
 							state = State::MultilineComment;
 						} else if current[idx..].starts_with("//") {
@@ -994,7 +994,7 @@ impl<'a> Lexer<'a> {
 					}
 				}
 				State::Comment => {
-					if let b'\n' = chr {
+					if let '\n' = chr {
 						state = State::None;
 					}
 				}
@@ -1003,9 +1003,9 @@ impl<'a> Lexer<'a> {
 						*escaped = false;
 						continue;
 					}
-					if let b'\\' = chr {
+					if let '\\' = chr {
 						*escaped = true;
-					} else if let (Quoted::Double, b'"') | (Quoted::Single, b'\'') = (quoted, chr) {
+					} else if let (Quoted::Double, '"') | (Quoted::Single, '\'') = (quoted, chr) {
 						state = State::None;
 					}
 				}
