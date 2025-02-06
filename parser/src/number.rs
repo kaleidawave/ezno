@@ -196,8 +196,12 @@ impl FromStr for NumberRepresentation {
 				None => Ok(Self::Number(0f64)),
 			}
 		} else if s.starts_with('.') {
-			let value: f64 = format!("0{s}").parse().map_err(|_| s.clone())?;
-			Ok(Self::Number(sign.apply(value)))
+			if let "." = s.as_ref() {
+				Err("'.' is not a valid number".to_owned())
+			} else {
+				let value: f64 = format!("0{s}").parse().map_err(|_| s.clone())?;
+				Ok(Self::Number(sign.apply(value)))
+			}
 		} else if let Some(s) = s.strip_suffix('.') {
 			Ok(Self::Number(sign.apply(s.parse::<f64>().map_err(|_| s)?)))
 		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
@@ -286,5 +290,16 @@ impl NumberRepresentation {
 			}
 			NumberRepresentation::BigInt(s, value) => format!("{s}{value}n"),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::NumberRepresentation;
+	use std::str::FromStr;
+
+	#[test]
+	fn invalid() {
+		assert!(NumberRepresentation::from_str(".").is_err());
 	}
 }

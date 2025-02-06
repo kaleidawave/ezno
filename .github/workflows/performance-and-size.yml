@@ -206,24 +206,19 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          strings=(
-            "https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs"
-            "https://esm.sh/v135/typescript@5.3.3/es2022/typescript.mjs"
-          )
+          CORPUS_URL="https://gist.githubusercontent.com/kaleidawave/6708f604bc403021b56cb54ea50cac62/raw/javascript_files.txt"
 
-          for url in "${strings[@]}"; do
-            # TODO copy expression
-            curl -sS $url > input.js
-
+          curl -s "$CORPUS_URL" | while IFS= read -r URL; do
+            FILENAME="${URL##*/}"
+            curl -s "$URL" > $FILENAME
             echo "::group::Comparison"
-            hyperfine -i \
-              -L compiler ${{ steps.compilers.outputs.BINARIES }} \
-              '{compiler} ast-explorer full input.js --timings'
+            hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
+              '{compiler} ast-explorer full $FILENAME --check'
             echo "::endgroup::"
           done
 
       - name: Upload checker
-        if: github.ref == 'main'
+        if: ${{ github.ref_name == 'main' }}
         uses: actions/upload-artifact@v4
         with:
           name: latest-checker

@@ -1,7 +1,11 @@
 use std::iter;
 
 use parser::{
-	declarations::{export::Exportable, DeclareVariableDeclaration, ExportDeclaration},
+	declarations::{
+		export::Exportable,
+		import_export::{ImportExportName, ImportExportPart, ImportOrExport},
+		DeclareVariableDeclaration, ExportDeclaration,
+	},
 	ASTNode, Declaration, Decorated, ExpressionOrStatementPosition, Statement,
 	StatementOrDeclaration, StatementPosition, VariableIdentifier,
 };
@@ -403,7 +407,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 				Declaration::Export(Decorated {
-					on: ExportDeclaration::DefaultFunction { position, .. },
+					on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
 					..
 				}) => {
 					// TODO under definition file
@@ -781,6 +785,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				let location = function.header.get_location().map(|location| match location {
 					parser::functions::FunctionLocationModifier::Server => "server".to_owned(),
 					parser::functions::FunctionLocationModifier::Worker => "worker".to_owned(),
+					parser::functions::FunctionLocationModifier::Test => "test".to_owned(),
 				});
 
 				let value = if function.name.is_declare {
@@ -886,16 +891,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 }
 
 // TODO with `type`
-pub(super) fn part_to_name_pair<T: parser::declarations::ImportOrExport>(
-	item: &parser::declarations::ImportExportPart<T>,
+pub(super) fn part_to_name_pair<T: ImportOrExport>(
+	item: &ImportExportPart<T>,
 ) -> Option<NamePair<'_>> {
 	if let VariableIdentifier::Standard(ref name, position) = item.name {
 		let value = match &item.alias {
-			Some(
-				parser::declarations::ImportExportName::Reference(item)
-				| parser::declarations::ImportExportName::Quoted(item, _),
-			) => item,
-			Some(parser::declarations::ImportExportName::Marker(_)) => {
+			Some(ImportExportName::Reference(item) | ImportExportName::Quoted(item, _)) => item,
+			Some(ImportExportName::Marker(_)) => {
 				// TODO I think okay
 				return None;
 			}

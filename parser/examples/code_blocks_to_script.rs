@@ -1,10 +1,12 @@
 use std::{collections::HashSet, io::Write, path::PathBuf};
 
 use ezno_parser::{
-	ast::{InterfaceDeclaration, TypeAlias},
+	ast::{self, InterfaceDeclaration, TypeAlias},
+	expressions::operators,
+	functions,
 	visiting::{VisitOptions, Visitors},
-	ASTNode, Declaration, Decorated, Module, StatementOrDeclaration, StatementPosition,
-	VariableIdentifier,
+	ASTNode, Declaration, Decorated, Expression, Module, Statement, StatementOrDeclaration,
+	StatementPosition, VariableIdentifier,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let filters: Vec<&str> = vec!["import", "export"];
 
+	#[allow(clippy::case_sensitive_file_extension_comparisons)]
 	let blocks = if path.ends_with(".md") {
 		let mut blocks = Vec::new();
 		let mut lines = content.lines();
@@ -57,14 +60,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					},
 				);
 
-				if !filters.iter().any(|filter| code.contains(filter)) {
+				if filters.iter().any(|filter| code.contains(filter)) {
+					reading_list = false;
+				} else {
 					blocks.push((std::mem::take(&mut current), code));
 					reading_list = true;
-				} else {
-					reading_list = false;
 				}
 			} else if let Some(header) = line.strip_prefix("#### ") {
-				current = header.to_owned();
+				header.clone_into(&mut current);
 				reading_list = false;
 			} else if reading_list && line.trim_start().starts_with("- ") {
 				list_count += 1;
@@ -132,25 +135,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			// TODO quick fix to also register interface and type alias names to prevent conflicts
 			for item in &module.items {
 				match item {
-					StatementOrDeclaration::Declaration(Declaration::TypeAlias(TypeAlias {
-						name:
-							StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
-						..
-					})) => {
-						names.insert(s.clone());
-					}
-					StatementOrDeclaration::Declaration(Declaration::Interface(Decorated {
-						on:
-							InterfaceDeclaration {
-								name:
-									StatementPosition {
-										identifier: VariableIdentifier::Standard(s, _),
-										..
-									},
-								..
-							},
-						..
-					})) => {
+					StatementOrDeclaration::Declaration(
+						Declaration::TypeAlias(TypeAlias {
+							name:
+								StatementPosition {
+									identifier: VariableIdentifier::Standard(s, _), ..
+								},
+							..
+						})
+						| Declaration::Interface(Decorated {
+							on:
+								InterfaceDeclaration {
+									name:
+										StatementPosition {
+											identifier: VariableIdentifier::Standard(s, _),
+											..
+										},
+									..
+								},
+							..
+						}),
+					) => {
 						names.insert(s.clone());
 					}
 					StatementOrDeclaration::Declaration(Declaration::DeclareVariable(
@@ -172,14 +177,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
 				for item in module.items {
 					match item {
-						StatementOrDeclaration::Declaration(Declaration::TypeAlias(
-							TypeAlias { .. },
-						)) => {
-							top_level.push(item);
-						}
-						StatementOrDeclaration::Declaration(Declaration::Interface(
-							Decorated { .. },
-						)) => {
+						StatementOrDeclaration::Declaration(
+							Declaration::TypeAlias(TypeAlias { .. })
+							| Declaration::Interface(Decorated { .. }),
+						) => {
 							top_level.push(item);
 						}
 						StatementOrDeclaration::Declaration(Declaration::DeclareVariable(..)) => {}
@@ -188,8 +189,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						}
 					}
 				}
-
-				use ezno_parser::{ast, expressions::operators, functions, Expression, Statement};
 
 				let parameters = declare_lets
 					.into_iter()

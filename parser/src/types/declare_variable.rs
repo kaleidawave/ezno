@@ -1,8 +1,6 @@
-use tokenizer_lib::{sized_tokens::TokenStart, Token};
-
 use crate::{
-	declarations::VariableDeclarationItem, derive_ASTNode, errors::parse_lexing_error, ASTNode,
-	Decorator, ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TokenReader, VariableKeyword,
+	declarations::VariableDeclarationItem, derive_ASTNode, ASTNode, Decorator, ParseResult, Span,
+	VariableKeyword,
 };
 
 /// A `declare var/let/const` thingy.
@@ -22,13 +20,9 @@ impl ASTNode for DeclareVariableDeclaration {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::Declare)?;
-		Self::from_reader_sub_declare(reader, state, options, Some(start), Vec::new())
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		reader.expect_keyword("declare")?;
+		Self::from_reader_without_declare(reader)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -52,29 +46,25 @@ impl ASTNode for DeclareVariableDeclaration {
 }
 
 impl DeclareVariableDeclaration {
-	pub fn from_reader_sub_declare(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: Option<TokenStart>,
-		decorators: Vec<Decorator>,
-	) -> ParseResult<Self> {
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		let start = start.unwrap_or(token.1);
-		let keyword = VariableKeyword::from_reader(token)?;
+	pub fn from_reader_without_declare(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		let keyword = VariableKeyword::from_reader(reader)?;
 		let mut declarations = Vec::new();
 		loop {
-			let value = VariableDeclarationItem::from_reader(reader, state, options)?;
+			let value = VariableDeclarationItem::from_reader(reader)?;
 			declarations.push(value);
-			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-				reader.next();
-			} else {
+			if !reader.is_operator_advance(",") {
 				break;
 			}
 		}
 
 		let position = start.union(declarations.last().unwrap().get_position());
 
-		Ok(DeclareVariableDeclaration { keyword, declarations, position, decorators })
+		Ok(DeclareVariableDeclaration {
+			keyword,
+			declarations,
+			position,
+			decorators: Default::default(),
+		})
 	}
 }

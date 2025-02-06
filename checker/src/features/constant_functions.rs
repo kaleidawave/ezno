@@ -678,9 +678,9 @@ pub(crate) fn call_constant_function(
 						return Err(ConstantFunctionError::CannotComputeConstant);
 					};
 
-					Some(flags.clone())
+					flags.clone()
 				}
-				None => None,
+				None => String::new(),
 			};
 
 			let regexp = types.new_regexp(&pattern.clone(), &flags, &call_site.without_source());

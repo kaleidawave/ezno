@@ -1,10 +1,7 @@
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{
-	ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode, TSXKeyword,
-	TSXToken,
-};
+use crate::{ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -20,16 +17,12 @@ impl ASTNode for WhileStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::While)?;
-		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = MultipleExpression::from_reader(reader, state, options)?;
-		reader.expect_next(TSXToken::CloseParentheses)?;
-		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
+	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
+		let start = reader.expect_keyword("while")?;
+		reader.expect('(')?;
+		let condition = MultipleExpression::from_reader(reader)?;
+		reader.expect(')')?;
+		let inner = BlockOrSingleStatement::from_reader(reader)?;
 		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}
 
@@ -53,9 +46,8 @@ impl ASTNode for WhileStatement {
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct DoWhileStatement {
-	pub condition: MultipleExpression,
-	// TODO unsure about true here
 	pub inner: BlockOrSingleStatement,
+	pub condition: MultipleExpression,
 	pub position: Span,
 }
 
@@ -64,19 +56,14 @@ impl ASTNode for DoWhileStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<crate::TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::Do)?;
-		let inner = BlockOrSingleStatement::from_reader(reader, state, options)?;
-		let _ = state.expect_keyword(reader, TSXKeyword::While)?;
-		reader.expect_next(TSXToken::OpenParentheses)?;
-		let condition = MultipleExpression::from_reader(reader, state, options)?;
-		let position =
-			start.union(reader.expect_next(TSXToken::CloseParentheses)?.get_end_after(1));
-		Ok(Self { condition, inner, position })
+	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
+		let start = reader.expect_keyword("do")?;
+		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		let _ = reader.expect_keyword("while")?;
+		let _ = reader.expect('(')?;
+		let condition = MultipleExpression::from_reader(reader)?;
+		let position = start.union(reader.expect(')')?);
+		Ok(Self { inner, condition, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -86,7 +73,7 @@ impl ASTNode for DoWhileStatement {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push_str("do ");
-		self.inner.to_string_from_buffer(buf, options, local);
+		self.inner.to_string_from_buffer(buf, options, local.next_level());
 		buf.push_str(" while");
 		options.push_gap_optionally(buf);
 		buf.push('(');

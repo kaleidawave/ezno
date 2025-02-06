@@ -3,10 +3,8 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	derive_ASTNode, errors::parse_lexing_error, expressions::operators::COMMA_PRECEDENCE,
-	throw_unexpected_token_with_token, ASTNode, Expression, ParseError, ParseErrors, ParseOptions,
-	ParseResult, Span, TSXKeyword, TSXToken, Token, TokenReader, TypeAnnotation, VariableField,
-	WithComment,
+	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, Span,
+	TypeAnnotation, VariableField, WithComment,
 };
 use visitable_derive::Visitable;
 
@@ -14,11 +12,7 @@ use visitable_derive::Visitable;
 pub trait DeclarationExpression:
 	PartialEq + Clone + std::fmt::Debug + Send + std::marker::Sync + crate::Visitable
 {
-	fn expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self>;
+	fn expression_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
 		&self,
@@ -32,24 +26,15 @@ pub trait DeclarationExpression:
 	fn as_option_expression_ref(&self) -> Option<&Expression>;
 
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression>;
+
+	/// TS nonsence
+	fn allow_definite_assignment_assertions() -> bool;
 }
 
 impl DeclarationExpression for Option<Expression> {
-	fn expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		// expect_value: bool,
-	) -> ParseResult<Self> {
-		if let Some(Token(_, start)) = reader.conditional_next(|t| matches!(t, TSXToken::Assign)) {
-			Expression::from_reader_with_precedence(
-				reader,
-				state,
-				options,
-				COMMA_PRECEDENCE,
-				Some(start),
-			)
-			.map(Some)
+	fn expression_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		if reader.is_operator_advance("=") {
+			Expression::from_reader(reader).map(Some)
 		} else {
 			Ok(None)
 		}
@@ -78,22 +63,16 @@ impl DeclarationExpression for Option<Expression> {
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression> {
 		self.as_mut()
 	}
+
+	fn allow_definite_assignment_assertions() -> bool {
+		true
+	}
 }
 
 impl DeclarationExpression for crate::Expression {
-	fn expression_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::Assign)?;
-		Expression::from_reader_with_precedence(
-			reader,
-			state,
-			options,
-			COMMA_PRECEDENCE,
-			Some(start),
-		)
+	fn expression_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let _start = reader.expect('=')?;
+		Expression::from_reader(reader)
 	}
 
 	fn expression_to_string_from_buffer<T: source_map::ToString>(
@@ -117,6 +96,10 @@ impl DeclarationExpression for crate::Expression {
 	fn as_option_expr_mut(&mut self) -> Option<&mut Expression> {
 		Some(self)
 	}
+
+	fn allow_definite_assignment_assertions() -> bool {
+		false
+	}
 }
 
 /// Represents a name =
@@ -132,22 +115,24 @@ pub struct VariableDeclarationItem<TExpr: DeclarationExpression> {
 }
 
 impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem<TExpr> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
-		let type_annotation = if reader
-			.conditional_next(|tok| options.type_annotations && matches!(tok, TSXToken::Colon))
-			.is_some()
-		{
-			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-			Some(type_annotation)
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
+
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let name = WithComment::<VariableField>::from_reader(reader)?;
+		if TExpr::allow_definite_assignment_assertions() {
+			let _ = reader.is_operator_advance("!");
+		}
+
+		let type_annotation = if reader.is_operator_advance(":") {
+			let annotation = TypeAnnotation::from_reader(reader)?;
+			crate::lexer::utilities::assert_type_annotations(reader, annotation.get_position())?;
+			Some(annotation)
 		} else {
 			None
 		};
-		let expression = TExpr::expression_from_reader(reader, state, options)?;
+		let expression = TExpr::expression_from_reader(reader)?;
 		let position = name.get_position().union(
 			expression
 				.get_declaration_position()
@@ -173,10 +158,6 @@ impl<TExpr: DeclarationExpression + 'static> ASTNode for VariableDeclarationItem
 		}
 
 		self.expression.expression_to_string_from_buffer(buf, options, local);
-	}
-
-	fn get_position(&self) -> Span {
-		*self.get()
 	}
 }
 
@@ -204,22 +185,6 @@ pub enum VariableDeclarationKeyword {
 
 impl VariableDeclarationKeyword {
 	#[must_use]
-	pub fn is_token_variable_keyword(token: &TSXToken) -> bool {
-		matches!(token, TSXToken::Keyword(TSXKeyword::Const | TSXKeyword::Let))
-	}
-
-	pub(crate) fn from_token(token: Token<TSXToken, crate::TokenStart>) -> ParseResult<Self> {
-		match token {
-			Token(TSXToken::Keyword(TSXKeyword::Const), _) => Ok(Self::Const),
-			Token(TSXToken::Keyword(TSXKeyword::Let), _) => Ok(Self::Let),
-			token => throw_unexpected_token_with_token(
-				token,
-				&[TSXToken::Keyword(TSXKeyword::Const), TSXToken::Keyword(TSXKeyword::Let)],
-			),
-		}
-	}
-
-	#[must_use]
 	pub fn as_str(&self) -> &str {
 		match self {
 			VariableDeclarationKeyword::Const => "const ",
@@ -229,99 +194,86 @@ impl VariableDeclarationKeyword {
 }
 
 impl ASTNode for VariableDeclaration {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		let start = token.1;
-		let kind = VariableDeclarationKeyword::from_token(token)?;
-		Ok(match kind {
-			VariableDeclarationKeyword::Let => {
-				state.append_keyword_at_pos(start.0, TSXKeyword::Let);
-				let mut declarations = Vec::new();
-				loop {
-					// Some people like to have trailing comments in declarations ?
-					if reader.peek().is_some_and(|t| t.0.is_comment()) {
-						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
-							break;
-						}
-						continue;
-					}
+	fn get_position(&self) -> Span {
+		*self.get()
+	}
 
-					let value = VariableDeclarationItem::<Option<Expression>>::from_reader(
-						reader, state, options,
-					)?;
-
-					if value.expression.is_none()
-						&& !matches!(value.name.get_ast_ref(), VariableField::Name(_))
-					{
-						return Err(crate::ParseError::new(
-							crate::ParseErrors::DestructuringRequiresValue,
-							value.name.get_ast_ref().get_position(),
-						));
-					}
-
-					declarations.push(value);
-					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-						reader.next();
-					} else {
-						break;
-					}
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		if reader.is_keyword_advance("let") {
+			// state.append_keyword_at_pos(start.0, TSXKeyword::Let);
+			let mut declarations = Vec::new();
+			loop {
+				reader.skip();
+				if reader.is_one_of(&["//", "/*"]).is_some() {
+					let is_multiline = reader.starts_with_slice("/*");
+					reader.advance(2);
+					let _content = reader.parse_comment_literal(is_multiline)?;
+					continue;
 				}
 
-				let position = if let Some(last) = declarations.last() {
-					start.union(last.get_position())
-				} else {
-					let position = start.with_length(3);
-					if options.partial_syntax {
-						position
-					} else {
-						return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
-					}
-				};
+				let value = VariableDeclarationItem::<Option<Expression>>::from_reader(reader)?;
 
-				VariableDeclaration::LetDeclaration { position, declarations }
-			}
-			VariableDeclarationKeyword::Const => {
-				state.append_keyword_at_pos(start.0, TSXKeyword::Const);
-				let mut declarations = Vec::new();
-				loop {
-					// Some people like to have trailing comments in declarations ?
-					if reader.peek().is_some_and(|t| t.0.is_comment()) {
-						let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-						if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
-							break;
-						}
-						continue;
-					}
-
-					let value =
-						VariableDeclarationItem::<Expression>::from_reader(reader, state, options)?;
-					declarations.push(value);
-					if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-						reader.next();
-					} else {
-						break;
-					}
+				if value.expression.is_none()
+					&& !matches!(value.name.get_ast_ref(), VariableField::Name(_))
+				{
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::DestructuringRequiresValue,
+						value.name.get_ast_ref().get_position(),
+					));
 				}
 
-				let position = if let Some(last) = declarations.last() {
-					start.union(last.get_position())
-				} else {
-					let position = start.with_length(3);
-					if options.partial_syntax {
-						position
-					} else {
-						return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
-					}
-				};
-
-				VariableDeclaration::ConstDeclaration { position, declarations }
+				declarations.push(value);
+				if !reader.is_operator_advance(",") {
+					break;
+				}
 			}
-		})
+
+			let position = if let Some(last) = declarations.last() {
+				start.union(last.get_position())
+			} else {
+				let position = start.with_length(3);
+				// if options.partial_syntax {
+				// 	position
+				// } else {
+				// }
+				return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+			};
+
+			Ok(VariableDeclaration::LetDeclaration { position, declarations })
+		} else if reader.is_keyword_advance("const") {
+			// state.append_keyword_at_pos(start.0, TSXKeyword::Const);
+			let mut declarations = Vec::new();
+			loop {
+				// Some people like to have trailing comments in declarations ?
+				// if reader.peek().is_some_and(|t| t.0.is_comment()) {
+				// 	let (..) = TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
+				// 	if reader.peek_n(1).is_some_and(|t| !t.0.is_identifier_or_ident()) {
+				// 		break;
+				// 	}
+				// 	continue;
+				// }
+				declarations.push(VariableDeclarationItem::<Expression>::from_reader(reader)?);
+				if !reader.is_operator_advance(",") {
+					break;
+				}
+			}
+
+			let position = if let Some(last) = declarations.last() {
+				start.union(last.get_position())
+			} else {
+				let position = start.with_length(3);
+				// if options.partial_syntax {
+				// 	position
+				// } else {
+				// }
+				return Err(ParseError::new(ParseErrors::ExpectedDeclaration, position));
+			};
+
+			Ok(VariableDeclaration::ConstDeclaration { position, declarations })
+		} else {
+			Err(crate::lexer::utilities::expected_one_of_items(reader, &["const", "let"]))
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -366,10 +318,6 @@ impl ASTNode for VariableDeclaration {
 				declarations_to_string(declarations, buf, options, local, split_lines);
 			}
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		*self.get()
 	}
 }
 

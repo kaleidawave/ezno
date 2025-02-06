@@ -1,9 +1,7 @@
 //! Contains wrappers for AST with comments
 
-use super::{ASTNode, Span, TSXToken, TokenReader};
-use crate::{ParseOptions, ParseResult};
-
-use tokenizer_lib::Token;
+use super::{ASTNode, Span};
+use crate::ParseResult;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
@@ -91,41 +89,29 @@ impl<T> WithComment<T> {
 }
 
 impl<T: ASTNode> ASTNode for WithComment<T> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if let Some(token) =
-			reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
-		{
-			let Token(TSXToken::MultiLineComment(comment), position) = token else {
-				unreachable!();
-			};
-			let item = T::from_reader(reader, state, options)?;
-			let position = position.union(item.get_position());
-			Ok(Self::PrefixComment(comment, item, position))
-		} else {
-			let item = T::from_reader(reader, state, options)?;
-			if let Some(token) =
-				reader.conditional_next(|t| matches!(t, TSXToken::MultiLineComment(..)))
-			{
-				let end = token.get_span();
-				let Token(TSXToken::MultiLineComment(comment), _) = token else {
-					unreachable!();
-				};
-				let position = item.get_position().union(end);
-				Ok(Self::PostfixComment(item, comment, position))
-			} else {
-				Ok(Self::None(item))
-			}
-		}
-	}
-
 	fn get_position(&self) -> Span {
 		match self {
 			Self::None(ast) => ast.get_position(),
 			Self::PostfixComment(_, _, position) | Self::PrefixComment(_, _, position) => *position,
+		}
+	}
+
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		if reader.is_operator_advance("/*") {
+			let comment = reader.parse_comment_literal(true)?.to_owned();
+			let item = T::from_reader(reader)?;
+			let position = start.union(item.get_position());
+			Ok(Self::PrefixComment(comment, item, position))
+		} else {
+			let item = T::from_reader(reader)?;
+			if reader.is_operator_advance("/*") {
+				let comment = reader.parse_comment_literal(true)?.to_owned();
+				let position = start.union(reader.get_end());
+				Ok(Self::PostfixComment(item, comment, position))
+			} else {
+				Ok(Self::None(item))
+			}
 		}
 	}
 
@@ -150,7 +136,6 @@ impl<T: ASTNode> ASTNode for WithComment<T> {
 							options.add_indent(local.depth, buf);
 							buf.push_str(line.trim());
 						}
-					// buf.push_new_line();
 					} else {
 						buf.push_str_contains_new_line(content.as_str());
 					}

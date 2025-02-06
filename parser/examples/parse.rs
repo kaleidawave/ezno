@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, path::Path, time::Instant};
+use std::{path::Path, time::Instant};
 
 use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
@@ -6,8 +6,8 @@ use source_map::FileSystem;
 type Files = source_map::MapFileStore<source_map::WithPathMap>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let mut args: VecDeque<_> = std::env::args().skip(1).collect();
-	let path = args.pop_front().ok_or("expected argument")?;
+	let mut args: std::collections::VecDeque<_> = std::env::args().skip(1).collect();
+	let path = args.pop_front().ok_or("expected path argument")?;
 
 	let comments = if args.iter().any(|item| item == "--no-comments") {
 		Comments::None
@@ -32,10 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let to_string_output = args.iter().any(|item| item == "--to-string");
 	let pretty = args.iter().any(|item| item == "--pretty");
 
-	// TODO temp
-	const STACK_SIZE_MB: usize = 32;
 	let parse_options = ParseOptions {
-		stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		comments,
 		record_keyword_positions: display_keywords,
 		partial_syntax,
@@ -48,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		is_expressions: extras,
 		special_jsx_attributes: extras,
 		extra_operators: extras,
+		reversed_imports: extras,
 		top_level_html,
 		..ParseOptions::default()
 	};
@@ -88,12 +86,27 @@ fn parse_path(
 	display_keywords: bool,
 	fs: &mut Files,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
+
 	let source = std::fs::read_to_string(path)?;
 	let source_id = fs.new_source_id(path.into(), source.clone());
 
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
-	let result = Module::from_string_with_options(source.clone(), *parse_options, None);
+	let extension: &str = path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or_default();
+	let type_annotations = extension.contains("ts");
+	let jsx = extension.contains('x');
+
+	let parse_options = ParseOptions { jsx, type_annotations, ..*parse_options };
+
+	let on = source.clone();
+	// Run in thread as stack is large and can oveflow
+	let result = std::thread::Builder::new()
+		.stack_size(EIGHT_MEGA_BYTES)
+		.spawn(move || Module::from_string_with_options(on, parse_options, None))
+		.unwrap()
+		.join()
+		.unwrap();
 
 	match result {
 		Ok((module, state)) => {
@@ -137,7 +150,7 @@ fn parse_path(
 						&resolved_path,
 						timings,
 						parse_imports,
-						parse_options,
+						&parse_options,
 						print_ast,
 						print_source_maps,
 						to_string_options,

@@ -162,13 +162,13 @@ fn synthesise_array_to_reference<
 						default_value.clone(),
 					)
 				}
-				parser::ArrayDestructuringField::Comment { content, is_multiline, position } => {
-					AssignableArrayDestructuringField::Comment {
-						content: content.clone(),
-						is_multiline: *is_multiline,
-						position: position.with_source(environment.get_source()),
-					}
-				}
+				// parser::ArrayDestructuringField::Comment { content, is_multiline, position } => {
+				// 	AssignableArrayDestructuringField::Comment {
+				// 		content: content.clone(),
+				// 		is_multiline: *is_multiline,
+				// 		position: position.with_source(environment.get_source()),
+				// 	}
+				// }
 				parser::ArrayDestructuringField::None => AssignableArrayDestructuringField::None,
 			})
 			.collect(),
@@ -268,6 +268,10 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 				position: position.with_source(environment.get_source()),
 				publicity: crate::types::properties::Publicity::Public,
 			}
+		}
+		VariableOrPropertyAccess::NonNullAssertion(on, _) => {
+			// TODO
+			synthesise_access_to_reference(on, environment, checking_data)
 		}
 	}
 }

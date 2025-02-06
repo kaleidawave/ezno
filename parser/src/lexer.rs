@@ -1,1179 +1,1297 @@
-//! Contains lexing logic for all the whole of JS + TypeScript type annotations + JSX + other syntax
-//!
-//! Uses [`TSXToken`]s for data, uses [Span] for location data. Uses [`tokenizer_lib`] for logic.
-
-#![allow(clippy::as_conversions, clippy::cast_possible_truncation)]
-
-use super::{Span, TSXToken};
 use crate::{
-	errors::LexingErrors,
-	jsx::{html_tag_contains_literal_content, html_tag_is_self_closing},
-	Comments, Quoted,
-};
-use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenSender};
-
-use derive_finite_automaton::{
-	FiniteAutomata, FiniteAutomataConstructor, GetAutomataStateForValue, GetNextResult,
+	errors::{ParseError, ParseErrors},
+	marker::Marker,
+	options::ParseOptions,
+	Span,
 };
 
-mod html {}
+// pub(super) enum NumberLiteralType {
+// 	BinaryLiteral,
+// 	/// strict mode done at the parse level
+// 	OctalLiteral,
+// 	HexadecimalLiteral,
+// 	/// Base 10
+// 	Decimal {
+// 		/// has decimal point
+// 		fractional: bool,
+// 	},
+// 	BigInt,
+// 	Exponent,
+// }
 
-#[allow(clippy::struct_excessive_bools)]
-pub struct LexerOptions {
-	/// Whether to append tokens when lexing. If false will just ignore
-	pub comments: Comments,
-	/// Whether to parse JSX. TypeScript's `<number> 2` breaks the lexer so this can be disabled to allow
-	/// for that syntax
-	pub lex_jsx: bool,
-	/// TODO temp
-	pub allow_unsupported_characters_in_jsx_attribute_keys: bool,
-	pub allow_expressions_in_jsx: bool,
-	pub top_level_html: bool,
+// impl Default for NumberLiteralType {
+// 	fn default() -> Self {
+// 		Self::Decimal { fractional: false }
+// 	}
+// }
+
+// TODO state for "use strict" etc?
+// TODO hold Keywords map, markers, syntax errors etc
+#[derive(Default)]
+pub struct ParsingState {
+	last_new_lines: u32,
+	markers: Vec<Span>,
 }
 
-impl Default for LexerOptions {
-	fn default() -> Self {
-		Self {
-			comments: Comments::All,
-			lex_jsx: true,
-			allow_unsupported_characters_in_jsx_attribute_keys: true,
-			allow_expressions_in_jsx: true,
-			top_level_html: false,
+pub struct Lexer<'a> {
+	// last: u32,
+	pub(crate) head: u32,
+	script: &'a str,
+
+	options: ParseOptions,
+	state: ParsingState,
+}
+
+#[allow(clippy::manual_find)]
+impl<'a> Lexer<'a> {
+	// (crate)
+	#[must_use]
+	pub fn new(script: &'a str, _offset: Option<u32>, options: ParseOptions) -> Self {
+		if script.len() > u32::MAX as usize {
+			todo!()
+			// return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
 		}
-	}
-}
-
-fn is_number_delimiter(chr: char) -> bool {
-	matches!(
-		chr,
-		' ' | ','
-			| '\n' | '\r'
-			| ';' | '+'
-			| '-' | '*'
-			| '/' | '&'
-			| '|' | '!'
-			| '^' | '('
-			| '{' | '['
-			| ')' | '}'
-			| ']' | '%'
-			| '=' | ':'
-			| '<' | '>'
-			| '?' | '"'
-			| '\'' | '`'
-			| '#'
-	)
-}
-
-/// *Tokenizes* script appending Tokens to `sender` using [TokenSender::push]
-/// `offset` represents the start of the source if script is contained in some larger buffer
-///
-/// Returns () if successful, if runs into lexing error will short-circuit
-///
-/// **MARKERS HAVE TO BE IN FORWARD ORDER**
-#[doc(hidden)]
-pub fn lex_script(
-	script: &str,
-	sender: &mut impl TokenSender<TSXToken, crate::TokenStart>,
-	options: &LexerOptions,
-	offset: Option<u32>,
-) -> Result<(), (LexingErrors, Span)> {
-	#[derive(PartialEq, Debug)]
-	enum JSXAttributeValueDelimiter {
-		None,
-		SingleQuote,
-		DoubleQuote,
+		// TODO offset.unwrap_or_default(),
+		let state = ParsingState::default();
+		Lexer { options, state, script, head: 0 }
 	}
 
-	#[derive(PartialEq, Debug, Eq)]
-	enum JSXTagNameDirection {
-		Opening,
-		Closing,
+	#[must_use]
+	pub fn get_options(&self) -> &ParseOptions {
+		&self.options
 	}
 
-	#[derive(PartialEq, Debug)]
-	enum JSXLexingState {
-		/// Only for top level html
-		ExpectingOpenChevron,
-		TagName {
-			direction: JSXTagNameDirection,
-			lexed_start: bool,
-		},
-		/// For lexing the close chevron after the slash in self closing tags
-		SelfClosingTagClose,
-		AttributeKey,
-		AttributeEqual,
-		AttributeValue(JSXAttributeValueDelimiter),
-		Comment,
-		Content,
-		/// For script and style tags
-		LiteralContent {
-			last_char_was_open_chevron: bool,
-		},
+	pub fn new_partial_point_marker<T>(&mut self, span: Span) -> Marker<T> {
+		let idx = self.state.markers.len() as u8;
+		self.state.markers.push(span);
+		Marker(idx, std::marker::PhantomData)
 	}
 
-	#[derive(PartialEq, Debug)]
-	enum NumberLiteralType {
-		BinaryLiteral,
-		/// strict mode done at the parse level
-		OctalLiteral,
-		HexadecimalLiteral,
-		/// Base 10
-		Decimal {
-			/// has decimal point
-			fractional: bool,
-		},
-		BigInt,
-		Exponent,
+	/// Just used for specific things, not all annotations
+	#[must_use]
+	pub fn parse_type_annotations(&self) -> bool {
+		self.options.type_annotations
 	}
 
-	impl Default for NumberLiteralType {
-		fn default() -> Self {
-			Self::Decimal { fractional: false }
+	// TODO want to remove where public
+	#[must_use]
+	pub(crate) fn get_current(&self) -> &'a str {
+		&self.script[self.head as usize..]
+	}
+
+	#[must_use]
+	pub fn source_size(&self) -> u32 {
+		self.script.len() as u32
+	}
+
+	#[must_use]
+	pub fn get_some_current(&self) -> (&'a str, usize) {
+		(
+			&self.script
+				[self.head as usize..std::cmp::min(self.script.len(), self.head as usize + 20)],
+			self.head as usize,
+		)
+	}
+
+	#[must_use]
+	pub fn last_was_from_new_line(&self) -> u32 {
+		self.state.last_new_lines
+	}
+
+	pub fn skip(&mut self) {
+		let current = self.get_current();
+		if current.starts_with(char::is_whitespace) {
+			let start = self.head;
+			self.state.last_new_lines = 0;
+
+			for (idx, chr) in current.char_indices() {
+				if !chr.is_whitespace() {
+					self.head = start + idx as u32;
+					return;
+				}
+				if let '\n' = chr {
+					self.state.last_new_lines += 1;
+				}
+			}
+
+			// Else if
+			self.head += current.len() as u32;
 		}
 	}
 
-	/// Current parsing state of the lexer.
-	#[derive(PartialEq, Debug)]
-	enum LexingState {
-		None,
-		Identifier,
-		Symbol(GetAutomataStateForValue<TSXToken>),
-		// Literals:
-		Number(NumberLiteralType),
-		String {
-			double_quoted: bool,
-			escaped: bool,
-		},
-		TemplateLiteral {
-			interpolation_depth: u16,
-			last_char_was_dollar: bool,
-			escaped: bool,
-		},
-		JSXLiteral {
-			state: JSXLexingState,
-			interpolation_depth: u16,
-			tag_depth: u16,
-			/// `true` for `script` and `style` tags
-			/// TODO currently isn't handled at all
-			no_inner_tags_or_expressions: bool,
-			is_self_closing_tag: bool,
-		},
-		SingleLineComment,
-		MultiLineComment {
-			last_char_was_star: bool,
-		},
-		RegexLiteral {
-			escaped: bool,
-			/// aka on flags
-			after_last_slash: bool,
-			/// Forward slash while in `[...]` is allowed
-			in_set: bool,
-		},
+	pub fn is_keyword(&mut self, keyword: &str) -> bool {
+		self.skip();
+		let current = self.get_current();
+		let length = keyword.len();
+		current.starts_with(keyword)
+			&& current[length..]
+				.chars()
+				.next()
+				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+	}
+
+	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
+		self.skip();
+		let current = self.get_current();
+		let length = keyword.len();
+		if current.starts_with(keyword)
+			&& current[length..]
+				.chars()
+				.next()
+				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+		{
+			self.state.last_new_lines = 0;
+			self.head += length as u32;
+			true
+		} else {
+			false
+		}
+	}
+
+	// Does not advance
+	#[must_use]
+	pub fn is_one_of_keywords<'b>(&self, keywords: &'static [&'b str]) -> Option<&'b str> {
+		let current = self.get_current();
+		for item in keywords {
+			if current.starts_with(item)
+				&& current[item.len()..]
+					.chars()
+					.next()
+					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+			{
+				return Some(item);
+			}
+		}
+		None
+	}
+
+	pub fn is_one_of_keywords_advance<'b>(
+		&mut self,
+		keywords: &'static [&'b str],
+	) -> Option<&'b str> {
+		let current = self.get_current();
+		for item in keywords {
+			if current.starts_with(item)
+				&& current[item.len()..]
+					.chars()
+					.next()
+					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+			{
+				self.head += item.len() as u32;
+				return Some(item);
+			}
+		}
+		None
+	}
+
+	pub fn expect_start(&mut self, chr: char) -> Result<source_map::Start, ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(chr) {
+			let start = source_map::Start(self.head);
+			self.head += chr.len_utf8() as u32;
+			Ok(start)
+		} else {
+			let position = self.get_start().with_length(chr.len_utf8());
+			let reason = ParseErrors::UnexpectedCharacter {
+				expected: &[chr],
+				found: current.chars().next(),
+			};
+			Err(ParseError::new(reason, position))
+		}
+	}
+
+	pub fn expect(&mut self, chr: char) -> Result<source_map::End, ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(chr) {
+			self.head += chr.len_utf8() as u32;
+			Ok(source_map::End(self.head))
+		} else {
+			let position = self.get_start().with_length(chr.len_utf8());
+			let reason = ParseErrors::UnexpectedCharacter {
+				expected: &[chr],
+				found: current.chars().next(),
+			};
+			Err(ParseError::new(reason, position))
+		}
+	}
+
+	pub fn expect_operator(&mut self, operator: &'static str) -> Result<(), ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(operator) {
+			self.head += operator.len() as u32;
+			Ok(())
+		} else {
+			let trailing = utilities::next_empty_occurance(current);
+			let position = self.get_start().with_length(trailing);
+			let found = &current[..trailing];
+			let reason = ParseErrors::ExpectedOperator { expected: operator, found };
+			Err(ParseError::new(reason, position))
+			// let position = self.get_start().with_length(chr.len_utf8());
+			// let reason = ParseErrors::UnexpectedCharacter {
+			// 	expected: &[chr],
+			// 	found: current.chars().next().unwrap(),
+			// };
+			// Err(ParseError::new(reason, position))
+		}
+	}
+
+	pub fn expect_keyword(&mut self, str: &'static str) -> Result<source_map::Start, ParseError> {
+		self.skip();
+		let current = self.get_current();
+		if current.starts_with(str) {
+			let start = source_map::Start(self.head);
+			self.head += str.len() as u32;
+			Ok(start)
+		} else {
+			let found = &current[..utilities::next_empty_occurance(current)];
+			let position = self.get_start().with_length(found.len());
+			let reason = ParseErrors::ExpectedKeyword { expected: str, found };
+			Err(ParseError::new(reason, position))
+		}
+	}
+
+	pub fn is_no_advance(&mut self, chr: char) -> Result<(), ()> {
+		if self.get_current().starts_with(chr) {
+			Ok(())
+		} else {
+			Err(())
+		}
+	}
+
+	#[must_use]
+	pub fn is_one_of<'b>(&self, items: &[&'b str]) -> Option<&'b str> {
+		let current = self.get_current();
+		for item in items {
+			if current.starts_with(item) {
+				return Some(item);
+			}
+		}
+		None
+	}
+
+	// Does not advance
+	#[must_use]
+	pub fn is_one_of_operators<'b>(&self, operators: &'static [&'b str]) -> Option<&'b str> {
+		let current = self.get_current();
+		for item in operators {
+			if current.starts_with(item) {
+				return Some(item);
+			}
+		}
+		None
+	}
+
+	#[must_use]
+	pub fn starts_with(&self, chr: char) -> bool {
+		self.get_current().starts_with(chr)
+	}
+
+	#[must_use]
+	pub fn starts_with_slice(&self, slice: &str) -> bool {
+		self.get_current().starts_with(slice)
+	}
+
+	/// Can't do `-` and `+` because they are valid expression prefixed
+	/// TODO `.` if not number etc.
+	#[must_use]
+	pub fn starts_with_expression_delimiter(&self) -> bool {
+		let current = self.get_current();
+		IntoIterator::into_iter(["=", ",", ":", "?", "]", ")", "}", ";"])
+			.any(|expression_delimiter| current.starts_with(expression_delimiter))
+	}
+
+	#[must_use]
+	pub fn starts_with_statement_or_declaration_on_new_line(&self) -> bool {
+		let current = self.get_current();
+		if self.state.last_new_lines > 0 {
+			// `class` and `function` are actual expressions...
+			let statement_or_declaration_prefixes =
+				&["const", "let", "function", "class", "if", "for", "while"];
+			for prefix in statement_or_declaration_prefixes {
+				// Starts with prefix and is not other identifer
+				let not_identifer = current.starts_with(prefix)
+					&& !current[prefix.len()..].starts_with(utilities::is_valid_identifier);
+				if not_identifer {
+					return true;
+				}
+			}
+			false
+		} else {
+			false
+		}
+	}
+
+	pub fn is_operator(&mut self, operator: &str) -> bool {
+		self.skip();
+		self.starts_with_slice(operator)
+	}
+
+	pub fn is_operator_advance(&mut self, operator: &str) -> bool {
+		self.skip();
+		let current = self.get_current();
+		let matches = current.starts_with(operator);
+		if matches {
+			self.state.last_new_lines = 0;
+			self.head += operator.len() as u32;
+		}
+		matches
+	}
+
+	#[must_use]
+	pub fn is_finished(&self) -> bool {
+		self.get_current().is_empty()
+	}
+
+	#[must_use]
+	pub fn get_start(&self) -> source_map::Start {
+		source_map::Start(self.head)
+	}
+
+	#[must_use]
+	pub fn get_end(&self) -> source_map::End {
+		source_map::End(self.head)
+	}
+
+	pub fn advance(&mut self, count: u32) {
+		self.state.last_new_lines = 0;
+		self.head += count;
+	}
+
+	pub fn parse_identifier(
+		&mut self,
+		location: &'static str,
+		check_reserved: bool,
+	) -> Result<&'a str, ParseError> {
+		enum State {
+			Standard,
+			StartOfUnicode,
+			UnicodeEscape(u8),
+			UnicodeBracedEscape { first_bracket: bool },
+		}
+
+		self.skip();
+		let current = self.get_current();
+		let start = self.get_start();
+		let mut iter = current.char_indices();
+		let mut state = State::Standard;
+		if let Some((_, chr)) = iter.next() {
+			if let '\\' = chr {
+				state = State::StartOfUnicode;
+			} else {
+				// Note `is_alphabetic` here
+				let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
+				if !first_is_valid {
+					return Err(ParseError::new(
+						ParseErrors::ExpectedIdentifier { location },
+						start.with_length(chr.len_utf8()),
+					));
+				}
+			}
+		} else {
+			return Err(ParseError::new(
+				ParseErrors::ExpectedIdentifier { location },
+				start.with_length(0),
+			));
+		}
+
+		for (idx, chr) in iter {
+			match state {
+				State::UnicodeEscape(steps) => {
+					if !matches!(chr, '0'..='9' | 'A'..='F') {
+						return Err(ParseError::new(
+							ParseErrors::InvalidUnicodeCodePointInIdentifier,
+							start.with_length(idx + chr.len_utf8()),
+						));
+					}
+					if steps == 1 {
+						state = State::Standard;
+					} else {
+						state = State::UnicodeEscape(steps - 1);
+					}
+				}
+				State::UnicodeBracedEscape { ref mut first_bracket } => {
+					if *first_bracket {
+						if chr == '}' {
+							state = State::Standard;
+						} else if !matches!(chr, '0'..='9' | 'A'..='F') {
+							return Err(ParseError::new(
+								ParseErrors::InvalidUnicodeCodePointInIdentifier,
+								start.with_length(idx + chr.len_utf8()),
+							));
+						}
+					} else if chr == '{' {
+						*first_bracket = true;
+					} else {
+						return Err(ParseError::new(
+							ParseErrors::InvalidUnicodeCodePointInIdentifier,
+							start.with_length(idx + chr.len_utf8()),
+						));
+					}
+				}
+				State::StartOfUnicode => {
+					if let 'u' = chr {
+						let next_char = current[(idx + 1)..].chars().next();
+						state = if let Some('{') = next_char {
+							State::UnicodeBracedEscape { first_bracket: false }
+						} else if let Some('0'..='9' | 'A'..='F') = next_char {
+							State::UnicodeEscape(4)
+						} else {
+							return Err(ParseError::new(
+								ParseErrors::InvalidUnicodeCodePointInIdentifier,
+								start.with_length(idx + chr.len_utf8()),
+							));
+						};
+					} else {
+						return Err(ParseError::new(
+							ParseErrors::InvalidUnicodeCodePointInIdentifier,
+							start.with_length(idx + chr.len_utf8()),
+						));
+					}
+				}
+				State::Standard => {
+					if let '\\' = chr {
+						state = State::StartOfUnicode;
+					} else {
+						// Note `is_alphanumeric` here
+						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
+						if !is_valid {
+							let value = &current[..idx];
+							let is_invalid = check_reserved
+								&& !crate::lexer::utilities::is_valid_variable_identifier(value);
+							let result = if is_invalid {
+								Err(ParseError::new(
+									ParseErrors::ReservedIdentifier,
+									start.with_length(value.len()),
+								))
+							} else {
+								self.head += idx as u32;
+								Ok(value)
+							};
+							return result;
+						}
+					}
+				}
+			}
+		}
+
+		if !matches!(state, State::Standard) {
+			return Err(ParseError::new(
+				ParseErrors::InvalidUnicodeCodePointInIdentifier,
+				start.with_length(current.len()),
+			));
+		}
+
+		// If left over
+		let is_invalid =
+			check_reserved && !crate::lexer::utilities::is_valid_variable_identifier(current);
+		if is_invalid {
+			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(current.len())))
+		} else {
+			self.head += current.len() as u32;
+			Ok(current)
+		}
+	}
+
+	// Will append the length on `until`
+	pub fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
+		let current = self.get_current();
+		for (idx, _) in current.char_indices() {
+			if current[idx..].starts_with(until) {
+				self.head += (idx + until.len()) as u32;
+				// TODO temp fix
+				if let "\n" = until {
+					self.head -= 1;
+				}
+				return Ok(&current[..idx]);
+			}
+		}
+
+		// Fix for at the end stuff
+		if let "\n" = until {
+			self.head += current.len() as u32;
+			Ok(current)
+		} else {
+			Err(())
+		}
+	}
+
+	// For comments etc
+	pub fn parse_until_no_advance(&mut self, until: &str) -> Result<&'a str, ()> {
+		let current = self.get_current();
+		for (idx, _) in current.char_indices() {
+			if current[idx..].starts_with(until) {
+				self.head += idx as u32;
+				return Ok(&current[..idx]);
+			}
+		}
+		Err(())
+	}
+
+	// For JSX attributes and content. Also returns which one of `possibles` matched
+	pub fn parse_until_one_of(
+		&mut self,
+		possibles: &[&'static str],
+	) -> Result<(&'a str, &'static str), ()> {
+		let current = self.get_current();
+		for (i, _) in current.char_indices() {
+			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
+				self.head += (i + until.len()) as u32;
+				return Ok((&current[..i], until));
+			}
+		}
+		Err(())
+	}
+
+	/// Similar to `parse_until_one_of`. Does not add the matched lenght to head
+	pub fn parse_until_one_of_no_advance(
+		&mut self,
+		possibles: &[&'static str],
+	) -> Result<(&'a str, &'static str), ()> {
+		self.state.last_new_lines = 0;
+		let current = self.get_current();
+		for (i, chr) in current.char_indices() {
+			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
+				self.head += i as u32;
+				let content = &current[..i];
+				// self.state.last_new_lines =
+				//    content.chars().filter(|char| matches!(char, '\n')).count() as u32;
+				return Ok((content, until));
+			}
+			if let '\n' = chr {
+				self.state.last_new_lines += 1;
+			}
+		}
+		Err(())
+	}
+
+	#[must_use]
+	pub fn starts_with_string_delimeter(&self) -> bool {
+		self.starts_with('"') || self.starts_with('\'')
+	}
+
+	pub fn parse_string_literal(&mut self) -> Result<(&'a str, crate::Quoted), ParseError> {
+		let current = self.get_current();
+		let mut chars = current.char_indices();
+		let quoted = match chars.next() {
+			Some((_, '"')) => crate::Quoted::Double,
+			Some((_, '\'')) => crate::Quoted::Single,
+			_ => {
+				let found = &current[..crate::lexer::utilities::next_empty_occurance(current)];
+				return Err(ParseError::new(
+					ParseErrors::ExpectedOneOfItems { expected: &["\"", "'"], found },
+					self.get_start().with_length(1),
+				));
+			}
+		};
+		let mut escaped = false;
+		for (idx, chr) in chars {
+			if escaped {
+				escaped = false;
+				continue;
+			} else if let '\\' = chr {
+				escaped = true;
+				continue;
+			}
+
+			if let (crate::Quoted::Double, '"') | (crate::Quoted::Single, '\'') = (quoted, chr) {
+				// TODO double check
+				let content = &current[1..idx];
+				self.head += idx as u32 + 1;
+				return Ok((content, quoted));
+			}
+
+			if let '\n' = chr {
+				return Err(ParseError::new(
+					ParseErrors::NoNewLinesInString,
+					self.get_start().with_length(idx),
+				));
+			}
+		}
+		Err(ParseError::new(
+			ParseErrors::UnexpectedEnd,
+			self.get_start().with_length(self.get_current().len()),
+		))
+	}
+
+	#[must_use]
+	pub fn starts_with_number(&self) -> bool {
+		let bytes = self.get_current().as_bytes();
+		if let Some(start) = bytes.first() {
+			if start.is_ascii_digit() {
+				true
+			} else if let b'.' = start {
+				if let Some(after) = bytes.get(1) {
+					after.is_ascii_digit() || *after == b'_'
+				} else {
+					false
+				}
+			} else {
+				false
+			}
+		} else {
+			false
+		}
+	}
+
+	// TODO errors + some parts are weird
+	pub fn parse_number_literal(
+		&mut self,
+	) -> Result<(crate::number::NumberRepresentation, u32), ParseError> {
+		use std::str::FromStr;
+
+		enum NumberLiteralType {
+			BinaryLiteral,
+			/// strict mode done at the parse level
+			OctalLiteral,
+			HexadecimalLiteral,
+			/// Base 10
+			Decimal {
+				/// has decimal point
+				fractional: bool,
+			},
+			Exponent,
+		}
+
+		let current = self.get_current();
+		let mut chars = current.char_indices();
+
+		let mut state = match chars.next().map(|(_idx, chr)| chr) {
+			Some('0') if current.as_bytes().get(1).is_some_and(|b| (b'0'..=b'7').contains(b)) => {
+				// TODO strict mode should be done in the parser stage (as that is where context is)
+				NumberLiteralType::OctalLiteral
+			}
+			Some('0'..='9') => NumberLiteralType::Decimal { fractional: false },
+			Some('.') => NumberLiteralType::Decimal { fractional: true },
+			Some(_) | None => {
+				return Err(ParseError::new(
+					ParseErrors::InvalidNumber,
+					self.get_start().with_length(1),
+				))
+			}
+		};
+
+		for (idx, chr) in chars {
+			match chr {
+				'n' => {
+					return if let NumberLiteralType::Decimal { fractional: false } = state {
+						let num_slice = current[..idx].to_owned();
+						let number = crate::number::NumberRepresentation::BigInt(
+							crate::number::NumberSign::Positive,
+							num_slice,
+						);
+						let length = (idx + 'n'.len_utf16()) as u32;
+						self.head += length;
+						Ok((number, length))
+					} else {
+						Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						))
+					};
+				}
+				// For binary/hexadecimal/octal literals
+				'b' | 'B' | 'x' | 'X' | 'o' | 'O' if idx == 1 => {
+					if current.starts_with('0') {
+						state = match chr {
+							'b' | 'B' => NumberLiteralType::BinaryLiteral,
+							'o' | 'O' => NumberLiteralType::OctalLiteral,
+							'x' | 'X' => NumberLiteralType::HexadecimalLiteral,
+							_ => unreachable!(),
+						}
+					} else {
+						// LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
+						return Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						));
+					}
+				}
+				'0'..='9' | 'a'..='f' | 'A'..='F' => match state {
+					NumberLiteralType::BinaryLiteral => {
+						if !matches!(chr, '0' | '1') {
+							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
+						}
+					}
+					NumberLiteralType::OctalLiteral => {
+						if !matches!(chr, '0'..='7') {
+							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
+						}
+					}
+					// Handling for 'e' & 'E'
+					NumberLiteralType::Decimal { ref fractional } => {
+						if matches!(chr, 'e' | 'E')
+							&& !(*fractional || current[..idx].ends_with('_'))
+						{
+							state = NumberLiteralType::Exponent;
+						} else if !chr.is_ascii_digit() {
+							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
+						}
+					}
+					NumberLiteralType::Exponent => {
+						if !chr.is_ascii_digit() {
+							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
+						}
+					}
+					// all above allowed
+					NumberLiteralType::HexadecimalLiteral => {}
+				},
+				'.' => {
+					if let NumberLiteralType::Decimal { ref mut fractional } = state {
+						// Return if already fractional. This is valid syntax: `1..toString()`
+						if *fractional {
+							let num_slice = &current[..idx];
+							let number = crate::number::NumberRepresentation::from_str(num_slice);
+							let number = number.unwrap();
+							let length = idx as u32;
+							self.head += length;
+							return Ok((number, length));
+						}
+
+						if current[..idx].ends_with(['_']) {
+							// (LexingErrors::InvalidUnderscore)
+							return Err(ParseError::new(
+								ParseErrors::InvalidNumber,
+								self.get_start().with_length(idx),
+							));
+						}
+
+						*fractional = true;
+					} else {
+						// (LexingErrors::NumberLiteralCannotHaveDecimalPoint);
+						return Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						));
+					}
+				}
+				'_' => {
+					let invalid = match &state {
+						NumberLiteralType::BinaryLiteral |
+						NumberLiteralType::OctalLiteral |
+						// Second `(idx - start) < 1` is for octal with prefix 0
+						NumberLiteralType::HexadecimalLiteral => {
+							if idx == 2 {
+								current[..idx].ends_with(['b', 'B', 'x', 'X', 'o', 'O'])
+							} else {
+								false
+							}
+						},
+						NumberLiteralType::Decimal { .. } => current[..idx].ends_with('.') || &current[..idx] == "0",
+						NumberLiteralType::Exponent => current[..idx].ends_with(['e', 'E']),
+					};
+					if invalid {
+						// (LexingErrors::InvalidUnderscore);
+						return Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(idx),
+						));
+					}
+				}
+				// `10e-5` is a valid literal
+				'-' if matches!(state, NumberLiteralType::Exponent if current[..idx].ends_with(['e', 'E'])) =>
+					{}
+				_chr => {
+					let num_slice = &current[..idx];
+					let length = idx;
+					return match crate::number::NumberRepresentation::from_str(num_slice) {
+						Ok(number) => {
+							self.head += length as u32;
+							Ok((number, length as u32))
+						}
+						Err(_) => Err(ParseError::new(
+							ParseErrors::InvalidNumber,
+							self.get_start().with_length(length),
+						)),
+					};
+				}
+			}
+		}
+
+		// Fix if don't find end
+		let length = current.len();
+		match crate::number::NumberRepresentation::from_str(current) {
+			Ok(number) => {
+				self.head += length as u32;
+				Ok((number, length as u32))
+			}
+			Err(_) => Err(ParseError::new(
+				ParseErrors::InvalidNumber,
+				self.get_start().with_length(length),
+			)),
+		}
+	}
+
+	/// Returns content and flags. Flags can be empty
+	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, &'a str), ParseError> {
+		let mut escaped = false;
+		let mut in_set = false;
+		self.skip();
+		let current = self.get_current();
+		let mut chars = current.char_indices();
+		assert!(chars.next().is_some_and(|(_idx, chr)| chr == '/'));
+		let start = self.get_start();
+
+		let mut regex_content = 1;
+		let mut found_end_slash = false;
+
+		for (idx, chr) in chars.by_ref() {
+			match chr {
+				'/' if !escaped && !in_set => {
+					regex_content = idx;
+					found_end_slash = true;
+					break;
+				}
+				'\\' if !escaped => {
+					escaped = true;
+				}
+				'[' => {
+					in_set = true;
+				}
+				']' if in_set => {
+					in_set = false;
+				}
+				'\n' => {
+					return Err(ParseError::new(
+						ParseErrors::InvalidRegularExpression,
+						start.with_length(idx),
+					));
+				}
+				_ => {
+					escaped = false;
+				}
+			}
+		}
+
+		if !found_end_slash {
+			return Err(ParseError::new(
+				ParseErrors::InvalidRegularExpression,
+				start.with_length(current.len()),
+			));
+		}
+
+		let regex = &current[1..regex_content];
+		self.head += 2 + regex.len() as u32;
+		let regex_end = regex_content + '/'.len_utf8();
+
+		let first_non_char = chars
+			.find_map(|(idx, chr)| (!chr.is_alphabetic()).then_some(idx))
+			.unwrap_or(current.len());
+
+		let regex_flags = &current[regex_end..first_non_char];
+
+		let invalid_flag =
+			regex_flags.chars().any(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'));
+		if invalid_flag {
+			Err(ParseError::new(
+				ParseErrors::InvalidRegexFlag,
+				self.get_start().with_length(regex_flags.len()),
+			))
+		} else {
+			self.head += regex_flags.len() as u32;
+			Ok((regex, regex_flags))
+		}
+	}
+
+	/// Expects that `//` or `/*` has been parsed
+	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&str, ParseError> {
+		if is_multiline {
+			self.parse_until("*/").map_err(|()| {
+				// TODO might be a problem
+				let position = self.get_start().with_length(self.get_current().len());
+				ParseError::new(ParseErrors::UnexpectedEnd, position)
+			})
+		} else {
+			Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
+		}
+	}
+
+	/// Note scans after multiple comments
+	#[must_use]
+	pub fn after_comment_literals(&self) -> &str {
+		let mut current = self.get_current().trim_start();
+		loop {
+			if current.starts_with("//") {
+				current = current[current.find('\n').unwrap_or(current.len())..].trim_start();
+			} else if current.starts_with("/*") {
+				current = current[current.find("*/").unwrap_or(current.len())..].trim_start();
+			} else {
+				return current;
+			}
+		}
+	}
+
+	// TODO also can exit if there is `=` or `:` and = 0 in some examples
+	#[must_use]
+	pub fn after_brackets(&self) -> &'a str {
+		use crate::Quoted;
+
+		enum State {
+			None,
+			Comment,
+			StringLiteral { escaped: bool, quoted: Quoted },
+			// TemplateLiteral { escaped: bool },
+			// RegexLiteral { escaped: bool },
+			MultilineComment,
+		}
+
+		// let mut template_literal_depth = 0;
+
+		let current = self.get_current();
+		let mut bracket_count: u32 = 0;
+		let mut open_chevrons = 0u64;
+		let mut state = State::None;
+
+		// TODO account for string literals and comments
+		// TODO account for utf16
+		for (idx, chr) in current.char_indices() {
+			match state {
+				State::None => {
+					if let '(' | '{' | '[' | '<' = chr {
+						open_chevrons |= u64::from(chr == '<');
+						open_chevrons <<= 1;
+						bracket_count += 1;
+					} else if let ')' | '}' | ']' | '>' = chr {
+						// TODO WIP
+						open_chevrons >>= 1;
+						let last_was_open_chevron = (open_chevrons & 1) != 0;
+						if last_was_open_chevron {
+							if let ')' | '}' | ']' = chr {
+								// Extra removal
+								open_chevrons >>= 1;
+								bracket_count = bracket_count.saturating_sub(1);
+							}
+						} else if let '>' = chr {
+							continue;
+						}
+
+						bracket_count = bracket_count.saturating_sub(1);
+						if bracket_count == 0 {
+							return current[(idx + 1)..].trim_start();
+						}
+					} else if let '"' = chr {
+						state = State::StringLiteral { escaped: false, quoted: Quoted::Double };
+					} else if let '\'' = chr {
+						state = State::StringLiteral { escaped: false, quoted: Quoted::Single };
+					} else if let '/' = chr {
+						if current[idx..].starts_with("/*") {
+							state = State::MultilineComment;
+						} else if current[idx..].starts_with("//") {
+							state = State::Comment;
+						}
+					}
+				}
+				State::Comment => {
+					if let '\n' = chr {
+						state = State::None;
+					}
+				}
+				State::StringLiteral { ref mut escaped, quoted } => {
+					if *escaped {
+						*escaped = false;
+						continue;
+					}
+					if let '\\' = chr {
+						*escaped = true;
+					} else if let (Quoted::Double, '"') | (Quoted::Single, '\'') = (quoted, chr) {
+						state = State::None;
+					}
+				}
+				State::MultilineComment => {
+					if current[idx..].starts_with("*/") {
+						state = State::None;
+					}
+				}
+			}
+		}
+
+		// Return empty slice
+		Default::default()
+	}
+
+	#[must_use]
+	pub fn after_identifier(&self) -> &'a str {
+		let current = self.get_current();
+
+		let mut chars = current.as_bytes().iter().enumerate();
+		for (idx, chr) in chars.by_ref() {
+			if !chr.is_ascii_whitespace() {
+				// test here as iteration consumed
+				if chr.is_ascii_alphanumeric() {
+					break;
+				}
+
+				return current[idx..].trim_start();
+			}
+		}
+
+		for (idx, chr) in chars {
+			if !chr.is_ascii_alphanumeric() {
+				return current[idx..].trim_start();
+			}
+		}
+
+		// Return empty slice
+		Default::default()
 	}
 
 	// TODO WIP
-	const DEFAULT_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
-		interpolation_depth: 0,
-		tag_depth: 0,
-		state: JSXLexingState::ExpectingOpenChevron,
-		no_inner_tags_or_expressions: false,
-		is_self_closing_tag: false,
-	};
-	const FIRST_CHEVRON_JSX_LEXING_STATE: LexingState = LexingState::JSXLiteral {
-		interpolation_depth: 0,
-		tag_depth: 0,
-		state: JSXLexingState::TagName {
-			direction: JSXTagNameDirection::Opening,
-			lexed_start: false,
-		},
-		no_inner_tags_or_expressions: false,
-		is_self_closing_tag: false,
-	};
+	#[must_use]
+	pub fn after_variable_start(&self) -> &'a str {
+		let mut current = self.get_current().trim_start();
+		if current.starts_with("const") {
+			current = current["const".len()..].trim_start();
+		} else if current.starts_with("let") {
+			current = current["let".len()..].trim_start();
+		} else if current.starts_with("var") {
+			current = current["var".len()..].trim_start();
+		}
 
-	if script.len() > u32::MAX as usize {
-		return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
-	}
-
-	let mut state: LexingState =
-		if options.top_level_html { DEFAULT_JSX_LEXING_STATE } else { LexingState::None };
-
-	// Used to go back to previous state if was in template literal or JSX literal
-	let mut state_stack: Vec<LexingState> = Vec::new();
-
-	// Used to index the slice (thus no offset)
-	let mut start: usize = 0;
-	let offset = offset.unwrap_or_default();
-
-	// This is a sneaky technique for regex and JSX literals. It seems to be almost impossible to determine
-	// whether the forward slash in: `/ x` should be a division symbol token or the start of regex literal. It is import
-	// to discern whether it is regex or division at this point as regex literal needs to be parsed as a literal rather
-	// than a sequence of tokens. Similarly for JSX is a < a less than comparison or the start of a tag. This variable
-	// should be set to true if the last pushed token was `=`, `return` etc and set to else set to false.
-	// TODO this doesn't work see #165
-	let mut expect_expression = true;
-
-	macro_rules! return_err {
-		($err:expr) => {{
-			sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
-			return Err((
-				$err,
-				Span {
-					start: start as u32 + offset,
-					// TODO + 1
-					end: start as u32 + offset,
-					source: (),
-				},
-			));
-		}};
-	}
-
-	let mut characters = script.char_indices();
-	if script.starts_with("#!") {
-		for (idx, c) in characters.by_ref() {
-			if c == '\n' {
-				sender.push(Token(
-					TSXToken::HashBangComment(script[2..idx].to_owned()),
-					TokenStart::new(0),
-				));
-				break;
+		if current.starts_with('{') || current.starts_with('[') {
+			let mut paren_count: u32 = 0;
+			// TODO account for string literals and comments
+			for (idx, chr) in current.as_bytes().iter().enumerate() {
+				if let b'(' | b'{' | b'[' | b'<' = chr {
+					paren_count += 1;
+				} else if let b')' | b'}' | b']' | b'>' = chr {
+					paren_count = paren_count.saturating_sub(1);
+					if paren_count == 0 {
+						return current[(idx + 1)..].trim_start();
+					}
+				}
 			}
+		} else {
+			// let mut paren_count: u32 = 0;
+			let mut chars = current.as_bytes().iter().enumerate();
+			for (_, chr) in chars.by_ref() {
+				if !chr.is_ascii_whitespace() {
+					break;
+				}
+			}
+			for (idx, chr) in chars {
+				if !chr.is_ascii_alphanumeric() {
+					return current[idx..].trim_start();
+				}
+			}
+		}
+		// Return empty slice
+		Default::default()
+	}
+
+	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
+	pub fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
+		// TODO order
+		let semi_colon_like = self.starts_with_slice("//")
+			|| self.is_operator_advance(";")
+			|| self.last_was_from_new_line() > 0
+			|| self.is_operator("}")
+			// TODO what about spaces
+			|| self.starts_with_slice("\n")
+			|| self.is_finished();
+
+		if semi_colon_like {
+			Ok(())
+		} else {
+			let current = self.get_current();
+			let until_empty = crate::lexer::utilities::next_empty_occurance(current);
+			let position = self.get_start().with_length(until_empty);
+			let error =
+				ParseErrors::ExpectedOperator { expected: ";", found: &current[..until_empty] };
+			Err(ParseError::new(error, position))
 		}
 	}
 
-	if options.top_level_html && script.starts_with("<!DOCTYPE html>") {
-		for (_idx, c) in characters.by_ref() {
-			if c == '>' {
-				sender.push(Token(TSXToken::DocTypeHTML, TokenStart::new(0)));
-				break;
-			}
-		}
+	pub fn is_semi_colon(&mut self) -> bool {
+		self.skip();
+		self.starts_with('}')
+			|| self.starts_with(';')
+			|| self.last_was_from_new_line() > 0
+			|| self.get_current().is_empty()
 	}
 
-	for (idx, chr) in characters {
-		// dbg!(chr, &state);
-
-		// Sets current parser state and updates start track
-		macro_rules! set_state {
-			($s:expr) => {{
-				start = idx;
-				state = $s;
-				expect_expression = false;
-			}};
-
-			($s:expr, EXPECT_EXPRESSION: $v:expr) => {{
-				start = idx;
-				state = $s;
-				expect_expression = $v;
-			}};
-		}
-
-		// Pushes a new token
-		macro_rules! push_token {
-			($t:expr $(,)?) => {{
-				let res = sender.push(Token($t, TokenStart::new(start as u32 + offset)));
-				if !res {
-					return Ok(());
-				}
-			}};
-		}
-
-		match state {
-			LexingState::Number(ref mut literal_type) => {
-				match chr {
-					_ if matches!(literal_type, NumberLiteralType::BigInt) => {
-						if is_number_delimiter(chr) {
-							// Content already checked
-							push_token!(TSXToken::NumberLiteral(script[start..idx].to_owned()));
-							set_state!(LexingState::None);
-						} else {
-							return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
-						}
-					}
-					// For binary/hexadecimal/octal literals
-					'b' | 'B' | 'x' | 'X' | 'o' | 'O' if start + 1 == idx => {
-						if script[start..].starts_with('0') {
-							*literal_type = match chr {
-								'b' | 'B' => NumberLiteralType::BinaryLiteral,
-								'o' | 'O' => NumberLiteralType::OctalLiteral,
-								'x' | 'X' => NumberLiteralType::HexadecimalLiteral,
-								_ => unreachable!(),
-							}
-						} else {
-							return_err!(
-								LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
-							);
-						}
-					}
-					'0'..='9' | 'a'..='f' | 'A'..='F' => match literal_type {
-						NumberLiteralType::BinaryLiteral => {
-							if !matches!(chr, '0' | '1') {
-								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							}
-						}
-						NumberLiteralType::OctalLiteral => {
-							if !matches!(chr, '0'..='7') {
-								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							}
-						}
-						// Handling for 'e' & 'E'
-						NumberLiteralType::Decimal { fractional } => {
-							if matches!(chr, 'e' | 'E')
-								&& !(*fractional || script[..idx].ends_with('_'))
-							{
-								*literal_type = NumberLiteralType::Exponent;
-							} else if !chr.is_ascii_digit() {
-								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							}
-						}
-						NumberLiteralType::Exponent => {
-							if !chr.is_ascii_digit() {
-								return_err!(LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							}
-						}
-						// all above allowed
-						NumberLiteralType::HexadecimalLiteral => {}
-						NumberLiteralType::BigInt => unreachable!(),
-					},
-					'.' => {
-						if let NumberLiteralType::Decimal { fractional } = literal_type {
-							if script[..idx].ends_with(['_']) {
-								return_err!(LexingErrors::InvalidUnderscore)
-							} else if *fractional {
-								// Catch for spread token `...`
-								if start + 1 == idx {
-									let automaton = TSXToken::new_automaton();
-									let derive_finite_automaton::GetNextResult::NewState(
-										dot_state_one,
-									) = automaton.get_next('.')
-									else {
-										unreachable!()
-									};
-									let derive_finite_automaton::GetNextResult::NewState(
-										dot_state_two,
-									) = dot_state_one.get_next('.')
-									else {
-										unreachable!()
-									};
-									state = LexingState::Symbol(dot_state_two);
-								} else {
-									return_err!(LexingErrors::SecondDecimalPoint);
-								}
-							} else {
-								*fractional = true;
-							}
-						} else {
-							return_err!(LexingErrors::NumberLiteralCannotHaveDecimalPoint);
-						}
-					}
-					'_' => {
-						let invalid = match literal_type {
-							NumberLiteralType::BinaryLiteral |
-							NumberLiteralType::OctalLiteral |
-							// Second `(idx - start) < 1` is for octal with prefix 0
-							NumberLiteralType::HexadecimalLiteral => {
-								if start + 2 == idx {
-									script[..idx].ends_with(['b', 'B', 'x', 'X', 'o' , 'O'])
-								} else {
-									false
-								}
-							},
-							NumberLiteralType::Decimal { .. } => script[..idx].ends_with('.') || &script[start..idx] == "0",
-							NumberLiteralType::Exponent => script[..idx].ends_with(['e', 'E']),
-							NumberLiteralType::BigInt => false
-						};
-						if invalid {
-							return_err!(LexingErrors::InvalidUnderscore);
-						}
-					}
-					'n' if matches!(
-						literal_type,
-						NumberLiteralType::Decimal { fractional: false }
-					) =>
-					{
-						*literal_type = NumberLiteralType::BigInt;
-					}
-					// `10e-5` is a valid literal
-					'-' if matches!(literal_type, NumberLiteralType::Exponent if script[..idx].ends_with(['e', 'E'])) =>
-						{}
-					chr => {
-						if is_number_delimiter(chr) {
-							// Note not = as don't want to include chr
-							let num_slice = &script[start..idx];
-							if num_slice.trim_end() == "."
-								|| num_slice.ends_with(['x', 'X', 'o', 'O', '_', '-'])
-								|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
-									&& num_slice.ends_with(['e', 'E', 'b', 'B']))
-							{
-								return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
-							}
-							push_token!(TSXToken::NumberLiteral(num_slice.to_owned()));
-							set_state!(LexingState::None);
-						} else {
-							return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
-						}
-					}
-				}
-			}
-			LexingState::Symbol(symbol_state) => {
-				// TODO if number and state == first dot then do number parsing (should be
-				// done when derive finite automaton gets pattern support)
-				match symbol_state.get_next(chr) {
-					GetNextResult::Result { result, ate_character } => {
-						// Handle comments
-						match result {
-							TSXToken::Comment(_) => {
-								state = LexingState::SingleLineComment;
-								continue;
-							}
-							TSXToken::MultiLineComment(_) => {
-								state = LexingState::MultiLineComment { last_char_was_star: false };
-								continue;
-							}
-							_ => {}
-						}
-						state = LexingState::None;
-						expect_expression = result.is_expression_prefix();
-						if ate_character {
-							push_token!(result);
-							start = idx + chr.len_utf8();
-							continue;
-						}
-
-						push_token!(result);
-						start = idx;
-					}
-					GetNextResult::NewState(new_state) => {
-						state = LexingState::Symbol(new_state);
-					}
-					GetNextResult::InvalidCharacter(err) => {
-						return_err!(LexingErrors::UnexpectedCharacter(err));
-					}
-				}
-			}
-			LexingState::Identifier => match chr {
-				'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '$' => {}
-				_ => {
-					let token = TSXToken::from_slice(&script[start..idx]);
-					let is_expression_prefix = token.is_expression_prefix();
-					push_token!(token);
-					set_state!(LexingState::None, EXPECT_EXPRESSION: is_expression_prefix);
-				}
-			},
-			LexingState::String { ref mut double_quoted, ref mut escaped } => match chr {
-				'\n' => {
-					return_err!(LexingErrors::NewLineInStringLiteral);
-				}
-				'\'' if !*double_quoted && !*escaped => {
-					push_token!(TSXToken::StringLiteral(
-						script[(start + 1)..idx].to_owned(),
-						Quoted::Single
-					));
-					state = LexingState::None;
-					start = idx + 1;
-					expect_expression = false;
-					continue;
-				}
-				'"' if *double_quoted && !*escaped => {
-					push_token!(TSXToken::StringLiteral(
-						script[(start + 1)..idx].to_owned(),
-						Quoted::Double
-					));
-					state = LexingState::None;
-					start = idx + 1;
-					expect_expression = false;
-					continue;
-				}
-				'\\' if !*escaped => {
-					*escaped = true;
-				}
-				_ => {
-					*escaped = false;
-				}
-			},
-			LexingState::SingleLineComment => {
-				if let '\n' = chr {
-					let content = &script[(start + 2)..idx];
-					if options.comments.should_add_comment(content) {
-						push_token!(TSXToken::Comment(content.trim_end().to_owned()));
-					}
-					set_state!(LexingState::None);
-					continue;
-				}
-			}
-			LexingState::MultiLineComment { ref mut last_char_was_star } => match chr {
-				'/' if *last_char_was_star => {
-					let content = &script[(start + 2)..(idx - 1)];
-					if options.comments.should_add_comment(content) {
-						push_token!(TSXToken::MultiLineComment(content.to_owned()));
-					}
-					set_state!(LexingState::None);
-					continue;
-				}
-				chr => {
-					*last_char_was_star = chr == '*';
-				}
-			},
-			LexingState::RegexLiteral {
-				ref mut escaped,
-				ref mut after_last_slash,
-				ref mut in_set,
-			} => {
-				if *after_last_slash {
-					if !chr.is_alphabetic() {
-						if start != idx {
-							push_token!(TSXToken::RegexFlagLiteral(script[start..idx].to_owned()));
-						}
-						set_state!(LexingState::None);
-					}
-				} else {
-					match chr {
-						'/' if start + 1 == idx => {
-							state = LexingState::SingleLineComment;
-							continue;
-						}
-						'*' if start + 1 == idx => {
-							state = LexingState::MultiLineComment { last_char_was_star: false };
-							continue;
-						}
-						'/' if !*escaped && !*in_set => {
-							push_token!(TSXToken::RegexLiteral(
-								script[(start + 1)..idx].to_owned()
-							));
-							*after_last_slash = true;
-							start = idx + 1;
-						}
-						'\\' if !*escaped => {
-							*escaped = true;
-						}
-						'[' => {
-							*in_set = true;
-						}
-						']' if *in_set => {
-							*in_set = false;
-						}
-						'\n' => {
-							return_err!(LexingErrors::ExpectedEndToRegexLiteral);
-						}
-						_ => {
-							*escaped = false;
-						}
-					}
-				}
-			}
-			LexingState::TemplateLiteral {
-				ref mut last_char_was_dollar,
-				ref mut interpolation_depth,
-				ref mut escaped,
-			} => match chr {
-				'$' if !*escaped => *last_char_was_dollar = true,
-				'{' if *last_char_was_dollar => {
-					if idx > start + 1 {
-						push_token!(TSXToken::TemplateLiteralChunk(
-							script[start..(idx - 1)].to_owned()
-						));
-					}
-					start = idx - 1;
-					push_token!(TSXToken::TemplateLiteralExpressionStart);
-					*interpolation_depth += 1;
-					*last_char_was_dollar = false;
-					state_stack.push(state);
-
-					start = idx + 1;
-					state = LexingState::None;
-					expect_expression = true;
-					continue;
-				}
-				'`' if !*escaped => {
-					if idx > start {
-						push_token!(TSXToken::TemplateLiteralChunk(script[start..idx].to_owned()));
-					}
-					start = idx;
-					push_token!(TSXToken::TemplateLiteralEnd);
-					start = idx + 1;
-					state = LexingState::None;
-					expect_expression = false;
-					continue;
-				}
-				'\\' => {
-					*last_char_was_dollar = false;
-					*escaped = true;
-				}
-				_ => {
-					*last_char_was_dollar = false;
-					*escaped = false;
-				}
-			},
-			LexingState::JSXLiteral {
-				ref mut interpolation_depth,
-				ref mut tag_depth,
-				ref mut no_inner_tags_or_expressions,
-				ref mut is_self_closing_tag,
-				state: ref mut jsx_state,
-			} => {
-				match jsx_state {
-					JSXLexingState::ExpectingOpenChevron => {
-						if chr == '<' {
-							set_state!(FIRST_CHEVRON_JSX_LEXING_STATE);
-						} else if !chr.is_whitespace() {
-							dbg!(chr);
-							return_err!(LexingErrors::ExpectedOpenChevron);
-						}
-					}
-					JSXLexingState::TagName { ref mut direction, ref mut lexed_start } => match chr
-					{
-						// Closing tag
-						'>' if *direction == JSXTagNameDirection::Closing => {
-							*tag_depth = match tag_depth.checked_sub(1) {
-								Some(value) => value,
-								None => {
-									return_err!(LexingErrors::UnbalancedJSXClosingTags);
-								}
-							};
-							if *lexed_start {
-								push_token!(TSXToken::JSXClosingTagName(
-									script[start..idx].trim().to_owned()
-								));
-							} else {
-								push_token!(TSXToken::JSXFragmentEnd);
-							}
-							// If JSX literal range has ended
-							if *tag_depth == 0 {
-								set_state!(LexingState::None);
-								continue;
-							}
-
-							start = idx + 1;
-							*jsx_state = JSXLexingState::Content;
-						}
-						// Fragment start
-						'>' if !*lexed_start => {
-							push_token!(TSXToken::JSXFragmentStart);
-							*jsx_state = JSXLexingState::Content;
-							start = idx + 1;
-							*tag_depth += 1;
-							continue;
-						}
-						// Tag name characters:
-						'A'..='Z' | 'a'..='z' | '0'..='9' => {
-							// Add the opening tag here as know it is not closing
-							if !*lexed_start {
-								match direction {
-									JSXTagNameDirection::Opening => {
-										push_token!(TSXToken::JSXOpeningTagStart);
-										start += 1;
-									}
-									JSXTagNameDirection::Closing => {
-										push_token!(TSXToken::JSXClosingTagStart);
-										start += 2;
-									}
-								}
-								*lexed_start = true;
-							}
-						}
-						'-' => {
-							if start + 1 == idx {
-								// TODO this is really the position rather the character
-								return_err!(LexingErrors::InvalidCharacterInJSXTag('-'))
-							}
-						}
-						// Runs if closing tag </div>
-						'/' if start + 1 == idx => {
-							*direction = JSXTagNameDirection::Closing;
-						}
-						// HTML comments!!!
-						'!' if start + 1 == idx => {
-							*jsx_state = JSXLexingState::Comment;
-						}
-						// Non-tag name character
-						chr => {
-							if *direction == JSXTagNameDirection::Closing {
-								return_err!(LexingErrors::ExpectedJSXEndTag);
-							}
-							let tag_name = script[start..idx].trim();
-							*is_self_closing_tag = html_tag_is_self_closing(tag_name);
-							*no_inner_tags_or_expressions =
-								html_tag_contains_literal_content(tag_name);
-							push_token!(TSXToken::JSXTagName(tag_name.to_owned()));
-							start = idx;
-							*tag_depth += 1;
-							match chr {
-								'/' if *is_self_closing_tag => {
-									*jsx_state = JSXLexingState::SelfClosingTagClose;
-								}
-								'>' => {
-									push_token!(TSXToken::JSXOpeningTagEnd);
-									start = idx + 1;
-									*jsx_state = if *no_inner_tags_or_expressions {
-										JSXLexingState::LiteralContent {
-											last_char_was_open_chevron: false,
-										}
-									} else {
-										JSXLexingState::Content
-									};
-									continue;
-								}
-								chr if chr.is_whitespace() => {
-									*jsx_state = JSXLexingState::AttributeKey;
-								}
-								chr => {
-									return_err!(LexingErrors::InvalidCharacterInJSXTag(chr));
-								}
-							}
-							start = idx + chr.len_utf8();
-						}
-					},
-					JSXLexingState::SelfClosingTagClose => {
-						if chr == '>' {
-							*tag_depth = match tag_depth.checked_sub(1) {
-								Some(value) => value,
-								None => {
-									return_err!(LexingErrors::UnbalancedJSXClosingTags);
-								}
-							};
-							push_token!(TSXToken::JSXSelfClosingTag);
-							start = idx + 1;
-							// If JSX literal range has ended
-							if *tag_depth == 0 {
-								set_state!(LexingState::None);
-							} else {
-								*jsx_state = JSXLexingState::Content;
-							}
-							continue;
-						}
-						return_err!(LexingErrors::ExpectedClosingChevronAtEndOfSelfClosingTag);
-					}
-					JSXLexingState::AttributeKey => match chr {
-						'=' => {
-							if start >= idx {
-								return_err!(LexingErrors::EmptyAttributeName);
-							}
-							let key_slice = script[start..idx].trim();
-							if !key_slice.is_empty() {
-								push_token!(TSXToken::JSXAttributeKey(key_slice.to_owned()));
-							}
-							start = idx;
-							push_token!(TSXToken::JSXAttributeAssign);
-							*jsx_state = JSXLexingState::AttributeEqual;
-							start = idx + 1;
-						}
-						'{' => {
-							push_token!(TSXToken::JSXExpressionStart);
-							*interpolation_depth += 1;
-							state_stack.push(state);
-							set_state!(LexingState::None, EXPECT_EXPRESSION: true);
-							continue;
-						}
-						'/' => {
-							*jsx_state = JSXLexingState::SelfClosingTagClose;
-						}
-						'>' => {
-							// Accounts for <div hidden>
-							if start < idx {
-								push_token!(TSXToken::JSXAttributeKey(
-									script[start..idx].to_owned()
-								));
-							}
-							if *is_self_closing_tag {
-								*tag_depth = match tag_depth.checked_sub(1) {
-									Some(value) => value,
-									None => {
-										return_err!(LexingErrors::UnbalancedJSXClosingTags);
-									}
-								};
-								push_token!(TSXToken::JSXSelfClosingTag);
-								start = idx + 1;
-								// If JSX literal range has ended
-								if *tag_depth == 0 {
-									set_state!(LexingState::None);
-								} else {
-									*jsx_state = JSXLexingState::Content;
-									*is_self_closing_tag = false;
-								}
-							} else {
-								push_token!(TSXToken::JSXOpeningTagEnd);
-								start = idx + 1;
-								*jsx_state = if *no_inner_tags_or_expressions {
-									JSXLexingState::LiteralContent {
-										last_char_was_open_chevron: false,
-									}
-								} else {
-									JSXLexingState::Content
-								};
-							}
-							continue;
-						}
-						chr if chr.is_whitespace() => {
-							if start < idx {
-								push_token!(TSXToken::JSXAttributeKey(
-									script[start..idx].to_owned()
-								));
-							}
-							start = idx + chr.len_utf8();
-						}
-						chr => {
-							let character_allowed = chr.is_alphanumeric()
-								|| chr == '-' || (options
-								.allow_unsupported_characters_in_jsx_attribute_keys
-								&& matches!(
-									chr,
-									'@' | ':' | '.' | '[' | ']' | '+' | '$' | '*' | '%'
-								));
-							if !character_allowed {
-								return_err!(LexingErrors::InvalidCharacterInAttributeKey(chr));
-							}
-						}
-					},
-					JSXLexingState::AttributeEqual => {
-						let delimiter = match chr {
-							'{' if options.allow_expressions_in_jsx => {
-								push_token!(TSXToken::JSXExpressionStart);
-								*interpolation_depth += 1;
-								*jsx_state = JSXLexingState::AttributeKey;
-								state_stack.push(state);
-								set_state!(LexingState::None, EXPECT_EXPRESSION: true);
-								continue;
-							}
-							'"' => JSXAttributeValueDelimiter::DoubleQuote,
-							'\'' => JSXAttributeValueDelimiter::SingleQuote,
-							'>' => {
-								return_err!(LexingErrors::EmptyAttributeName);
-							}
-							_ => JSXAttributeValueDelimiter::None,
-						};
-						*jsx_state = JSXLexingState::AttributeValue(delimiter);
-					}
-					JSXLexingState::AttributeValue(delimiter) => match (delimiter, chr) {
-						(JSXAttributeValueDelimiter::DoubleQuote, '"')
-						| (JSXAttributeValueDelimiter::SingleQuote, '\'') => {
-							push_token!(TSXToken::JSXAttributeValue(
-								script[(start + 1)..idx].to_owned()
-							));
-							*jsx_state = JSXLexingState::AttributeKey;
-							start = idx + 1;
-							continue;
-						}
-						(JSXAttributeValueDelimiter::None, ' ') => {
-							push_token!(TSXToken::JSXAttributeValue(script[start..idx].to_owned()));
-							*jsx_state = JSXLexingState::AttributeKey;
-							start = idx;
-						}
-						(JSXAttributeValueDelimiter::None, '>') => {
-							push_token!(TSXToken::JSXAttributeValue(script[start..idx].to_owned()));
-							if *is_self_closing_tag {
-								*tag_depth = match tag_depth.checked_sub(1) {
-									Some(value) => value,
-									None => {
-										return_err!(LexingErrors::UnbalancedJSXClosingTags);
-									}
-								};
-								push_token!(TSXToken::JSXSelfClosingTag);
-								start = idx + 1;
-								// If JSX literal range has ended
-								if *tag_depth == 0 {
-									set_state!(LexingState::None);
-								} else {
-									*jsx_state = JSXLexingState::Content;
-									*is_self_closing_tag = false;
-								}
-							} else {
-								push_token!(TSXToken::JSXOpeningTagEnd);
-								start = idx + 1;
-								*jsx_state = if *no_inner_tags_or_expressions {
-									JSXLexingState::LiteralContent {
-										last_char_was_open_chevron: false,
-									}
-								} else {
-									JSXLexingState::Content
-								};
-							}
-							continue;
-						}
-						_ => {}
-					},
-					JSXLexingState::Content => {
-						match chr {
-							'<' => {
-								let content_slice = &script[start..idx];
-								if !content_slice.trim().is_empty() {
-									push_token!(TSXToken::JSXContent(content_slice.to_owned()));
-								}
-								*jsx_state = JSXLexingState::TagName {
-									direction: JSXTagNameDirection::Opening,
-									lexed_start: false,
-								};
-								start = idx;
-							}
-							'{' if options.allow_expressions_in_jsx => {
-								let content_slice = &script[start..idx];
-								if !content_slice.trim().is_empty() {
-									push_token!(TSXToken::JSXContent(content_slice.to_owned()));
-								}
-								push_token!(TSXToken::JSXExpressionStart);
-								*interpolation_depth += 1;
-								state_stack.push(state);
-								set_state!(LexingState::None, EXPECT_EXPRESSION: true);
-								continue;
-							}
-							'\n' => {
-								let source = script[start..idx].trim();
-								if !source.is_empty() {
-									push_token!(TSXToken::JSXContent(source.to_owned()));
-									start = idx;
-								}
-								push_token!(TSXToken::JSXContentLineBreak);
-								start = idx + 1;
-							}
-							// Any content
-							_ => {}
-						}
-					}
-					JSXLexingState::LiteralContent { ref mut last_char_was_open_chevron } => {
-						match chr {
-							'<' => {
-								*last_char_was_open_chevron = true;
-							}
-							'/' if *last_char_was_open_chevron => {
-								let end = idx - '<'.len_utf8();
-								let source = script[start..end].trim();
-								if !source.is_empty() {
-									push_token!(TSXToken::JSXContent(source.to_owned()));
-								}
-								start = end;
-								push_token!(TSXToken::JSXClosingTagStart);
-								start = idx + '/'.len_utf8();
-								*jsx_state = JSXLexingState::TagName {
-									direction: JSXTagNameDirection::Closing,
-									lexed_start: true,
-								};
-								*no_inner_tags_or_expressions = false;
-							}
-							_ => {
-								*last_char_was_open_chevron = false;
-							}
-						}
-					}
-					// TODO this will allow for <!--> as a valid comment
-					JSXLexingState::Comment => {
-						if idx - start < 4 {
-							if chr != '-' {
-								return_err!(LexingErrors::ExpectedDashInComment);
-							}
-						} else if chr == '>' && script[..idx].ends_with("--") {
-							push_token!(TSXToken::JSXComment(
-								script[(start + 4)..(idx - 2)].to_owned()
-							));
-							start = idx + 1;
-							if *tag_depth == 0 {
-								set_state!(if options.top_level_html {
-									DEFAULT_JSX_LEXING_STATE
-								} else {
-									LexingState::None
-								});
-							} else {
-								*jsx_state = JSXLexingState::Content;
-							}
-							continue;
-						}
-					}
-				}
-			}
-			LexingState::None => {}
-		}
-
-		// This is done later as state may have been set to none by the matching
-		if state == LexingState::None {
-			match chr {
-				'0' if matches!(script.as_bytes().get(idx + 1), Some(b'0'..=b'7')) => {
-					// strict mode should be done in the parser stage (as that is where context is)
-					set_state!(LexingState::Number(NumberLiteralType::OctalLiteral));
-				}
-				'0'..='9' => set_state!(LexingState::Number(Default::default())),
-				'"' => set_state!(LexingState::String { double_quoted: true, escaped: false }),
-				'\'' => set_state!(LexingState::String { double_quoted: false, escaped: false }),
-				'_' | '$' => {
-					set_state!(LexingState::Identifier);
-				}
-				chr if chr.is_alphabetic() => {
-					set_state!(LexingState::Identifier);
-				}
-				chr if chr.is_whitespace() => {
-					continue;
-				}
-				chr => {
-					// Handles lexing in nested contexts, e.g. JSX and template literals
-					match (chr, state_stack.last_mut()) {
-						(
-							'}',
-							Some(LexingState::TemplateLiteral {
-								ref mut interpolation_depth, ..
-							}),
-						) => {
-							*interpolation_depth -= 1;
-							if *interpolation_depth == 0 {
-								push_token!(TSXToken::TemplateLiteralExpressionEnd);
-								start = idx + '}'.len_utf8();
-								state = state_stack.pop().unwrap();
-								continue;
-							}
-						}
-						(
-							'}',
-							Some(LexingState::JSXLiteral { ref mut interpolation_depth, .. }),
-						) => {
-							*interpolation_depth -= 1;
-							if *interpolation_depth == 0 {
-								push_token!(TSXToken::JSXExpressionEnd);
-								start = idx + '}'.len_utf8();
-								state = state_stack.pop().unwrap();
-								continue;
-							}
-						}
-						(
-							'{',
-							Some(
-								LexingState::JSXLiteral { ref mut interpolation_depth, .. }
-								| LexingState::TemplateLiteral {
-									ref mut interpolation_depth, ..
-								},
-							),
-						) => {
-							// Handle for if '{' are in the interpolation
-							*interpolation_depth += 1;
-						}
-						(_, _) => {}
-					}
-
-					start = idx;
-
-					// Handle regex, JSX literals and template literals
-					match (expect_expression, chr) {
-						(_, '`') => {
-							push_token!(TSXToken::TemplateLiteralStart);
-							start = idx + 1;
-							state = LexingState::TemplateLiteral {
-								interpolation_depth: 0,
-								last_char_was_dollar: false,
-								escaped: false,
-							};
-						}
-						(true, '<') if options.lex_jsx => {
-							set_state!(FIRST_CHEVRON_JSX_LEXING_STATE);
-						}
-						(true, '/') => {
-							state = LexingState::RegexLiteral {
-								escaped: false,
-								after_last_slash: false,
-								in_set: false,
-							};
-						}
-						(true, '.') => {
-							state = LexingState::Number(NumberLiteralType::Decimal {
-								fractional: true,
-							});
-						}
-						(_, _) => {
-							// Else try do a symbol
-							let automaton = TSXToken::new_automaton();
-							match automaton.get_next(chr) {
-								GetNextResult::Result {
-									result,
-									ate_character: _, // Should always be true
-								} => {
-									expect_expression = result.is_expression_prefix();
-									push_token!(result);
-								}
-								GetNextResult::NewState(new_state) => {
-									state = LexingState::Symbol(new_state);
-								}
-								GetNextResult::InvalidCharacter(err) => {
-									return_err!(LexingErrors::UnexpectedCharacter(err));
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// If source ends while there is still a parsing state
-	match state {
-		LexingState::Number(literal_type) => {
-			// Just `.` or ends with combination token
-			if script[start..].trim_end() == "."
-				|| script.ends_with(['x', 'X', 'o', 'O', '_', '-'])
-				|| (!matches!(literal_type, NumberLiteralType::HexadecimalLiteral)
-					&& script.ends_with(['e', 'E', 'b', 'B']))
-			{
-				return_err!(LexingErrors::UnexpectedEndToNumberLiteral)
-			}
-			sender.push(Token(
-				TSXToken::NumberLiteral(script[start..].to_owned()),
-				TokenStart::new(start as u32 + offset),
-			));
-		}
-		LexingState::Identifier => {
-			sender.push(Token(
-				TSXToken::from_slice(&script[start..]),
-				TokenStart::new(start as u32 + offset),
-			));
-		}
-		LexingState::Symbol(symbol_state) => {
-			// Uses 0 as char to prevent continued matches, this is okay as long as
-			// there is no 0 char in the finite automata
-			match symbol_state.get_next(0 as char) {
-				GetNextResult::Result {
-					result,
-					ate_character: _, // Should always be true
-				} => {
-					sender.push(Token(result, TokenStart::new(start as u32 + offset)));
-				}
-				GetNextResult::NewState(_new_state) => unreachable!(),
-				GetNextResult::InvalidCharacter(err) => {
-					return_err!(LexingErrors::UnexpectedCharacter(err));
-				}
-			}
-		}
-		LexingState::SingleLineComment => {
-			let content = &script[(start + 2)..];
-			if options.comments.should_add_comment(content) {
-				sender.push(Token(
-					TSXToken::Comment(content.trim_end().to_owned()),
-					TokenStart::new(start as u32 + offset),
-				));
-			}
-		}
-		LexingState::MultiLineComment { .. } => {
-			return_err!(LexingErrors::ExpectedEndToMultilineComment);
-		}
-		LexingState::String { .. } => {
-			return_err!(LexingErrors::ExpectedEndToStringLiteral);
-		}
-		// This is okay as the state is not cleared until it finds flags.
-		LexingState::RegexLiteral { after_last_slash, .. } => {
-			if after_last_slash {
-				sender.push(Token(
-					TSXToken::RegexFlagLiteral(script[start..].to_owned()),
-					TokenStart::new(start as u32 + offset),
-				));
-				sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
+	pub fn is_arrow_function(&mut self) -> (bool, Option<crate::types::TypeAnnotation>) {
+		let after_brackets = utilities::trim_whitespace_not_newlines(self.after_brackets());
+		if after_brackets.starts_with("=>") {
+			(true, None)
+		} else if self.options.type_annotations && after_brackets.starts_with(':') {
+			// TODO WIP implementation
+			let save_point = self.head;
+			let after = self.get_current().len() - after_brackets.len();
+			self.head += after as u32 + 1;
+			// TODO: I hate this!!
+			// Can double allocate for expressions build up bad information
+			let annotation = crate::types::TypeAnnotation::from_reader_with_precedence(
+				self,
+				crate::types::type_annotations::TypeOperatorKind::ReturnType,
+			);
+			let starts_with_arrow = self.starts_with_slice("=>");
+			self.head = save_point;
+			if let (true, Ok(annotation)) = (starts_with_arrow, annotation) {
+				(true, Some(annotation))
 			} else {
-				sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
-				return_err!(LexingErrors::ExpectedEndToRegexLiteral);
+				(false, None)
 			}
+		} else {
+			(false, None)
 		}
-		LexingState::JSXLiteral { state, .. } => {
-			if !matches!(state, JSXLexingState::ExpectingOpenChevron) {
-				return_err!(LexingErrors::ExpectedEndToJSXLiteral);
-			}
-		}
-		LexingState::TemplateLiteral { .. } => {
-			return_err!(LexingErrors::ExpectedEndToTemplateLiteral);
-		}
-		LexingState::None => {}
+	}
+}
+
+pub(crate) mod utilities {
+	pub fn is_valid_identifier(chr: char) -> bool {
+		// TODO `\\` for unicode identifiers
+		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
 	}
 
-	sender.push(Token(TSXToken::EOS, TokenStart::new(script.len() as u32)));
+	pub fn is_reserved_word(identifier: &str) -> bool {
+		matches!(
+			identifier,
+			"enum"
+				| "implements"
+				| "interface"
+				| "let" | "package"
+				| "private" | "protected"
+				| "public" | "static"
+		)
+	}
 
-	Ok(())
+	pub fn is_valid_variable_identifier(identifier: &str) -> bool {
+		let is_invalid = matches!(
+			identifier,
+			"const"
+				| "var" | "if"
+				| "else" | "for"
+				| "while" | "do"
+				| "switch" | "class"
+				| "function" | "new"
+				| "super" | "case"
+				| "return" | "continue"
+				| "break" | "import"
+				| "export" | "default"
+				| "in" | "typeof"
+				| "instanceof"
+				| "void" | "delete"
+				| "debugger" | "try"
+				| "catch" | "finally"
+				| "throw" | "extends"
+		);
+
+		!is_invalid
+	}
+
+	// TODO move
+	pub fn next_empty_occurance(on: &str) -> usize {
+		let mut chars = on.char_indices();
+		let is_text = chars.next().is_some_and(|(_, chr)| chr.is_alphabetic());
+		for (idx, chr) in chars {
+			let should_break = chr.is_whitespace()
+				|| (is_text && !chr.is_alphanumeric())
+				|| (!is_text && chr.is_alphabetic());
+			if should_break {
+				return idx;
+			}
+		}
+		0
+	}
+
+	pub fn trim_whitespace_not_newlines(on: &str) -> &str {
+		let chars = on.char_indices();
+		let mut idx = 0;
+		for (at, chr) in chars {
+			idx = at;
+			if !chr.is_whitespace() || chr == '\n' {
+				break;
+			}
+		}
+		&on[idx..]
+	}
+
+	pub fn is_function_header(slice: &str) -> bool {
+		let slice = slice.trim_start();
+		// TODO
+		let extras = true;
+		slice.starts_with("async ")
+			|| {
+				slice.starts_with("function")
+					&& !slice["function".len()..].chars().next().is_some_and(is_valid_identifier)
+			} || (extras && {
+			// TODO + after is "function"
+			slice.starts_with("generator ")
+				|| slice.starts_with("worker ")
+				|| slice.starts_with("server ")
+				|| slice.starts_with("test ")
+		})
+	}
+
+	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
+	pub fn assert_type_annotations(
+		reader: &super::Lexer,
+		position: crate::Span,
+	) -> crate::ParseResult<()> {
+		if reader.get_options().type_annotations {
+			Ok(())
+		} else {
+			Err(crate::ParseError::new(crate::ParseErrors::TypeAnnotationUsed, position))
+		}
+	}
+
+	pub fn next_item<'a>(reader: &super::Lexer<'a>) -> (&'a str, crate::Span) {
+		let current = reader.get_current();
+		let until_empty = self::next_empty_occurance(current);
+		let position = reader.get_start().with_length(until_empty);
+		let found = &current[..until_empty];
+		(found, position)
+	}
+
+	pub fn expected_one_of_items(
+		reader: &super::Lexer,
+		expected: &'static [&'static str],
+	) -> crate::ParseError {
+		let current = reader.get_current();
+		let found = &current[..self::next_empty_occurance(current)];
+		let position = reader.get_start().with_length(found.len());
+		let reason = crate::ParseErrors::ExpectedOneOfItems { expected, found };
+		crate::ParseError::new(reason, position)
+	}
+
+	pub fn get_not_identifier_length(reader: &super::Lexer) -> Option<usize> {
+		let on = reader.get_current();
+		for (idx, c) in on.char_indices() {
+			if c == '#' || crate::lexer::utilities::is_valid_identifier(c) {
+				return None;
+			} else if !c.is_whitespace() {
+				let after = &on[idx..];
+				return if after.starts_with("//") || after.starts_with("/*") {
+					None
+				} else {
+					Some(idx)
+				};
+			}
+		}
+
+		// Else nothing exists
+		Some(0)
+	}
+
+	pub fn get_after_operator<'a>(reader: &super::Lexer<'a>, item: &str) -> &'a str {
+		&reader.get_current()[item.len()..]
+	}
 }

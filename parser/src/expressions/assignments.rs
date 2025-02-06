@@ -3,20 +3,15 @@ use crate::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		FunctionArgument,
 	},
-	derive_ASTNode, ParseErrors, PropertyKey, PropertyReference, SpreadDestructuringField,
-	TSXToken,
+	derive_ASTNode, ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
+	ParseError, ParseErrors, ParseResult, PropertyKey, PropertyReference, SpreadDestructuringField,
+	WithComment,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::TokenReader;
 use visitable_derive::Visitable;
-
-use crate::{
-	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField, ParseError,
-	ParseResult, WithComment,
-};
 
 use super::MultipleExpression;
 
@@ -37,6 +32,8 @@ pub enum VariableOrPropertyAccess {
 		indexer: Box<MultipleExpression>,
 		position: Span,
 	},
+	#[cfg(feature = "full-typescript")]
+	NonNullAssertion(Box<Self>, Span),
 }
 
 impl ASTNode for VariableOrPropertyAccess {
@@ -44,12 +41,10 @@ impl ASTNode for VariableOrPropertyAccess {
 		*self.get()
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		Expression::from_reader(reader, state, options)?.try_into()
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		// I think this is correct
+		let precedence = super::operators::INDEX_PRECEDENCE - 1;
+		Expression::from_reader_with_precedence(reader, precedence)?.try_into()
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -89,19 +84,14 @@ impl ASTNode for VariableOrPropertyAccess {
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
+			#[cfg(feature = "full-typescript")]
+			VariableOrPropertyAccess::NonNullAssertion(on, _position) => {
+				on.to_string_from_buffer(buf, options, local);
+				if options.include_type_annotations {
+					buf.push('!');
+				}
+			}
 		}
-	}
-}
-
-impl VariableOrPropertyAccess {
-	pub(crate) fn from_reader_with_precedence(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-		return_precedence: u8,
-	) -> ParseResult<Self> {
-		Expression::from_reader_with_precedence(reader, state, options, return_precedence, None)?
-			.try_into()
 	}
 }
 
@@ -122,8 +112,8 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			Expression::Index { indexer, position, indexee, is_optional: false } => {
 				Ok(Self::Index { indexer, position, indexee })
 			}
-			// Yah weird. Recursion is fine
-			Expression::ParenthesizedExpression(inner, _) => {
+			// Yah weird and recursion is fine here
+			Expression::Parenthesised(inner, _) => {
 				if let MultipleExpression::Single(expression) = *inner {
 					TryFrom::try_from(expression)
 				} else {
@@ -133,6 +123,12 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 					))
 				}
 			}
+			#[cfg(feature = "full-typescript")]
+			Expression::SpecialOperators(
+				super::SpecialOperators::NonNullAssertion(on),
+				position,
+			) => TryFrom::try_from(*on)
+				.map(|value| Self::NonNullAssertion(Box::new(value), position)),
 			expression => Err(ParseError::new(
 				crate::ParseErrors::InvalidLHSAssignment,
 				expression.get_position(),
@@ -153,6 +149,11 @@ impl From<VariableOrPropertyAccess> for Expression {
 			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
 				Expression::PropertyAccess { parent, position, property, is_optional: false }
 			}
+			#[cfg(feature = "full-typescript")]
+			VariableOrPropertyAccess::NonNullAssertion(on, position) => Expression::SpecialOperators(
+				super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
+				position,
+			),
 		}
 	}
 }
@@ -164,6 +165,8 @@ impl VariableOrPropertyAccess {
 			VariableOrPropertyAccess::Variable(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
+			#[cfg(feature = "full-typescript")]
+			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent(),
 		}
 	}
 
@@ -172,6 +175,8 @@ impl VariableOrPropertyAccess {
 			VariableOrPropertyAccess::Variable(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
+			#[cfg(feature = "full-typescript")]
+			VariableOrPropertyAccess::NonNullAssertion(on, _) => on.get_parent_mut(),
 		}
 	}
 }
@@ -209,12 +214,8 @@ impl ASTNode for LHSOfAssignment {
 		}
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		Expression::from_reader(reader, state, options).and_then(TryInto::try_into)
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		Expression::from_reader(reader).and_then(TryInto::try_into)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

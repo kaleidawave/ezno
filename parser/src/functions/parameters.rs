@@ -1,17 +1,13 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, TSXKeyword,
-	TSXToken, TypeAnnotation, VariableField, WithComment,
+	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, TypeAnnotation,
+	VariableField, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
-use tokenizer_lib::{
-	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
-	Token, TokenReader,
-};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -27,37 +23,24 @@ pub struct Parameter<V> {
 }
 
 pub trait ParameterVisibility: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Self;
+	fn from_reader(reader: &mut crate::Lexer) -> Self;
 }
 
 impl ParameterVisibility for () {
-	fn from_reader(
-		_: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_: &mut crate::ParsingState,
-		_: &crate::ParseOptions,
-	) -> Self {
-	}
+	fn from_reader(_reader: &mut crate::Lexer) -> Self {}
 }
 
 impl ParameterVisibility for Option<crate::types::Visibility> {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		_: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Option<crate::types::Visibility> {
-		if !options.type_annotations {
-			None
-		} else if let Some(Token(TSXToken::Keyword(t), _)) =
-			reader.conditional_next(crate::types::Visibility::token_is_visibility_specifier)
+	fn from_reader(reader: &mut crate::Lexer) -> Option<crate::types::Visibility> {
+		if let Some(Some(keyword)) = reader
+			.get_options()
+			.type_annotations
+			.then(|| reader.is_one_of_keywords_advance(&["private", "public", "protected"]))
 		{
-			Some(match t {
-				TSXKeyword::Private => crate::types::Visibility::Private,
-				TSXKeyword::Public => crate::types::Visibility::Public,
-				TSXKeyword::Protected => crate::types::Visibility::Protected,
+			Some(match keyword {
+				"private" => crate::types::Visibility::Private,
+				"public" => crate::types::Visibility::Public,
+				"protected" => crate::types::Visibility::Protected,
 				_ => unreachable!(),
 			})
 		} else {
@@ -195,13 +178,118 @@ where
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		let open_paren_span = reader.expect_next(TSXToken::OpenParentheses)?;
-		Self::from_reader_sub_open_parenthesis(reader, state, options, open_paren_span)
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.expect_start('(')?;
+		let mut parameters = Vec::new();
+
+		let mut this_type = None::<ThisParameter>;
+		let mut super_type = None::<SuperParameter>;
+		let mut rest_parameter = None;
+
+		loop {
+			reader.skip();
+			if reader.is_operator(")") {
+				break;
+			}
+			// Skip comments
+			// while reader.conditional_next(TSXToken::is_comment).is_some() {}
+
+			let start = reader.get_start();
+
+			if reader.is_operator_advance("...") {
+				let name = SpreadParameterName::from_reader(reader)?;
+				let name_position = name.get_position();
+
+				let type_annotation = if reader.is_operator_advance(":") {
+					Some(TypeAnnotation::from_reader(reader)?)
+				} else {
+					None
+				};
+
+				let position = start
+					.union(type_annotation.as_ref().map_or(name_position, ASTNode::get_position));
+
+				rest_parameter =
+					Some(Box::new(SpreadParameter { name, type_annotation, position }));
+				break;
+			} else if parameters.is_empty() && reader.is_keyword_advance("this") {
+				// Some(Token(_, start)) = reader.conditional_next(|tok| {
+				// options.type_annotations
+				// 	&& reader.expect(TSXToken::Colon)?;
+				reader.expect(':')?;
+				let constraint = TypeAnnotation::from_reader(reader)?;
+				let position = start.union(constraint.get_position());
+				this_type = Some(ThisParameter { constraint, position });
+			} else if parameters.is_empty() && reader.is_keyword_advance("super") {
+				reader.expect(':')?;
+				// reader.expect(TSXToken::Colon)?;
+				let constraint = TypeAnnotation::from_reader(reader)?;
+				let position = start.union(constraint.get_position());
+				super_type = Some(SuperParameter { constraint, position });
+			} else {
+				let visibility = V::from_reader(reader);
+
+				let name = WithComment::<VariableField>::from_reader(reader)?;
+
+				let (is_optional, type_annotation) = if reader.is_operator_advance("?:") {
+					let type_annotation = TypeAnnotation::from_reader(reader)?;
+					(true, Some(type_annotation))
+				} else if reader.is_operator_advance(":") {
+					let type_annotation = TypeAnnotation::from_reader(reader)?;
+					(false, Some(type_annotation))
+				} else if reader.is_operator_advance("?") {
+					(true, None)
+				} else {
+					(false, None)
+				};
+
+				let value = if reader.is_operator_advance("=") {
+					Some(Box::new(Expression::from_reader(reader)?))
+				} else {
+					None
+				};
+
+				let additionally = match (is_optional, value) {
+					(true, Some(value)) => {
+						return Err(ParseError::new(
+							crate::ParseErrors::FunctionParameterOptionalAndDefaultValue,
+							value.get_position(),
+						));
+					}
+					// =
+					(false, Some(value)) => Some(ParameterData::WithDefaultValue(value)),
+					// ?:
+					(true, None) => Some(ParameterData::Optional),
+					(false, None) => None,
+				};
+
+				let end_position = if let Some(ParameterData::WithDefaultValue(e)) = &additionally {
+					e.get_position()
+				} else if let Some(ref type_annotation) = type_annotation {
+					type_annotation.get_position()
+				} else {
+					name.get_position()
+				};
+
+				let position = name.get_position().union(end_position);
+
+				parameters.push(Parameter {
+					visibility,
+					name,
+					type_annotation,
+					additionally,
+					position,
+				});
+			}
+
+			if !reader.is_operator_advance(",") {
+				break;
+			}
+		}
+		let close = reader.expect(')')?;
+		let leading = L::try_make(this_type, super_type)?;
+		let position = start.union(close);
+		Ok(FunctionParameters { leading, parameters, rest_parameter, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -289,144 +377,5 @@ where
 			options.add_indent(local.depth, buf);
 		}
 		buf.push(')');
-	}
-}
-
-impl<L, V> FunctionParameters<L, V>
-where
-	L: LeadingParameter,
-	V: ParameterVisibility,
-{
-	pub(crate) fn from_reader_sub_open_parenthesis(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let mut parameters = Vec::new();
-
-		let mut this_type = None::<ThisParameter>;
-		let mut super_type = None::<SuperParameter>;
-		let mut rest_parameter = None;
-
-		loop {
-			if let Some(Token(TSXToken::CloseParentheses, _)) = reader.peek() {
-				break;
-			}
-			// Skip comments
-			while reader.conditional_next(TSXToken::is_comment).is_some() {}
-
-			if let Some(Token(_, spread_pos)) =
-				reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
-			{
-				let name = SpreadParameterName::from_reader(reader, state, options)?;
-				let name_position = name.get_position();
-
-				let type_annotation = if options.type_annotations
-					&& reader.conditional_next(|tok| matches!(tok, TSXToken::Colon)).is_some()
-				{
-					Some(TypeAnnotation::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
-
-				let position = spread_pos
-					.union(type_annotation.as_ref().map_or(name_position, ASTNode::get_position));
-
-				rest_parameter =
-					Some(Box::new(SpreadParameter { name, type_annotation, position }));
-				break;
-			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				options.type_annotations
-					&& parameters.is_empty()
-					&& matches!(tok, TSXToken::Keyword(TSXKeyword::This))
-			}) {
-				reader.expect_next(TSXToken::Colon)?;
-				let constraint = TypeAnnotation::from_reader(reader, state, options)?;
-				let position = start.union(constraint.get_position());
-				this_type = Some(ThisParameter { constraint, position });
-			} else if let Some(Token(_, start)) = reader.conditional_next(|tok| {
-				options.type_annotations
-					&& parameters.is_empty()
-					&& matches!(tok, TSXToken::Keyword(TSXKeyword::Super))
-			}) {
-				reader.expect_next(TSXToken::Colon)?;
-				let constraint = TypeAnnotation::from_reader(reader, state, options)?;
-				let position = start.union(constraint.get_position());
-				super_type = Some(SuperParameter { constraint, position });
-			} else {
-				let visibility = V::from_reader(reader, state, options);
-
-				let name = WithComment::<VariableField>::from_reader(reader, state, options)?;
-
-				let (is_optional, type_annotation) = match reader.peek() {
-					Some(Token(TSXToken::Colon, _)) if options.type_annotations => {
-						reader.next();
-						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-						(false, Some(type_annotation))
-					}
-					Some(Token(TSXToken::OptionalMember, _)) if options.type_annotations => {
-						reader.next();
-						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-						(true, Some(type_annotation))
-					}
-					Some(Token(TSXToken::QuestionMark, _)) => {
-						let Token(_, _) = reader.next().unwrap();
-						(true, None)
-					}
-					_ => (false, None),
-				};
-
-				let value = if let Some(token) =
-					reader.conditional_next(|tok| matches!(tok, TSXToken::Assign))
-				{
-					if is_optional {
-						return Err(ParseError::new(
-							crate::ParseErrors::FunctionParameterOptionalAndDefaultValue,
-							token.get_span(),
-						));
-					}
-					Some(Box::new(Expression::from_reader(reader, state, options)?))
-				} else {
-					None
-				};
-
-				let additionally = match (is_optional, value) {
-					(true, Some(_)) => unreachable!("caught earlier by error"),
-					// =
-					(false, Some(value)) => Some(ParameterData::WithDefaultValue(value)),
-					// ?:
-					(true, None) => Some(ParameterData::Optional),
-					(false, None) => None,
-				};
-
-				let end_position = if let Some(ParameterData::WithDefaultValue(e)) = &additionally {
-					e.get_position()
-				} else if let Some(type_annotation) = &type_annotation {
-					type_annotation.get_position()
-				} else {
-					name.get_position()
-				};
-
-				parameters.push(Parameter {
-					visibility,
-					position: name.get_position().union(end_position),
-					name,
-					type_annotation,
-					additionally,
-				});
-			}
-			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-				reader.next();
-			} else {
-				break;
-			}
-		}
-
-		let close = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
-
-		let leading = L::try_make(this_type, super_type)?;
-
-		Ok(FunctionParameters { position: start.union(close), parameters, rest_parameter, leading })
 	}
 }

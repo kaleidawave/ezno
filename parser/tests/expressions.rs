@@ -131,10 +131,15 @@ function Component(item) {
 		<h1 class="heading">{item.heading}</h1>
 		<img src={item.image}>
 		<!-- Some comment -->
-		<p>
+		<p data-something>
 			Something {item.content}
 		</p>
 		{/* hi */}
+		<style>
+			h1 {
+				color: red;
+			}
+		</style>
 		<button disabled>One line</button>
 	</div>
 }
@@ -143,12 +148,12 @@ function Component(item) {
 
 	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
-	eprintln!("Module: {module:#?}");
+	eprintln!("Module: {module:?}");
 
 	let output = module.to_string(&ezno_parser::ToStringOptions::typescript());
 
-	eprintln!("{input:?}");
-	eprintln!("{output:?}");
+	eprintln!("{input}");
+	eprintln!("{output}");
 
 	assert_eq!(output, input);
 }

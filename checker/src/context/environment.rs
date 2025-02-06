@@ -80,8 +80,8 @@ impl DynamicBoundaryKind {
 }
 
 impl ContextType for Syntax<'_> {
-	fn as_general_context(et: &Context<Self>) -> GeneralContext<'_> {
-		GeneralContext::Syntax(et)
+	fn as_general_context(context: &Context<Self>) -> GeneralContext<'_> {
+		GeneralContext::Syntax(context)
 	}
 
 	fn get_parent(&self) -> Option<&GeneralContext<'_>> {

@@ -2,21 +2,13 @@ mod class_member;
 
 use std::fmt::Debug;
 
-use crate::{
-	derive_ASTNode, throw_unexpected_token_with_token, to_string_bracketed, Expression,
-	ParseErrors, VariableIdentifier,
-};
+use crate::{bracketed_items_to_string, derive_ASTNode, Expression};
 pub use class_member::*;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
 	extensions::decorators::Decorated, visiting::Visitable, ASTNode, ExpressionOrStatementPosition,
-	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation, TypeParameter,
-	VisitOptions,
-};
-use tokenizer_lib::{
-	sized_tokens::{TokenReaderWithTokenEnds, TokenStart},
-	Token, TokenReader,
+	ParseResult, Span, TypeAnnotation, TypeParameter, VisitOptions,
 };
 
 #[apply(derive_ASTNode)]
@@ -34,110 +26,67 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> ASTNode
 	for ClassDeclaration<U>
 {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = state.expect_keyword(reader, TSXKeyword::Class)?;
-		Self::from_reader_sub_class_keyword(reader, state, options, start)
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		self.to_string_from_buffer(buf, options, local);
-	}
-
 	fn get_position(&self) -> Span {
 		self.position
 	}
-}
 
-impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
-	pub(crate) fn from_reader_sub_class_keyword(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let name = U::from_reader(reader, state, options)?;
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		reader.skip();
+		let start = reader.get_start();
+		reader.expect_keyword("class")?;
 
-		if let Some(VariableIdentifier::Standard(name, pos)) = name.as_option_variable_identifier()
-		{
-			if let "extends" = name.as_str() {
-				return Err(crate::ParseError::new(ParseErrors::ExpectedIdentifier, *pos));
-			}
-		}
+		let name = U::class_name_from_reader(reader)?;
 
-		let type_parameters = reader
-			.conditional_next(|token| *token == TSXToken::OpenChevron)
-			.is_some()
-			.then(|| {
-				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _, _)| params)
-			})
-			.transpose()?;
-
-		let extends = if reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
-			.is_some()
-		{
-			Some(Expression::from_reader(reader, state, options)?.into())
+		// TODO check name?
+		let type_parameters = if reader.is_operator_advance("<") {
+			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
+			Some(params)
 		} else {
 			None
 		};
 
-		let implements = if reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Implements)))
-			.is_some()
-		{
-			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
+		let extends = if reader.is_keyword_advance("extends") {
+			Some(Expression::from_reader(reader)?.into())
+		} else {
+			None
+		};
+
+		let implements = if reader.is_keyword_advance("implements") {
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			let mut implements = vec![type_annotation];
-			if reader.conditional_next(|t| matches!(t, TSXToken::Comma)).is_some() {
-				loop {
-					implements.push(TypeAnnotation::from_reader(reader, state, options)?);
-					match reader.peek() {
-						Some(Token(TSXToken::Comma, _)) => {
-							reader.next();
-						}
-						Some(Token(TSXToken::OpenBrace, _)) | None => break,
-						_ => {
-							return throw_unexpected_token_with_token(
-								reader.next().unwrap(),
-								&[TSXToken::Comma, TSXToken::OpenBrace],
-							)
-						}
-					}
-				}
+			while reader.is_operator_advance(",") {
+				implements.push(TypeAnnotation::from_reader(reader)?);
 			}
 			Some(implements)
 		} else {
 			None
 		};
 
-		reader.expect_next(TSXToken::OpenBrace)?;
+		reader.expect('{')?;
+
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {
-			if let Some(Token(TSXToken::CloseBrace, _)) = reader.peek() {
+			reader.skip();
+			if reader.starts_with('}') {
 				break;
 			}
-			let value = Decorated::<ClassMember>::from_reader(reader, state, options)?;
-			members.push(value);
-
-			if let Some(Token(TSXToken::SemiColon, _)) = reader.peek() {
-				reader.next();
+			let value = Decorated::<ClassMember>::from_reader(reader)?;
+			if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
+				reader.expect_semi_colon()?;
+			} else {
+				// Skip anyway
+				let _ = reader.is_operator_advance(";");
 			}
+			members.push(value);
 		}
-		let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
+
+		let end = reader.expect('}')?;
+		let position = start.union(end);
 
 		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })
 	}
 
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(
+	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
 		buf: &mut T,
 		options: &crate::ToStringOptions,
@@ -148,12 +97,15 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 			buf.push_str(name);
 		}
 		if let Some(type_parameters) = &self.type_parameters {
-			to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+			bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 		}
 		if let Some(extends) = &self.extends {
 			buf.push_str(" extends ");
 			extends.to_string_from_buffer(buf, options, local);
 		}
+
+		// TODO implements
+
 		options.push_gap_optionally(buf);
 		buf.push('{');
 		for (at_end, member) in self.members.iter().endiate() {
@@ -162,13 +114,15 @@ impl<U: ExpressionOrStatementPosition> ClassDeclaration<U> {
 				options.add_indent(local.depth + 1, buf);
 			}
 			member.to_string_from_buffer(buf, options, local);
-			if !options.pretty && !at_end {
+			// TODO can skip !pretty if it next is not []
+			if !at_end {
 				buf.push(';');
 			}
 		}
 		if options.pretty && !self.members.is_empty() {
 			buf.push_new_line();
 		}
+		options.add_indent(local.depth, buf);
 		buf.push('}');
 	}
 }

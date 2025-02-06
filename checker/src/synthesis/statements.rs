@@ -108,6 +108,12 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				at: stmt.get_position().with_source(environment.get_source()),
 			});
 		}
+		Statement::WithStatement(stmt) => {
+			checking_data.diagnostics_container.add_error(TypeCheckError::Unsupported {
+				thing: "With statement",
+				at: stmt.get_position().with_source(environment.get_source()),
+			});
+		}
 		Statement::WhileLoop(stmt) => synthesise_iteration(
 			IterationBehavior::While(&stmt.condition),
 			information.and_then(|info| info.label),

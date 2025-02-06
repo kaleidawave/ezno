@@ -1,20 +1,40 @@
+use source_map::Span;
 /// Contains lexing and parser errors
 use std::fmt::{self, Display};
 
-use crate::TSXToken;
-use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenStart, Token};
-
+/// TODO documentation + combine some of these
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
-	UnexpectedToken { expected: &'a [TSXToken], found: TSXToken },
-	UnexpectedSymbol(derive_finite_automaton::InvalidCharacter),
-	ClosingTagDoesNotMatch { expected: &'a str, found: &'a str },
-	ExpectedStringLiteral { found: TSXToken },
+	UnexpectedCharacter {
+		expected: &'a [char],
+		found: Option<char>,
+	},
+	ExpectedKeyword {
+		expected: &'static str,
+		found: &'a str,
+	},
+	// Keywords and/or operators
+	ExpectedOneOfItems {
+		expected: &'static [&'static str],
+		found: &'a str,
+	},
+	ExpectedOperator {
+		expected: &'static str,
+		found: &'a str,
+	},
+	ClosingTagDoesNotMatch {
+		tag_name: &'a str,
+		closing_tag_name: &'a str,
+	},
+	ExpectedStringLiteral {
+		found: &'a str,
+	},
 	TypeArgumentsNotValidOnReference,
-	UnmatchedBrackets,
+	ExpectedEndOfSource {
+		found: &'a str,
+	},
+	InvalidUnicodeCodePointInIdentifier,
 	FunctionParameterOptionalAndDefaultValue,
-	ExpectedIdent { found: TSXToken, at_location: &'a str },
 	ParameterCannotHaveDefaultValueHere,
 	InvalidLHSAssignment,
 	LexingFailed,
@@ -27,43 +47,73 @@ pub enum ParseErrors<'a> {
 	ReservedIdentifier,
 	AwaitRequiresForOf,
 	CannotUseLeadingParameterHere,
-	ExpectedIdentifier,
+	ExpectedIdentifier {
+		location: &'static str,
+	},
 	ExpectedNumberLiteral,
 	NonStandardSyntaxUsedWithoutEnabled,
-	ExpectRule,
+	ExpectedRule,
+	ExpectedJSXAttribute,
 	InvalidRegexFlag,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
+	NoNewLinesInString,
+	InvalidNumber,
+	InvalidRegularExpression,
+	/// For strings, regular expressions, multiline comments.
+	/// TODO specify by field
+	UnexpectedEnd,
+	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
+	TypeAnnotationUsed,
+	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
+	TaggedTemplateCannotBeUsedWithOptionalChain,
+	ExpectedExpression,
 }
 
 impl Display for ParseErrors<'_> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			ParseErrors::UnexpectedToken { expected, found } => {
+			ParseErrors::UnexpectedCharacter { expected, found } => {
 				f.write_str("Expected ")?;
-				match expected {
-					[] => unreachable!("no expected tokens given"),
-					[a] => f.write_fmt(format_args!("{a:?}")),
-					[a, b] => f.write_fmt(format_args!("{a:?} or {b:?}")),
-					[head @ .., end] => {
-						let start = head
-							.iter()
-							.map(|token| format!("{token:?}"))
-							.reduce(|mut acc, token| {
-								acc.push_str(", ");
-								acc.push_str(&token);
-								acc
-							})
-							.unwrap();
-						f.write_fmt(format_args!("{start} or {end:?}"))
-					}
-				}?;
-				write!(f, " found {found:?}")
+				utilities::format_list(f, expected)?;
+				if let Some(found) = found {
+					write!(f, " found {found}")
+				} else {
+					write!(f, " found end of source")
+				}
 			}
-			ParseErrors::UnexpectedSymbol(invalid_character) => Display::fmt(invalid_character, f),
-			ParseErrors::ClosingTagDoesNotMatch { expected, found } => {
-				write!(f, "Expected </{expected}> found </{found}>")
+			ParseErrors::ExpectedOperator { expected, found } => {
+				write!(f, "Expected {expected} found {found}")
+			}
+			ParseErrors::ExpectedOneOfItems { expected, found } => {
+				f.write_str("Expected ")?;
+				utilities::format_list(f, expected)?;
+				write!(f, " found {found}")
+			}
+			ParseErrors::ExpectedKeyword { expected, found } => {
+				write!(f, "Expected {expected:?}, found {found:?}")
+			}
+			ParseErrors::NoNewLinesInString => {
+				write!(f, "Cannot use new lines in string")
+			}
+			ParseErrors::InvalidNumber => {
+				write!(f, "Invalid number")
+			}
+			ParseErrors::ExpectedJSXAttribute => {
+				write!(f, "Invalid JSX attribute")
+			}
+			ParseErrors::InvalidRegularExpression => {
+				write!(f, "Invalid regular expression")
+			}
+			ParseErrors::InvalidUnicodeCodePointInIdentifier => {
+				write!(f, "invalid unicode code point in identifier")
+			}
+			ParseErrors::UnexpectedEnd => {
+				write!(f, "Unexpected end")
+			}
+			ParseErrors::ClosingTagDoesNotMatch { tag_name: expected, closing_tag_name: found } => {
+				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")
 			}
 			ParseErrors::NonStandardSyntaxUsedWithoutEnabled => {
 				write!(f, "Cannot use this syntax without flag enabled")
@@ -72,25 +122,28 @@ impl Display for ParseErrors<'_> {
 				write!(f, "Expected string literal, found {found:?}")
 			}
 			ParseErrors::TypeArgumentsNotValidOnReference => {
-				write!(f, "Type arguments not valid on reference",)
+				write!(f, "Type arguments not valid on reference")
 			}
-			ParseErrors::UnmatchedBrackets => f.write_str("Unmatched brackets"),
+			ParseErrors::TaggedTemplateCannotBeUsedWithOptionalChain => {
+				write!(f, "Tagged template cannot be used with optional chain")
+			}
+			ParseErrors::ExpectedEndOfSource { found } => {
+				let found = &found[..std::cmp::min(found.len(), 10)];
+				write!(f, "Expected end of source, found {found}")
+			}
 			ParseErrors::FunctionParameterOptionalAndDefaultValue => {
-				f.write_str("Function parameter cannot be optional *and* have default expression")
-			}
-			ParseErrors::ExpectedIdent { found, at_location } => {
-				write!(f, "Expected identifier at {at_location}, found {found:?}")
+				write!(f, "Function parameter cannot be optional *and* have default expression")
 			}
 			ParseErrors::ParameterCannotHaveDefaultValueHere => {
-				f.write_str("Function parameter cannot be have default value here")
+				write!(f, "Function parameter cannot be have default value here")
 			}
-			ParseErrors::InvalidLHSAssignment => f.write_str("Invalid syntax on LHS of assignment"),
+			ParseErrors::InvalidLHSAssignment => write!(f, "Invalid syntax on LHS of assignment"),
 			ParseErrors::ExpectedCatchOrFinally => {
-				f.write_str("Expected 'catch' or 'finally' to follow 'try'")
+				write!(f, "Expected 'catch' or 'finally' to follow 'try'")
 			}
 			ParseErrors::LexingFailed => {
 				// unreachable!("This should never be written"),
-				f.write_str("Lexing issue")
+				write!(f, "Lexing issue")
 			}
 			ParseErrors::InvalidDeclareItem(item) => {
 				write!(f, "Declare item '{item}' must be in .d.ts file")
@@ -116,13 +169,17 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::CannotUseLeadingParameterHere => {
 				write!(f, "Cannot write this constraint in this kind of function")
 			}
-			ParseErrors::ExpectedIdentifier => {
-				write!(f, "Expected variable identifier")
+			ParseErrors::ExpectedIdentifier { location } => {
+				if *location == "variable identifier" {
+					write!(f, "Expected variable identifier")
+				} else {
+					write!(f, "Expected variable identifier at {location}")
+				}
 			}
 			ParseErrors::ExpectedNumberLiteral => {
 				write!(f, "Expected number literal")
 			}
-			ParseErrors::ExpectRule => {
+			ParseErrors::ExpectedRule => {
 				write!(f, "'-' must be followed by a readonly rule")
 			}
 			ParseErrors::InvalidRegexFlag => {
@@ -137,115 +194,44 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::InvalidLHSOfIs => {
 				write!(f, "LHS must be variable reference")
 			}
-		}
-	}
-}
-
-#[allow(missing_docs)]
-#[derive(Debug)]
-pub enum LexingErrors {
-	SecondDecimalPoint,
-	NumberLiteralCannotHaveDecimalPoint,
-	NumberLiteralBaseSpecifierMustPrecededWithZero,
-	InvalidCharacterInJSXTag(char),
-	UnbalancedJSXClosingTags,
-	ExpectedClosingChevronAtEndOfSelfClosingTag,
-	InvalidCharacterInAttributeKey(char),
-	UnexpectedCharacter(derive_finite_automaton::InvalidCharacter),
-	EmptyAttributeName,
-	ExpectedJSXEndTag,
-	NewLineInStringLiteral,
-	ExpectedEndToMultilineComment,
-	ExpectedEndToStringLiteral,
-	UnexpectedEndToNumberLiteral,
-	InvalidNumeralItemBecauseOfLiteralKind,
-	ExpectedEndToRegexLiteral,
-	ExpectedEndToJSXLiteral,
-	ExpectedEndToTemplateLiteral,
-	InvalidExponentUsage,
-	InvalidUnderscore,
-	CannotLoadLargeFile(usize),
-	ExpectedDashInComment,
-	ExpectedOpenChevron,
-}
-
-impl Display for LexingErrors {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			LexingErrors::SecondDecimalPoint => {
-				f.write_str("Second decimal point found in number literal")
+			ParseErrors::TypeAnnotationUsed => {
+				write!(f, "Cannot use type annotations in non-ts file")
 			}
-			LexingErrors::NumberLiteralCannotHaveDecimalPoint => {
-				f.write_str("Number literal with specified base cannot have decimal point")
-			}
-			LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero => {
-				f.write_str("Number literal base character must be proceeded with a zero")
-			}
-			LexingErrors::InvalidCharacterInJSXTag(chr) => {
-				write!(f, "Invalid character {chr:?} in JSX tag")
-			}
-			LexingErrors::ExpectedClosingChevronAtEndOfSelfClosingTag => {
-				f.write_str("Expected closing angle at end of self closing JSX tag")
-			}
-			LexingErrors::InvalidCharacterInAttributeKey(chr) => {
-				write!(f, "Invalid character {chr:?} in JSX attribute name")
-			}
-			LexingErrors::EmptyAttributeName => f.write_str("Empty JSX attribute name"),
-			LexingErrors::ExpectedJSXEndTag => f.write_str("Expected JSX end tag"),
-			LexingErrors::NewLineInStringLiteral => {
-				f.write_str("String literals cannot contain new lines")
-			}
-			LexingErrors::ExpectedEndToMultilineComment => {
-				f.write_str("Unclosed multiline comment")
-			}
-			LexingErrors::ExpectedEndToStringLiteral => f.write_str("Unclosed string literal"),
-			LexingErrors::UnexpectedEndToNumberLiteral => f.write_str("Unclosed number literal"),
-			LexingErrors::ExpectedEndToRegexLiteral => f.write_str("Unclosed regex literal"),
-			LexingErrors::ExpectedEndToJSXLiteral => f.write_str("Unclosed JSX literal"),
-			LexingErrors::ExpectedEndToTemplateLiteral => f.write_str("Unclosed template literal"),
-			LexingErrors::UnexpectedCharacter(err) => Display::fmt(err, f),
-			LexingErrors::UnbalancedJSXClosingTags => f.write_str("Too many closing JSX tags"),
-			LexingErrors::InvalidExponentUsage => f.write_str("Two e in number literal"),
-			LexingErrors::InvalidUnderscore => f.write_str("Numeric separator in invalid place"),
-			LexingErrors::InvalidNumeralItemBecauseOfLiteralKind => {
-				f.write_str("Invalid item in binary, hex or octal literal")
-			}
-			LexingErrors::CannotLoadLargeFile(size) => {
-				write!(f, "Cannot parse {size:?} byte file (4GB maximum)")
-			}
-			LexingErrors::ExpectedDashInComment => {
-				f.write_str("JSX comments must have two dashes after `<!` start")
-			}
-			LexingErrors::ExpectedOpenChevron => {
-				f.write_str("Unexpected token in HTML. Expected '<'")
+			ParseErrors::ExpectedExpression => {
+				write!(f, "Expected start of expression")
 			}
 		}
 	}
 }
 
-// For TokenReader::expect_next
-impl From<Option<(TSXToken, Token<TSXToken, TokenStart>)>> for ParseError {
-	fn from(opt: Option<(TSXToken, Token<TSXToken, TokenStart>)>) -> Self {
-		if let Some((expected_type, token)) = opt {
-			let position = token.get_span();
-			let reason =
-				ParseErrors::UnexpectedToken { expected: &[expected_type], found: token.0 };
-			Self::new(reason, position)
-		} else {
-			parse_lexing_error()
+mod utilities {
+	pub fn format_list<T: std::fmt::Display>(
+		f: &mut std::fmt::Formatter<'_>,
+		items: &[T],
+	) -> std::fmt::Result {
+		match items {
+			[] => panic!("no items given"),
+			[a] => f.write_fmt(format_args!("{a}")),
+			[a, b] => f.write_fmt(format_args!("{a} or {b}")),
+			[head @ .., end] => {
+				let start = head
+					.iter()
+					.map(ToString::to_string)
+					.reduce(|mut acc, char| {
+						acc.push_str(", ");
+						acc.push_str(&char);
+						acc
+					})
+					.unwrap();
+				f.write_fmt(format_args!("{start} or {end}"))
+			}
 		}
 	}
-}
-
-// For TokenReader::next which only
-pub(crate) fn parse_lexing_error() -> ParseError {
-	ParseError::new(ParseErrors::LexingFailed, source_map::Nullable::NULL)
 }
 
 pub trait ParserErrorReason: Display {}
 
 impl ParserErrorReason for ParseErrors<'_> {}
-impl ParserErrorReason for LexingErrors {}
 
 /// A error for not parsing
 #[derive(Debug)]

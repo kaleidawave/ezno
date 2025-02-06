@@ -247,8 +247,8 @@ mod ast {
 		crate::VariableIdentifier,
 		crate::PropertyReference,
 		crate::Quoted,
-		crate::declarations::ImportExportName,
-		crate::declarations::ImportLocation,
+		crate::declarations::import_export::ImportExportName,
+		crate::declarations::import_export::ImportLocation,
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
 		crate::VariableKeyword,
@@ -463,8 +463,7 @@ mod structures {
 
 mod visitors {
 	use super::{BlockItem, Chain, Expression, ImmutableVariableOrProperty, SelfVisitable};
-	use crate::{block::BlockLike, TSXKeyword};
-	use source_map::Span;
+	use crate::block::BlockLike;
 
 	/// A visitor over something which is hooked/is [`SelfVisitable`] with some generic `Data`
 	pub trait Visitor<Item: SelfVisitable, Data> {
@@ -487,8 +486,6 @@ mod visitors {
 		}
 
 		fn visit_block(&mut self, block: &BlockLike, data: &mut T, chain: &Chain) {}
-
-		fn visit_keyword(&mut self, keyword: &(TSXKeyword, &Span), data: &mut T, chain: &Chain) {}
 	}
 
 	impl<T> VisitorReceiver<T> for Visitors<T> {
@@ -511,9 +508,6 @@ mod visitors {
 
 		fn visit_block(&mut self, block: &BlockLike, data: &mut T, chain: &Chain) {
 			self.block_visitors.iter_mut().for_each(|vis| vis.visit(block, data, chain));
-		}
-
-		fn visit_keyword(&mut self, _keyword: &(TSXKeyword, &Span), _data: &mut T, _chain: &Chain) {
 		}
 	}
 

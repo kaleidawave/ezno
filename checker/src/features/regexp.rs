@@ -21,36 +21,31 @@ pub struct RegExp {
 }
 
 impl RegExp {
-	pub fn new(pattern: &str, flag_options: Option<&str>) -> Result<Self, String> {
-		let source = if let Some(flag_options) = flag_options {
-			format!("/{pattern}/{flag_options}")
-		} else {
-			format!("/{pattern}/")
-		};
-
+	pub fn new(pattern: &str, flag_options: &str) -> Result<Self, String> {
+		let source = format!("/{pattern}/{flag_options}");
 		let mut flags = Flags::default();
 		let mut flags_unsupported = false;
 
-		if let Some(flag_options) = flag_options {
-			for flag in flag_options.chars() {
-				#[allow(clippy::match_same_arms)]
-				match flag {
-					'd' => flags_unsupported = true, // indices for substring matches are not supported
-					'g' => flags_unsupported = true, // stateful regex is not supported
-					'i' => flags.icase = true,
-					'm' => flags.multiline = true,
-					's' => flags.dot_all = true,
-					'u' => flags.unicode = true,
-					'v' => flags.unicode_sets = true,
-					'y' => flags_unsupported = true, // sticky search is not supported
-					_ => panic!("Unknown flag: {flag:?}"),
-				}
+		for flag in flag_options.chars() {
+			#[allow(clippy::match_same_arms)]
+			match flag {
+				'd' => flags_unsupported = true, // indices for substring matches are not supported
+				'g' => flags_unsupported = true, // stateful regex is not supported
+				'i' => flags.icase = true,
+				'm' => flags.multiline = true,
+				's' => flags.dot_all = true,
+				'u' => flags.unicode = true,
+				'v' => flags.unicode_sets = true,
+				'y' => flags_unsupported = true, // sticky search is not supported
+				// Should be caught by parser errors
+				_ => panic!("Unknown flag: {flag:?}"),
 			}
 		}
 
 		let compiled_regex = {
 			let mut ire = backends::try_parse(pattern.chars().map(u32::from), flags)
 				.map_err(|err| err.text)?;
+
 			if !flags.no_opt {
 				backends::optimize(&mut ire);
 			}
@@ -314,10 +309,7 @@ impl BinarySerializable for RegExp {
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source_id: SourceId) -> Self {
 		let source = String::deserialize(iter, source_id);
-
 		let (pattern, flags) = source[1..].rsplit_once('/').unwrap();
-		let flags = if flags.is_empty() { None } else { Some(flags) };
-
 		Self::new(pattern, flags).unwrap()
 	}
 }

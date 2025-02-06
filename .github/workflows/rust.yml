@@ -85,12 +85,19 @@ jobs:
 
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true' || github.ref_name == 'main'
+        run: cargo test --no-fail-fast
+        working-directory: parser
+
+      - name: Run parser examples
+        if: steps.changes.outputs.parser == 'true' || github.ref_name == 'main'
         run: |
-          cargo test
-          
-          # TODO more
-          curl https://esm.sh/v128/react-dom@18.2.0/es2022/react-dom.mjs > react.js
-          cargo run -p ezno-parser --example parse react.js
+          CORPUS_URL="https://gist.githubusercontent.com/kaleidawave/6708f604bc403021b56cb54ea50cac62/raw/javascript_files.txt"
+
+          curl -s "$CORPUS_URL" | while IFS= read -r URL; do
+              FILENAME="${URL##*/}"
+              curl -s "$URL" > $FILENAME
+              cargo run -p ezno-parser --example parse $FILENAME
+          done
         working-directory: parser
 
       - name: Run checker specification

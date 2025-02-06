@@ -513,8 +513,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 					parser::ArrayDestructuringField::Name(name, ..) => {
 						buf.push_str(&variable_field_to_string(name));
 					}
-					parser::ArrayDestructuringField::Comment { .. }
-					| parser::ArrayDestructuringField::None => {}
+					parser::ArrayDestructuringField::None => {}
 				}
 				if not_at_end {
 					buf.push_str(", ");

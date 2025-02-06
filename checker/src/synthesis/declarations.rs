@@ -93,11 +93,15 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 							}
 						}
 					}
+					parser::declarations::export::Exportable::VarStatement(_) => {
+						todo!()
+					}
 					parser::declarations::export::Exportable::ImportAll { .. }
 					| parser::declarations::export::Exportable::ImportParts { .. }
 					| parser::declarations::export::Exportable::Function(_)
 					| parser::declarations::export::Exportable::EnumDeclaration(_)
 					| parser::declarations::export::Exportable::Interface(_)
+					| parser::declarations::export::Exportable::Namespace(_)
 					| parser::declarations::export::Exportable::TypeAlias(_) => {}
 				}
 			}
@@ -124,7 +128,10 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			parser::declarations::ExportDeclaration::DefaultFunction { position, .. } => {
+			parser::declarations::ExportDeclaration::TSDefaultFunctionDeclaration {
+				position,
+				..
+			} => {
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::FunctionWithoutBodyNotAllowedHere {
 						position: position.with_source(environment.get_source()),
@@ -147,28 +154,33 @@ pub(crate) fn synthesise_declaration<T: crate::ReadFromFS>(
 
 			// TODO remove enumerate, add add function and more
 			for (idx, member) in r#enum.on.members.iter().enumerate() {
-				match member {
-					parser::ast::EnumMember::Variant { name, value, position } => {
-						if let Some(ref _value) = value {
-							checking_data.raise_unimplemented_error(
-								"enum with value",
-								position.with_source(environment.get_source()),
-							);
-						}
-
-						let value = checking_data
-							.types
-							.new_constant_type(Constant::Number((idx as u8).into()));
-
-						basis.append(
-							Publicity::Public,
-							PropertyKey::from(name.clone()),
-							PropertyValue::Value(value),
-							member.get_position().with_source(environment.get_source()),
-							&mut environment.info,
+				let parser::ast::EnumMember { name, value, position } = member;
+				match value {
+					parser::ast::EnumMemberValue::ClassMembers(_) => {
+						checking_data.raise_unimplemented_error(
+							"class enums",
+							position.with_source(environment.get_source()),
 						);
 					}
+					parser::ast::EnumMemberValue::Value(_) => {
+						checking_data.raise_unimplemented_error(
+							"enum with value",
+							position.with_source(environment.get_source()),
+						);
+					}
+					parser::ast::EnumMemberValue::None => {}
 				}
+
+				let value =
+					checking_data.types.new_constant_type(Constant::Number((idx as u8).into()));
+
+				basis.append(
+					Publicity::Public,
+					PropertyKey::from(name.clone()),
+					PropertyValue::Value(value),
+					member.get_position().with_source(environment.get_source()),
+					&mut environment.info,
+				);
 			}
 
 			let variable = crate::VariableId(environment.get_source(), r#enum.get_position().start);

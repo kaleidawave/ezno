@@ -1,17 +1,13 @@
 use crate::{
 	derive_ASTNode,
-	errors::parse_lexing_error,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
-	throw_unexpected_token_with_token,
 	visiting::Visitable,
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, Span,
-	TSXToken, Token, TokenReader, WithComment,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
 use std::fmt::Debug;
-use tokenizer_lib::sized_tokens::{TokenReaderWithTokenEnds, TokenStart};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -97,16 +93,15 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	type ParameterVisibility = ();
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		_reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		// TODO not great
-		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
-		Ok((
-			(Some(start), MethodHeader::from_reader(reader)),
-			WithComment::from_reader(reader, state, options)?,
-		))
+		todo!()
+		// // TODO not great
+		// let start = reader.peek().unwrap().1;
+		// Ok((
+		// 	(Some(start), MethodHeader::from_reader(reader)),
+		// 	WithComment::from_reader(reader)?,
+		// ))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -156,13 +151,24 @@ impl ASTNode for ObjectLiteral {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::OpenBrace)?;
-		Self::from_reader_sub_open_curly(reader, state, options, start)
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.expect_start('{')?;
+		let mut members: Vec<ObjectLiteralMember> = Vec::new();
+		loop {
+			if reader.is_operator("}") {
+				break;
+			}
+			let member = ObjectLiteralMember::from_reader(reader)?;
+			let is_comment = matches!(member, ObjectLiteralMember::Comment(..));
+
+			members.push(member);
+
+			if !reader.is_operator_advance(",") && !is_comment {
+				break;
+			}
+		}
+		let end = reader.expect('}')?;
+		Ok(ObjectLiteral { members, position: start.union(end) })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -171,102 +177,76 @@ impl ASTNode for ObjectLiteral {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		crate::to_string_bracketed(&self.members, ('{', '}'), buf, options, local);
-	}
-}
-
-impl ObjectLiteral {
-	pub(crate) fn from_reader_sub_open_curly(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let mut members: Vec<ObjectLiteralMember> = Vec::new();
-		loop {
-			if matches!(reader.peek(), Some(Token(TSXToken::CloseBrace, _))) {
-				break;
-			}
-			let member = ObjectLiteralMember::from_reader(reader, state, options)?;
-			let is_comment = matches!(member, ObjectLiteralMember::Comment(..));
-			members.push(member);
-			if let Some(Token(TSXToken::Comma, _)) = reader.peek() {
-				reader.next();
-			} else if !is_comment {
-				break;
-			}
-		}
-		let end = reader.expect_next_get_end(TSXToken::CloseBrace)?;
-		Ok(ObjectLiteral { members, position: start.union(end) })
+		crate::bracketed_items_to_string(&self.members, ('{', '}'), buf, options, local);
 	}
 }
 
 impl ASTNode for ObjectLiteralMember {
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
+	}
+
 	#[allow(clippy::similar_names)]
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if reader.peek().is_some_and(|t| t.0.is_comment()) {
-			let (comment, is_multiline, span) =
-				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-			return Ok(Self::Comment(comment, is_multiline, span));
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+
+		if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
+			let is_multiline = reader.starts_with_slice("/*");
+			reader.advance(2);
+			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+			let position = if is_multiline {
+				start.with_length(2 + content.len())
+			} else {
+				start.with_length(4 + content.len())
+			};
+			return Ok(Self::Comment(content.clone(), false, position));
 		}
 
-		if let Some(Token(_, spread_start)) =
-			reader.conditional_next(|tok| matches!(tok, TSXToken::Spread))
-		{
+		if reader.is_operator_advance("...") {
 			// TODO precedence okay?
-			let expression = Expression::from_reader(reader, state, options)?;
-			let position = spread_start.union(expression.get_position());
+			let expression = Expression::from_reader(reader)?;
+			let position = start.union(expression.get_position());
 			return Ok(Self::Spread(expression, position));
 		};
 
-		// TODO not great
-		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
+		let header = MethodHeader::from_reader(reader);
+		let key =
+			WithComment::<PropertyKey<crate::property_key::AlwaysPublic>>::from_reader(reader)?;
 
-		// Catch for named get or set :(
-		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
+		if reader.is_operator("(") || reader.is_operator("<") {
+			let method: ObjectLiteralMethod =
+				FunctionBase::from_reader_with_header_and_name(reader, header, key)?;
 
-		let Token(token, _) = &reader.peek().ok_or_else(parse_lexing_error)?;
-		match token {
-			// Functions, (OpenChevron is for generic parameters)
-			TSXToken::OpenParentheses | TSXToken::OpenChevron => {
-				let method: ObjectLiteralMethod = FunctionBase::from_reader_with_header_and_name(
-					reader,
-					state,
-					options,
-					(Some(start), header),
-					key,
-				)?;
-
-				Ok(Self::Method(method))
-			}
-			_ => {
-				if !header.is_no_modifiers() {
-					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
-				}
-				if let Some(Token(TSXToken::Comma | TSXToken::CloseBrace, _)) = reader.peek() {
-					if let PropertyKey::Identifier(name, position, _) = key.get_ast() {
-						Ok(Self::Shorthand(name, position))
-					} else {
-						let token = reader.next().ok_or_else(parse_lexing_error)?;
-						throw_unexpected_token_with_token(token, &[TSXToken::Colon])
-					}
+			Ok(Self::Method(method))
+		} else if header.is_no_modifiers() {
+			if reader.is_operator(",") || reader.is_operator("}") {
+				if let PropertyKey::Identifier(name, position, _) = key.get_ast() {
+					Ok(Self::Shorthand(name, position))
 				} else {
-					let token = reader.next().ok_or_else(parse_lexing_error)?;
-					let assignment = match token.0 {
-						TSXToken::Colon => false,
-						TSXToken::Assign => true,
-						_ => return throw_unexpected_token_with_token(token, &[TSXToken::Colon]),
-					};
-					// let assignment = if let
-					let value = Expression::from_reader(reader, state, options)?;
-					let position = key.get_position().union(value.get_position());
-					Ok(Self::Property { assignment, key, value, position })
+					let found = reader.get_current().chars().next();
+					Err(crate::ParseError::new(
+						crate::ParseErrors::UnexpectedCharacter { expected: &[':'], found },
+						reader.get_start().with_length(1),
+					))
 				}
+			} else {
+				// TODO remove
+				let assignment = if reader.is_operator_advance("=") {
+					true
+				} else {
+					reader.expect(':')?;
+					false
+				};
+				let value = Expression::from_reader(reader)?;
+				let position = key.get_position().union(value.get_position());
+				Ok(Self::Property { assignment, key, value, position })
 			}
+		} else {
+			let found = reader.get_current().chars().next();
+			Err(crate::ParseError::new(
+				crate::ParseErrors::UnexpectedCharacter { expected: &['}'], found },
+				reader.get_start().with_length(1),
+			))
 		}
 	}
 
@@ -307,9 +287,5 @@ impl ASTNode for ObjectLiteralMember {
 				}
 			}
 		};
-	}
-
-	fn get_position(&self) -> Span {
-		*get_field_by_type::GetFieldByType::get(self)
 	}
 }

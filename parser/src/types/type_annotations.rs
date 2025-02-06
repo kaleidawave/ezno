@@ -1,27 +1,15 @@
 use std::ops::Neg;
 
-use crate::ast::VariableOrPropertyAccess;
 use crate::{
-	derive_ASTNode, parse_bracketed, throw_unexpected_token_with_token, to_string_bracketed,
-	ListItem, ParseErrors, Quoted,
-};
-use crate::{
-	errors::parse_lexing_error, extensions::decorators::Decorated, Decorator, Marker, ParseResult,
-	VariableField, WithComment,
+	ast::VariableOrPropertyAccess, bracketed_items_from_reader, bracketed_items_to_string,
+	derive_ASTNode, extensions::decorators::Decorated, number::NumberRepresentation, ASTNode,
+	Decorator, ListItem, Marker, ParseError, ParseErrors, ParseResult, Quoted, Span, VariableField,
+	WithComment,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
-use tokenizer_lib::sized_tokens::{SizedToken, TokenEnd, TokenReaderWithTokenEnds, TokenStart};
 
-use super::{
-	interface::{parse_interface_members, InterfaceMember},
-	type_declarations::TypeParameter,
-};
-
-use crate::{
-	number::NumberRepresentation, tokens::token_as_identifier, ASTNode, ParseError, ParseOptions,
-	Span, TSXKeyword, TSXToken, Token, TokenReader,
-};
+use super::{interface::InterfaceMember, type_declarations::TypeParameter};
 
 /// A reference to a type
 #[apply(derive_ASTNode)]
@@ -144,19 +132,19 @@ impl ASTNode for AnnotationWithBinder {
 		}
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(1) {
-			let (name, pos) =
-				token_as_identifier(reader.next().unwrap(), "tuple literal named item")?;
-			reader.next();
-			let ty = TypeAnnotation::from_reader(reader, state, options)?;
-			Ok(AnnotationWithBinder::Annotated { position: pos.union(ty.get_position()), name, ty })
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		if reader.after_identifier().starts_with(':') {
+			let start = reader.get_start();
+			let name = reader.parse_identifier("type annotation binder", false)?.to_owned();
+			let _ = reader.expect(':')?;
+			let ty = TypeAnnotation::from_reader(reader)?;
+			Ok(AnnotationWithBinder::Annotated {
+				position: start.union(ty.get_position()),
+				name,
+				ty,
+			})
 		} else {
-			TypeAnnotation::from_reader(reader, state, options).map(Self::NoAnnotation)
+			TypeAnnotation::from_reader(reader).map(Self::NoAnnotation)
 		}
 	}
 
@@ -238,12 +226,12 @@ pub enum IsItem {
 }
 
 impl ASTNode for TypeAnnotation {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		Self::from_reader_with_config(reader, state, options, None, None)
+	fn get_position(&self) -> Span {
+		*get_field_by_type::GetFieldByType::get(self)
+	}
+
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		Self::from_reader_with_precedence(reader, TypeOperatorKind::None)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -289,11 +277,11 @@ impl ASTNode for TypeAnnotation {
 						}
 					}
 				}
-				to_string_bracketed(arguments, ('<', '>'), buf, options, local);
+				bracketed_items_to_string(arguments, ('<', '>'), buf, options, local);
 			}
 			Self::FunctionLiteral { type_parameters, parameters, return_type, .. } => {
 				if let Some(type_parameters) = type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
 				buf.push_str(" => ");
@@ -339,10 +327,10 @@ impl ASTNode for TypeAnnotation {
 				}
 			}
 			Self::ObjectLiteral(members, _) => {
-				to_string_bracketed(members, ('{', '}'), buf, options, local);
+				bracketed_items_to_string(members, ('{', '}'), buf, options, local);
 			}
 			Self::TupleLiteral(members, _) => {
-				to_string_bracketed(members, ('[', ']'), buf, options, local);
+				bracketed_items_to_string(members, ('[', ']'), buf, options, local);
 			}
 			Self::Index(on, with, _) => {
 				on.to_string_from_buffer(buf, options, local);
@@ -395,7 +383,7 @@ impl ASTNode for TypeAnnotation {
 			Self::ConstructorLiteral { parameters, type_parameters, return_type, .. } => {
 				buf.push_str("new ");
 				if let Some(type_parameters) = type_parameters {
-					to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
 				buf.push_str(" => ");
@@ -447,421 +435,328 @@ impl ASTNode for TypeAnnotation {
 			}
 		}
 	}
-
-	fn get_position(&self) -> Span {
-		*get_field_by_type::GetFieldByType::get(self)
-	}
 }
 
-/// For parsing
+/// For parsing. Precedence level. WIP
 #[derive(Clone, Copy)]
 pub(crate) enum TypeOperatorKind {
-	Union,
+	None,
 	Intersection,
 	// not an implication, not an implication, not an implication
 	Function,
 	Query,
+	/// Break before `=>`
+	ReturnType,
 }
+
+const COMMON_TYPE_NAMES: &[&str] =
+	&["string", "number", "boolean", "any", "null", "undefined", "unknown", "never"];
 
 impl TypeAnnotation {
 	/// Also returns the local the generic arguments ran over
 	/// TODO refactor and tidy a lot of this, precedence rather than config
-	pub(crate) fn from_reader_with_config(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		parent_kind: Option<TypeOperatorKind>,
-		start: Option<TokenStart>,
+	pub(crate) fn from_reader_with_precedence(
+		reader: &mut crate::Lexer,
+		parent_kind: TypeOperatorKind,
 	) -> ParseResult<Self> {
-		if let (true, Some(Token(peek, at))) = (options.partial_syntax, reader.peek()) {
-			let next_is_not_type_annotation_like = matches!(
-				peek,
-				TSXToken::CloseParentheses
-					| TSXToken::CloseBracket
-					| TSXToken::CloseBrace
-					| TSXToken::Comma
-					| TSXToken::OpenChevron
-			) || peek.is_assignment()
-				|| (start.is_some_and(|start| {
-					peek.is_statement_or_declaration_start()
-						&& state
-							.line_starts
-							.byte_indexes_on_different_lines(start.0 as usize, at.0 as usize)
-				}));
+		if reader.get_options().partial_syntax {
+			let start = reader.get_start();
+			reader.skip();
+			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
+				|| reader.starts_with_statement_or_declaration_on_new_line();
 
-			if next_is_not_type_annotation_like {
-				let point = start.unwrap_or(*at);
+			if next_is_not_expression_like {
 				// take up the whole next part for checker suggestions
-				let position = point.union(source_map::End(at.0));
-				return Ok(TypeAnnotation::Marker(state.new_partial_point_marker(point), position));
-			}
-		}
-
-		while let Some(Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _)) =
-			reader.peek()
-		{
-			reader.next();
-		}
-
-		if let (None, Some(Token(TSXToken::BitwiseOr, _))) = (parent_kind, reader.peek()) {
-			reader.next();
-		}
-		if let (None, Some(Token(TSXToken::BitwiseAnd, _))) = (parent_kind, reader.peek()) {
-			reader.next();
-		}
-
-		let mut reference = match reader.next().ok_or_else(parse_lexing_error)? {
-			// Literals:
-			t @ Token(TSXToken::Keyword(TSXKeyword::True), _) => {
-				Self::BooleanLiteral(true, t.get_span())
-			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::False), _) => {
-				Self::BooleanLiteral(false, t.get_span())
-			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::This), _) => Self::This(t.get_span()),
-			Token(TSXToken::Keyword(TSXKeyword::Infer), start) => {
-				let token = reader.next().ok_or_else(parse_lexing_error)?;
-				let (name, position) = token_as_identifier(token, "infer name")?;
-				let (position, extends) = if reader
-					.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
-					.is_some()
-				{
-					let extends = TypeAnnotation::from_reader_with_config(
-						reader,
-						state,
-						options,
-						Some(TypeOperatorKind::Query),
-						None,
-					)?;
-					(start.union(extends.get_position()), Some(Box::new(extends)))
-				} else {
-					(start.union(position), None)
-				};
-				Self::Infer { name, extends, position }
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Asserts), start) => {
-				let predicate = TypeAnnotation::from_reader_with_config(
-					reader,
-					state,
-					options,
-					parent_kind,
-					Some(start),
-				)?;
-				let position = start.union(predicate.get_position());
-				Self::Asserts(Box::new(predicate), position)
-			}
-			Token(TSXToken::Keyword(TSXKeyword::TypeOf), start) => {
-				let reference = VariableOrPropertyAccess::from_reader(reader, state, options)?;
-				let position = start.union(reference.get_position());
-				Self::TypeOf(Box::new(reference), position)
-			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::Symbol), _) => {
-				let position = t.get_span();
-				#[cfg(feature = "extras")]
-				let name =
-					reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
-						|t| {
-							if let Token(TSXToken::StringLiteral(content, _), _) = t {
-								content
-							} else {
-								unreachable!()
-							}
-						},
-					);
-				Self::Symbol {
-					unique: false,
-					position,
-					#[cfg(feature = "extras")]
-					name,
-				}
-			}
-			t @ Token(TSXToken::Keyword(TSXKeyword::Unique), _) => {
-				let kw_pos = reader.expect_next(TSXToken::Keyword(TSXKeyword::Symbol))?;
-				let position = t.get_span().union(kw_pos.with_length("symbol".len()));
-				#[cfg(feature = "extras")]
-				let name =
-					reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
-						|t| {
-							if let Token(TSXToken::StringLiteral(content, _), _) = t {
-								content
-							} else {
-								unreachable!()
-							}
-						},
-					);
-				Self::Symbol {
-					unique: true,
-					position,
-					#[cfg(feature = "extras")]
-					name,
-				}
-			}
-			Token(TSXToken::NumberLiteral(value), start) => {
-				let position = start.with_length(value.len());
-				match value.parse::<NumberRepresentation>() {
-					Ok(number) => Self::NumberLiteral(number, position),
-					Err(_) => {
-						// TODO this should never happen
-						return Err(crate::ParseError::new(
-							crate::ParseErrors::InvalidNumberLiteral,
-							position,
-						));
-					}
-				}
-			}
-			Token(TSXToken::Subtract, start) => {
-				let Token(token, pos) = reader.next().ok_or_else(parse_lexing_error)?;
-				if let TSXToken::NumberLiteral(value) = token {
-					let position = pos.union(start.with_length(value.len()));
-					match value.parse::<NumberRepresentation>() {
-						Ok(number) => Self::NumberLiteral(number.neg(), position),
-						Err(_) => {
-							// TODO this should never happen
-							return Err(crate::ParseError::new(
-								crate::ParseErrors::InvalidNumberLiteral,
-								position,
-							));
-						}
-					}
-				} else {
-					return Err(ParseError::new(
-						ParseErrors::ExpectedNumberLiteral,
-						start.with_length(token.length() as usize + 1),
-					));
-				}
-			}
-			Token(TSXToken::StringLiteral(content, quoted), start) => {
-				let pos = start.with_length(content.len() + 2);
-				Self::StringLiteral(content, quoted, pos)
-			}
-			Token(TSXToken::At, pos) => {
-				let decorator = Decorator::from_reader_sub_at_symbol(reader, state, options, pos)?;
-				// TODO ...
-				let this_declaration = Self::from_reader_with_config(
-					reader,
-					state,
-					options,
-					Some(TypeOperatorKind::Query),
-					start,
-				)?;
-				let position = pos.union(this_declaration.get_position());
-				Self::Decorated(decorator, Box::new(this_declaration), position)
-			}
-			// Function literal or group
-			Token(TSXToken::OpenParentheses, start) => {
-				// Discern between group or arrow function:
-				let mut bracket_count = 1;
-				let next = reader.scan(|t, _| {
-					match t {
-						TSXToken::OpenParentheses => {
-							bracket_count += 1;
-						}
-						TSXToken::CloseParentheses => {
-							bracket_count -= 1;
-						}
-						_ => {}
-					}
-					bracket_count == 0
-				});
-				// If arrow function OR group
-				if let Some(Token(TSXToken::Arrow, _)) = next {
-					let parameters =
-						TypeAnnotationFunctionParameters::from_reader_sub_open_parenthesis(
-							reader, state, options, start,
-						)?;
-					reader.expect_next(TSXToken::Arrow)?;
-					let return_type = Self::from_reader(reader, state, options)?;
-					Self::FunctionLiteral {
-						position: start.union(return_type.get_position()),
-						type_parameters: None,
-						parameters,
-						return_type: Box::new(return_type),
-					}
-				} else {
-					let type_annotation = Self::from_reader(reader, state, options)?;
-					let position =
-						start.union(reader.expect_next_get_end(TSXToken::CloseParentheses)?);
-					Self::ParenthesizedReference(type_annotation.into(), position)
-				}
-			}
-			Token(TSXToken::OpenChevron, start) => {
-				let (type_parameters, _, _) =
-					parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)?;
-				let parameters =
-					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-				reader.expect_next(TSXToken::Arrow)?;
-				let return_type = Self::from_reader(reader, state, options)?;
-				Self::FunctionLiteral {
-					position: start.union(return_type.get_position()),
-					type_parameters: Some(type_parameters),
-					parameters,
-					return_type: Box::new(return_type),
-				}
-			}
-			// Object literal type
-			Token(TSXToken::OpenBrace, start) => {
-				let members = parse_interface_members(reader, state, options)?;
-				let position = start.union(reader.expect_next_get_end(TSXToken::CloseBrace)?);
-				Self::ObjectLiteral(members, position)
-			}
-			// Tuple literal type
-			Token(TSXToken::OpenBracket, start) => {
-				let (members, _, end) =
-					parse_bracketed(reader, state, options, None, TSXToken::CloseBracket)?;
-				let position = start.union(end);
-				Self::TupleLiteral(members, position)
-			}
-			Token(TSXToken::TemplateLiteralStart, start) => {
-				let mut parts = Vec::new();
-				let mut last = String::new();
-				let mut end: Option<TokenEnd> = None;
-				while end.is_none() {
-					match reader.next().ok_or_else(parse_lexing_error)? {
-						Token(TSXToken::TemplateLiteralChunk(chunk), _) => {
-							last = chunk;
-						}
-						Token(TSXToken::TemplateLiteralExpressionStart, _) => {
-							let expression =
-								AnnotationWithBinder::from_reader(reader, state, options)?;
-							parts.push((std::mem::take(&mut last), expression));
-							let next = reader.next();
-							debug_assert!(matches!(
-								next,
-								Some(Token(TSXToken::TemplateLiteralExpressionEnd, _))
-							));
-						}
-						Token(TSXToken::TemplateLiteralEnd, end_position) => {
-							end = Some(TokenEnd::new(end_position.0));
-						}
-						Token(TSXToken::EOS, _) => return Err(parse_lexing_error()),
-						t => unreachable!("Token {:?}", t),
-					}
-				}
-				Self::TemplateLiteral {
-					parts,
-					final_part: last,
-					position: start.union(end.unwrap()),
-				}
-			}
-			Token(TSXToken::Keyword(TSXKeyword::Readonly), start) => {
-				let readonly_type = TypeAnnotation::from_reader_with_config(
-					reader,
-					state,
-					options,
-					Some(TypeOperatorKind::Query),
-					Some(start),
-				)?;
-				let position = start.union(readonly_type.get_position());
-				TypeAnnotation::Readonly(Box::new(readonly_type), position)
-			}
-			Token(TSXToken::Keyword(TSXKeyword::KeyOf), start) => {
-				let key_of_type = TypeAnnotation::from_reader_with_config(
-					reader,
-					state,
-					options,
-					Some(TypeOperatorKind::Query),
-					Some(start),
-				)?;
-				let position = start.union(key_of_type.get_position());
-				TypeAnnotation::KeyOf(Box::new(key_of_type), position)
-			}
-			// PLS stop adding **** to the syntax
-			Token(TSXToken::Keyword(TSXKeyword::Abstract), start) => {
-				let inner_type = TypeAnnotation::from_reader_with_config(
-					reader,
-					state,
-					options,
-					Some(TypeOperatorKind::Query),
-					Some(start),
-				)?;
-				let position = start.union(inner_type.get_position());
-				TypeAnnotation::Abstract(Box::new(inner_type), position)
-			}
-			Token(TSXToken::Keyword(TSXKeyword::New), start) => {
-				let type_parameters = reader
-					.conditional_next(|token| *token == TSXToken::OpenChevron)
-					.is_some()
-					.then(|| {
-						parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-							.map(|(params, _, _)| params)
-					})
-					.transpose()?;
-				let parameters =
-					TypeAnnotationFunctionParameters::from_reader(reader, state, options)?;
-
-				reader.expect_next(TSXToken::Arrow)?;
-				let return_type = Self::from_reader(reader, state, options)?;
-				Self::ConstructorLiteral {
-					position: start.union(return_type.get_position()),
-					parameters,
-					type_parameters,
-					return_type: Box::new(return_type),
-				}
-			}
-			token => {
-				let (name, pos) = token_as_identifier(token, "type reference")?;
-				match name.as_str() {
-					"string" => Self::CommonName(CommonTypes::String, pos),
-					"number" => Self::CommonName(CommonTypes::Number, pos),
-					"boolean" => Self::CommonName(CommonTypes::Boolean, pos),
-					"any" => Self::CommonName(CommonTypes::Any, pos),
-					"null" => Self::CommonName(CommonTypes::Null, pos),
-					"undefined" => Self::CommonName(CommonTypes::Undefined, pos),
-					"unknown" => Self::CommonName(CommonTypes::Unknown, pos),
-					"never" => Self::CommonName(CommonTypes::Never, pos),
-					_ => Self::Name(TypeName::Name(name), pos),
-				}
-			}
-		};
-		// Namespaced name
-		if let Some(Token(TSXToken::Dot, _)) = reader.peek() {
-			let Self::Name(TypeName::Name(name), mut position) = reference else {
-				return Ok(reference);
-			};
-			let mut namespace = vec![name];
-			while reader.conditional_next(|tok| *tok == TSXToken::Dot).is_some() {
-				let (part, end) = token_as_identifier(reader.next().unwrap(), "namespace name")?;
-				namespace.push(part);
-				position = position.union(end);
-			}
-			reference = Self::Name(TypeName::FromNamespace(namespace), position);
-		}
-
-		// Generics arguments:
-		if let Some(Token(TSXToken::OpenChevron, _position)) = reader.peek() {
-			// Assert its a Self::Name
-			let Self::Name(name, start_span) = reference else {
-				let position = reader.next().unwrap().get_span();
-				return Err(ParseError::new(
-					crate::ParseErrors::TypeArgumentsNotValidOnReference,
+				let position = start.union(reader.get_end());
+				return Ok(TypeAnnotation::Marker(
+					reader.new_partial_point_marker(position),
 					position,
 				));
+			}
+		} else {
+			reader.skip();
+		}
+
+		// while let Some(Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _)) =
+		// 	reader.peek()
+		// {
+		// 	reader.next();
+		// }
+
+		// Yes leading syntax is allowed sometimes
+		if let TypeOperatorKind::None = parent_kind {
+			let _ = reader.is_operator_advance("|") || reader.is_operator_advance("&");
+		}
+
+		reader.skip();
+
+		let start = reader.get_start();
+
+		let mut reference = if let Some(keyword) =
+			reader.is_one_of_keywords_advance(&["true", "false"])
+		{
+			TypeAnnotation::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
+		} else if reader.is_keyword_advance("this") {
+			TypeAnnotation::This(start.with_length(4))
+		} else if reader.is_keyword_advance("infer") {
+			let name = reader.parse_identifier("infer name", false)?;
+			let (position, extends) = if reader.is_keyword_advance("extends") {
+				let extends =
+					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+				(start.union(extends.get_position()), Some(Box::new(extends)))
+			} else {
+				let position = start.with_length(name.len());
+				(position, None)
 			};
-			reader.next();
-			let (generic_arguments, end) =
-				generic_arguments_from_reader_sub_open_angle(reader, state, options, parent_kind)?;
-			reference =
-				Self::NameWithGenericArguments(name, generic_arguments, start_span.union(end));
+			TypeAnnotation::Infer { name: name.to_owned(), extends, position }
+		} else if reader.is_keyword_advance("asserts") {
+			let predicate = TypeAnnotation::from_reader_with_precedence(reader, parent_kind)?;
+			let position = start.union(predicate.get_position());
+			TypeAnnotation::Asserts(Box::new(predicate), position)
+		} else if reader.is_keyword_advance("typeof") {
+			let reference = VariableOrPropertyAccess::from_reader(reader)?;
+			let position = start.union(reference.get_position());
+			Self::TypeOf(Box::new(reference), position)
+		} else if reader.is_keyword_advance("readonly") {
+			let readonly_type =
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+			let position = start.union(readonly_type.get_position());
+			TypeAnnotation::Readonly(Box::new(readonly_type), position)
+		} else if reader.is_keyword_advance("keyof") {
+			let key_of_type =
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+			let position = start.union(key_of_type.get_position());
+			TypeAnnotation::KeyOf(Box::new(key_of_type), position)
+		} else if reader.is_keyword_advance("abstract") {
+			let inner_type =
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+			let position = start.union(inner_type.get_position());
+			TypeAnnotation::Abstract(Box::new(inner_type), position)
+		} else if reader.is_keyword_advance("new") {
+			let type_parameters = if reader.starts_with('<') {
+				let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
+				Some(type_parameters)
+			} else {
+				None
+			};
+			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+			reader.expect_operator("=>")?;
+			let return_type = Box::new(TypeAnnotation::from_reader(reader)?);
+			let position = start.union(return_type.get_position());
+			TypeAnnotation::ConstructorLiteral {
+				position,
+				parameters,
+				type_parameters,
+				return_type,
+			}
+		} else if let Some(keyword) = reader.is_one_of_keywords_advance(COMMON_TYPE_NAMES) {
+			let name = match keyword {
+				"string" => CommonTypes::String,
+				"number" => CommonTypes::Number,
+				"boolean" => CommonTypes::Boolean,
+				"any" => CommonTypes::Any,
+				"null" => CommonTypes::Null,
+				"undefined" => CommonTypes::Undefined,
+				"unknown" => CommonTypes::Unknown,
+				"never" => CommonTypes::Never,
+				slice => unreachable!("{slice:?}"),
+			};
+			Self::CommonName(name, start.with_length(keyword.len()))
+		} else if reader.is_keyword_advance("unique") {
+			todo!("unique symbol type annotation")
+		// let position = t.get_span().union(kw_pos.with_length("symbol".len()));
+		// 	#[cfg(feature = "extras")]
+		// 	let name =
+		// 		reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
+		// 			|t| {
+		// 				if let Token(TSXToken::StringLiteral(content, _), _) = t {
+		// 					content
+		// 				} else {
+		// 					unreachable!()
+		// 				}
+		// 			},
+		// 		);
+		// 	Self::Symbol {
+		// 		unique: true,
+		// 		position,
+		// 		#[cfg(feature = "extras")]
+		// 		name,
+		// 	}
+		} else if reader.starts_with_number() {
+			let (value, length) = reader.parse_number_literal()?;
+			let position = start.with_length(length as usize);
+			Self::NumberLiteral(value, position)
+		} else if reader.is_operator_advance("-") {
+			let (value, length) = reader.parse_number_literal()?;
+			let position = start.with_length(length as usize);
+			// important negation here
+			Self::NumberLiteral(value.neg(), position)
+		} else if reader.starts_with('"') || reader.starts_with('\'') {
+			let (content, quoted) = reader.parse_string_literal()?;
+			let position = start.with_length(content.len() + 2);
+			Self::StringLiteral(content.to_owned(), quoted, position)
+		} else if reader.starts_with('@') {
+			let decorator = Decorator::from_reader(reader)?;
+			// TODO ...
+			let this_declaration =
+				Self::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+			let position = start.union(this_declaration.get_position());
+			Self::Decorated(decorator, Box::new(this_declaration), position)
+		} else if reader.is_operator("(") {
+			// Function literal or group
+			let after = reader.after_brackets();
+			let is_arrow_function = after.starts_with("=>");
+
+			if is_arrow_function {
+				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+				reader.expect_operator("=>")?;
+				let return_type = Self::from_reader(reader)?;
+				Self::FunctionLiteral {
+					position: start.union(return_type.get_position()),
+					type_parameters: None,
+					parameters,
+					return_type: Box::new(return_type),
+				}
+			} else {
+				reader.advance(1);
+				let type_annotation = Self::from_reader(reader)?;
+				let position = start.union(reader.expect(')')?);
+				Self::ParenthesizedReference(type_annotation.into(), position)
+			}
+		} else if reader.is_operator_advance("<") {
+			let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
+			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+			reader.expect_operator("=>")?;
+			let return_type = Self::from_reader(reader)?;
+			Self::FunctionLiteral {
+				position: start.union(return_type.get_position()),
+				type_parameters: Some(type_parameters),
+				parameters,
+				return_type: Box::new(return_type),
+			}
+		} else if reader.is_operator_advance("{") {
+			let members = crate::types::interface::interface_members_from_reader(reader)?;
+			let position = start.union(reader.expect('}')?);
+			Self::ObjectLiteral(members, position)
+		} else if reader.is_operator_advance("[") {
+			let (members, _) = bracketed_items_from_reader(reader, "]")?;
+			let position = start.union(reader.get_end());
+			Self::TupleLiteral(members, position)
+		} else if reader.is_operator_advance("`") {
+			let start = reader.get_start();
+			let mut parts = Vec::new();
+			let result;
+			loop {
+				let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
+					let (_found, position) = crate::lexer::utilities::next_item(reader);
+					ParseError::new(ParseErrors::UnexpectedEnd, position)
+				})?;
+				if let "${" = found {
+					let expression = AnnotationWithBinder::from_reader(reader)?;
+					reader.expect('}')?;
+					parts.push((content.to_owned(), expression));
+				} else {
+					result = Self::TemplateLiteral {
+						parts,
+						final_part: content.to_owned(),
+						position: start.union(reader.get_end()),
+					};
+					break;
+				}
+			}
+			result
+		} else {
+			let name = reader.parse_identifier("type name", false)?;
+			let position = start.with_length(name.len());
+			let name = name.to_owned();
+
+			let name = if reader.is_operator(".") {
+				let mut namespace = vec![name];
+				while reader.is_operator_advance(".") {
+					let name = reader.parse_identifier("type name", false)?;
+					namespace.push(name.to_owned());
+				}
+				let _position = position.union(reader.get_end());
+				TypeName::FromNamespace(namespace)
+			} else {
+				TypeName::Name(name)
+			};
+
+			// Generics arguments:
+			if reader.is_operator_advance("<") {
+				let (generic_arguments, _) = bracketed_items_from_reader(reader, ">")?;
+				let end = reader.get_end();
+				Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
+			} else {
+				Self::Name(name, position)
+			}
+			// Token(TSXToken::TemplateLiteralStart, start) => {
+			// 	let mut parts = Vec::new();
+			// 	let mut last = String::new();
+			// 	let mut end: Option<TokenEnd> = None;
+			// 	while end.is_none() {
+			// 		match reader.next().ok_or_else(parse_lexing_error)? {
+			// 			Token(TSXToken::TemplateLiteralChunk(chunk), _) => {
+			// 				last = chunk;
+			// 			}
+			// 			Token(TSXToken::TemplateLiteralExpressionStart, _) => {
+			// 				let expression =
+			// 					AnnotationWithBinder::from_reader(reader)?;
+			// 				parts.push((std::mem::take(&mut last), expression));
+			// 				let next = reader.next();
+			// 				debug_assert!(matches!(
+			// 					next,
+			// 					Some(Token(TSXToken::TemplateLiteralExpressionEnd, _))
+			// 				));
+			// 			}
+			// 			Token(TSXToken::TemplateLiteralEnd, end_position) => {
+			// 				end = Some(TokenEnd::new(end_position.0));
+			// 			}
+			// 			Token(TSXToken::EOS, _) => return Err(parse_lexing_error()),
+			// 			t => unreachable!("Token {:?}", t),
+			// 		}
+			// 	}
+			// 	Self::TemplateLiteral { parts, last, position: start.union(end.unwrap()) }
+			// }
+			// t @ Token(TSXToken::Keyword(TSXKeyword::Symbol), _) => {
+			// 	let position = t.get_span();
+			// 	#[cfg(feature = "extras")]
+			// 	let name =
+			// 		reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
+			// 			|t| {
+			// 				if let Token(TSXToken::StringLiteral(content, _), _) = t {
+			// 					content
+			// 				} else {
+			// 					unreachable!()
+			// 				}
+			// 			},
+			// 		);
+			// 	Self::Symbol {
+			// 		unique: false,
+			// 		position,
+			// 		#[cfg(feature = "extras")]
+			// 		name,
+			// 	}
+			// }
 		};
 
 		// Array shorthand & indexing type references. Loops as number[][]
 		// unsure if index type can be looped
-		while reader.conditional_next(|tok| *tok == TSXToken::OpenBracket).is_some() {
+		while reader.is_operator_advance("[") {
 			let start = reference.get_position();
-			if let Some(Token(TSXToken::CloseBracket, _)) = reader.peek() {
-				let position = reference
-					.get_position()
-					.union(reader.next().ok_or_else(parse_lexing_error)?.get_end());
+			if reader.is_operator_advance("]") {
+				let position = start.union(reader.get_end());
 				reference = Self::ArrayLiteral(Box::new(reference), position);
 			} else {
 				// E.g type allTypes = Person[keyof Person];
-				let indexer = TypeAnnotation::from_reader(reader, state, options)?;
-				let position = start.union(reader.expect_next_get_end(TSXToken::CloseBracket)?);
+				let indexer = TypeAnnotation::from_reader(reader)?;
+				let end = reader.expect(']')?;
+				let position = start.union(end);
 				reference = Self::Index(Box::new(reference), Box::new(indexer), position);
 			}
 		}
 
-		if let Some(Token(TSXToken::Keyword(TSXKeyword::Is), _)) = reader.peek() {
+		if reader.is_keyword_advance("is") {
 			fn type_annotation_as_name(
 				reference: TypeAnnotation,
 			) -> Result<(IsItem, Span), TypeAnnotation> {
@@ -879,13 +774,9 @@ impl TypeAnnotation {
 
 			match type_annotation_as_name(reference) {
 				Ok((item, span)) => {
-					reader.next();
-					let is_type = TypeAnnotation::from_reader_with_config(
+					let is_type = TypeAnnotation::from_reader_with_precedence(
 						reader,
-						state,
-						options,
-						Some(TypeOperatorKind::Query),
-						Some(span.get_start()),
+						TypeOperatorKind::Query,
 					)?;
 					// TODO local
 					let position = span.union(is_type.get_position());
@@ -902,19 +793,13 @@ impl TypeAnnotation {
 			}
 		}
 
-		if let Some(Token(TSXToken::Keyword(TSXKeyword::Extends), _)) = reader.peek() {
-			if parent_kind.is_some() {
+		if reader.is_keyword("extends") {
+			if let TypeOperatorKind::Query = parent_kind {
 				return Ok(reference);
 			}
-			reader.next();
-			let extends_type = TypeAnnotation::from_reader_with_config(
-				reader,
-				state,
-				options,
-				Some(TypeOperatorKind::Query),
-				start,
-			)?;
-			// TODO local
+			reader.advance("extends".len() as u32);
+			let extends_type =
+				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = reference.get_position().union(extends_type.get_position());
 			reference = TypeAnnotation::Extends {
 				item: Box::new(reference),
@@ -923,155 +808,91 @@ impl TypeAnnotation {
 			};
 		}
 
-		// Extends, intersections, unions or (special)implicit function literals
-		match reader.peek() {
-			Some(Token(TSXToken::BitwiseOr, _)) => {
-				if let Some(TypeOperatorKind::Query | TypeOperatorKind::Function) = parent_kind {
-					return Ok(reference);
-				}
-				let mut union_members = vec![reference];
-				while let Some(Token(TSXToken::BitwiseOr, _)) = reader.peek() {
-					reader.next();
-					union_members.push(Self::from_reader_with_config(
-						reader,
-						state,
-						options,
-						Some(parent_kind.unwrap_or(TypeOperatorKind::Union)),
-						start,
-					)?);
-				}
-				let position = union_members
-					.first()
-					.unwrap()
-					.get_position()
-					.union(union_members.last().unwrap().get_position());
-				Ok(Self::Union(union_members, position))
-			}
-			Some(Token(TSXToken::BitwiseAnd, _)) => {
-				if let Some(
-					TypeOperatorKind::Union | TypeOperatorKind::Query | TypeOperatorKind::Function,
-				) = parent_kind
-				{
-					return Ok(reference);
-				}
-				let mut intersection_members = vec![reference];
-				while let Some(Token(TSXToken::BitwiseAnd, _)) = reader.peek() {
-					reader.next();
-					intersection_members.push(Self::from_reader_with_config(
-						reader,
-						state,
-						options,
-						Some(parent_kind.unwrap_or(TypeOperatorKind::Intersection)),
-						start,
-					)?);
-				}
-				let position = intersection_members
-					.first()
-					.unwrap()
-					.get_position()
-					.union(intersection_members.last().unwrap().get_position());
+		// Fix for `as` and `satisfies` expressions
+		if reader.is_one_of(&["||", "&&"]).is_some() {
+			return Ok(reference);
+		}
 
-				Ok(Self::Intersection(intersection_members, position))
+		// Intersections, unions, conditonals and (special) implicit function literals
+		while let Some(operator) = reader.is_one_of_operators(&["|", "&"]) {
+			if let TypeOperatorKind::Function = parent_kind {
+				return Ok(reference);
+			} else if let ("|", TypeOperatorKind::Intersection) = (operator, parent_kind) {
+				return Ok(reference);
 			}
-			Some(Token(TSXToken::Arrow, _)) => {
-				if let Some(TypeOperatorKind::Query | TypeOperatorKind::Function) = parent_kind {
-					return Ok(reference);
-				}
-				reader.next();
-				let return_type = Self::from_reader_with_config(
-					reader,
-					state,
-					options,
-					Some(TypeOperatorKind::Function),
-					start,
-				)?;
-				let parameters_position = reference.get_position();
-				let position = parameters_position.union(return_type.get_position());
-				Ok(Self::FunctionLiteral {
-					position,
-					type_parameters: None,
-					parameters: TypeAnnotationFunctionParameters {
-						parameters: vec![TypeAnnotationFunctionParameter {
-							position,
-							name: None,
-							type_annotation: reference,
-							is_optional: false,
-							decorators: Default::default(),
-						}],
-						rest_parameter: None,
-						position: parameters_position,
-					},
-					return_type: Box::new(return_type),
-				})
-			}
-			Some(Token(TSXToken::QuestionMark, _)) => {
-				if let Some(TypeOperatorKind::Query) = parent_kind {
-					return Ok(reference);
-				}
-				reader.next();
-				let lhs = TypeAnnotation::from_reader(reader, state, options)?;
-				reader.expect_next(TSXToken::Colon)?;
-				let rhs = TypeAnnotation::from_reader(reader, state, options)?;
+			reader.advance(1);
+			if let "&" = operator {
+				let precedence = TypeOperatorKind::Intersection;
+				let rhs = Self::from_reader_with_precedence(reader, precedence)?;
 				let position = reference.get_position().union(rhs.get_position());
-				// TODO zero here ..?
-				Ok(TypeAnnotation::Conditional {
-					condition: Box::new(reference),
-					resolve_true: Box::new(lhs),
-					resolve_false: Box::new(rhs),
-					position,
-				})
+				if let TypeAnnotation::Intersection(members, existing) = &mut reference {
+					*existing = position;
+					members.push(rhs);
+				} else {
+					reference = TypeAnnotation::Intersection(vec![reference, rhs], position);
+				}
+			} else if let "|" = operator {
+				let rhs = Self::from_reader_with_precedence(reader, parent_kind)?;
+				let position = reference.get_position().union(rhs.get_position());
+				if let TypeAnnotation::Union(members, existing) = &mut reference {
+					*existing = position;
+					members.push(rhs);
+				} else {
+					reference = TypeAnnotation::Union(vec![reference, rhs], position);
+				}
+			} else {
+				unreachable!("{operator}")
 			}
-			_ => Ok(reference),
-		}
-	}
-}
-
-/// Parses the arguments (vector of [`TypeAnnotation`]s) parsed to to a type reference or function call.
-/// Returns arguments and the closing span.
-/// TODO could use parse bracketed but needs to have the more complex logic inside
-pub(crate) fn generic_arguments_from_reader_sub_open_angle(
-	reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-	state: &mut crate::ParsingState,
-	options: &ParseOptions,
-	kind: Option<TypeOperatorKind>,
-) -> ParseResult<(Vec<TypeAnnotation>, TokenEnd)> {
-	let mut generic_arguments = Vec::new();
-
-	loop {
-		let argument = TypeAnnotation::from_reader_with_config(reader, state, options, kind, None)?;
-
-		generic_arguments.push(argument);
-
-		// Handling for the fact that concessive chevrons are grouped into bitwise shifts
-		// One option is to keep track of local but as a simpler way mutate the upcoming token
-		// TODO spans
-
-		let peek_mut = reader.peek_mut();
-
-		if let Some(Token(t @ TSXToken::BitwiseShiftRight, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 1);
-			start.0 += 1;
-			*t = TSXToken::CloseChevron;
-			return Ok((generic_arguments, end));
 		}
 
-		if let Some(Token(t @ TSXToken::BitwiseShiftRightUnsigned, start)) = peek_mut {
-			let end = TokenEnd::new(start.0 + 2);
-			start.0 += 2;
-			*t = TSXToken::CloseChevron;
-			return Ok((generic_arguments, end));
-		}
-
-		match reader.next().ok_or_else(parse_lexing_error)? {
-			Token(TSXToken::Comma, _) => {}
-			t @ Token(TSXToken::CloseChevron, _) => return Ok((generic_arguments, t.get_end())),
-			token => {
-				return throw_unexpected_token_with_token(
-					token,
-					&[TSXToken::CloseChevron, TSXToken::Comma],
-				)
+		if reader.is_operator("=>") {
+			// TODO is this good syntax?
+			if let TypeOperatorKind::Query
+			| TypeOperatorKind::Function
+			| TypeOperatorKind::ReturnType
+			| TypeOperatorKind::Intersection = parent_kind
+			{
+				return Ok(reference);
 			}
-		};
+			reader.advance(2);
+			let return_type =
+				Self::from_reader_with_precedence(reader, TypeOperatorKind::Function)?;
+			let parameters_position = reference.get_position();
+			let position = parameters_position.union(return_type.get_position());
+			Ok(Self::FunctionLiteral {
+				position,
+				type_parameters: None,
+				parameters: TypeAnnotationFunctionParameters {
+					parameters: vec![TypeAnnotationFunctionParameter {
+						position,
+						name: None,
+						type_annotation: reference,
+						is_optional: false,
+						decorators: Default::default(),
+					}],
+					rest_parameter: None,
+					position: parameters_position,
+				},
+				return_type: Box::new(return_type),
+			})
+		} else if reader.is_operator("?") {
+			if let TypeOperatorKind::Query = parent_kind {
+				return Ok(reference);
+			}
+			reader.advance(1);
+			let lhs = TypeAnnotation::from_reader(reader)?;
+			reader.expect(':')?;
+			let rhs = TypeAnnotation::from_reader(reader)?;
+			let position = reference.get_position().union(rhs.get_position());
+			Ok(TypeAnnotation::Conditional {
+				condition: Box::new(reference),
+				resolve_true: Box::new(lhs),
+				resolve_false: Box::new(rhs),
+				position,
+			})
+		} else {
+			Ok(reference)
+		}
 	}
 }
 
@@ -1089,13 +910,86 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		let start = reader.expect_next(TSXToken::OpenParentheses)?;
-		Self::from_reader_sub_open_parenthesis(reader, state, options, start)
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.expect_start('(')?;
+		let mut parameters = Vec::new();
+		let mut rest_parameter = None;
+
+		loop {
+			reader.skip();
+			if reader.is_operator(")") {
+				break;
+			}
+			// Skip comments
+			// while reader.conditional_next(TSXToken::is_comment).is_some() {}
+
+			let start = reader.get_start();
+
+			if reader.is_operator_advance("...") {
+				let name = reader.parse_identifier("spread parameter name", true)?.to_owned();
+				// // TODO is this a good feature
+				// let name = if reader.after_identifier().starts_with(":") {
+				// 	Some(WithComment::<VariableField>::from_reader(reader)?)
+				// } else {
+				// 	None
+				// };
+
+				let _ = reader.expect(':');
+				let type_annotation = TypeAnnotation::from_reader(reader)?;
+
+				let position = start.union(type_annotation.get_position());
+
+				rest_parameter = Some(Box::new(TypeAnnotationSpreadFunctionParameter {
+					// TODO
+					decorators: Default::default(),
+					name,
+					type_annotation,
+					position,
+				}));
+				break;
+			}
+
+			// TODO is this a good feature
+			let after_identifier = reader.after_identifier();
+			let name = if after_identifier.starts_with(':') || after_identifier.starts_with("?:") {
+				Some(WithComment::<VariableField>::from_reader(reader)?)
+			} else {
+				None
+			};
+
+			let is_optional = if name.is_some() {
+				if reader.is_operator_advance("?:") {
+					true
+				} else if reader.is_operator_advance(":") {
+					false
+				} else {
+					return Err(crate::lexer::utilities::expected_one_of_items(
+						reader,
+						&["?:", ":"],
+					));
+				}
+			} else {
+				false
+			};
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
+			let position = start.union(type_annotation.get_position());
+
+			parameters.push(TypeAnnotationFunctionParameter {
+				// TODO
+				decorators: Default::default(),
+				name,
+				type_annotation,
+				is_optional,
+				position,
+			});
+
+			if !reader.is_operator_advance(",") {
+				break;
+			}
+		}
+		let close = reader.expect(')')?;
+		let position = start.union(close);
+		Ok(TypeAnnotationFunctionParameters { parameters, rest_parameter, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -1105,7 +999,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		local: crate::LocalToStringInformation,
 	) {
 		buf.push('(');
-		for parameter in &self.parameters {
+		for (at_end, parameter) in self.parameters.iter().endiate() {
 			if let Some(ref name) = parameter.name {
 				name.to_string_from_buffer(buf, options, local);
 			}
@@ -1115,6 +1009,10 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				buf.push_str(": ");
 			}
 			parameter.type_annotation.to_string_from_buffer(buf, options, local);
+			if !at_end || self.rest_parameter.is_some() {
+				buf.push(',');
+				options.push_gap_optionally(buf);
+			}
 		}
 		if let Some(ref rest_parameter) = self.rest_parameter {
 			buf.push_str("...");
@@ -1122,98 +1020,6 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			rest_parameter.type_annotation.to_string_from_buffer(buf, options, local);
 		}
 		buf.push(')');
-	}
-}
-
-impl TypeAnnotationFunctionParameters {
-	pub(crate) fn from_reader_sub_open_parenthesis(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		start: TokenStart,
-	) -> ParseResult<Self> {
-		let mut parameters = Vec::new();
-		let mut rest_parameter = None;
-		while !matches!(reader.peek(), Some(Token(TSXToken::CloseParentheses, _))) {
-			while reader.peek().is_some_and(|Token(ty, _)| ty.is_comment()) {
-				reader.next();
-			}
-			let mut decorators = Vec::<Decorator>::new();
-			while let Some(Token(TSXToken::At, _)) = reader.peek() {
-				decorators.push(Decorator::from_reader(reader, state, options)?);
-			}
-
-			if let Some(Token(TSXToken::Spread, _)) = reader.peek() {
-				let token = reader.next().unwrap();
-				let (name, _) = token_as_identifier(
-					reader.next().ok_or_else(parse_lexing_error)?,
-					"spread function parameter",
-				)?;
-				reader.expect_next(TSXToken::Colon)?;
-				let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-				rest_parameter = Some(Box::new(TypeAnnotationSpreadFunctionParameter {
-					position: token.get_span().union(type_annotation.get_position()),
-					name,
-					type_annotation,
-					decorators,
-				}));
-				break;
-			}
-
-			let mut local = 0;
-			let after_variable_field = reader.scan(|token, _| match token {
-				TSXToken::OpenBracket | TSXToken::OpenBrace | TSXToken::OpenParentheses => {
-					local += 1;
-					false
-				}
-				TSXToken::CloseBracket | TSXToken::CloseBrace | TSXToken::CloseParentheses => {
-					local -= 1;
-					local == 0
-				}
-				_ => local == 0,
-			});
-			let name: Option<WithComment<VariableField>> =
-				if let Some(Token(TSXToken::Colon | TSXToken::OptionalMember, _)) =
-					after_variable_field
-				{
-					Some(ASTNode::from_reader(reader, state, options)?)
-				} else {
-					None
-				};
-			let is_optional = match reader.next().ok_or_else(parse_lexing_error)? {
-				Token(TSXToken::Colon, _) => false,
-				Token(TSXToken::OptionalMember, _) => true,
-				token => {
-					return throw_unexpected_token_with_token(
-						token,
-						&[TSXToken::Colon, TSXToken::OptionalMember],
-					)
-				}
-			};
-			let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-			let position = name
-				.as_ref()
-				.map_or(type_annotation.get_position(), ASTNode::get_position)
-				.union(type_annotation.get_position());
-
-			parameters.push(TypeAnnotationFunctionParameter {
-				decorators,
-				name,
-				type_annotation,
-				is_optional,
-				position,
-			});
-
-			if reader.conditional_next(|tok| matches!(tok, TSXToken::Comma)).is_none() {
-				break;
-			}
-		}
-		let end = reader.expect_next_get_end(TSXToken::CloseParentheses)?;
-		Ok(TypeAnnotationFunctionParameters {
-			position: start.union(end),
-			parameters,
-			rest_parameter,
-		})
 	}
 }
 
@@ -1246,23 +1052,18 @@ impl ASTNode for TupleLiteralElement {
 		self.2
 	}
 
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> ParseResult<Self> {
-		let is_spread = reader.conditional_next(|token| matches!(token, TSXToken::Spread));
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		let is_spread = reader.is_operator_advance("...");
 
-		let annotation_with_binder = AnnotationWithBinder::from_reader(reader, state, options)?;
+		let annotation_with_binder = AnnotationWithBinder::from_reader(reader)?;
 
-		let (kind, position) = if let Some(spread) = is_spread {
-			(TupleElementKind::Spread, spread.1.union(annotation_with_binder.get_position()))
-		} else if let Some(trailing_question) =
-			reader.conditional_next(|token| matches!(token, TSXToken::QuestionMark))
-		{
+		let (kind, position) = if is_spread {
+			(TupleElementKind::Spread, start.union(annotation_with_binder.get_position()))
+		} else if reader.is_operator_advance("?") {
 			(
 				TupleElementKind::Optional,
-				annotation_with_binder.get_position().union(trailing_question.get_end()),
+				annotation_with_binder.get_position().union(reader.get_end()),
 			)
 		} else {
 			(TupleElementKind::Standard, annotation_with_binder.get_position())
@@ -1288,8 +1089,6 @@ impl ASTNode for TupleLiteralElement {
 }
 
 impl ListItem for TupleLiteralElement {
-	const EMPTY: Option<Self> = None;
-
 	type LAST = ();
 }
 

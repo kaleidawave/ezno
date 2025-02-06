@@ -1,9 +1,8 @@
 use crate::{
-	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TSXKeyword, TSXToken, TypeAnnotation,
-	VariableField, WithComment,
+	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField,
+	WithComment,
 };
 use source_map::Span;
-use tokenizer_lib::Token;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]
@@ -25,51 +24,48 @@ impl ASTNode for TryCatchStatement {
 		self.position
 	}
 
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> Result<Self, crate::ParseError> {
-		let start = state.expect_keyword(reader, TSXKeyword::Try)?;
-		let try_inner = Block::from_reader(reader, state, options)?;
+	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
+		let start = reader.expect_keyword("try")?;
+		let try_inner = Block::from_reader(reader)?;
 
 		let mut catch_inner: Option<Block> = None;
 		let mut exception_var: Option<(ExceptionVarField, Option<TypeAnnotation>)> = None;
 
 		// Optional `catch` clause
-		if let Some(Token(TSXToken::Keyword(TSXKeyword::Catch), _)) = reader.peek() {
-			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Catch);
+		if reader.is_keyword_advance("catch") {
+			// state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Catch);
 
 			// Optional exception variable field `catch (e)`
-			if let Some(Token(TSXToken::OpenParentheses, _)) = reader.peek() {
-				reader.expect_next(TSXToken::OpenParentheses)?;
-				let variable_field =
-					WithComment::<VariableField>::from_reader(reader, state, options)?;
+			if reader.is_operator_advance("(") {
+				let variable_field = WithComment::<VariableField>::from_reader(reader)?;
 
 				// Optional type reference `catch (e: type)`
-				let mut exception_var_type: Option<TypeAnnotation> = None;
-				if reader
-					.conditional_next(|tok| {
-						options.type_annotations && matches!(tok, TSXToken::Colon)
-					})
-					.is_some()
+				let exception_var_type: Option<TypeAnnotation> = if reader.is_operator_advance(":")
 				{
-					exception_var_type = Some(TypeAnnotation::from_reader(reader, state, options)?);
-				}
+					let annotation = TypeAnnotation::from_reader(reader)?;
+					crate::lexer::utilities::assert_type_annotations(
+						reader,
+						annotation.get_position(),
+					)?;
+					Some(annotation)
+				} else {
+					None
+				};
 				exception_var = Some((variable_field, exception_var_type));
 
-				reader.expect_next(TSXToken::CloseParentheses)?;
+				reader.expect(')')?;
 			}
 
-			catch_inner = Some(Block::from_reader(reader, state, options)?);
+			catch_inner = Some(Block::from_reader(reader)?);
 		}
 
 		// Optional `finally` clause
-		let mut finally_inner: Option<Block> = None;
-		if let Some(Token(TSXToken::Keyword(TSXKeyword::Finally), _)) = reader.peek() {
-			state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Finally);
-			finally_inner = Some(Block::from_reader(reader, state, options)?);
-		}
+		let finally_inner: Option<Block> = if reader.is_keyword_advance("finally") {
+			// state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Finally);
+			Some(Block::from_reader(reader)?)
+		} else {
+			None
+		};
 
 		// Determine span based on which clauses are present
 		let position: Span = if let Some(finally_block) = &finally_inner {
@@ -80,7 +76,7 @@ impl ASTNode for TryCatchStatement {
 			// Parse error if neither catch nor finally clause is present
 			return Err(ParseError::new(
 				ParseErrors::ExpectedCatchOrFinally,
-				reader.next().unwrap().get_span(),
+				start.union(try_inner.get_position()),
 			));
 		};
 

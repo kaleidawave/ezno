@@ -105,7 +105,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 		// 							attribute_name: match attribute {
 		// 								JSXAttribute::Static(name, _, _)
 		// 								| JSXAttribute::Dynamic(name, _, _)
-		// 								| JSXAttribute::BooleanAttribute(name, _) => name.clone(),
+		// 								| JSXAttribute::Boolean(name, _) => name.clone(),
 		// 								JSXAttribute::Spread(_, _) => todo!(),
 		// 								JSXAttribute::Shorthand(_) => todo!(),
 		// 							},
@@ -327,7 +327,7 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 	// 			// 						attribute_name: match attribute {
 	// 			// 							JSXAttribute::Static(name, _, _)
 	// 			// 							| JSXAttribute::Dynamic(name, _, _)
-	// 			// 							| JSXAttribute::BooleanAttribute(name, _) => name.clone(),
+	// 			// 							| JSXAttribute::Boolean(name, _) => name.clone(),
 	// 			// 							JSXAttribute::Spread(_, _) => todo!(),
 	// 			// 							JSXAttribute::Shorthand(_) => todo!(),
 	// 			// 						},
@@ -497,7 +497,7 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 			// TODO expecting
 			(name, synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE))
 		}
-		JSXAttribute::BooleanAttribute(name, _) => (name, TypeId::TRUE),
+		JSXAttribute::Boolean(name, _) => (name, TypeId::TRUE),
 		JSXAttribute::Spread(_, pos) => {
 			checking_data.raise_unimplemented_error(
 				"spread JSX attribute",

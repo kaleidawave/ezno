@@ -86,15 +86,15 @@ function makeDate(timestamp: number): Date
 function makeDate(m: number, d: number, y: number): Date
 function makeDate(mOrTimestamp: number, d?: number, y?: number): Date {}
 class X {
-	constructor(a: string)
-	constructor(a: number) {}
-	makeDate(timestamp: number): Date
-	makeDate(m: number, d: number, y: number): Date
+	constructor(a: number | string);
+	constructor(a: number) {};
+	makeDate(timestamp: number): Date;
+	makeDate(m: number, d: number, y: number): Date;
 	makeDate(mOrTimestamp: number, d?: number, y?: number): Date {}
 }
 "
 	.trim()
-	.replace("    ", "\t");
+	.to_owned();
 
 	let module = Module::from_string(input.clone(), Default::default()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
@@ -141,14 +141,11 @@ type Something<T, V extends keyof T> = { [P in keyof T]: V }
 	assert_eq!(output, input);
 }
 
-// Currently broken #165
 #[test]
-#[ignore]
 fn jsx_nuances() {
 	let input = r"
 function x(a: <T>(a: number, b: T) => T) {}
-
-type B<T extends boolean> = T ? string : <U>(a: number, b: U) => T;
+type B<T extends boolean> = T ? string : <U>(a: number, b: U) => T
 "
 	.trim();
 

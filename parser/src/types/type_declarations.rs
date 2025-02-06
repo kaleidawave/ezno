@@ -1,12 +1,8 @@
-use crate::{
-	derive_ASTNode, errors::parse_lexing_error, tokens::token_as_identifier, ASTNode, ListItem,
-	ParseOptions, ParseResult, Span, TSXKeyword, TSXToken, TypeAnnotation,
-};
-use tokenizer_lib::TokenReader;
+use crate::{derive_ASTNode, ASTNode, ListItem, ParseResult, Span, TypeAnnotation};
 
 /// Represents a generic parameter. Can have default or constraint to extend a type or a key of a type
 ///
-/// TODO is default and extends mut ex
+/// TODO is default and extends are mut ex
 #[derive(Debug, Clone, PartialEq)]
 #[apply(derive_ASTNode)]
 pub struct TypeParameter {
@@ -23,37 +19,28 @@ impl ListItem for TypeParameter {
 }
 
 impl ASTNode for TypeParameter {
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		#[cfg(feature = "full-typescript")]
-		let is_constant = reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Const)))
-			.is_some();
+	fn get_position(&self) -> Span {
+		self.position
+	}
 
-		let token = reader.next().ok_or_else(parse_lexing_error)?;
-		let (name, pos) = token_as_identifier(token, "type parameter name")?;
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		#[cfg(feature = "full-typescript")]
+		let is_constant = reader.is_keyword_advance("const");
+
+		let start = reader.get_start();
+		let name = reader.parse_identifier("type parameter name", false)?.to_owned();
 
 		let extends = reader
-			.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Extends)))
-			.is_some()
-			.then(|| TypeAnnotation::from_reader(reader, state, options))
+			.is_keyword_advance("extends")
+			.then(|| TypeAnnotation::from_reader(reader))
 			.transpose()?;
 
 		let default = reader
-			.conditional_next(|t| matches!(t, TSXToken::Assign))
-			.is_some()
-			.then(|| TypeAnnotation::from_reader(reader, state, options))
+			.is_operator_advance("=")
+			.then(|| TypeAnnotation::from_reader(reader))
 			.transpose()?;
 
-		let position = pos.get_start().union(
-			default
-				.as_ref()
-				.or(extends.as_ref())
-				.map_or(pos.get_end(), |ta| ta.get_position().get_end()),
-		);
+		let position = start.union(reader.get_end());
 
 		Ok(Self {
 			name,
@@ -80,9 +67,5 @@ impl ASTNode for TypeParameter {
 			buf.push_str(" = ");
 			default.to_string_from_buffer(buf, options, local);
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		self.position
 	}
 }

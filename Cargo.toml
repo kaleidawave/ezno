@@ -9,7 +9,6 @@ members = [
   # "lsp/server",
 ]
 
-
 [package]
 name = "ezno"
 description = "A fast and correct TypeScript type checker and compiler with additional experiments. For use as a library or through the CLI"
@@ -100,5 +99,5 @@ result_unit_err = "allow"
 thread_local_initializer_can_be_made_const = "allow"
 implicit_hasher = "allow"
 
-[profile.dev]
-debug = false
+# [profile.dev]
+# debug = false

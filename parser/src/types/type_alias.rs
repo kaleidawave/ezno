@@ -1,8 +1,8 @@
 use source_map::Span;
 
 use crate::{
-	derive_ASTNode, to_string_bracketed, ASTNode, ExpressionOrStatementPosition, StatementPosition,
-	TSXToken, TypeAnnotation, TypeParameter,
+	bracketed_items_to_string, derive_ASTNode, ASTNode, ExpressionOrStatementPosition,
+	StatementPosition, TypeAnnotation, TypeParameter,
 };
 
 /// e.g. `type NumberArray = Array<number>`
@@ -17,24 +17,23 @@ pub struct TypeAlias {
 }
 
 impl ASTNode for TypeAlias {
-	fn from_reader(
-		reader: &mut impl tokenizer_lib::TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &crate::ParseOptions,
-	) -> crate::ParseResult<Self> {
-		let start = state.expect_keyword(reader, crate::TSXKeyword::Type)?;
-		let name = StatementPosition::from_reader(reader, state, options)?;
-		let parameters = reader
-			.conditional_next(|token| *token == TSXToken::OpenChevron)
-			.is_some()
-			.then(|| {
-				crate::parse_bracketed(reader, state, options, None, TSXToken::CloseChevron)
-					.map(|(params, _, _)| params)
-			})
-			.transpose()?;
+	fn get_position(&self) -> Span {
+		self.position
+	}
 
-		reader.expect_next(TSXToken::Assign)?;
-		let references = TypeAnnotation::from_reader(reader, state, options)?;
+	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
+		let start = reader.get_start();
+		let _ = reader.expect_keyword("type")?;
+		let name = StatementPosition::from_reader(reader)?;
+		let parameters = if reader.is_operator_advance("<") {
+			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
+			Some(params)
+		} else {
+			None
+		};
+
+		reader.expect('=')?;
+		let references = TypeAnnotation::from_reader(reader)?;
 		let position = start.union(references.get_position());
 
 		Ok(Self { name, parameters, references, position })
@@ -53,14 +52,10 @@ impl ASTNode for TypeAlias {
 			buf.push_str("type ");
 			self.name.identifier.to_string_from_buffer(buf, options, local);
 			if let Some(type_parameters) = &self.parameters {
-				to_string_bracketed(type_parameters, ('<', '>'), buf, options, local);
+				bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 			}
 			buf.push_str(" = ");
 			self.references.to_string_from_buffer(buf, options, local);
 		}
-	}
-
-	fn get_position(&self) -> Span {
-		self.position
 	}
 }

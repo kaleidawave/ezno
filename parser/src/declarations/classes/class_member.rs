@@ -2,19 +2,16 @@ use std::fmt::Debug;
 
 use crate::{
 	derive_ASTNode,
-	errors::parse_lexing_error,
 	functions::{
 		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
 		ThisParameter,
 	},
 	property_key::PublicOrPrivate,
-	tokens::token_as_identifier,
 	visiting::Visitable,
-	ASTNode, Block, Expression, FunctionBase, ParseOptions, ParseResult, PropertyKey, TSXKeyword,
-	TSXToken, TypeAnnotation, WithComment,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, TypeAnnotation,
+	WithComment,
 };
 use source_map::Span;
-use tokenizer_lib::{sized_tokens::TokenStart, Token, TokenReader};
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]
@@ -69,106 +66,106 @@ impl ASTNode for ClassMember {
 	}
 
 	#[allow(clippy::similar_names)]
-	fn from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-	) -> ParseResult<Self> {
-		if reader.peek().is_some_and(|t| t.0.is_comment()) {
-			let (comment, is_multiline, span) =
-				TSXToken::try_into_comment(reader.next().unwrap()).unwrap();
-			return Ok(Self::Comment(comment, is_multiline, span));
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let is_multiline_comment = reader.starts_with_slice("/*");
+		if is_multiline_comment || reader.starts_with_slice("//") {
+			let start = reader.get_start();
+			reader.advance(2);
+			let comment = reader.parse_comment_literal(is_multiline_comment)?;
+			let position = start.with_length(if is_multiline_comment {
+				comment.len() + 2
+			} else {
+				comment.len()
+			});
+			return Ok(Self::Comment(comment.to_owned(), is_multiline_comment, position));
 		}
 
-		if let Some(Token(TSXToken::Keyword(TSXKeyword::Constructor), _)) = reader.peek() {
-			let constructor = ClassConstructor::from_reader(reader, state, options)?;
+		// TODO temp fixes. Should be recorded
+		let _ = reader.is_keyword_advance("declare");
+		let _ = reader.is_keyword_advance("public");
+		let _ = reader.is_keyword_advance("private");
+
+		if reader.is_keyword("constructor") {
+			let constructor = ClassConstructor::from_reader(reader)?;
 			return Ok(ClassMember::Constructor(constructor));
 		}
 
-		let is_static = reader
-			.conditional_next(|tok| matches!(tok, TSXToken::Keyword(TSXKeyword::Static)))
-			.is_some();
+		let is_static = reader.is_keyword_advance("static");
 
-		if let Some(Token(TSXToken::OpenBrace, _)) = reader.peek() {
-			return Ok(ClassMember::StaticBlock(Block::from_reader(reader, state, options)?));
+		reader.skip();
+
+		if is_static && reader.starts_with('{') {
+			return Ok(ClassMember::StaticBlock(Block::from_reader(reader)?));
 		}
 
-		let readonly_position = state.optionally_expect_keyword(reader, TSXKeyword::Readonly);
+		// Special index type annotation
+		// TODO ts
+		// if reader.starts_with('[')
+		// 	&& reader
+		// 		.get_current()
+		// 		.chars()
+		// 		.take_while(|c| c.is_whitespace() || c.is_alphabetic())
+		// 		.after(c == ':')
+		// {
+		// 	// let Token(_, start) = reader.next().unwrap();
+		// 	// let (name, _) = token_as_identifier(
+		// 	// 	reader.next().ok_or_else(parse_lexing_error)?,
+		// 	// 	"class indexer",
+		// 	// )?;
+		// 	// reader.expect(TSXToken::Colon)?;
+		// 	// let indexer_type = TypeAnnotation::from_reader(reader)?;
+		// 	// reader.expect(TSXToken::CloseBracket)?;
+		// 	// reader.expect(TSXToken::Colon)?;
+		// 	// let return_type = TypeAnnotation::from_reader(reader)?;
+		// 	// return Ok(ClassMember::Indexer {
+		// 	// 	name,
+		// 	// 	is_readonly: readonly_position.is_some(),
+		// 	// 	indexer_type,
+		// 	// 	position: start.union(return_type.get_position()),
+		// 	// 	return_type,
+		// 	// });
+		// 	todo!();
+		// }
 
-		if let Some(Token(TSXToken::OpenBracket, _)) = reader.peek() {
-			if let Some(Token(TSXToken::Colon, _)) = reader.peek_n(2) {
-				let Token(_, start) = reader.next().unwrap();
-				let (name, _) = token_as_identifier(
-					reader.next().ok_or_else(parse_lexing_error)?,
-					"class indexer",
-				)?;
-				reader.expect_next(TSXToken::Colon)?;
-				let indexer_type = TypeAnnotation::from_reader(reader, state, options)?;
-				reader.expect_next(TSXToken::CloseBracket)?;
-				reader.expect_next(TSXToken::Colon)?;
-				let return_type = TypeAnnotation::from_reader(reader, state, options)?;
-				return Ok(ClassMember::Indexer {
-					name,
-					is_readonly: readonly_position.is_some(),
-					indexer_type,
-					position: start.union(return_type.get_position()),
-					return_type,
-				});
+		let is_readonly = reader.is_keyword_advance("readonly");
+		reader.skip();
+		let start = reader.get_start();
+
+		let header = MethodHeader::from_reader(reader);
+		let key =
+			WithComment::<PropertyKey<crate::property_key::PublicOrPrivate>>::from_reader(reader)?;
+		reader.skip();
+
+		if reader.starts_with('(') || reader.starts_with('<') {
+			let function = ClassFunction::from_reader_with_config(reader, header, key)?;
+			Ok(ClassMember::Method(is_static, function))
+		} else {
+			if !header.is_no_modifiers() {
+				let (found, position) = crate::lexer::utilities::next_item(reader);
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::ExpectedOperator { expected: "(", found },
+					position,
+				));
 			}
-		}
+			let is_optional = reader.is_operator_advance("?:");
+			let type_annotation = if is_optional || reader.is_operator_advance(":") {
+				Some(TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
 
-		// TODO not great
-		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
+			let value: Option<Box<Expression>> = if reader.is_operator_advance("=") {
+				Some(Box::new(Expression::from_reader(reader)?))
+			} else {
+				None
+			};
 
-		let (header, key) = crate::functions::get_method_name(reader, state, options)?;
+			let position = start.union(reader.get_end());
 
-		match reader.peek() {
-			Some(Token(TSXToken::OpenParentheses | TSXToken::OpenChevron, _))
-				if readonly_position.is_none() =>
-			{
-				let function = ClassFunction::from_reader_with_config(
-					reader,
-					state,
-					options,
-					(Some(start), header),
-					key,
-				)?;
-				Ok(ClassMember::Method(is_static, function))
-			}
-			Some(Token(token, _)) => {
-				if !header.is_no_modifiers() {
-					return crate::throw_unexpected_token(reader, &[TSXToken::OpenParentheses]);
-				}
-				let (member_type, is_optional) =
-					if let TSXToken::Colon | TSXToken::OptionalMember = token {
-						let is_optional = matches!(token, TSXToken::OptionalMember);
-						reader.next();
-						let type_annotation = TypeAnnotation::from_reader(reader, state, options)?;
-						(Some(type_annotation), is_optional)
-					} else {
-						(None, false)
-					};
-				let member_expression: Option<Expression> =
-					if let Some(Token(TSXToken::Assign, _)) = reader.peek() {
-						reader.next();
-						let expression = Expression::from_reader(reader, state, options)?;
-						Some(expression)
-					} else {
-						None
-					};
-				Ok(Self::Property(
-					is_static,
-					ClassProperty {
-						is_readonly: readonly_position.is_some(),
-						is_optional,
-						position: key.get_position(),
-						key,
-						type_annotation: member_type,
-						value: member_expression.map(Box::new),
-					},
-				))
-			}
-			None => Err(parse_lexing_error()),
+			let property =
+				ClassProperty { is_readonly, is_optional, key, type_annotation, value, position };
+
+			Ok(Self::Property(is_static, property))
 		}
 	}
 
@@ -250,19 +247,11 @@ impl ASTNode for ClassMember {
 
 impl ClassFunction {
 	fn from_reader_with_config(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
-		get_set_generator: (Option<TokenStart>, MethodHeader),
+		reader: &mut crate::Lexer,
+		header: MethodHeader,
 		key: WithComment<PropertyKey<PublicOrPrivate>>,
 	) -> ParseResult<Self> {
-		FunctionBase::from_reader_with_header_and_name(
-			reader,
-			state,
-			options,
-			get_set_generator,
-			key,
-		)
+		FunctionBase::from_reader_with_header_and_name(reader, header, key)
 	}
 }
 
@@ -274,20 +263,16 @@ impl FunctionBased for ClassFunctionBase {
 	type Body = FunctionBody;
 
 	fn has_body(body: &Self::Body) -> bool {
-		body.0.is_some()
+		body.has_body()
 	}
 
 	#[allow(clippy::similar_names)]
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		options: &ParseOptions,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		// TODO not great
-		let start = reader.peek().ok_or_else(parse_lexing_error)?.1;
 		let header = MethodHeader::from_reader(reader);
-		let name = WithComment::<PropertyKey<_>>::from_reader(reader, state, options)?;
-		Ok((((!header.is_no_modifiers()).then_some(start), header), name))
+		let name = WithComment::<PropertyKey<_>>::from_reader(reader)?;
+		Ok((header, name))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
@@ -342,16 +327,14 @@ impl FunctionBased for ClassConstructorBase {
 	// }
 
 	fn has_body(body: &Self::Body) -> bool {
-		body.0.is_some()
+		body.has_body()
 	}
 
 	fn header_and_name_from_reader(
-		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-		state: &mut crate::ParsingState,
-		_options: &ParseOptions,
+		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		let start = state.expect_keyword(reader, TSXKeyword::Constructor)?;
-		Ok(((Some(start), ()), ()))
+		let _start = reader.expect_keyword("constructor")?;
+		Ok(((), ()))
 	}
 
 	fn header_and_name_to_string_from_buffer<T: source_map::ToString>(
