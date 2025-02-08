@@ -24,5 +24,13 @@ checker = { path = "..", version = "*", package = "ezno-checker", features = [
 parser = { path = "../../parser", version = "*", package = "ezno-parser" }
 pretty_assertions = "1.3.0"
 
+[[example]]
+name = "amalgamate"
+path = "./amalgamate.rs"
+
+# For amalgamate
+[dev-dependencies]
+simple-markdown-parser = { version = "0.0" }
+
 [build-dependencies]
 simple-markdown-parser = { version = "0.0" }

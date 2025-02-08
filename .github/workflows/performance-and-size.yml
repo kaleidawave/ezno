@@ -75,8 +75,8 @@ jobs:
         shell: bash
         run: |
           # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser \
-           --example code_blocks_to_script ./checker/specification/specification.md \
+          cargo run -p ezno-checker-specification \
+           --example amalgamate ./checker/specification/specification.md \
            --comment-headers \
            --out ./demo.tsx
 
@@ -149,7 +149,10 @@ jobs:
           echo "::group::Running with staging"
           
           cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
-          cargo run -p ezno-parser --example code_blocks_to_script with-staging.md --comment-headers --out ./with-staging.tsx
+          cargo run -p ezno-checker-specification \
+           --example amalgamate with-staging.md \
+           --comment-headers \
+           --out ./with-staging.tsx
 
           ./target/release/ezno check with-staging.tsx --timings || true
           ./target/release/ezno check with-staging.tsx --timings || true
@@ -161,8 +164,10 @@ jobs:
         run: |
           echo "::group::Running large"
 
-          cat ./checker/specification/specification.md > main.md
-          cargo run -p ezno-parser --example code_blocks_to_script main.md --comment-headers --out ./code.tsx
+          cargo run -p ezno-checker-specification \
+           --example ./checker/specification/specification.md \
+           --comment-headers \
+           --out ./code.tsx
 
           for i in {1..10}; do
             cat ./code.tsx >> large.tsx

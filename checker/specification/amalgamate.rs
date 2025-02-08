@@ -1,12 +1,13 @@
-use std::{collections::HashSet, io::Write, path::PathBuf};
+use std::{collections::HashSet, io::Write, mem, path::PathBuf};
 
-use ezno_parser::{
+use parser::{
 	ast::{self, InterfaceDeclaration, TypeAlias},
 	expressions::operators,
 	functions,
+	source_map::{Nullable, SourceId, Span},
 	visiting::{VisitOptions, Visitors},
 	ASTNode, Declaration, Decorated, Expression, Module, Statement, StatementOrDeclaration,
-	StatementPosition, VariableIdentifier,
+	StatementPosition, VariableField, VariableIdentifier, WithComment,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,6 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let replace_satisfies_with_as = args.iter().any(|item| item == "--satisfies-with-as");
 	let add_headers_as_comments = args.iter().any(|item| item == "--comment-headers");
+	let include_flagged_examples = args.iter().any(|item| item == "--include-extras");
+	let just_diagnostics = args.iter().any(|item| item == "--just-diagnostics");
 	// let declare_to_function = args.iter().any(|item| item == "--declare-to-function");
 
 	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
@@ -36,50 +39,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	});
 
-	let content = std::fs::read_to_string(path)?;
+	let source = std::fs::read_to_string(path)?;
 
-	let filters: Vec<&str> = vec!["import", "export"];
+	let filters: &[&str] = &["import", "export"];
 
 	#[allow(clippy::case_sensitive_file_extension_comparisons)]
 	let blocks = if path.ends_with(".md") {
 		let mut blocks = Vec::new();
-		let mut lines = content.lines();
-		let mut current = String::default();
-
-		let mut reading_list = false;
+		let mut last_header = String::default();
+		let mut last_code = String::new();
 		let mut list_count = 0;
 
-		while let Some(line) = lines.next() {
-			if line.starts_with("```ts") {
-				let code = lines.by_ref().take_while(|line| !line.starts_with("```")).fold(
-					String::new(),
-					|mut a, s| {
-						a.push_str(s);
-						a.push('\n');
-						a
-					},
-				);
-
-				if filters.iter().any(|filter| code.contains(filter)) {
-					reading_list = false;
-				} else {
-					blocks.push((std::mem::take(&mut current), code));
-					reading_list = true;
+		let _ = simple_markdown_parser::parse(&source, |item| {
+			if let simple_markdown_parser::MarkdownElement::Heading { level: 4, text } = item {
+				if !last_code.is_empty() {
+					let header = mem::take(&mut last_header);
+					let code = mem::take(&mut last_code);
+					blocks.push((header, code));
 				}
-			} else if let Some(header) = line.strip_prefix("#### ") {
-				header.clone_into(&mut current);
-				reading_list = false;
-			} else if reading_list && line.trim_start().starts_with("- ") {
-				list_count += 1;
+				text.0.to_owned().clone_into(&mut last_header);
+			} else if let simple_markdown_parser::MarkdownElement::CodeBlock { language: _, code } =
+				item
+			{
+				let skip = filters.iter().any(|filter| code.contains(filter));
+				if !skip {
+					code.clone_into(&mut last_code);
+				}
+			} else if let simple_markdown_parser::MarkdownElement::Paragraph(item) = item {
+				if !include_flagged_examples && item.0.starts_with("With") {
+					mem::take(&mut last_code);
+				}
+			} else if let simple_markdown_parser::MarkdownElement::ListItem { text, .. } = item {
+				if !last_code.is_empty() {
+					list_count += 1;
+					if just_diagnostics {
+						println!("{inner}", inner = text.0);
+					}
+				}
 			}
+		});
+		if !last_code.is_empty() {
+			let header = mem::take(&mut last_header);
+			let code = mem::take(&mut last_code);
+			blocks.push((header, code));
 		}
-
 		eprintln!("Found {} blocks, with {} diagnostics", blocks.len(), list_count);
-
 		blocks
 	} else {
 		todo!("parse module, split by statement braced")
 	};
+
+	if just_diagnostics {
+		return Ok(());
+	}
 
 	if let Some((under, extension)) = into_files_directory_and_extension {
 		let under = PathBuf::from(under);
@@ -127,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				&mut visitors,
 				&mut names,
 				&VisitOptions { visit_nested_blocks: false, reverse_statements: false },
-				source_map::Nullable::NULL,
+				SourceId::NULL,
 			);
 
 			let mut declare_lets = Vec::new();
@@ -163,17 +175,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					)) => {
 						for declaration in &declare_variable.declarations {
 							declare_lets.push((
-								declaration.name.clone(),
+								declaration.name.get_ast_ref().clone(),
 								declaration.type_annotation.clone(),
 							));
 						}
+					}
+					StatementOrDeclaration::Declaration(Declaration::Function(Decorated {
+						on: function,
+						..
+					})) if function.name.is_declare => {
+						use parser::type_annotations::{
+							TypeAnnotation, TypeAnnotationFunctionParameter,
+							TypeAnnotationFunctionParameters,
+						};
+						let position = Span::NULL;
+						let parameters = function
+							.parameters
+							.parameters
+							.iter()
+							.map(|parameter| {
+								TypeAnnotationFunctionParameter {
+									decorators: Vec::new(),
+									name: Some(parameter.name.clone()),
+									type_annotation: parameter
+										.type_annotation
+										.clone()
+										.expect("no type annotation on declare parameter"),
+									// TODO
+									is_optional: false,
+									position,
+								}
+							})
+							.collect::<Vec<_>>();
+						let return_type =
+							Box::new(function.return_type.clone().unwrap_or_else(|| {
+								TypeAnnotation::CommonName(
+									parser::type_annotations::CommonTypes::Any,
+									position,
+								)
+							}));
+						let ty = TypeAnnotation::FunctionLiteral {
+							type_parameters: function.type_parameters.clone(),
+							parameters: TypeAnnotationFunctionParameters {
+								parameters,
+								rest_parameter: None,
+								position,
+							},
+							return_type,
+							position,
+						};
+						declare_lets.push((
+							VariableField::Name(function.name.identifier.clone()),
+							Some(ty),
+						));
 					}
 					_ => {}
 				}
 			}
 
 			if !declare_lets.is_empty() {
-				use source_map::{Nullable, Span};
 				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
 				for item in module.items {
 					match item {
@@ -183,6 +243,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						) => {
 							top_level.push(item);
 						}
+						StatementOrDeclaration::Declaration(Declaration::Function(Decorated {
+							on: function,
+							..
+						})) if function.name.is_declare => {}
 						StatementOrDeclaration::Declaration(Declaration::DeclareVariable(..)) => {}
 						item => {
 							inside.push(item);
@@ -190,31 +254,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					}
 				}
 
+				let position = Span::NULL;
+
 				let parameters = declare_lets
 					.into_iter()
 					.map(|(name, type_annotation)| functions::Parameter {
 						visibility: (),
-						name,
+						name: WithComment::None(name),
 						type_annotation,
 						additionally: None,
-						position: Span::NULL,
+						position,
 					})
 					.collect();
 
-				let function = Expression::ArrowFunction(ast::ArrowFunction {
-					// TODO maybe async
-					header: false,
-					name: (),
+				let function = Expression::ExpressionFunction(ast::ExpressionFunction {
+					header: parser::functions::FunctionHeader::empty(),
+					name: parser::ExpressionPosition(Some(VariableIdentifier::Standard(
+						"declare_variables".to_owned(),
+						position,
+					))),
 					parameters: functions::FunctionParameters {
 						parameters,
 						rest_parameter: Default::default(),
-						position: Span::NULL,
-						leading: (),
+						position,
+						leading: None,
 					},
 					return_type: None,
 					type_parameters: None,
-					position: Span::NULL,
-					body: ast::ExpressionOrBlock::Block(ast::Block(inside, Span::NULL)),
+					position,
+					body: ast::Block(inside, position),
 				});
 
 				// void is temp fix
@@ -223,16 +291,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						Expression::UnaryOperation {
 							operator: operators::UnaryOperator::Void,
 							operand: Box::new(function),
-							position: Span::NULL,
+							position,
 						}
 						.into(),
 					)
 					.into(),
 				);
 
-				let module = Module { hashbang_comment: None, items: top_level, span: Span::NULL };
+				let module = Module { hashbang_comment: None, items: top_level, span: position };
 
-				code = module.to_string(&ezno_parser::ToStringOptions::typescript());
+				code = module.to_string(&parser::ToStringOptions::typescript());
 			}
 
 			// If available block add to that, otherwise create a new one
@@ -271,11 +339,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		// eprintln!("Generated {:?} blocks", final_blocks.len());
 
 		eprintln!("Bundled into {} functions", final_blocks.len());
+		if let Some(repeat) = repeat {
+			eprintln!("Repeating {repeat} times");
+		}
 
 		if let Some(out) = out_file {
-			let mut out = std::fs::File::create(out)?;
-			for (_items, block) in final_blocks {
-				writeln!(out, "() => {{\n{block}}};\n")?;
+			let mut file = std::fs::File::create(out)?;
+			for _ in 0..repeat.unwrap_or(1) {
+				for (_items, code) in &final_blocks {
+					writeln!(file, "() => {{\n{code}}};\n")?;
+				}
 			}
 		} else {
 			let mut out = std::io::stdout();
@@ -291,16 +364,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 struct NameFinder;
 
 impl<'a>
-	ezno_parser::visiting::Visitor<
-		ezno_parser::visiting::ImmutableVariableOrProperty<'a>,
-		HashSet<String>,
-	> for NameFinder
+	parser::visiting::Visitor<parser::visiting::ImmutableVariableOrProperty<'a>, HashSet<String>>
+	for NameFinder
 {
 	fn visit(
 		&mut self,
-		item: &ezno_parser::visiting::ImmutableVariableOrProperty<'a>,
+		item: &parser::visiting::ImmutableVariableOrProperty<'a>,
 		data: &mut HashSet<String>,
-		_chain: &ezno_parser::visiting::Chain,
+		_chain: &parser::visiting::Chain,
 	) {
 		if let Some(name) = item.get_variable_name() {
 			data.insert(name.to_owned());

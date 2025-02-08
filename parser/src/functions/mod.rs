@@ -503,7 +503,7 @@ impl FunctionHeader {
 			| FunctionHeader::ChadFunctionHeader { location, .. } => location.as_ref(),
 		}
 	}
-	
+
 	#[must_use]
 	pub fn empty() -> Self {
 		Self::VirginFunctionHeader {
