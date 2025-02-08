@@ -355,30 +355,25 @@ pub(crate) fn statements_and_declarations_from_reader(
 	let mut items = Vec::new();
 	loop {
 		reader.skip();
-		if reader.is_finished() || reader.starts_with('}') {
+
+		let at_end = reader.is_finished() || reader.starts_with('}');
+
+		if at_end {
 			break;
 		}
 
-		let item = StatementOrDeclaration::from_reader(reader)?;
-		// let end = reader.get_end();
-
-		if item.requires_semi_colon() {
-			reader.expect_semi_colon()?;
+		if !items.is_empty() && reader.get_options().retain_blank_lines {
+			let new_lines = reader.last_was_from_new_line();
+			for _ in 0..new_lines {
+				// TODO span
+				let start = reader.get_start().0;
+				let end = reader.get_end().0;
+				let span = Span { start, end, source: () };
+				items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
+			}
 		}
 
-		// let blank_lines_after_statement = if requires_semi_colon {
-		// 	expect_semi_colon(reader, &state.line_starts, end, options)?
-		// } else if options.retain_blank_lines {
-		// 	let Token(kind, next) = reader.peek().unwrap();
-		// 	let lines = state.line_starts.byte_indexes_crosses_lines(end as usize, next.0 as usize);
-		// 	if let TSXToken::EOS = kind {
-		// 		lines
-		// 	} else {
-		// 		lines.saturating_sub(1)
-		// 	}
-		// } else {
-		// 	0
-		// };
+		let item = StatementOrDeclaration::from_reader(reader)?;
 
 		// Skip emptyies at the start
 		if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
@@ -387,25 +382,11 @@ pub(crate) fn statements_and_declarations_from_reader(
 			continue;
 		}
 
-		// TODO temp
-		let retain_blank_lines = false;
-
-		if let (
-			false,
-			StatementOrDeclaration::Statement(
-				Statement::AestheticSemiColon(..) | Statement::Empty(..),
-			),
-		) = (retain_blank_lines, &item)
-		{
-			continue;
+		if item.requires_semi_colon() {
+			reader.expect_semi_colon()?;
 		}
 
 		items.push(item);
-		// for _ in 0..blank_lines_after_statement {
-		// 	// TODO span
-		// 	let span = Span { start: end, end, source: () };
-		// 	items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
-		// }
 	}
 	Ok(items)
 }
@@ -461,7 +442,6 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 		if (!at_end || options.trailing_semicolon) && item.requires_semi_colon() {
 			buf.push(';');
 		}
-		// TODO only append new line if something added
 		if !at_end && options.pretty {
 			buf.push_new_line();
 		}

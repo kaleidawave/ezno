@@ -80,12 +80,16 @@ impl FunctionBased for ArrowFunctionBase {
 		local: crate::LocalToStringInformation,
 	) {
 		// Use shorthand if one parameter with no declared type
-		if let ([Parameter { name, type_annotation, .. }], None) =
+		if let ([Parameter { name, type_annotation, additionally, .. }], None) =
 			(parameters.parameters.as_slice(), &parameters.rest_parameter)
 		{
 			let is_printing_type_annotation =
 				options.include_type_annotations && type_annotation.is_some();
-			if !is_printing_type_annotation {
+			if !is_printing_type_annotation
+				&& !matches!(
+					additionally,
+					Some(crate::functions::ParameterData::WithDefaultValue(_))
+				) {
 				if let VariableField::Name(name, ..) = name.get_ast_ref() {
 					name.to_string_from_buffer(buf, options, local);
 					return;

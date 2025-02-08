@@ -588,7 +588,7 @@ fn get_parameter_name(parameter: &parser::VariableField) -> String {
 		VariableField::Array { members: _, spread: _, position: _ } => {
 			"todo: VariableField::Array".to_owned()
 		}
-		VariableField::Object { members: _, spread: _, position: _ } => {
+		VariableField::Object { members: _, spread: _, position: _, .. } => {
 			"todo: VariableField::Object".to_owned()
 		}
 	}

@@ -225,6 +225,7 @@ generator server function a() {}
 generator server function a() {}
 async server function a() {}
 worker function a() {}
+test function a() {}
     "
 	.trim();
 
