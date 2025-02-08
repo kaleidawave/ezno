@@ -293,7 +293,7 @@ pub trait GenericTypeParameter {
 	fn get_name(&self) -> &str;
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Chronometer {
 	/// In binary .d.ts files
 	pub cached: Duration,

@@ -496,7 +496,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	// Will append the length on `until`
-	pub fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
+	pub(crate) fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
 		let current = self.get_current();
 		for (idx, _) in current.char_indices() {
 			if current[idx..].starts_with(until) {
@@ -518,47 +518,16 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	// For comments etc
-	pub fn parse_until_no_advance(&mut self, until: &str) -> Result<&'a str, ()> {
-		let current = self.get_current();
-		for (idx, _) in current.char_indices() {
-			if current[idx..].starts_with(until) {
-				self.head += idx as u32;
-				return Ok(&current[..idx]);
-			}
-		}
-		Err(())
-	}
-
 	// For JSX attributes and content. Also returns which one of `possibles` matched
-	pub fn parse_until_one_of(
+	pub(crate) fn parse_until_one_of(
 		&mut self,
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
 		let current = self.get_current();
-		for (i, _) in current.char_indices() {
-			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
-				self.head += (i + until.len()) as u32;
-				return Ok((&current[..i], until));
-			}
-		}
-		Err(())
-	}
-
-	/// Similar to `parse_until_one_of`. Does not add the matched lenght to head
-	pub fn parse_until_one_of_no_advance(
-		&mut self,
-		possibles: &[&'static str],
-	) -> Result<(&'a str, &'static str), ()> {
-		self.state.last_new_lines = 0;
-		let current = self.get_current();
-		for (i, chr) in current.char_indices() {
-			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
-				self.head += i as u32;
-				let content = &current[..i];
-				// self.state.last_new_lines =
-				//    content.chars().filter(|char| matches!(char, '\n')).count() as u32;
-				return Ok((content, until));
+		for (idx, chr) in current.char_indices() {
+			if let Some(until) = possibles.iter().find(|s| current[idx..].starts_with(**s)) {
+				self.head += idx as u32;
+				return Ok((&current[..idx], until));
 			}
 			if let '\n' = chr {
 				self.state.last_new_lines += 1;
@@ -942,89 +911,7 @@ impl<'a> Lexer<'a> {
 	// TODO also can exit if there is `=` or `:` and = 0 in some examples
 	#[must_use]
 	pub fn after_brackets(&self) -> &'a str {
-		use crate::Quoted;
-
-		enum State {
-			None,
-			Comment,
-			StringLiteral { escaped: bool, quoted: Quoted },
-			// TemplateLiteral { escaped: bool },
-			// RegexLiteral { escaped: bool },
-			MultilineComment,
-		}
-
-		// let mut template_literal_depth = 0;
-
-		let current = self.get_current();
-		let mut bracket_count: u32 = 0;
-		let mut open_chevrons = 0u64;
-		let mut state = State::None;
-
-		// TODO account for string literals and comments
-		// TODO account for utf16
-		for (idx, chr) in current.char_indices() {
-			match state {
-				State::None => {
-					if let '(' | '{' | '[' | '<' = chr {
-						open_chevrons |= u64::from(chr == '<');
-						open_chevrons <<= 1;
-						bracket_count += 1;
-					} else if let ')' | '}' | ']' | '>' = chr {
-						// TODO WIP
-						open_chevrons >>= 1;
-						let last_was_open_chevron = (open_chevrons & 1) != 0;
-						if last_was_open_chevron {
-							if let ')' | '}' | ']' = chr {
-								// Extra removal
-								open_chevrons >>= 1;
-								bracket_count = bracket_count.saturating_sub(1);
-							}
-						} else if let '>' = chr {
-							continue;
-						}
-
-						bracket_count = bracket_count.saturating_sub(1);
-						if bracket_count == 0 {
-							return current[(idx + 1)..].trim_start();
-						}
-					} else if let '"' = chr {
-						state = State::StringLiteral { escaped: false, quoted: Quoted::Double };
-					} else if let '\'' = chr {
-						state = State::StringLiteral { escaped: false, quoted: Quoted::Single };
-					} else if let '/' = chr {
-						if current[idx..].starts_with("/*") {
-							state = State::MultilineComment;
-						} else if current[idx..].starts_with("//") {
-							state = State::Comment;
-						}
-					}
-				}
-				State::Comment => {
-					if let '\n' = chr {
-						state = State::None;
-					}
-				}
-				State::StringLiteral { ref mut escaped, quoted } => {
-					if *escaped {
-						*escaped = false;
-						continue;
-					}
-					if let '\\' = chr {
-						*escaped = true;
-					} else if let (Quoted::Double, '"') | (Quoted::Single, '\'') = (quoted, chr) {
-						state = State::None;
-					}
-				}
-				State::MultilineComment => {
-					if current[idx..].starts_with("*/") {
-						state = State::None;
-					}
-				}
-			}
-		}
-
-		// Return empty slice
-		Default::default()
+		utilities::after_brackets(self.get_current())
 	}
 
 	#[must_use]
@@ -1128,7 +1015,8 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub fn is_arrow_function(&mut self) -> (bool, Option<crate::types::TypeAnnotation>) {
-		let after_brackets = utilities::trim_whitespace_not_newlines(self.after_brackets());
+		let after_brackets = self.after_brackets();
+		let after_brackets = utilities::trim_whitespace_not_newlines(after_brackets);
 		if after_brackets.starts_with("=>") {
 			(true, None)
 		} else if self.options.type_annotations && after_brackets.starts_with(':') {
@@ -1293,5 +1181,96 @@ pub(crate) mod utilities {
 
 	pub fn get_after_operator<'a>(reader: &super::Lexer<'a>, item: &str) -> &'a str {
 		&reader.get_current()[item.len()..]
+	}
+
+	pub fn after_brackets<'a>(current: &'a str) -> &'a str {
+		use crate::Quoted;
+
+		enum State {
+			None,
+			Comment { multiline: bool },
+			StringLiteral { escaped: bool, quoted: Quoted },
+			// TemplateLiteral { escaped: bool },
+			// RegexLiteral { escaped: bool },
+		}
+
+		// let mut template_literal_depth = 0;
+
+		let mut bracket_count: u32 = 0;
+		let mut open_chevron_positions = 0u64;
+		let mut state = State::None;
+
+		// TODO account for string literals and comments
+		// TODO account for utf16
+		for (idx, chr) in current.char_indices() {
+			match state {
+				State::None => {
+					match chr {
+						'(' | '{' | '[' | '<' => {
+							open_chevron_positions <<= 1;
+							open_chevron_positions |= u64::from(chr == '<');
+							bracket_count += 1;
+						}
+						')' | '}' | ']' | '>' => {
+							let last_was_open_chevron = (open_chevron_positions & 1) != 0;
+							open_chevron_positions >>= 1;
+
+							// This happens when `(x = 1 < 2) => 4`
+							if last_was_open_chevron && chr != '>' {
+								open_chevron_positions >>= 1;
+								bracket_count = bracket_count.saturating_sub(1);
+							}
+							// This happens when `(x = 1 > 2) => 4`
+							if !last_was_open_chevron && chr == '>' {
+								continue;
+							};
+
+							bracket_count = bracket_count.saturating_sub(1);
+							if bracket_count == 0 {
+								return current[(idx + chr.len_utf8())..].trim_start();
+							}
+						}
+						'"' => {
+							state = State::StringLiteral { escaped: false, quoted: Quoted::Double };
+						}
+						'\'' => {
+							state = State::StringLiteral { escaped: false, quoted: Quoted::Single };
+						}
+						'/' => {
+							if current[idx..].starts_with("/*") {
+								state = State::Comment { multiline: true };
+							} else if current[idx..].starts_with("//") {
+								state = State::Comment { multiline: false };
+							}
+						}
+						_ => {}
+					}
+				}
+				State::Comment { multiline: false } => {
+					if let '\n' = chr {
+						state = State::None;
+					}
+				}
+				State::Comment { multiline: true } => {
+					if current[idx..].starts_with("*/") {
+						state = State::None;
+					}
+				}
+				State::StringLiteral { ref mut escaped, quoted } => {
+					if *escaped {
+						*escaped = false;
+						continue;
+					}
+					if let '\\' = chr {
+						*escaped = true;
+					} else if let (Quoted::Double, '"') | (Quoted::Single, '\'') = (quoted, chr) {
+						state = State::None;
+					}
+				}
+			}
+		}
+
+		// Return empty slice
+		Default::default()
 	}
 }

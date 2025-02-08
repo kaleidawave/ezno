@@ -88,6 +88,8 @@ pub enum VariableField {
 	},
 	/// `{ x, y: z }`.
 	Object {
+		#[cfg(feature = "extras")]
+		class_name: Option<String>,
 		members: Vec<WithComment<ObjectDestructuringField<VariableField>>>,
 		spread: Option<SpreadDestructuringField<VariableField>>,
 		position: Span,
@@ -109,11 +111,34 @@ impl ASTNode for VariableField {
 		let start = reader.get_start();
 		if reader.is_operator_advance("{") {
 			let (members, spread) = bracketed_items_from_reader(reader, "}")?;
-			Ok(Self::Object { members, spread, position: start.union(reader.get_end()) })
+			Ok(Self::Object {
+				members,
+				spread,
+				position: start.union(reader.get_end()),
+				#[cfg(feature = "extras")]
+				class_name: None,
+			})
 		} else if reader.is_operator_advance("[") {
 			let (members, spread) = bracketed_items_from_reader(reader, "]")?;
 			Ok(Self::Array { members, spread, position: start.union(reader.get_end()) })
 		} else {
+			#[cfg(feature = "extras")]
+			if reader.get_options().destructuring_type_annotation
+				&& reader.after_identifier().starts_with('{')
+			{
+				let start = reader.get_start();
+				let class_name =
+					reader.parse_identifier("class name in destructuring label", true)?;
+				let _ = reader.expect('{')?;
+				let (members, spread) = bracketed_items_from_reader(reader, "}")?;
+				return Ok(Self::Object {
+					class_name: Some(class_name.to_owned()),
+					members,
+					spread,
+					position: start.union(reader.get_end()),
+				});
+			}
+
 			Ok(Self::Name(VariableIdentifier::from_reader(reader)?))
 		}
 	}
@@ -148,7 +173,13 @@ impl ASTNode for VariableField {
 				}
 				buf.push(']');
 			}
-			Self::Object { members, spread, position: _ } => {
+			Self::Object { members, spread, position: _, .. } => {
+				#[cfg(feature = "extras")]
+				if let Self::Object { class_name: Some(class_name), .. } = self {
+					buf.push_str(&class_name);
+					options.push_gap_optionally(buf);
+				}
+
 				buf.push('{');
 				options.push_gap_optionally(buf);
 				for (at_end, member) in members.iter().endiate() {
@@ -689,6 +720,7 @@ mod tests {
 				))],
 				spread: None,
 				position: span!(0, 9),
+				..
 			}
 		);
 	}
@@ -712,6 +744,7 @@ mod tests {
 				))],
 				spread: None,
 				position: span!(0, 9),
+				..
 			}
 		);
 	}

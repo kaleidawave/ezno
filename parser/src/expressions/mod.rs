@@ -298,7 +298,10 @@ impl Expression {
 			} else if reader.starts_with('(') {
 				// TODO reuse `_return_annotation`
 				let (is_arrow_function, _return_annotation) = reader.is_arrow_function();
-				if is_arrow_function {
+				if is_arrow_function
+					&& !AssociativityDirection::LeftToRight
+						.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
+				{
 					let arrow_function = ArrowFunction::from_reader(reader)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
 				}
@@ -308,7 +311,10 @@ impl Expression {
 				Expression::Parenthesised(Box::new(parenthesize_expression), start.union(end))
 			} else if reader.starts_with('<') {
 				let is_generic_arguments = reader.after_brackets().starts_with('(');
-				if is_generic_arguments {
+				if is_generic_arguments
+					&& !AssociativityDirection::LeftToRight
+						.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
+				{
 					let arrow_function = ArrowFunction::from_reader(reader)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
 				} else if reader.get_options().jsx {
@@ -334,6 +340,11 @@ impl Expression {
 				}
 				if current.starts_with("function") {
 					Expression::ExpressionFunction(ExpressionFunction::from_reader(reader)?)
+				} else if AssociativityDirection::LeftToRight
+					.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
+				{
+					let (_found, position) = crate::lexer::utilities::next_item(reader);
+					return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
 				} else {
 					return ArrowFunction::from_reader(reader).map(Expression::ArrowFunction);
 				}
@@ -510,8 +521,12 @@ impl Expression {
 					Expression::Marker { marker_id, position }
 				} else {
 					let position = start.with_length(name.len());
-					if crate::lexer::utilities::trim_whitespace_not_newlines(reader.get_current())
-						.starts_with("=>")
+					let is_arrow_function =
+						crate::lexer::utilities::trim_whitespace_not_newlines(reader.get_current())
+							.starts_with("=>");
+					if is_arrow_function
+						&& !AssociativityDirection::LeftToRight
+							.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 					{
 						let identifier =
 							crate::VariableIdentifier::Standard(name.to_owned(), position);
@@ -593,7 +608,8 @@ impl Expression {
 					|| after.starts_with("instanceof")
 					|| after.starts_with("as")
 					|| after.starts_with("satisfies")
-					|| after.starts_with("is");
+					|| after.starts_with("is")
+					|| after.is_empty();
 
 				if expresion_level_comment {
 					let is_multiline = operator_str == "/*";
@@ -696,12 +712,14 @@ impl Expression {
 
 					reader.advance(operator_str.len() as u32);
 
-					// if !options.extra_operators && operator.is_non_standard() {
-					// 	return Err(ParseError::new(
-					// 		ParseErrors::NonStandardSyntaxUsedWithoutEnabled,
-					// 		op_pos.with_length(token.length() as usize),
-					// 	));
-					// }
+					if !reader.get_options().extra_operators && operator.is_non_standard() {
+						let position =
+							source_map::Start(reader.get_end().0).with_length(operator_str.len());
+						return Err(ParseError::new(
+							ParseErrors::NonStandardSyntaxUsedWithoutEnabled,
+							position,
+						));
+					}
 
 					let rhs = Self::from_reader_with_precedence(reader, operator.precedence())?;
 
@@ -917,7 +935,11 @@ impl Expression {
 					}
 					#[cfg(feature = "extras")]
 					"is" => {
-						// TODO early return if not option
+						if !reader.get_options().is_expressions {
+							let (_found, position) = crate::lexer::utilities::next_item(reader);
+							return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
+						}
+
 						let type_annotation = TypeAnnotation::from_reader_with_precedence(
 							reader,
 							crate::types::type_annotations::TypeOperatorKind::Query,
@@ -1297,15 +1319,16 @@ impl Expression {
 			}
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
 				if options.enforce_limit_length_limit() && local.should_try_pretty_print {
+					dbg!("here");
 					chain_to_string_from_buffer(self, buf, options, local);
 					return;
 				}
 
 				buf.add_mapping(&position.with_source(local.under));
 
-				// TODO number okay, others don't quite get?
+				// hmm
 				if let Self::NumberLiteral(..) | Self::ObjectLiteral(..) | Self::ArrowFunction(..) =
-					parent.get_non_parenthesized()
+					parent.get_non_parenthesised()
 				{
 					buf.push('(');
 					parent.to_string_from_buffer(buf, options, local);
@@ -2051,17 +2074,22 @@ impl Expression {
 
 	/// Recurses to find first non parenthesized expression
 	#[must_use]
-	pub fn get_non_parenthesized(&self) -> &Self {
+	pub fn get_non_parenthesised(&self) -> &Self {
 		if let Expression::Parenthesised(inner_multiple_expr, _) = self {
 			if let MultipleExpression::Single(expr) = &**inner_multiple_expr {
-				expr.get_non_parenthesized()
+				expr.get_non_parenthesised()
 			} else {
 				// TODO could return a variant here...
 				self
 			}
 		} else if let Expression::Comment { on, .. } = self {
-			on.get_non_parenthesized()
+			on.get_non_parenthesised()
 		} else {
+			#[cfg(feature = "full-typescript")]
+			if let Self::SpecialOperators(SpecialOperators::NonNullAssertion(operand), _) = self {
+				return operand.get_non_parenthesised();
+			}
+
 			self
 		}
 	}
@@ -2146,6 +2174,7 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 	if split_between_lines && !chain.is_empty() {
 		let mut items = chain.into_iter().rev();
 		items.next().unwrap().to_string_from_buffer(buf, options, local);
+		dbg!();
 
 		for item in items {
 			// Just measure the link in change (not the parent)

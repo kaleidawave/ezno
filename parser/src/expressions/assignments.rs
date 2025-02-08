@@ -60,7 +60,7 @@ impl ASTNode for VariableOrPropertyAccess {
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
 				if let Expression::NumberLiteral(..)
 				| Expression::ObjectLiteral(..)
-				| Expression::ArrowFunction(..) = parent.get_non_parenthesized()
+				| Expression::ArrowFunction(..) = parent.get_non_parenthesised()
 				{
 					buf.push('(');
 					parent.to_string_from_buffer(buf, options, local);

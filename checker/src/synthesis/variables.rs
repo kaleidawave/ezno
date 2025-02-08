@@ -363,7 +363,13 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 			// if let Some(spread) = spread {
 			// }
 		}
-		VariableField::Object { members, spread, position } => {
+		VariableField::Object { members, spread, position, .. } => {
+			if let VariableField::Object { class_name: Some(_), .. } = item {
+				checking_data.raise_unimplemented_error(
+					"Object destructuring + class name",
+					position.with_source(environment.get_source()),
+				);
+			}
 			for member in members {
 				match member.get_ast_ref() {
 					ObjectDestructuringField::Name(name, _, default_value, _) => {

@@ -18,9 +18,9 @@ pub struct ParseOptions {
 	pub decorators: bool,
 	/// Skip **all** comments from the AST
 	pub comments: Comments,
-	/// See [`crate::extensions::is_expression::IsExpression`]
+	/// See [`crate::extensions::is_expression::IsExpression`] & is operator
 	pub is_expressions: bool,
-	/// Allows functions to be prefixed with 'server'
+	/// Allows functions to be prefixed with 'server' and `generator`
 	pub custom_function_headers: bool,
 	/// Useful for LSP information
 	pub record_keyword_positions: bool,
@@ -32,6 +32,10 @@ pub struct ParseOptions {
 	pub reversed_imports: bool,
 	/// Extra
 	pub extra_operators: bool,
+	/// Extra. Enables unique symbols, class names
+	pub extra_type_annotations: bool,
+	/// Extra
+	pub enum_members_as_data_types: bool,
 	/// For formatting
 	pub retain_blank_lines: bool,
 	/// For LSP
@@ -41,17 +45,6 @@ pub struct ParseOptions {
 }
 
 impl ParseOptions {
-	// pub(crate) fn get_lex_options(&self) -> LexerOptions {
-	// 	LexerOptions {
-	// 		comments: self.comments,
-	// 		lex_jsx: self.jsx,
-	// 		allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
-	// 		allow_expressions_in_jsx: true,
-	// 		// allow_expressions_in_jsx: !self.top_level_html,
-	// 		top_level_html: self.top_level_html,
-	// 	}
-	// }
-
 	#[must_use]
 	pub fn all_features() -> Self {
 		Self {
@@ -71,7 +64,9 @@ impl ParseOptions {
 			extra_operators: true,
 			retain_blank_lines: true,
 			reversed_imports: true,
-			top_level_html: false,
+			top_level_html: true,
+			enum_members_as_data_types: true,
+			extra_type_annotations: true,
 		}
 	}
 }
@@ -96,6 +91,9 @@ impl Default for ParseOptions {
 			retain_blank_lines: false,
 			top_level_html: false,
 			reversed_imports: false,
+			enum_members_as_data_types: false,
+			// TODO this should be fine right?
+			extra_type_annotations: false,
 		}
 	}
 }

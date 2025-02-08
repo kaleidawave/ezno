@@ -84,6 +84,12 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 		true
 	}
 
+	/// From TypeScript
+	#[must_use]
+	fn is_declare(_: &Self::Name) -> bool {
+		false
+	}
+
 	/// For [`crate::ArrowFunction`]
 	fn parameters_from_reader(
 		reader: &mut crate::Lexer,
@@ -171,10 +177,15 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		// Don't print overloads
-		#[cfg(feature = "full-typescript")]
-		if !options.include_type_annotations && !T::has_body(&self.body) {
-			return;
+		if !options.include_type_annotations {
+			if T::is_declare(&self.name) {
+				return;
+			}
+			// Don't print overloads
+			#[cfg(feature = "full-typescript")]
+			if T::has_body(&self.body) {
+				return;
+			}
 		}
 
 		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, local);
@@ -306,6 +317,10 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		T::has_function_body(body)
 	}
 
+	fn is_declare(name: &Self::Name) -> bool {
+		name.is_declare()
+	}
+
 	fn header_and_name_from_reader(
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
@@ -416,7 +431,7 @@ impl ASTNode for FunctionHeader {
 		let is_async = reader.is_keyword_advance("async");
 
 		#[cfg(feature = "extras")]
-		if reader.is_keyword_advance("generator") {
+		if reader.get_options().custom_function_headers && reader.is_keyword_advance("generator") {
 			let location = parse_location(reader);
 			let _ = reader.expect_keyword("function")?;
 			return Ok(Self::ChadFunctionHeader {
@@ -427,7 +442,11 @@ impl ASTNode for FunctionHeader {
 		}
 
 		#[cfg(feature = "extras")]
-		let location = parse_location(reader);
+		let location = if reader.get_options().custom_function_headers {
+			parse_location(reader)
+		} else {
+			None
+		};
 		let _ = reader.expect_keyword("function")?;
 		let is_generator = reader.is_operator_advance("*");
 		Ok(Self::VirginFunctionHeader {
@@ -482,6 +501,17 @@ impl FunctionHeader {
 		match self {
 			FunctionHeader::VirginFunctionHeader { location, .. }
 			| FunctionHeader::ChadFunctionHeader { location, .. } => location.as_ref(),
+		}
+	}
+	
+	#[must_use]
+	pub fn empty() -> Self {
+		Self::VirginFunctionHeader {
+			is_async: false,
+			#[cfg(feature = "extras")]
+			location: None,
+			is_generator: false,
+			position: source_map::Nullable::NULL,
 		}
 	}
 }

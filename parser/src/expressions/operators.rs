@@ -208,7 +208,7 @@ impl Operator for UnaryOperator {
 			| UnaryOperator::BitwiseNot
 			| UnaryOperator::LogicalNot
 			| UnaryOperator::Plus
-			| UnaryOperator::Negation => 15,
+			| UnaryOperator::Negation => 14,
 			UnaryOperator::Yield | UnaryOperator::DelegatedYield => 2,
 		}
 	}
