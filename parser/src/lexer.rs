@@ -1183,7 +1183,7 @@ pub(crate) mod utilities {
 		&reader.get_current()[item.len()..]
 	}
 
-	pub fn after_brackets<'a>(current: &'a str) -> &'a str {
+	pub fn after_brackets(current: &str) -> &str {
 		use crate::Quoted;
 
 		enum State {

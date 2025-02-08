@@ -183,7 +183,7 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 			}
 			// Don't print overloads
 			#[cfg(feature = "full-typescript")]
-			if T::has_body(&self.body) {
+			if !T::has_body(&self.body) {
 				return;
 			}
 		}

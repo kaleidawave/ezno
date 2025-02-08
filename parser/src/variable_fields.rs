@@ -176,7 +176,7 @@ impl ASTNode for VariableField {
 			Self::Object { members, spread, position: _, .. } => {
 				#[cfg(feature = "extras")]
 				if let Self::Object { class_name: Some(class_name), .. } = self {
-					buf.push_str(&class_name);
+					buf.push_str(class_name);
 					options.push_gap_optionally(buf);
 				}
 

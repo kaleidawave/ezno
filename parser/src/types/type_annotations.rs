@@ -124,7 +124,7 @@ impl ListItem for TypeAnnotation {
 #[apply(derive_ASTNode)]
 pub struct AnnotationWithBinder {
 	pub name: Option<String>,
-	pub ty: TypeAnnotation,
+	pub type_annotation: TypeAnnotation,
 	pub position: Span,
 }
 
@@ -142,8 +142,8 @@ impl ASTNode for AnnotationWithBinder {
 		} else {
 			None
 		};
-		let ty = TypeAnnotation::from_reader(reader)?;
-		Ok(AnnotationWithBinder { position: start.union(reader.get_end()), name, ty })
+		let type_annotation = TypeAnnotation::from_reader(reader)?;
+		Ok(AnnotationWithBinder { position: start.union(reader.get_end()), name, type_annotation })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -156,7 +156,7 @@ impl ASTNode for AnnotationWithBinder {
 			buf.push_str(name);
 			buf.push_str(": ");
 		}
-		self.ty.to_string_from_buffer(buf, options, local);
+		self.type_annotation.to_string_from_buffer(buf, options, local);
 	}
 }
 
@@ -193,7 +193,7 @@ impl ASTNode for BinderWithAnnotation {
 		self.name.to_string_from_buffer(buf, options, local);
 		if let Some(ty) = &self.ty {
 			buf.push_str(": ");
-			ty.to_string_from_buffer(buf, options, local)
+			ty.to_string_from_buffer(buf, options, local);
 		}
 	}
 }
@@ -1183,16 +1183,20 @@ mod tests {
 			TypeAnnotation::TupleLiteral(
 				Deref @ [TupleLiteralElement(
 					TupleElementKind::Standard,
-					AnnotationWithBinder::NoAnnotation(TypeAnnotation::CommonName(
-						CommonTypes::Number,
-						span!(1, 7),
-					)),
+					AnnotationWithBinder {
+						type_annotation: TypeAnnotation::CommonName(
+							CommonTypes::Number,
+							span!(1, 7),
+						),
+						name: None,
+						position: _,
+					},
 					_,
 				), TupleLiteralElement(
 					TupleElementKind::Standard,
-					AnnotationWithBinder::Annotated {
-						name: Deref @ "x",
-						ty: TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),
+					AnnotationWithBinder {
+						name: Some(Deref @ "x"),
+						type_annotation: TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),
 						position: _,
 					},
 					_,
@@ -1227,7 +1231,11 @@ mod tests {
 				parts: Deref @ [
 					(
 						Deref @ "test-",
-						AnnotationWithBinder::NoAnnotation(TypeAnnotation::Name(TypeName::Name(Deref @ "X"), span!(8, 9)))
+						AnnotationWithBinder {
+							type_annotation: TypeAnnotation::Name(TypeName::Name(Deref @ "X"), span!(8, 9)),
+							name: None,
+							position: _
+						}
 					)
 				],
 				..

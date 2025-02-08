@@ -30,6 +30,8 @@ jobs:
           packages: hyperfine ripgrep
       
       - name: Install valgrind
+        id: install-valgrind
+        continue-on-error: true
         run: sudo apt-get install valgrind
 
       - name: Get last run
@@ -180,6 +182,7 @@ jobs:
 
       - name: Valgrind and callgrind
         shell: bash
+        if: ${{ steps.install-valgrind.outcome == 'success' }}
         continue-on-error: true
         run: |
           IFS=',' read -ra ITEMS <<< ${{ steps.compilers.outputs.BINARIES }}

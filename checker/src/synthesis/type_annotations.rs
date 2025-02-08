@@ -405,7 +405,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			for TupleLiteralElement(spread, member, pos) in members {
 				let annotation_ty =
-					synthesise_type_annotation(&member.ty, environment, checking_data);
+					synthesise_type_annotation(&member.type_annotation, environment, checking_data);
 
 				let pos = pos.with_source(environment.get_source());
 
@@ -660,11 +660,11 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				};
 				// WIP fix correcting `infer T` to `infer T extends string` so that string addition works
 				let rhs = if let TypeAnnotation::Infer { name, extends: None, position: _ } =
-					&dynamic_part.ty
+					&dynamic_part.type_annotation
 				{
 					environment.new_infer_type(TypeId::STRING_TYPE, name, &mut checking_data.types)
 				} else {
-					synthesise_type_annotation(&dynamic_part.ty, environment, checking_data)
+					synthesise_type_annotation(&dynamic_part.type_annotation, environment, checking_data)
 				};
 				let constructor = crate::types::Constructor::BinaryOperator {
 					lhs: acc,
