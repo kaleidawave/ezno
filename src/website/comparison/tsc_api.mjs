@@ -4,10 +4,10 @@ import { join } from "node:path";
 
 const lib = readFileSync(join(import.meta.dirname, "./full.lib.d.ts")).toString();
 
-export default function getDiagnosticsForTextTSC(files, rootNames = [files[0][0]]) {
-    const filesAST = files.map(([path, content]) => [path, ts.createSourceFile(path, content, ts.ScriptTarget.Latest)]);
+export default function getDiagnosticsForTextTSC(files, rootNames = ["main.tsx"]) {
+    const filesAST = new Map(Array.from(files.entries).map(([path, content]) => [path, ts.createSourceFile(path, content, ts.ScriptTarget.Latest)]));
 
-    filesAST.push(["lib.d.ts", ts.createSourceFile("lib.d.ts", lib, ts.ScriptTarget.Latest)]);
+    filesAST.set("lib.d.ts", ts.createSourceFile("lib.d.ts", lib, ts.ScriptTarget.Latest));
 
     /** @type {ts.CompilerOptions} */
     const options = {
@@ -24,16 +24,10 @@ export default function getDiagnosticsForTextTSC(files, rootNames = [files[0][0]
         getCanonicalFileName: fileName => fileName,
         getNewLine: () => "\n",
         getSourceFile(want) {
-            for (const [path, content] of filesAST) {
-                if (path === want) return content
-            }
-            return null
+            return filesAST.get(want);
         },
         readFile(want) {
-            for (const [path, content] of files) {
-                if (path === want) return content
-            }
-            return null
+            return files.get(want);
         },
         useCaseSensitiveFileNames: () => true,
         writeFile: () => { }

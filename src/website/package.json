@@ -4,19 +4,21 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && npm run build-comparison",
-    "build-comparison": "node ./comparison/comparison_generator.mjs && cp comparison/assets/* dist/comparison/assets",
-    "preview": "vite preview"
+    "dev": "node build.js --watch",
+    "build": "node build.js",
+    "preview": "serve dist"
   },
   "devDependencies": {
-    "lz-string": "^1.5.0",
-    "marked": "^10.0.0",
+    "@rollup/plugin-node-resolve": "^15.3.0",
+    "knip": "^5.38.2",
+    "@amoutonbrady/lz-string": "^0.1",
+    "rollup": "^4.27.4",
+    "serve": "^14.2.4",
     "shiki": "^0.14.7",
-    "typescript": "5.3",
-    "vite": "^5.2.12"
+    "typescript": "5.3"
   },
   "dependencies": {
+    "@bengineering/simple-markdown-parser": "npm:@jsr/bengineering__simple-markdown-parser@^0.0.7",
     "@codemirror/commands": "^6.3.3",
     "@codemirror/lang-javascript": "^6.2.1",
     "@codemirror/language": "^6.10.0",
