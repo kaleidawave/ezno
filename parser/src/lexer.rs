@@ -636,7 +636,7 @@ impl<'a> Lexer<'a> {
 			Some('.') => NumberLiteralType::Decimal { fractional: true },
 			Some(_) | None => {
 				return Err(ParseError::new(
-					ParseErrors::InvalidNumber,
+					ParseErrors::InvalidNumberLiteral,
 					self.get_start().with_length(1),
 				))
 			}
@@ -656,7 +656,7 @@ impl<'a> Lexer<'a> {
 						Ok((number, length))
 					} else {
 						Err(ParseError::new(
-							ParseErrors::InvalidNumber,
+							ParseErrors::InvalidNumberLiteral,
 							self.get_start().with_length(idx),
 						))
 					};
@@ -673,7 +673,7 @@ impl<'a> Lexer<'a> {
 					} else {
 						// LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
 						return Err(ParseError::new(
-							ParseErrors::InvalidNumber,
+							ParseErrors::InvalidNumberLiteral,
 							self.get_start().with_length(idx),
 						));
 					}
@@ -683,7 +683,7 @@ impl<'a> Lexer<'a> {
 						if !matches!(chr, '0' | '1') {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
+								ParseErrors::InvalidNumberLiteral,
 								self.get_start().with_length(idx),
 							));
 						}
@@ -692,7 +692,7 @@ impl<'a> Lexer<'a> {
 						if !matches!(chr, '0'..='7') {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
+								ParseErrors::InvalidNumberLiteral,
 								self.get_start().with_length(idx),
 							));
 						}
@@ -706,7 +706,7 @@ impl<'a> Lexer<'a> {
 						} else if !chr.is_ascii_digit() {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
+								ParseErrors::InvalidNumberLiteral,
 								self.get_start().with_length(idx),
 							));
 						}
@@ -715,7 +715,7 @@ impl<'a> Lexer<'a> {
 						if !chr.is_ascii_digit() {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
 							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
+								ParseErrors::InvalidNumberLiteral,
 								self.get_start().with_length(idx),
 							));
 						}
@@ -738,7 +738,7 @@ impl<'a> Lexer<'a> {
 						if current[..idx].ends_with(['_']) {
 							// (LexingErrors::InvalidUnderscore)
 							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
+								ParseErrors::InvalidNumberLiteral,
 								self.get_start().with_length(idx),
 							));
 						}
@@ -747,7 +747,7 @@ impl<'a> Lexer<'a> {
 					} else {
 						// (LexingErrors::NumberLiteralCannotHaveDecimalPoint);
 						return Err(ParseError::new(
-							ParseErrors::InvalidNumber,
+							ParseErrors::InvalidNumberLiteral,
 							self.get_start().with_length(idx),
 						));
 					}
@@ -770,7 +770,7 @@ impl<'a> Lexer<'a> {
 					if invalid {
 						// (LexingErrors::InvalidUnderscore);
 						return Err(ParseError::new(
-							ParseErrors::InvalidNumber,
+							ParseErrors::InvalidNumberLiteral,
 							self.get_start().with_length(idx),
 						));
 					}
@@ -787,7 +787,7 @@ impl<'a> Lexer<'a> {
 							Ok((number, length as u32))
 						}
 						Err(_) => Err(ParseError::new(
-							ParseErrors::InvalidNumber,
+							ParseErrors::InvalidNumberLiteral,
 							self.get_start().with_length(length),
 						)),
 					};
@@ -803,7 +803,7 @@ impl<'a> Lexer<'a> {
 				Ok((number, length as u32))
 			}
 			Err(_) => Err(ParseError::new(
-				ParseErrors::InvalidNumber,
+				ParseErrors::InvalidNumberLiteral,
 				self.get_start().with_length(length),
 			)),
 		}
@@ -867,8 +867,12 @@ impl<'a> Lexer<'a> {
 
 		let regex_flags = &current[regex_end..first_non_char];
 
-		let invalid_flag =
-			regex_flags.chars().any(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'));
+		// TODO under cfg
+		let v_flag = true;
+		let invalid_flag = regex_flags.chars().any(|chr| {
+			!(matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y')
+				|| matches!(chr, 'v' if v_flag))
+		});
 		if invalid_flag {
 			Err(ParseError::new(
 				ParseErrors::InvalidRegexFlag,

@@ -1,7 +1,7 @@
 use std::{borrow::Cow, str::FromStr};
 
 use parser::{
-	ast::TypeOrConst,
+	ast::{TypeOrConst, ImportExpression},
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		operators::{
@@ -1126,10 +1126,18 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				))
 			}
 		},
-		Expression::ImportMeta(_) => {
+		Expression::Import(ImportExpression::ImportMeta(_)) => {
+			// TODO per file type...?
 			Instance::RValue(checking_data.types.new_open_type(TypeId::IMPORT_META))
 		}
-		Expression::DynamicImport { position, .. } => {
+		Expression::Import(ImportExpression::ImportSource { position, .. }) => {
+			checking_data.raise_unimplemented_error(
+				"import.source",
+				position.with_source(environment.get_source()),
+			);
+			return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+		}
+		Expression::Import(ImportExpression::DynamicImport { position, .. }) => {
 			checking_data.raise_unimplemented_error(
 				"dynamic import",
 				position.with_source(environment.get_source()),

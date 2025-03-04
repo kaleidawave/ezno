@@ -110,12 +110,7 @@ pub enum Expression {
 	SuperExpression(SuperReference, Span),
 	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target
 	NewTarget(Span),
-	ImportMeta(Span),
-	DynamicImport {
-		path: Box<Expression>,
-		options: Option<Box<Expression>>,
-		position: Span,
-	},
+	Import(ImportExpression),
 	PropertyAccess {
 		parent: Box<Expression>,
 		is_optional: bool,
@@ -476,8 +471,32 @@ impl Expression {
 				Expression::SuperExpression(inner, start.union(reader.get_end()))
 			} else if reader.is_keyword_advance("import") {
 				if reader.is_operator_advance(".") {
-					let _ = reader.expect_keyword("meta")?;
-					Expression::ImportMeta(start.union(reader.get_end()))
+					let mut expr = None;
+					#[cfg(feature = "extras")]
+					{
+						if reader.is_keyword_advance("source") {
+							reader.expect('(')?;
+							let location =
+								crate::declarations::import_export::ImportLocation::from_reader(
+									reader,
+								)?;
+							reader.expect(')')?;
+							let position = start.union(reader.get_end());
+							expr = Some(Expression::Import(ImportExpression::ImportSource {
+								location,
+								position,
+							}));
+						}
+					}
+
+					if let Some(expr) = expr {
+						expr
+					} else {
+						let _ = reader.expect_keyword("meta")?;
+						Expression::Import(ImportExpression::ImportMeta(
+							start.union(reader.get_end()),
+						))
+					}
 				} else if reader.is_operator_advance("(") {
 					let path = Expression::from_reader(reader)?;
 					// if let Expression::StringLiteral(path, ..) = &path {
@@ -490,11 +509,12 @@ impl Expression {
 						None
 					};
 					let end = reader.expect(')')?;
-					Expression::DynamicImport {
+					let inner = ImportExpression::DynamicImport {
 						path: Box::new(path),
 						options,
 						position: start.union(end),
-					}
+					};
+					Expression::Import(inner)
 				} else {
 					let position = reader.get_start().with_length(1);
 					let reason = ParseErrors::UnexpectedCharacter {
@@ -1020,8 +1040,7 @@ impl Expression {
 			| Self::SuperExpression(..)
 			| Self::NewTarget(..)
 			| Self::ClassExpression(..)
-			| Self::ImportMeta(..)
-			| Self::DynamicImport { .. }
+			| Self::Import(..)
 			| Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
 			Self::BinaryOperation { operator, .. } => operator.precedence(),
 			Self::UnaryOperation { operator, .. } => operator.precedence(),
@@ -1309,10 +1328,16 @@ impl Expression {
 			Self::NewTarget(..) => {
 				buf.push_str("new.target");
 			}
-			Self::ImportMeta(..) => {
+			Self::Import(ImportExpression::ImportMeta(..)) => {
 				buf.push_str("import.meta");
 			}
-			Self::DynamicImport { path, .. } => {
+			#[cfg(feature = "extras")]
+			Self::Import(ImportExpression::ImportSource { location, .. }) => {
+				buf.push_str("import.source(");
+				location.to_string_from_buffer(buf);
+				buf.push(')');
+			}
+			Self::Import(ImportExpression::DynamicImport { path, .. }) => {
 				buf.push_str("import(");
 				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
@@ -1866,6 +1891,35 @@ pub enum InExpressionLHS {
 	Expression(Box<Expression>),
 }
 
+/// "super" cannot be used alone
+#[apply(derive_ASTNode)]
+#[derive(PartialEqExtras, Debug, Clone, Visitable)]
+#[partial_eq_ignore_types(Span)]
+pub enum SuperReference {
+	Call { arguments: Vec<FunctionArgument> },
+	PropertyAccess { property: String },
+	Index { indexer: Box<Expression> },
+}
+
+#[apply(derive_ASTNode)]
+#[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
+#[get_field_by_type_target(Span)]
+#[partial_eq_ignore_types(Span)]
+pub enum ImportExpression {
+	ImportMeta(Span),
+	/// [Proposal](https://github.com/tc39/proposal-source-phase-imports)
+	#[cfg(feature = "extras")]
+	ImportSource {
+		location: crate::declarations::import_export::ImportLocation,
+		position: Span,
+	},
+	DynamicImport {
+		path: Box<Expression>,
+		options: Option<Box<Expression>>,
+		position: Span,
+	},
+}
+
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable)]
 pub enum FunctionArgument {
@@ -1899,7 +1953,7 @@ impl ASTNode for FunctionArgument {
 			let is_multiline = reader.is_operator_advance("/*");
 			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 			reader.skip();
-			if reader.is_one_of_operators(&[")", "}", ","]).is_some() {
+			if reader.is_one_of_operators(&[")", "}", "]", ","]).is_some() {
 				let position = start.union(reader.get_end());
 				Ok(Self::Comment { content, is_multiline, position })
 			} else {
@@ -2093,16 +2147,6 @@ impl Expression {
 			self
 		}
 	}
-}
-
-/// "super" cannot be used alone
-#[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
-pub enum SuperReference {
-	Call { arguments: Vec<FunctionArgument> },
-	PropertyAccess { property: String },
-	Index { indexer: Box<Expression> },
 }
 
 pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(

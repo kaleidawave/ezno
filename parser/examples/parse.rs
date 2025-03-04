@@ -111,11 +111,11 @@ fn parse_path(
 	match result {
 		Ok((module, state)) => {
 			if timings {
-				eprintln!("parsed in: {:?}", now.elapsed());
-			}
-
-			if print_ast {
+				eprintln!("Parsed in: {:?}", now.elapsed());
+			} else if print_ast {
 				println!("{module:#?}");
+			} else {
+				eprintln!("Successfully parsed source");
 			}
 
 			if let Some(to_string_options) = to_string_options {

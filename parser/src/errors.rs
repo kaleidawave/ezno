@@ -59,7 +59,6 @@ pub enum ParseErrors<'a> {
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
 	NoNewLinesInString,
-	InvalidNumber,
 	InvalidRegularExpression,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
@@ -96,9 +95,6 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::NoNewLinesInString => {
 				write!(f, "Cannot use new lines in string")
-			}
-			ParseErrors::InvalidNumber => {
-				write!(f, "Invalid number")
 			}
 			ParseErrors::ExpectedJSXAttribute => {
 				write!(f, "Invalid JSX attribute")

@@ -549,15 +549,16 @@ impl MethodHeader {
 	}
 
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
-		let after = reader.after_identifier();
-		if let Some('<' | '(' | '}' | ',' | ':' | '[') = after.chars().next() {
-			MethodHeader::default()
-		} else if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
+		if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
 			match kind {
 				"get" => MethodHeader::Get,
 				"set" => MethodHeader::Set,
 				slice => unreachable!("{slice:?}"),
 			}
+		} else if let Some('<' | '(' | '}' | ',' | ':' | '[') =
+			reader.after_identifier().trim_start().chars().next()
+		{
+			MethodHeader::default()
 		} else {
 			let is_async = reader.is_keyword_advance("async");
 			let generator = GeneratorSpecifier::from_reader(reader);
