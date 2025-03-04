@@ -127,7 +127,7 @@ impl<'a> Lexer<'a> {
 			&& current[length..]
 				.chars()
 				.next()
-				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 	}
 
 	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
@@ -138,7 +138,7 @@ impl<'a> Lexer<'a> {
 			&& current[length..]
 				.chars()
 				.next()
-				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 		{
 			self.state.last_new_lines = 0;
 			self.head += length as u32;
@@ -157,7 +157,7 @@ impl<'a> Lexer<'a> {
 				&& current[item.len()..]
 					.chars()
 					.next()
-					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 			{
 				return Some(item);
 			}
@@ -175,7 +175,7 @@ impl<'a> Lexer<'a> {
 				&& current[item.len()..]
 					.chars()
 					.next()
-					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 			{
 				self.head += item.len() as u32;
 				return Some(item);

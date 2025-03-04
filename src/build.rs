@@ -70,6 +70,7 @@ impl CheckingOutputWithoutDiagnostics {
 	}
 }
 
+#[allow(clippy::result_large_err)]
 pub fn build<T: crate::ReadFromFS>(
 	entry_points: Vec<PathBuf>,
 	fs_resolver: &T,

@@ -664,7 +664,11 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				{
 					environment.new_infer_type(TypeId::STRING_TYPE, name, &mut checking_data.types)
 				} else {
-					synthesise_type_annotation(&dynamic_part.type_annotation, environment, checking_data)
+					synthesise_type_annotation(
+						&dynamic_part.type_annotation,
+						environment,
+						checking_data,
+					)
 				};
 				let constructor = crate::types::Constructor::BinaryOperator {
 					lhs: acc,

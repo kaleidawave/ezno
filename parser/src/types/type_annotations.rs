@@ -1184,10 +1184,8 @@ mod tests {
 				Deref @ [TupleLiteralElement(
 					TupleElementKind::Standard,
 					AnnotationWithBinder {
-						type_annotation: TypeAnnotation::CommonName(
-							CommonTypes::Number,
-							span!(1, 7),
-						),
+						type_annotation:
+							TypeAnnotation::CommonName(CommonTypes::Number, span!(1, 7)),
 						name: None,
 						position: _,
 					},
@@ -1196,7 +1194,8 @@ mod tests {
 					TupleElementKind::Standard,
 					AnnotationWithBinder {
 						name: Some(Deref @ "x"),
-						type_annotation: TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),
+						type_annotation:
+							TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),
 						position: _,
 					},
 					_,

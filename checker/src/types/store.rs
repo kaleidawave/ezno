@@ -231,8 +231,8 @@ impl TypeStore {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
 			Constant::String(s) if s.is_empty() => TypeId::EMPTY_STRING,
-			Constant::Number(number) if number == 0f64 => TypeId::ZERO,
-			Constant::Number(number) if number == 1f64 => TypeId::ONE,
+			Constant::Number(0.0) => TypeId::ZERO,
+			Constant::Number(1.0) => TypeId::ONE,
 			Constant::Number(number) if number == f64::NEG_INFINITY => TypeId::NEG_INFINITY,
 			Constant::Number(number) if number == f64::INFINITY => TypeId::INFINITY,
 			Constant::Number(number) if number.is_nan() => TypeId::NAN,

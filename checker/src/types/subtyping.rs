@@ -2760,10 +2760,8 @@ pub(crate) fn slice_matches_type(
 			arguments,
 		}) => {
 			let matches_constraint = match *transform {
-				TypeId::STRING_CAPITALIZE => slice.chars().next().map_or(true, char::is_uppercase),
-				TypeId::STRING_UNCAPITALIZE => {
-					slice.chars().next().map_or(true, char::is_lowercase)
-				}
+				TypeId::STRING_CAPITALIZE => slice.chars().next().is_none_or(char::is_uppercase),
+				TypeId::STRING_UNCAPITALIZE => slice.chars().next().is_none_or(char::is_lowercase),
 				TypeId::STRING_LOWERCASE => slice.chars().all(char::is_lowercase),
 				TypeId::STRING_UPPERCASE => slice.chars().all(char::is_uppercase),
 				_ => unreachable!(),
