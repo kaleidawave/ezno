@@ -342,7 +342,7 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub fn is_finished(&self) -> bool {
-		self.get_current().is_empty()
+		self.get_current().trim_start().is_empty()
 	}
 
 	#[must_use]
@@ -645,21 +645,14 @@ impl<'a> Lexer<'a> {
 		for (idx, chr) in chars {
 			match chr {
 				'n' => {
-					return if let NumberLiteralType::Decimal { fractional: false } = state {
-						let num_slice = current[..idx].to_owned();
-						let number = crate::number::NumberRepresentation::BigInt(
-							crate::number::NumberSign::Positive,
-							num_slice,
-						);
-						let length = (idx + 'n'.len_utf16()) as u32;
-						self.head += length;
-						Ok((number, length))
-					} else {
-						Err(ParseError::new(
-							ParseErrors::InvalidNumberLiteral,
-							self.get_start().with_length(idx),
-						))
-					};
+					let num_slice = current[..idx].to_owned();
+					let number = crate::number::NumberRepresentation::BigInt(
+						crate::number::NumberSign::Positive,
+						num_slice,
+					);
+					let length = (idx + 'n'.len_utf16()) as u32;
+					self.head += length;
+					return Ok((number, length));
 				}
 				// For binary/hexadecimal/octal literals
 				'b' | 'B' | 'x' | 'X' | 'o' | 'O' if idx == 1 => {
@@ -698,10 +691,8 @@ impl<'a> Lexer<'a> {
 						}
 					}
 					// Handling for 'e' & 'E'
-					NumberLiteralType::Decimal { ref fractional } => {
-						if matches!(chr, 'e' | 'E')
-							&& !(*fractional || current[..idx].ends_with('_'))
-						{
+					NumberLiteralType::Decimal { .. } => {
+						if matches!(chr, 'e' | 'E') && !current[..idx].ends_with('_') {
 							state = NumberLiteralType::Exponent;
 						} else if !chr.is_ascii_digit() {
 							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)

@@ -1,7 +1,7 @@
 use std::{borrow::Cow, str::FromStr};
 
 use parser::{
-	ast::{TypeOrConst, ImportExpression},
+	ast::{ImportExpression, TypeOrConst},
 	expressions::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		operators::{

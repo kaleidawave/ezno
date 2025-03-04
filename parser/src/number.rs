@@ -124,16 +124,9 @@ impl FromStr for NumberRepresentation {
 
 		if let Some(s) = s.strip_suffix('n') {
 			Ok(NumberRepresentation::BigInt(sign, s.to_owned()))
-		} else if let Some(s) = s.strip_prefix('0') {
+		} else if let (Some(s), false) = (s.strip_prefix('0'), s[1..].starts_with('.')) {
 			let next_char = s.chars().next();
 			match next_char {
-				Some('.') => {
-					if s.len() == 1 {
-						Ok(Self::Number(0f64))
-					} else {
-						Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
-					}
-				}
 				Some('X' | 'x') => {
 					let mut value = 0u64;
 					for c in s[1..].as_bytes() {
@@ -151,7 +144,7 @@ impl FromStr for NumberRepresentation {
 							_ => return Err(s.to_owned()),
 						}
 					}
-					Ok(Self::Hex { sign, value })
+					return Ok(Self::Hex { sign, value });
 				}
 				Some('B' | 'b') => {
 					let mut value = 0u64;
@@ -168,7 +161,8 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('e' | 'E') => {
 					// Lol
-					let exponent: i32 = s[1..].parse().map_err(|_| s.to_owned())?;
+					let without_e = &s[1..];
+					let exponent: i32 = without_e.parse().map_err(|_| s.to_owned())?;
 					Ok(Self::Exponential { sign, value: 0f64, exponent })
 				}
 				// 'o' | 'O' but can also be missed
@@ -176,6 +170,7 @@ impl FromStr for NumberRepresentation {
 					let uses_character = matches!(c, 'o' | 'O');
 
 					if !uses_character && s.contains(['8', '9', '.']) {
+						// TODO missed here
 						return Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)));
 					}
 
@@ -205,7 +200,12 @@ impl FromStr for NumberRepresentation {
 		} else if let Some(s) = s.strip_suffix('.') {
 			Ok(Self::Number(sign.apply(s.parse::<f64>().map_err(|_| s)?)))
 		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
-			let value = left.parse::<f64>().map_err(|_| s.clone())?;
+			let value = if left.starts_with('.') {
+				format!("0{left}").parse::<f64>()
+			} else {
+				left.parse::<f64>()
+			};
+			let value = value.map_err(|_| s.clone())?;
 			if let Ok(exponent) = right.parse::<i32>() {
 				Ok(Self::Exponential { sign, value, exponent })
 			} else if right.starts_with('-') || value == 0f64 {

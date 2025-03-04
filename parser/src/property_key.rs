@@ -33,7 +33,7 @@ pub struct AlwaysPublic;
 impl PropertyKeyKind for AlwaysPublic {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
-		let name = reader.parse_identifier("propery key", false)?;
+		let name = reader.parse_identifier("property key", false)?;
 		Ok((name.to_owned(), start.with_length(name.len()), Self::new_public()))
 	}
 

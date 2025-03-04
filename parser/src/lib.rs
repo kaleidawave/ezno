@@ -117,7 +117,26 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		offset: Option<u32>,
 	) -> ParseResult<(Self, ParsingState)> {
 		let line_starts = source_map::LineStarts::new(script.as_str());
-		lex_and_parse_script(line_starts, options, &script, offset)
+		#[allow(clippy::cast_possible_truncation)]
+		let length_of_source = script.len() as u32;
+
+		let state = ParsingState {
+			line_starts,
+			length_of_source,
+			constant_imports: Default::default(),
+			keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
+			partial_points: Default::default(),
+		};
+		let mut reader = crate::Lexer::new(&script, offset, options);
+
+		let result = Self::from_reader(&mut reader).map(|ok| (ok, state))?;
+
+		if reader.is_finished() {
+			Ok(result)
+		} else {
+			let (found, position) = crate::lexer::utilities::next_item(&reader);
+			Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
+		}
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
@@ -139,28 +158,6 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		self.to_string_from_buffer(&mut buf, options, local);
 		buf.source
 	}
-}
-
-#[doc(hidden)]
-pub fn lex_and_parse_script<T: ASTNode>(
-	line_starts: source_map::LineStarts,
-	options: ParseOptions,
-	script: &str,
-	offset: Option<u32>,
-) -> ParseResult<(T, ParsingState)> {
-	#[allow(clippy::cast_possible_truncation)]
-	let length_of_source = script.len() as u32;
-
-	let state = ParsingState {
-		line_starts,
-		length_of_source,
-		constant_imports: Default::default(),
-		keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
-		partial_points: Default::default(),
-	};
-	let mut lexer = crate::Lexer::new(script, offset, options);
-
-	T::from_reader(&mut lexer).map(|ok| (ok, state))
 }
 
 #[derive(Debug)]
