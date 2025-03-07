@@ -1,0 +1,17 @@
+[package]
+name = "ezno-test262"
+description = "test262 runner for the Ezno toolchain"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+simple-yaml-parser = { git = "https://github.com/kaleidawave/simple-yaml-parser.git", branch = "improvements" }
+ezno-parser = { path = "../parser", package = "ezno-parser" }
+sqlite = "0.36"
+
+[[bin]]
+name = "test262"
+path = "runner.rs"
