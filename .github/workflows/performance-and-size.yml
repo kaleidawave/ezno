@@ -167,7 +167,7 @@ jobs:
           echo "::group::Running large"
 
           cargo run -p ezno-checker-specification \
-           --example ./checker/specification/specification.md \
+           --example amalgamate ./checker/specification/specification.md \
            --comment-headers \
            --out ./code.tsx
 
