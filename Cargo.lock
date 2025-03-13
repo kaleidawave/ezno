@@ -310,6 +310,7 @@ dependencies = [
 name = "ezno-parser"
 version = "0.1.7"
 dependencies = [
+ "codespan-reporting",
  "derive-debug-extras",
  "derive-enum-from-into",
  "derive-finite-automaton",

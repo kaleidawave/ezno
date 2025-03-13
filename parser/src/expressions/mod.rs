@@ -11,7 +11,7 @@ use self::{
 		IncrementOrDecrement, Operator, ARROW_FUNCTION_PRECEDENCE, COMMA_PRECEDENCE,
 		CONDITIONAL_TERNARY_PRECEDENCE, CONSTRUCTOR_PRECEDENCE,
 		CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE, MEMBER_ACCESS_PRECEDENCE,
-		PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
+		PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, YIELD_OPERATORS_PRECEDENCE,
 	},
 };
 
@@ -388,17 +388,9 @@ impl Expression {
 				let position = start.union(operand.get_position());
 				Expression::UnaryOperation { operand: Box::new(operand), operator, position }
 			} else if let Some(keyword) =
-				reader.is_one_of_keywords_advance(&["yield", "typeof", "await", "delete", "void"])
+				reader.is_one_of_keywords_advance(&["typeof", "await", "delete", "void"])
 			{
 				let operator = match keyword {
-					"yield" => {
-						let is_delegated = reader.is_operator_advance("*");
-						if is_delegated {
-							UnaryOperator::DelegatedYield
-						} else {
-							UnaryOperator::Yield
-						}
-					}
 					"typeof" => UnaryOperator::TypeOf,
 					"await" => UnaryOperator::Await,
 					"delete" => UnaryOperator::Delete,
@@ -410,6 +402,23 @@ impl Expression {
 					Expression::from_reader_with_precedence(reader, operator.precedence())?;
 				let position = start.union(operand.get_position());
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
+			} else if reader.is_keyword_advance("yield") {
+				let is_delegated = reader.is_operator_advance("*");
+				let yielded = if reader.is_one_of_operators(&[";"]).is_some() {
+					None
+				} else {
+					let expression = Expression::from_reader_with_precedence(
+						reader,
+						YIELD_OPERATORS_PRECEDENCE,
+					)?;
+					Some(Box::new(expression))
+				};
+
+				let position = start.union(reader.get_end());
+				Expression::SpecialOperators(
+					SpecialOperators::Yield { yielded, is_delegated },
+					position,
+				)
 			} else if let Some(keyword) = reader.is_one_of_keywords_advance(&["true", "false"]) {
 				Expression::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
 			} else if reader.is_keyword_advance("this") {
@@ -450,18 +459,18 @@ impl Expression {
 					}
 				}
 			} else if reader.is_keyword_advance("super") {
-				let inner = if reader.is_operator_advance(".") {
-					let property = reader.parse_identifier("property identifier", true)?.to_owned();
-					SuperReference::PropertyAccess { property }
-				// TODO PropertyReference::Standard { property, is_private }
-				} else if reader.is_operator_advance("(") {
+				let inner = if reader.is_operator_advance("(") {
 					// TODO generics?
 					let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
 					SuperReference::Call { arguments }
+				} else if reader.is_operator_advance(".") {
+					let property = reader.parse_identifier("property identifier", true)?.to_owned();
+					// TODO PropertyReference::Standard { property, is_private }
+					SuperReference::PropertyAccess(PropertyLike::Fixed(property))
 				} else if reader.is_operator_advance("[") {
 					let indexer = Expression::from_reader(reader)?;
 					reader.expect(']')?;
-					SuperReference::Index { indexer: Box::new(indexer) }
+					SuperReference::PropertyAccess(PropertyLike::Computed(Box::new(indexer)))
 				} else {
 					return Err(crate::lexer::utilities::expected_one_of_items(
 						reader,
@@ -1058,6 +1067,7 @@ impl Expression {
 			Self::Index { .. } => INDEX_PRECEDENCE,
 			Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
 			Self::Comment { ref on, .. } => on.get_precedence(),
+			Self::SpecialOperators(SpecialOperators::Yield { .. }, _) => YIELD_OPERATORS_PRECEDENCE,
 			#[cfg(feature = "full-typescript")]
 			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => {
 				PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE
@@ -1168,21 +1178,6 @@ impl Expression {
 				);
 			}
 			Self::SpecialOperators(special, _) => match special {
-				#[cfg(feature = "full-typescript")]
-				SpecialOperators::AsCast { value, rhs, .. } => {
-					value.to_string_from_buffer(buf, options, local);
-					if options.include_type_annotations {
-						buf.push_str(" as ");
-						match rhs {
-							TypeOrConst::Type(type_annotation) => {
-								type_annotation.to_string_from_buffer(buf, options, local);
-							}
-							TypeOrConst::Const(_) => {
-								buf.push_str("const");
-							}
-						}
-					}
-				}
 				SpecialOperators::Satisfies { value, type_annotation, .. } => {
 					value.to_string_from_buffer(buf, options, local);
 					if options.include_type_annotations {
@@ -1230,6 +1225,22 @@ impl Expression {
 						local2.with_precedence(self_precedence),
 					);
 				}
+				SpecialOperators::Yield { yielded, is_delegated } => {
+					buf.push_str("yield");
+					if *is_delegated {
+						buf.push('*');
+					}
+					// TODO can be dropped sometimes
+					buf.push(' ');
+					if let Some(ref yielded) = yielded {
+						yielded.to_string_using_precedence(
+							buf,
+							options,
+							local,
+							local2.with_precedence(self_precedence),
+						);
+					}
+				}
 				#[cfg(feature = "full-typescript")]
 				SpecialOperators::NonNullAssertion(on) => {
 					on.to_string_using_precedence(
@@ -1240,6 +1251,21 @@ impl Expression {
 					);
 					if options.include_type_annotations {
 						buf.push('!');
+					}
+				}
+				#[cfg(feature = "full-typescript")]
+				SpecialOperators::AsCast { value, rhs, .. } => {
+					value.to_string_from_buffer(buf, options, local);
+					if options.include_type_annotations {
+						buf.push_str(" as ");
+						match rhs {
+							TypeOrConst::Type(type_annotation) => {
+								type_annotation.to_string_from_buffer(buf, options, local);
+							}
+							TypeOrConst::Const(_) => {
+								buf.push_str("const");
+							}
+						}
 					}
 				}
 				#[cfg(feature = "extras")]
@@ -1627,11 +1653,11 @@ impl Expression {
 					SuperReference::Call { arguments } => {
 						arguments_to_string(arguments, buf, options, local);
 					}
-					SuperReference::PropertyAccess { property } => {
+					SuperReference::PropertyAccess(PropertyLike::Fixed(property)) => {
 						buf.push('.');
 						buf.push_str(property);
 					}
-					SuperReference::Index { indexer: index } => {
+					SuperReference::PropertyAccess(PropertyLike::Computed(index)) => {
 						buf.push('[');
 						index.to_string_from_buffer(buf, options, local);
 						buf.push(']');
@@ -1845,8 +1871,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 
 /// Binary operations whose RHS are types rather than [Expression]s
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(PartialEq, Debug, Clone, Visitable)]
 pub enum SpecialOperators {
 	/// TS Only
 	Satisfies {
@@ -1860,6 +1885,10 @@ pub enum SpecialOperators {
 	InstanceOf {
 		lhs: Box<Expression>,
 		rhs: Box<Expression>,
+	},
+	Yield {
+		yielded: Option<Box<Expression>>,
+		is_delegated: bool,
 	},
 	#[cfg(feature = "extras")]
 	Is {
@@ -1897,8 +1926,14 @@ pub enum InExpressionLHS {
 #[partial_eq_ignore_types(Span)]
 pub enum SuperReference {
 	Call { arguments: Vec<FunctionArgument> },
-	PropertyAccess { property: String },
-	Index { indexer: Box<Expression> },
+	PropertyAccess(PropertyLike),
+}
+
+#[apply(derive_ASTNode)]
+#[derive(PartialEq, Debug, Clone, Visitable)]
+pub enum PropertyLike {
+	Fixed(String),
+	Computed(Box<Expression>),
 }
 
 #[apply(derive_ASTNode)]

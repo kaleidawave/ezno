@@ -186,6 +186,9 @@ where
 		let mut super_type = None::<SuperParameter>;
 		let mut rest_parameter = None;
 
+		// TODO want no owned version
+		let mut names: Vec<String> = Vec::new();
+
 		loop {
 			reader.skip();
 			if reader.is_operator(")") {
@@ -199,6 +202,34 @@ where
 			if reader.is_operator_advance("...") {
 				let name = SpreadParameterName::from_reader(reader)?;
 				let name_position = name.get_position();
+
+				if !reader.get_options().skip_validation {
+					let mut duplicate = None;
+					#[cfg(feature = "extras")]
+					{
+						name.visit_names(&mut |name| {
+							if duplicate.is_none() {
+								duplicate = names
+									.iter()
+									.any(|existing| existing == name)
+									.then_some(name.to_owned());
+							}
+							names.push(name.to_owned());
+						});
+					}
+
+					#[cfg(not(feature = "extras"))]
+					{
+						duplicate = names.iter().any(|existing| existing == name).then_some(name);
+					}
+
+					if let Some(_duplicate) = duplicate {
+						return Err(ParseError::new(
+							crate::ParseErrors::DuplicateParameterName,
+							name_position,
+						));
+					}
+				}
 
 				let type_annotation = if reader.is_operator_advance(":") {
 					Some(TypeAnnotation::from_reader(reader)?)
@@ -272,6 +303,25 @@ where
 				};
 
 				let position = name.get_position().union(end_position);
+
+				if !reader.get_options().skip_validation {
+					let mut duplicate = None;
+					name.get_ast_ref().visit_names(&mut |name| {
+						if duplicate.is_none() {
+							duplicate = names
+								.iter()
+								.any(|existing| existing == name)
+								.then_some(name.to_owned());
+						}
+						names.push(name.into());
+					});
+					if let Some(_duplicate) = duplicate {
+						return Err(ParseError::new(
+							crate::ParseErrors::DuplicateParameterName,
+							position,
+						));
+					}
+				}
 
 				parameters.push(Parameter {
 					visibility,

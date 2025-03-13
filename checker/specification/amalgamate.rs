@@ -18,6 +18,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let add_headers_as_comments = args.iter().any(|item| item == "--comment-headers");
 	let include_flagged_examples = args.iter().any(|item| item == "--include-extras");
 	let just_diagnostics = args.iter().any(|item| item == "--just-diagnostics");
+
+	let jsx_and_extra = args.iter().any(|item| item == "--jsx-and-extra-syntax");
 	// let declare_to_function = args.iter().any(|item| item == "--declare-to-function");
 
 	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
@@ -58,10 +60,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					blocks.push((header, code));
 				}
 				text.0.to_owned().clone_into(&mut last_header);
-			} else if let simple_markdown_parser::MarkdownElement::CodeBlock { language: _, code } =
+			} else if let simple_markdown_parser::MarkdownElement::CodeBlock { language, code } =
 				item
 			{
-				let skip = filters.iter().any(|filter| code.contains(filter));
+				let skip = filters.iter().any(|filter| code.contains(filter))
+					|| (!jsx_and_extra && language.ends_with("x"));
 				if !skip {
 					code.clone_into(&mut last_code);
 				}
@@ -207,6 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 								}
 							})
 							.collect::<Vec<_>>();
+
 						let return_type =
 							Box::new(function.return_type.clone().unwrap_or_else(|| {
 								TypeAnnotation::CommonName(

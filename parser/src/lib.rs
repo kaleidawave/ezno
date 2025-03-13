@@ -535,6 +535,7 @@ pub mod ast {
 		},
 		number::NumberRepresentation,
 		statements::*,
+		variable_fields::*,
 		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
 		StatementPosition, VariableField, VariableIdentifier, WithComment,
 	};

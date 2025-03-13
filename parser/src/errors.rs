@@ -2,6 +2,33 @@ use source_map::Span;
 /// Contains lexing and parser errors
 use std::fmt::{self, Display};
 
+pub trait ParserErrorReason: Display {}
+
+impl ParserErrorReason for ParseErrors<'_> {}
+
+/// A error for not parsing
+#[derive(Debug)]
+pub struct ParseError {
+	pub reason: String,
+	pub position: Span,
+}
+
+impl ParseError {
+	#[allow(clippy::needless_pass_by_value)]
+	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
+		Self { reason: reason.to_string(), position }
+	}
+}
+
+impl std::error::Error for ParseError {}
+impl std::fmt::Display for ParseError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_fmt(format_args!("ParseError: {} @ byte indices {:?}", self.reason, self.position))
+	}
+}
+
+pub type ParseResult<T> = Result<T, ParseError>;
+
 /// TODO documentation + combine some of these
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
@@ -68,6 +95,7 @@ pub enum ParseErrors<'a> {
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
 	TaggedTemplateCannotBeUsedWithOptionalChain,
 	ExpectedExpression,
+	DuplicateParameterName,
 }
 
 impl Display for ParseErrors<'_> {
@@ -196,6 +224,9 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ExpectedExpression => {
 				write!(f, "Expected start of expression")
 			}
+			ParseErrors::DuplicateParameterName => {
+				write!(f, "Duplicate parameter name")
+			}
 		}
 	}
 }
@@ -224,30 +255,3 @@ mod utilities {
 		}
 	}
 }
-
-pub trait ParserErrorReason: Display {}
-
-impl ParserErrorReason for ParseErrors<'_> {}
-
-/// A error for not parsing
-#[derive(Debug)]
-pub struct ParseError {
-	pub reason: String,
-	pub position: Span,
-}
-
-impl ParseError {
-	#[allow(clippy::needless_pass_by_value)]
-	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
-		Self { reason: reason.to_string(), position }
-	}
-}
-
-impl std::error::Error for ParseError {}
-impl std::fmt::Display for ParseError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_fmt(format_args!("ParseError: {} @ byte indices {:?}", self.reason, self.position))
-	}
-}
-
-pub type ParseResult<T> = Result<T, ParseError>;

@@ -40,8 +40,10 @@ pub struct ParseOptions {
 	pub retain_blank_lines: bool,
 	/// For LSP
 	pub partial_syntax: bool,
-	/// JSX with modifications equiv
+	/// JSX with modifications
 	pub top_level_html: bool,
+	/// Skips checking some syntatical errors (that should be runtime errors)
+	pub skip_validation: bool,
 }
 
 impl ParseOptions {
@@ -67,6 +69,7 @@ impl ParseOptions {
 			top_level_html: true,
 			enum_members_as_data_types: true,
 			extra_type_annotations: true,
+			skip_validation: false,
 		}
 	}
 }
@@ -94,6 +97,7 @@ impl Default for ParseOptions {
 			enum_members_as_data_types: false,
 			// TODO this should be fine right?
 			extra_type_annotations: false,
+			skip_validation: false,
 		}
 	}
 }

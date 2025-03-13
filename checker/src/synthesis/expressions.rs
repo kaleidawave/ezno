@@ -617,13 +617,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						}
 					}
 				}
-				UnaryOperator::Yield | UnaryOperator::DelegatedYield => {
-					checking_data.raise_unimplemented_error(
-						"yield expression",
-						position.with_source(environment.get_source()),
-					);
-					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
-				}
 			}
 		}
 		Expression::Assignment { lhs, rhs, position } => {
@@ -882,16 +875,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 						Instance::RValue(result)
 					}
-					SuperReference::PropertyAccess { property: _ } => {
+					SuperReference::PropertyAccess(..) => {
 						checking_data.raise_unimplemented_error(
 							"Property access on super",
-							position.with_source(environment.get_source()),
-						);
-						return TypeId::UNIMPLEMENTED_ERROR_TYPE;
-					}
-					SuperReference::Index { indexer: _ } => {
-						checking_data.raise_unimplemented_error(
-							"Index on super",
 							position.with_source(environment.get_source()),
 						);
 						return TypeId::UNIMPLEMENTED_ERROR_TYPE;
@@ -1107,6 +1093,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					environment,
 					&mut checking_data.types,
 				))
+			}
+			SpecialOperators::Yield { yielded: _, is_delegated: _ } => {
+				checking_data.raise_unimplemented_error(
+					"yield expression",
+					position.with_source(environment.get_source()),
+				);
+				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 			}
 			SpecialOperators::NonNullAssertion(on) => {
 				let lhs = synthesise_expression(on, environment, checking_data, expecting);
