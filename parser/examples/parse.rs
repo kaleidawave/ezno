@@ -1,6 +1,12 @@
 use std::{path::Path, time::Instant};
 
-use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::term::{
+	self,
+	termcolor::{ColorChoice, StandardStream},
+	Config,
+};
+use ezno_parser::{ASTNode, Comments, Module, ParseError, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
 
 type Files = source_map::MapFileStore<source_map::WithPathMap>;
@@ -161,21 +167,28 @@ fn parse_path(
 			}
 			Ok(())
 		}
-		Err(parse_err) => {
-			let mut line_column = parse_err
-				.position
-				.with_source(source_id)
-				.into_line_column_span::<source_map::encodings::Utf8>(fs);
-			{
-				// Editor are one indexed
-				line_column.line_start += 1;
-				line_column.line_end += 1;
-				line_column.column_start += 1;
-				line_column.column_end += 1;
-			}
-			eprintln!("error on {line_column:?}");
+		Err(ParseError { reason, position }) => {
+			let writer = StandardStream::stderr(ColorChoice::Always);
+			let config = Config::default();
 
-			Err(Box::<dyn std::error::Error>::from(parse_err))
+			let diagnostic = Diagnostic::error()
+				.with_labels(vec![Label::primary(source_id, position)
+					.with_message(format!("ParseError: {reason}"))]);
+			term::emit(&mut writer.lock(), &config, &fs.into_code_span_store(), &diagnostic)?;
+			// let mut line_column = parse_err
+			// 	.position
+			// 	.with_source(source_id)
+			// 	.into_line_column_span::<source_map::encodings::Utf8>(fs);
+			// {
+			// 	// Editor are one indexed
+			// 	line_column.line_start += 1;
+			// 	line_column.line_end += 1;
+			// 	line_column.column_start += 1;
+			// 	line_column.column_end += 1;
+			// }
+			// eprintln!("error on {line_column:?}");
+
+			Err(Box::<dyn std::error::Error>::from(ParseError { reason, position }))
 		}
 	}
 }

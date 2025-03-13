@@ -3,11 +3,8 @@
 use std::fmt::Debug;
 
 use crate::{
-	bracketed_items_from_reader, derive_ASTNode,
-	property_key::PropertyKey,
-	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
-	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseResult, Span,
-	VisitOptions, Visitable, WithComment,
+	bracketed_items_from_reader, derive_ASTNode, property_key::PropertyKey, ASTNode, Expression,
+	ListItem, Marker, ParseError, ParseErrors, ParseResult, Span, WithComment,
 };
 
 use derive_partial_eq_extras::PartialEqExtras;
@@ -444,198 +441,247 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 	}
 }
 
-/// For object literals and things with computable or literal keys
-impl Visitable for VariableField {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		match self {
-			VariableField::Name(id) => {
-				if let VariableIdentifier::Standard(name, pos) = id {
-					let item = ImmutableVariableOrProperty::VariableFieldName(name, pos);
-					visitors.visit_variable(&item, data, chain);
+pub mod visiting {
+	use super::*;
+	use crate::visiting::{
+		ImmutableVariableOrProperty, MutableVariableOrProperty, VisitOptions, Visitable,
+	};
+
+	/// For object literals and things with computable or literal keys
+	impl Visitable for VariableField {
+		fn visit<TData>(
+			&self,
+			visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+		) {
+			match self {
+				VariableField::Name(id) => {
+					if let VariableIdentifier::Standard(name, pos) = id {
+						let item = ImmutableVariableOrProperty::VariableFieldName(name, pos);
+						visitors.visit_variable(&item, data, chain);
+					}
+				}
+				VariableField::Array { members, spread: _, .. } => {
+					members.iter().for_each(|f| f.visit(visitors, data, options, chain));
+				}
+				VariableField::Object { members, spread: _, .. } => {
+					members.iter().for_each(|f| f.visit(visitors, data, options, chain));
 				}
 			}
-			VariableField::Array { members, spread: _, .. } => {
-				members.iter().for_each(|f| f.visit(visitors, data, options, chain));
-			}
-			VariableField::Object { members, spread: _, .. } => {
-				members.iter().for_each(|f| f.visit(visitors, data, options, chain));
-			}
 		}
-	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		match self {
-			VariableField::Name(identifier) => {
-				if let VariableIdentifier::Standard(name, _span) = identifier {
-					visitors.visit_variable_mut(
-						&mut MutableVariableOrProperty::VariableFieldName(name),
-						data,
-						chain,
-					);
+		fn visit_mut<TData>(
+			&mut self,
+			visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+		) {
+			match self {
+				VariableField::Name(identifier) => {
+					if let VariableIdentifier::Standard(name, _span) = identifier {
+						visitors.visit_variable_mut(
+							&mut MutableVariableOrProperty::VariableFieldName(name),
+							data,
+							chain,
+						);
+					}
+				}
+				VariableField::Array { members, spread: _, .. } => {
+					members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
+				}
+				VariableField::Object { members, spread: _, .. } => {
+					members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
 				}
 			}
-			VariableField::Array { members, spread: _, .. } => {
-				members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
-			}
-			VariableField::Object { members, spread: _, .. } => {
-				members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
-			}
-		}
-	}
-}
-
-impl Visitable for WithComment<ArrayDestructuringField<VariableField>> {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		let field = self.get_ast_ref();
-		let array_destructuring_member =
-			ImmutableVariableOrProperty::ArrayDestructuringMember(field);
-		visitors.visit_variable(&array_destructuring_member, data, chain);
-		match field {
-			// TODO should be okay, no nesting here
-			ArrayDestructuringField::None => {}
-			ArrayDestructuringField::Name(variable_field, _, expression) => {
-				variable_field.visit(visitors, data, options, chain);
-				expression.visit(visitors, data, options, chain);
-			}
 		}
 	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		let mut array_destructuring_member =
-			MutableVariableOrProperty::ArrayDestructuringMember(self.get_ast_mut());
-		visitors.visit_variable_mut(&mut array_destructuring_member, data, chain);
-		match self.get_ast_mut() {
-			ArrayDestructuringField::None => {}
-			ArrayDestructuringField::Name(variable_field, _, default_value) => {
-				variable_field.visit_mut(visitors, data, options, chain);
-				default_value.visit_mut(visitors, data, options, chain);
+	impl Visitable for WithComment<ArrayDestructuringField<VariableField>> {
+		fn visit<TData>(
+			&self,
+			visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			let field = self.get_ast_ref();
+			let array_destructuring_member =
+				ImmutableVariableOrProperty::ArrayDestructuringMember(field);
+			visitors.visit_variable(&array_destructuring_member, data, chain);
+			match field {
+				// TODO should be okay, no nesting here
+				ArrayDestructuringField::None => {}
+				ArrayDestructuringField::Name(variable_field, _, expression) => {
+					variable_field.visit(visitors, data, options, chain);
+					expression.visit(visitors, data, options, chain);
+				}
 			}
 		}
-	}
-}
 
-impl Visitable for WithComment<ArrayDestructuringField<crate::ast::LHSOfAssignment>> {
-	fn visit<TData>(
-		&self,
-		_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit array destructuring field")
-	}
-
-	fn visit_mut<TData>(
-		&mut self,
-		_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit array destructuring field")
-	}
-}
-
-impl Visitable for WithComment<ObjectDestructuringField<VariableField>> {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		visitors.visit_variable(
-			&ImmutableVariableOrProperty::ObjectDestructuringMember(self),
-			data,
-			chain,
-		);
-		match self.get_ast_ref() {
-			ObjectDestructuringField::Name(_name, _, default_value, _) => {
-				default_value.visit(visitors, data, options, chain);
-			}
-			ObjectDestructuringField::Map {
-				name: variable_name,
-				annotation: _,
-				default_value,
-				..
-			} => {
-				variable_name.visit(visitors, data, options, chain);
-				default_value.visit(visitors, data, options, chain);
+		fn visit_mut<TData>(
+			&mut self,
+			visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			let mut array_destructuring_member =
+				MutableVariableOrProperty::ArrayDestructuringMember(self.get_ast_mut());
+			visitors.visit_variable_mut(&mut array_destructuring_member, data, chain);
+			match self.get_ast_mut() {
+				ArrayDestructuringField::None => {}
+				ArrayDestructuringField::Name(variable_field, _, default_value) => {
+					variable_field.visit_mut(visitors, data, options, chain);
+					default_value.visit_mut(visitors, data, options, chain);
+				}
 			}
 		}
 	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		visitors.visit_variable_mut(
-			&mut MutableVariableOrProperty::ObjectDestructuringMember(self),
-			data,
-			chain,
-		);
-		match self.get_ast_mut() {
-			ObjectDestructuringField::Name(_id, _, default_value, _) => {
-				default_value.visit_mut(visitors, data, options, chain);
+	impl Visitable for WithComment<ArrayDestructuringField<crate::ast::LHSOfAssignment>> {
+		fn visit<TData>(
+			&self,
+			_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit array destructuring field")
+		}
+
+		fn visit_mut<TData>(
+			&mut self,
+			_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit array destructuring field")
+		}
+	}
+
+	impl Visitable for WithComment<ObjectDestructuringField<VariableField>> {
+		fn visit<TData>(
+			&self,
+			visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			visitors.visit_variable(
+				&ImmutableVariableOrProperty::ObjectDestructuringMember(self),
+				data,
+				chain,
+			);
+			match self.get_ast_ref() {
+				ObjectDestructuringField::Name(_name, _, default_value, _) => {
+					default_value.visit(visitors, data, options, chain);
+				}
+				ObjectDestructuringField::Map {
+					name: variable_name,
+					annotation: _,
+					default_value,
+					..
+				} => {
+					variable_name.visit(visitors, data, options, chain);
+					default_value.visit(visitors, data, options, chain);
+				}
 			}
-			ObjectDestructuringField::Map {
-				name: variable_name,
-				annotation: _,
-				default_value,
-				..
-			} => {
-				variable_name.visit_mut(visitors, data, options, chain);
-				default_value.visit_mut(visitors, data, options, chain);
+		}
+
+		fn visit_mut<TData>(
+			&mut self,
+			visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			visitors.visit_variable_mut(
+				&mut MutableVariableOrProperty::ObjectDestructuringMember(self),
+				data,
+				chain,
+			);
+			match self.get_ast_mut() {
+				ObjectDestructuringField::Name(_id, _, default_value, _) => {
+					default_value.visit_mut(visitors, data, options, chain);
+				}
+				ObjectDestructuringField::Map {
+					name: variable_name,
+					annotation: _,
+					default_value,
+					..
+				} => {
+					variable_name.visit_mut(visitors, data, options, chain);
+					default_value.visit_mut(visitors, data, options, chain);
+				}
 			}
 		}
 	}
-}
-impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignment>> {
-	fn visit<TData>(
-		&self,
-		_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit object destructuring field")
+
+	impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignment>> {
+		fn visit<TData>(
+			&self,
+			_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit object destructuring field")
+		}
+
+		fn visit_mut<TData>(
+			&mut self,
+			_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit object destructuring field")
+		}
 	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit object destructuring field")
+	// Lower level visiting for parsing
+	impl VariableField {
+		pub fn visit_names(&self, cb: &mut impl FnMut(&str)) {
+			match self {
+				VariableField::Name(name) => {
+					if let Some(name) = name.as_option_str() {
+						cb(name);
+					}
+				}
+				VariableField::Array { members, spread, position: _ } => {
+					for member in members.iter() {
+						if let super::ArrayDestructuringField::Name(name, ..) = member.get_ast_ref()
+						{
+							name.visit_names(cb);
+						}
+					}
+					if let Some(ref spread) = spread {
+						spread.0.visit_names(cb);
+					}
+				}
+				VariableField::Object { members, spread, .. } => {
+					for member in members.iter() {
+						match member.get_ast_ref() {
+							super::ObjectDestructuringField::Name(name, ..) => {
+								if let Some(name) = name.as_option_str() {
+									cb(name);
+								}
+							}
+							super::ObjectDestructuringField::Map { name, .. } => {
+								name.get_ast_ref().visit_names(cb);
+							}
+						}
+					}
+					if let Some(ref spread) = spread {
+						spread.0.visit_names(cb);
+					}
+				}
+			}
+		}
 	}
 }
 

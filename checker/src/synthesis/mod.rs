@@ -167,6 +167,8 @@ impl crate::ASTImplementation for EznoParser {
 			// TODO
 			retain_blank_lines: lsp_mode,
 			is_expressions: extra_syntax,
+			// TODO
+			skip_validation: true,
 			..Default::default()
 		}
 	}

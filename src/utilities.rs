@@ -1,7 +1,9 @@
 use std::fmt::Arguments;
 
 pub(crate) fn print_info() {
-	if let (Some(run_id), Some(date)) = (option_env!("GITHUB_RUN_ID"), option_env!("GITHUB_RUN_DATE")) {
+	if let (Some(run_id), Some(date)) =
+		(option_env!("GITHUB_RUN_ID"), option_env!("GITHUB_RUN_DATE"))
+	{
 		print_to_cli(format_args!(
 			"{}@{} (#{run_id} {date})\n",
 			env!("CARGO_PKG_NAME"),

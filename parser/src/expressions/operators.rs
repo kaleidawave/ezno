@@ -50,6 +50,7 @@ pub enum BinaryAssignmentOperator {
     BitwiseAndAssign, BitwiseXOrAssign, BitwiseOrAssign,
 }
 
+// `yield` not here because can be used without expression
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[apply(derive_ASTNode!)]
@@ -57,7 +58,6 @@ pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
     Await, TypeOf, Void, Delete,
-	Yield, DelegatedYield,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -191,8 +191,6 @@ impl Operator for UnaryOperator {
 			UnaryOperator::BitwiseNot => "~",
 			UnaryOperator::LogicalNot => "!",
 			UnaryOperator::Delete => "delete ",
-			UnaryOperator::Yield => "yield ",
-			UnaryOperator::DelegatedYield => "yield* ",
 			UnaryOperator::Await => "await ",
 			UnaryOperator::TypeOf => "typeof ",
 			UnaryOperator::Void => "void ",
@@ -209,7 +207,6 @@ impl Operator for UnaryOperator {
 			| UnaryOperator::LogicalNot
 			| UnaryOperator::Plus
 			| UnaryOperator::Negation => 14,
-			UnaryOperator::Yield | UnaryOperator::DelegatedYield => 2,
 		}
 	}
 
@@ -377,6 +374,7 @@ pub(crate) const COMMA_PRECEDENCE: u8 = 1;
 pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
 pub(crate) const ARROW_FUNCTION_PRECEDENCE: u8 = 2;
 pub(crate) const ASSIGNMENT_PRECEDENCE: u8 = 2;
+pub(crate) const YIELD_OPERATORS_PRECEDENCE: u8 = 2;
 pub(crate) const RELATION_PRECEDENCE: u8 = 10;
 pub(crate) const CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE: u8 = 17;
 pub(crate) const MEMBER_ACCESS_PRECEDENCE: u8 = 18;

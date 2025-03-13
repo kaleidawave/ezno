@@ -400,7 +400,7 @@ impl<'a> Lexer<'a> {
 		for (idx, chr) in iter {
 			match state {
 				State::UnicodeEscape(steps) => {
-					if !matches!(chr, '0'..='9' | 'A'..='F') {
+					if !matches!(chr, '0'..='9' | 'A'..='F' | 'a'..='f') {
 						return Err(ParseError::new(
 							ParseErrors::InvalidUnicodeCodePointInIdentifier,
 							start.with_length(idx + chr.len_utf8()),
@@ -416,7 +416,7 @@ impl<'a> Lexer<'a> {
 					if *first_bracket {
 						if chr == '}' {
 							state = State::Standard;
-						} else if !matches!(chr, '0'..='9' | 'A'..='F') {
+						} else if !matches!(chr, '0'..='9' | 'A'..='F' | 'a'..='f') {
 							return Err(ParseError::new(
 								ParseErrors::InvalidUnicodeCodePointInIdentifier,
 								start.with_length(idx + chr.len_utf8()),
@@ -436,7 +436,7 @@ impl<'a> Lexer<'a> {
 						let next_char = current[(idx + 1)..].chars().next();
 						state = if let Some('{') = next_char {
 							State::UnicodeBracedEscape { first_bracket: false }
-						} else if let Some('0'..='9' | 'A'..='F') = next_char {
+						} else if let Some('0'..='9' | 'A'..='F' | 'a'..='f') = next_char {
 							State::UnicodeEscape(4)
 						} else {
 							return Err(ParseError::new(

@@ -1,11 +1,10 @@
 use crate::{
 	ast::{
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		FunctionArgument,
+		ArrayDestructuringField, Expression, FunctionArgument, ObjectDestructuringField,
+		PropertyKey, PropertyLike, PropertyReference, SpreadDestructuringField, SuperReference,
 	},
-	derive_ASTNode, ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
-	ParseError, ParseErrors, ParseResult, PropertyKey, PropertyReference, SpreadDestructuringField,
-	WithComment,
+	derive_ASTNode, ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
 };
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
@@ -32,6 +31,7 @@ pub enum VariableOrPropertyAccess {
 		indexer: Box<MultipleExpression>,
 		position: Span,
 	},
+	PropertyOnSuper(PropertyLike, Span),
 	#[cfg(feature = "full-typescript")]
 	NonNullAssertion(Box<Self>, Span),
 }
@@ -84,6 +84,15 @@ impl ASTNode for VariableOrPropertyAccess {
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
+			VariableOrPropertyAccess::PropertyOnSuper(PropertyLike::Fixed(name), _) => {
+				buf.push_str("super.");
+				buf.push_str(name);
+			}
+			VariableOrPropertyAccess::PropertyOnSuper(PropertyLike::Computed(indexer), _) => {
+				buf.push_str("super[");
+				indexer.to_string_from_buffer(buf, options, local);
+				buf.push(']');
+			}
 			#[cfg(feature = "full-typescript")]
 			VariableOrPropertyAccess::NonNullAssertion(on, _position) => {
 				on.to_string_from_buffer(buf, options, local);
@@ -111,6 +120,9 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			}
 			Expression::Index { indexer, position, indexee, is_optional: false } => {
 				Ok(Self::Index { indexer, position, indexee })
+			}
+			Expression::SuperExpression(SuperReference::PropertyAccess(property), position) => {
+				Ok(Self::PropertyOnSuper(property, position))
 			}
 			// Yah weird and recursion is fine here
 			Expression::Parenthesised(inner, _) => {
@@ -149,6 +161,9 @@ impl From<VariableOrPropertyAccess> for Expression {
 			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
 				Expression::PropertyAccess { parent, position, property, is_optional: false }
 			}
+			VariableOrPropertyAccess::PropertyOnSuper(property, position) => {
+				Expression::SuperExpression(SuperReference::PropertyAccess(property), position)
+			}
 			#[cfg(feature = "full-typescript")]
 			VariableOrPropertyAccess::NonNullAssertion(on, position) => Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
@@ -162,7 +177,8 @@ impl VariableOrPropertyAccess {
 	#[must_use]
 	pub fn get_parent(&self) -> Option<&Expression> {
 		match self {
-			VariableOrPropertyAccess::Variable(..) => None,
+			VariableOrPropertyAccess::Variable(..)
+			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]
@@ -172,7 +188,8 @@ impl VariableOrPropertyAccess {
 
 	pub fn get_parent_mut(&mut self) -> Option<&mut Expression> {
 		match self {
-			VariableOrPropertyAccess::Variable(..) => None,
+			VariableOrPropertyAccess::Variable(..)
+			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]
