@@ -31,10 +31,8 @@ use crate::{
 };
 
 use self::{
-	declarations::synthesise_variable_declaration,
-	expressions::{synthesise_expression, synthesise_multiple_expression},
-	hoisting::hoist_variable_declaration,
-	type_annotations::synthesise_type_annotation,
+	declarations::synthesise_variable_declaration, expressions::synthesise_expression,
+	hoisting::hoist_variable_declaration, type_annotations::synthesise_type_annotation,
 	variables::register_variable,
 };
 
@@ -53,7 +51,6 @@ impl crate::ASTImplementation for EznoParser {
 	type TypeParameter<'_a> = parser::TypeParameter;
 	type Expression<'_a> = parser::Expression;
 	type Block<'_a> = parser::Block;
-	type MultipleExpression<'_a> = parser::expressions::MultipleExpression;
 	type ClassMethod<'_a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
 	type VariableField<'_a> = parser::VariableField;
@@ -114,12 +111,6 @@ impl crate::ASTImplementation for EznoParser {
 		ASTNode::get_position(expression)
 	}
 
-	fn multiple_expression_position<'_a>(
-		expression: &'_a Self::MultipleExpression<'_a>,
-	) -> source_map::Span {
-		ASTNode::get_position(expression)
-	}
-
 	fn type_parameter_name<'_a>(parameter: &'_a Self::TypeParameter<'_a>) -> &'_a str {
 		&parameter.name
 	}
@@ -175,15 +166,6 @@ impl crate::ASTImplementation for EznoParser {
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule {
 		m
-	}
-
-	fn synthesise_multiple_expression<'_a, T: crate::ReadFromFS>(
-		expression: &'_a Self::MultipleExpression<'_a>,
-		expected_type: TypeId,
-		environment: &mut Environment,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) -> TypeId {
-		synthesise_multiple_expression(expression, environment, checking_data, expected_type)
 	}
 
 	fn synthesise_for_loop_initialiser<'_a, T: crate::ReadFromFS>(

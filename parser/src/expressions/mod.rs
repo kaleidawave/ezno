@@ -1532,7 +1532,7 @@ impl Expression {
 						options.add_indent(local.depth, buf);
 						buf.push(']');
 						return;
-					};
+					}
 				}
 				bracketed_items_to_string(values, ('[', ']'), buf, options, local);
 			}
@@ -1722,6 +1722,10 @@ impl MultipleExpression {
 	) {
 		self.to_string_from_buffer(buf, options, local);
 	}
+
+	pub fn get_inner(&self) -> &Expression {
+		&self.0
+	}
 }
 
 impl ASTNode for MultipleExpression {
@@ -1740,7 +1744,7 @@ impl ASTNode for MultipleExpression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		self.0.to_string_from_buffer(buf, options, local)
+		self.0.to_string_from_buffer(buf, options, local);
 	}
 }
 

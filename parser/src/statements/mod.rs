@@ -340,7 +340,7 @@ impl ASTNode for VarVariableStatement {
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct WithStatement {
-	pub expression: MultipleExpression,
+	pub expression: Box<MultipleExpression>,
 	pub inner: crate::block::BlockOrSingleStatement,
 	pub position: Span,
 }
@@ -353,7 +353,7 @@ impl ASTNode for WithStatement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("with")?;
 		reader.expect_operator("(")?;
-		let expression = MultipleExpression::from_reader(reader)?;
+		let expression = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect_operator(")")?;
 		let inner = crate::block::BlockOrSingleStatement::from_reader(reader)?;
 		let position = start.union(reader.get_end());

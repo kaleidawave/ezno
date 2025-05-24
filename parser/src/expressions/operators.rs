@@ -32,10 +32,16 @@ pub enum BinaryOperator {
 }
 
 impl BinaryOperator {
-	/// For parsing options
+	/// For parsing under options
 	#[must_use]
+	#[cfg(feature = "extras")]
 	pub fn is_non_standard(&self) -> bool {
 		matches!(self, BinaryOperator::Pipe | BinaryOperator::Compose)
+	}
+
+	#[cfg(not(feature = "extras"))]
+	pub fn is_non_standard(&self) -> bool {
+		false
 	}
 }
 

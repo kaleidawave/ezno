@@ -207,7 +207,7 @@ impl ASTNode for ObjectLiteralMember {
 			let expression = Expression::from_reader(reader)?;
 			let position = start.union(expression.get_position());
 			return Ok(Self::Spread(expression, position));
-		};
+		}
 
 		let header = MethodHeader::from_reader(reader);
 		let key =
@@ -286,6 +286,6 @@ impl ASTNode for ObjectLiteralMember {
 					}
 				}
 			}
-		};
+		}
 	}
 }

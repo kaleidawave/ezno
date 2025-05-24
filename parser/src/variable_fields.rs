@@ -70,6 +70,12 @@ impl VariableIdentifier {
 	}
 }
 
+impl PartialEq<&str> for VariableIdentifier {
+	fn eq(&self, s: &&str) -> bool {
+		self.as_option_str().is_some_and(|name| name == *s)
+	}
+}
+
 /// A variable declaration name, used in variable declarations and function parameters.
 /// See [destructuring](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
 #[derive(Debug, Clone, PartialEq)]
@@ -442,7 +448,10 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 }
 
 pub mod visiting {
-	use super::*;
+	use super::{
+		ArrayDestructuringField, ObjectDestructuringField, VariableField, VariableIdentifier,
+		WithComment,
+	};
 	use crate::visiting::{
 		ImmutableVariableOrProperty, MutableVariableOrProperty, VisitOptions, Visitable,
 	};
@@ -653,7 +662,7 @@ pub mod visiting {
 					}
 				}
 				VariableField::Array { members, spread, position: _ } => {
-					for member in members.iter() {
+					for member in members {
 						if let super::ArrayDestructuringField::Name(name, ..) = member.get_ast_ref()
 						{
 							name.visit_names(cb);
@@ -664,7 +673,7 @@ pub mod visiting {
 					}
 				}
 				VariableField::Object { members, spread, .. } => {
-					for member in members.iter() {
+					for member in members {
 						match member.get_ast_ref() {
 							super::ObjectDestructuringField::Name(name, ..) => {
 								if let Some(name) = name.as_option_str() {

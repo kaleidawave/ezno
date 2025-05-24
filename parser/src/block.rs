@@ -37,6 +37,7 @@ impl StatementOrDeclaration {
 			Self::Declaration(dec) => matches!(
 				dec,
 				Declaration::Variable(..)
+					| Declaration::DeclareVariable(..)
 					| Declaration::Export(Decorated {
 						on: ExportDeclaration::Default { .. }
 							| ExportDeclaration::Item {

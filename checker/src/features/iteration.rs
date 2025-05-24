@@ -26,17 +26,17 @@ use crate::{
 /// The type of iteration to synthesis
 #[derive(Clone, Copy)]
 pub enum IterationBehavior<'a, A: crate::ASTImplementation> {
-	While(&'a A::MultipleExpression<'a>),
+	While(&'a A::Expression<'a>),
 	/// Same as above but run the body first
-	DoWhile(&'a A::MultipleExpression<'a>),
+	DoWhile(&'a A::Expression<'a>),
 	For {
-		initialiser: &'a Option<A::ForStatementInitiliser<'a>>,
-		condition: &'a Option<A::MultipleExpression<'a>>,
-		afterthought: &'a Option<A::MultipleExpression<'a>>,
+		initialiser: Option<&'a A::ForStatementInitiliser<'a>>,
+		condition: Option<&'a A::Expression<'a>>,
+		afterthought: Option<&'a A::Expression<'a>>,
 	},
 	ForIn {
 		lhs: &'a A::VariableField<'a>,
-		rhs: &'a A::MultipleExpression<'a>,
+		rhs: &'a A::Expression<'a>,
 	},
 	ForOf {
 		lhs: &'a A::VariableField<'a>,
@@ -69,7 +69,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				Scope::Iteration { label },
 				checking_data,
 				|environment, checking_data| {
-					let condition = A::synthesise_multiple_expression(
+					let condition = A::synthesise_expression(
 						condition,
 						TypeId::ANY_TYPE,
 						environment,
@@ -150,7 +150,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 				|environment, checking_data| {
 					loop_body(environment, checking_data);
 
-					let condition = A::synthesise_multiple_expression(
+					let condition = A::synthesise_expression(
 						condition,
 						TypeId::ANY_TYPE,
 						environment,
@@ -245,7 +245,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 								checking_data,
 								|environment, checking_data| {
 									let condition = if let Some(condition) = condition {
-										A::synthesise_multiple_expression(
+										A::synthesise_expression(
 											condition,
 											TypeId::ANY_TYPE,
 											environment,
@@ -281,7 +281,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 									// Just want to observe events that happen here
 									if let Some(afterthought) = afterthought {
-										let _ = A::synthesise_multiple_expression(
+										let _ = A::synthesise_expression(
 											afterthought,
 											TypeId::ANY_TYPE,
 											environment,
@@ -365,12 +365,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 			// }
 		}
 		IterationBehavior::ForIn { lhs, rhs } => {
-			let on = A::synthesise_multiple_expression(
-				rhs,
-				TypeId::ANY_TYPE,
-				environment,
-				checking_data,
-			);
+			let on = A::synthesise_expression(rhs, TypeId::ANY_TYPE, environment, checking_data);
 
 			// TODO not parameter. Is free variable
 			let variable =

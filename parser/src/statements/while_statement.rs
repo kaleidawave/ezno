@@ -7,7 +7,7 @@ use crate::{ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNo
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct WhileStatement {
-	pub condition: MultipleExpression,
+	pub condition: Box<MultipleExpression>,
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,
 }
@@ -20,7 +20,7 @@ impl ASTNode for WhileStatement {
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("while")?;
 		reader.expect('(')?;
-		let condition = MultipleExpression::from_reader(reader)?;
+		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect(')')?;
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
 		Ok(Self { position: start.union(inner.get_position()), condition, inner })
@@ -47,7 +47,7 @@ impl ASTNode for WhileStatement {
 #[get_field_by_type_target(Span)]
 pub struct DoWhileStatement {
 	pub inner: BlockOrSingleStatement,
-	pub condition: MultipleExpression,
+	pub condition: Box<MultipleExpression>,
 	pub position: Span,
 }
 
@@ -61,7 +61,7 @@ impl ASTNode for DoWhileStatement {
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
 		let _ = reader.expect_keyword("while")?;
 		let _ = reader.expect('(')?;
-		let condition = MultipleExpression::from_reader(reader)?;
+		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 		let position = start.union(reader.expect(')')?);
 		Ok(Self { inner, condition, position })
 	}

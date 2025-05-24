@@ -7,7 +7,7 @@ use crate::{ast::MultipleExpression, derive_ASTNode, ASTNode, Expression, Statem
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct SwitchStatement {
-	pub case: MultipleExpression,
+	pub case: Box<MultipleExpression>,
 	pub branches: Vec<SwitchBranch>,
 	pub position: Span,
 }
@@ -28,7 +28,7 @@ impl ASTNode for SwitchStatement {
 		let start = reader.expect_keyword("switch")?;
 
 		reader.expect('(')?;
-		let case = MultipleExpression::from_reader(reader)?;
+		let case = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect(')')?;
 		reader.expect('{')?;
 

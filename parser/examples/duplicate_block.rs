@@ -21,22 +21,9 @@ fn get_top_level_identifiers(m: &Module) -> (HashSet<String>, HashSet<String>) {
 	for item in &m.items {
 		match item {
 			StatementOrDeclaration::Declaration(Declaration::Variable(variable)) => {
-				match variable.kind {
-					VariableDeclarationKeyword::Const => {
-						for declaration in &self.declarations {
-							if let VariableField::Name(identifier) = declaration.name.get_ast_ref()
-							{
-								variables.insert(identifier.as_option_str().unwrap().to_owned());
-							}
-						}
-					}
-					VariableDeclarationKeyword::Let => {
-						for declaration in &self.declarations {
-							if let VariableField::Name(identifier) = declaration.name.get_ast_ref()
-							{
-								variables.insert(identifier.as_option_str().unwrap().to_owned());
-							}
-						}
+				for declaration in &variable.declarations {
+					if let VariableField::Name(identifier) = declaration.name.get_ast_ref() {
+						variables.insert(identifier.as_option_str().unwrap().to_owned());
 					}
 				}
 			}

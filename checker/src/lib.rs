@@ -82,7 +82,6 @@ pub trait ASTImplementation: Sized {
 	type Expression<'a>;
 	/// List of statements and declarations
 	type Block<'a>;
-	type MultipleExpression<'a>;
 	type ForStatementInitiliser<'a>;
 
 	/// Used in `for of`, `for in` and function parameters
@@ -119,17 +118,8 @@ pub trait ASTImplementation: Sized {
 		checking_data: &mut CheckingData<T, Self>,
 	) -> (Names, LocalInformation);
 
-	/// Expected is used for eagerly setting function parameters
 	fn synthesise_expression<T: crate::ReadFromFS>(
 		expression: &Self::Expression<'_>,
-		expected_type: TypeId,
-		environment: &mut Environment,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) -> TypeId;
-
-	/// Expected is used for eagerly setting function parameters
-	fn synthesise_multiple_expression<'a, T: crate::ReadFromFS>(
-		expression: &'a Self::MultipleExpression<'a>,
 		expected_type: TypeId,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
@@ -161,8 +151,6 @@ pub trait ASTImplementation: Sized {
 	);
 
 	fn expression_position<'a>(expression: &'a Self::Expression<'a>) -> Span;
-
-	fn multiple_expression_position<'a>(expression: &'a Self::MultipleExpression<'a>) -> Span;
 
 	fn type_parameter_name<'a>(parameter: &'a Self::TypeParameter<'a>) -> &'a str;
 

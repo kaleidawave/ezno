@@ -223,7 +223,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			Instance::RValue(synthesise_template_literal_expression::<_, EznoParser>(
 				tag,
-				parts.iter().map(|(l, r)| (strings::unescape_string_content(l), r)),
+				parts.iter().map(|(l, r)| (strings::unescape_string_content(l), &r.0)),
 				strings::unescape_string_content(final_part),
 				position.with_source(environment.get_source()),
 				environment,
@@ -378,6 +378,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						position.with_source(environment.get_source()),
 					);
 					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+				}
+				BinaryOperator::Comma => {
+					return rhs_ty;
 				}
 				operator => {
 					unreachable!("{:?}", operator)

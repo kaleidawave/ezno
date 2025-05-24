@@ -129,7 +129,7 @@ impl FromStr for NumberRepresentation {
 			match next_char {
 				Some('X' | 'x') => {
 					let mut value = 0u64;
-					for c in s[1..].as_bytes() {
+					for c in &s.as_bytes()[1..] {
 						value <<= 4; // 16=2^4
 						match c {
 							b'0'..=b'9' => {
@@ -148,7 +148,7 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('B' | 'b') => {
 					let mut value = 0u64;
-					for c in s[1..].as_bytes() {
+					for c in &s.as_bytes()[1..] {
 						value <<= 1;
 						match c {
 							b'0' | b'1' => {
@@ -178,7 +178,7 @@ impl FromStr for NumberRepresentation {
 					let start: usize = uses_character.into();
 
 					let mut value = 0u64;
-					for c in s[start..].as_bytes() {
+					for c in &s.as_bytes()[start..] {
 						value <<= 3; // 8=2^3
 						if matches!(c, b'0'..=b'7') {
 							value += u64::from(c - b'0');

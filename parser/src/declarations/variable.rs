@@ -68,6 +68,7 @@ impl ASTNode for VariableDeclarationItem {
 			type_annotation.to_string_from_buffer(buf, options, local);
 		}
 		if let Some(ref expression) = self.expression {
+			buf.push_str(if options.pretty { " = " } else { "=" });
 			expression.to_string_from_buffer(buf, options, local);
 		}
 	}
@@ -156,7 +157,7 @@ impl ASTNode for VariableDeclaration {
 
 			let position = start.union(reader.get_end());
 
-			Ok(VariableDeclaration { kind, position, declarations })
+			Ok(VariableDeclaration { kind, declarations, position })
 		} else {
 			Err(crate::lexer::utilities::expected_one_of_items(reader, &["const", "let"]))
 		}

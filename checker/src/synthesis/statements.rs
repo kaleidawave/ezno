@@ -43,7 +43,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		Statement::Return(return_statement) => {
 			environment.return_value(
 				&crate::context::environment::Returnable::Statement(
-					return_statement.0.as_ref(),
+					return_statement.0.as_ref().map(MultipleExpression::get_inner),
 					return_statement.1,
 				),
 				checking_data,
@@ -51,8 +51,8 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		Statement::If(if_statement) => {
 			fn run_condition<T: crate::ReadFromFS>(
-				current: (&MultipleExpression, &BlockOrSingleStatement),
-				others: &[(&MultipleExpression, &BlockOrSingleStatement)],
+				current: (&Box<MultipleExpression>, &BlockOrSingleStatement),
+				others: &[(&Box<MultipleExpression>, &BlockOrSingleStatement)],
 				last: Option<&BlockOrSingleStatement>,
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -115,7 +115,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			});
 		}
 		Statement::WhileLoop(stmt) => synthesise_iteration(
-			IterationBehavior::While(&stmt.condition),
+			IterationBehavior::While(stmt.condition.get_inner()),
 			information.and_then(|info| info.label),
 			environment,
 			checking_data,
@@ -125,7 +125,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 			position,
 		),
 		Statement::DoWhileLoop(stmt) => synthesise_iteration(
-			IterationBehavior::DoWhile(&stmt.condition),
+			IterationBehavior::DoWhile(stmt.condition.get_inner()),
 			information.and_then(|info| info.label),
 			environment,
 			checking_data,
@@ -164,7 +164,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				position,
 			} => {
 				synthesise_iteration(
-					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in },
+					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in.get_inner() },
 					information.and_then(|info| info.label),
 					environment,
 					checking_data,
@@ -184,7 +184,11 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				afterthought,
 				position,
 			} => synthesise_iteration(
-				IterationBehavior::For { initialiser, condition, afterthought },
+				IterationBehavior::For {
+					initialiser: initialiser.as_ref(),
+					condition: condition.as_deref().map(MultipleExpression::get_inner),
+					afterthought: afterthought.as_deref().map(MultipleExpression::get_inner),
+				},
 				information.and_then(|info| info.label),
 				environment,
 				checking_data,

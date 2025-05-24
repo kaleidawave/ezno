@@ -400,7 +400,7 @@ impl<'a> Lexer<'a> {
 		for (idx, chr) in iter {
 			match state {
 				State::UnicodeEscape(steps) => {
-					if !matches!(chr, '0'..='9' | 'A'..='F' | 'a'..='f') {
+					if !chr.is_ascii_hexdigit() {
 						return Err(ParseError::new(
 							ParseErrors::InvalidUnicodeCodePointInIdentifier,
 							start.with_length(idx + chr.len_utf8()),
@@ -416,7 +416,7 @@ impl<'a> Lexer<'a> {
 					if *first_bracket {
 						if chr == '}' {
 							state = State::Standard;
-						} else if !matches!(chr, '0'..='9' | 'A'..='F' | 'a'..='f') {
+						} else if !chr.is_ascii_hexdigit() {
 							return Err(ParseError::new(
 								ParseErrors::InvalidUnicodeCodePointInIdentifier,
 								start.with_length(idx + chr.len_utf8()),
@@ -1218,7 +1218,7 @@ pub(crate) mod utilities {
 							// This happens when `(x = 1 > 2) => 4`
 							if !last_was_open_chevron && chr == '>' {
 								continue;
-							};
+							}
 
 							bracket_count = bracket_count.saturating_sub(1);
 							if bracket_count == 0 {
