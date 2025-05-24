@@ -362,7 +362,7 @@ pub(crate) fn statements_and_declarations_from_reader(
 			break;
 		}
 
-		if !items.is_empty() && reader.get_options().retain_blank_lines {
+		if reader.get_options().retain_blank_lines && !items.is_empty() {
 			let new_lines = reader.last_was_from_new_line();
 			for _ in 0..new_lines {
 				// TODO span
@@ -401,7 +401,7 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	for (at_end, item) in items.iter().endiate() {
 		if !options.pretty {
 			if let StatementOrDeclaration::Statement(Statement::Expression(
-				crate::expressions::MultipleExpression::Single(crate::Expression::Null(..)),
+				crate::expressions::MultipleExpression(crate::Expression::Null(..)),
 			)) = item
 			{
 				continue;

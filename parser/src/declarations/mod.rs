@@ -22,7 +22,7 @@ pub use self::{
 	classes::ClassDeclaration,
 	export::ExportDeclaration,
 	import::ImportDeclaration,
-	variable::{VariableDeclaration, VariableDeclarationItem},
+	variable::{VariableDeclaration, VariableDeclarationItem, VariableDeclarationKeyword},
 };
 
 pub type StatementFunctionBase = crate::functions::GeneralFunctionBase<StatementPosition>;

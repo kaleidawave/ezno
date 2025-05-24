@@ -7,9 +7,7 @@ use std::convert::TryFrom;
 
 use crate::derive_ASTNode;
 
-/// Comma operator is on [`crate::MultipleExpression`]
-/// 
-/// `InstanceOf`, In are special operators
+/// `instance_of`, `in` are special operators (because of their RHS) not found here
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[apply(derive_ASTNode!)]
@@ -23,14 +21,18 @@ pub enum BinaryOperator {
     GreaterThan, LessThan, LessThanEqual, GreaterThanEqual,
 
     LogicalAnd, LogicalOr,
-    NullCoalescing, 
+    NullCoalescing,
 
-    /// Non standard
+	Comma,
+
+	#[cfg(feature="extras")]
     Pipe,
+	#[cfg(feature="extras")]
     Compose
 }
 
 impl BinaryOperator {
+	/// For parsing options
 	#[must_use]
 	pub fn is_non_standard(&self) -> bool {
 		matches!(self, BinaryOperator::Pipe | BinaryOperator::Compose)
@@ -106,9 +108,6 @@ pub trait Operator {
 	/// Returns the associativity of the operator. Taken from: <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Operator_Precedence#table>
 	fn associativity_direction(&self) -> AssociativityDirection;
 
-	/// Is associative with self <https://en.wikipedia.org/wiki/Associative_property>
-	fn is_associative(&self) -> bool;
-
 	fn precedence_and_associativity_direction(&self) -> (u8, AssociativityDirection) {
 		(self.precedence(), self.associativity_direction())
 	}
@@ -140,13 +139,17 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseAnd => "&",
 			BinaryOperator::BitwiseOr => "|",
 			BinaryOperator::BitwiseXOr => "^",
+			BinaryOperator::Comma => ",",
+			#[cfg(feature = "extras")]
 			BinaryOperator::Compose => "<@>", // ∘
+			#[cfg(feature = "extras")]
 			BinaryOperator::Pipe => "|>",
 		}
 	}
 
 	fn precedence(&self) -> u8 {
 		match self {
+			#[cfg(feature = "extras")]
 			BinaryOperator::Pipe | BinaryOperator::Compose => 15,
 			BinaryOperator::Exponent => 14,
 			BinaryOperator::Multiply | BinaryOperator::Divide | BinaryOperator::Remainder => 13,
@@ -167,6 +170,7 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseOr => 6,
 			BinaryOperator::LogicalAnd => 5,
 			BinaryOperator::NullCoalescing | BinaryOperator::LogicalOr => 4,
+			BinaryOperator::Comma => 1,
 		}
 	}
 
@@ -176,10 +180,6 @@ impl Operator for BinaryOperator {
 		} else {
 			AssociativityDirection::LeftToRight
 		}
-	}
-
-	fn is_associative(&self) -> bool {
-		!matches!(self, Self::Subtract | Self::Exponent | Self::Divide)
 	}
 }
 
@@ -213,10 +213,6 @@ impl Operator for UnaryOperator {
 	fn associativity_direction(&self) -> AssociativityDirection {
 		AssociativityDirection::RightToLeft
 	}
-
-	fn is_associative(&self) -> bool {
-		true
-	}
 }
 
 impl Operator for BinaryAssignmentOperator {
@@ -247,11 +243,6 @@ impl Operator for BinaryAssignmentOperator {
 	fn associativity_direction(&self) -> AssociativityDirection {
 		AssociativityDirection::RightToLeft
 	}
-
-	fn is_associative(&self) -> bool {
-		// dbg!("TODO unsure");
-		true
-	}
 }
 
 impl Operator for UnaryPrefixAssignmentOperator {
@@ -269,10 +260,6 @@ impl Operator for UnaryPrefixAssignmentOperator {
 			UnaryPrefixAssignmentOperator::IncrementOrDecrement(inc_or_dec) => inc_or_dec.to_str(),
 		}
 	}
-
-	fn is_associative(&self) -> bool {
-		true
-	}
 }
 
 impl Operator for UnaryPostfixAssignmentOperator {
@@ -286,10 +273,6 @@ impl Operator for UnaryPostfixAssignmentOperator {
 
 	fn to_str(&self) -> &'static str {
 		self.0.to_str()
-	}
-
-	fn is_associative(&self) -> bool {
-		true
 	}
 }
 

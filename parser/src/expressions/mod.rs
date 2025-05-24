@@ -589,7 +589,7 @@ impl Expression {
 		// TODO "<@>", "|>", disable
 		static POSTFIX_BINARY_OPERATORS: &[&str] = &[
 			"**", "+", "-", "*", "+", "-", "*", "/", "<@>", "|>", ">>>", "<<", ">>", "<=", ">=",
-			"<", ">", "===", "==", "!==", "!=", "%", "??", "&&", "||", "&", "|", "^",
+			"<", ">", "===", "==", "!==", "!=", "%", "??", "&&", "||", "&", "|", "^", ",",
 		];
 
 		let mut top = first_expression;
@@ -702,8 +702,11 @@ impl Expression {
 					"&" => BinaryOperator::BitwiseAnd,
 					"|" => BinaryOperator::BitwiseOr,
 					"^" => BinaryOperator::BitwiseXOr,
+					"," => BinaryOperator::Comma,
 					// ∘
+					#[cfg(feature = "extras")]
 					"<@>" => BinaryOperator::Compose,
+					#[cfg(feature = "extras")]
 					"|>" => BinaryOperator::Pipe,
 					slice => unreachable!("{slice:?}"),
 				};
@@ -1408,14 +1411,14 @@ impl Expression {
 			}
 			Self::Parenthesised(expr, _) => {
 				// TODO more expressions could be considered for parenthesis elision
-				if matches!(&**expr, MultipleExpression::Single(inner) if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE)
-				{
-					expr.to_string_on_left(buf, options, local);
-				} else {
-					buf.push('(');
-					expr.to_string_from_buffer(buf, options, local);
-					buf.push(')');
-				}
+				// if matches!(&**expr, MultipleExpression::Single(inner) if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE)
+				// {
+				// 	expr.to_string_on_left(buf, options, local);
+				// } else {
+				buf.push('(');
+				expr.to_string_from_buffer(buf, options, local);
+				buf.push(')');
+				// }
 			}
 			Self::Index { indexee: expression, indexer, is_optional, .. } => {
 				expression.to_string_using_precedence(buf, options, local, local2);
@@ -1698,30 +1701,17 @@ impl ExpressionToStringArgument {
 	}
 }
 
-/// Represents expressions under the comma operator
+/// Represents expressions that can be the comma operator. Has a special new type to discern the places
+/// where this is allowed
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-pub enum MultipleExpression {
-	Multiple { lhs: Box<MultipleExpression>, rhs: Expression, position: Span },
-	Single(Expression),
-}
+pub struct MultipleExpression(pub Expression);
 
 impl MultipleExpression {
 	#[must_use]
 	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
-		if let MultipleExpression::Single(inner) = self {
-			inner.is_iife()
-		} else {
-			None
-		}
-	}
-
-	#[must_use]
-	pub fn get_rhs(&self) -> &Expression {
-		match self {
-			MultipleExpression::Multiple { rhs, .. } | MultipleExpression::Single(rhs) => rhs,
-		}
+		self.0.is_iife()
 	}
 
 	pub(crate) fn to_string_on_left<T: source_map::ToString>(
@@ -1730,43 +1720,18 @@ impl MultipleExpression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		match self {
-			MultipleExpression::Multiple { lhs, rhs, position: _ } => {
-				lhs.to_string_on_left(buf, options, local);
-				buf.push(',');
-				rhs.to_string_from_buffer(buf, options, local);
-			}
-			MultipleExpression::Single(single) => {
-				let local2 =
-					ExpressionToStringArgument { on_left: true, return_precedence: u8::MAX };
-				single.to_string_using_precedence(buf, options, local, local2);
-			}
-		}
+		self.to_string_from_buffer(buf, options, local);
 	}
 }
 
 impl ASTNode for MultipleExpression {
 	fn get_position(&self) -> Span {
-		match self {
-			MultipleExpression::Multiple { position, .. } => *position,
-			MultipleExpression::Single(expr) => expr.get_position(),
-		}
+		self.0.get_position()
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let first = Expression::from_reader(reader)?;
-		reader.skip();
-		if reader.starts_with(',') {
-			let mut top: MultipleExpression = first.into();
-			while reader.is_operator_advance(",") {
-				let rhs = Expression::from_reader(reader)?;
-				let position = top.get_position().union(rhs.get_position());
-				top = MultipleExpression::Multiple { lhs: Box::new(top), rhs, position };
-			}
-			Ok(top)
-		} else {
-			Ok(MultipleExpression::Single(first))
-		}
+		const MINIMUM_PRECEDENCE: u8 = 0;
+		Expression::from_reader_with_precedence(reader, MINIMUM_PRECEDENCE).map(Self)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -1775,22 +1740,13 @@ impl ASTNode for MultipleExpression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		match self {
-			MultipleExpression::Multiple { lhs, rhs, position: _ } => {
-				lhs.to_string_from_buffer(buf, options, local);
-				buf.push(',');
-				rhs.to_string_from_buffer(buf, options, local);
-			}
-			MultipleExpression::Single(rhs) => {
-				rhs.to_string_from_buffer(buf, options, local);
-			}
-		}
+		self.0.to_string_from_buffer(buf, options, local)
 	}
 }
 
 impl From<Expression> for MultipleExpression {
 	fn from(expr: Expression) -> Self {
-		MultipleExpression::Single(expr)
+		MultipleExpression(expr)
 	}
 }
 
@@ -2151,9 +2107,7 @@ impl Expression {
 			if let (true, Expression::Parenthesised(expression, _)) =
 				(arguments.is_empty(), &**function)
 			{
-				if let MultipleExpression::Single(Expression::ArrowFunction(function)) =
-					&**expression
-				{
+				if let MultipleExpression(Expression::ArrowFunction(function)) = &**expression {
 					return Some(&function.body);
 				}
 			}
@@ -2165,12 +2119,13 @@ impl Expression {
 	#[must_use]
 	pub fn get_non_parenthesised(&self) -> &Self {
 		if let Expression::Parenthesised(inner_multiple_expr, _) = self {
-			if let MultipleExpression::Single(expr) = &**inner_multiple_expr {
-				expr.get_non_parenthesised()
-			} else {
-				// TODO could return a variant here...
-				self
-			}
+			&inner_multiple_expr.0
+			// if let MultipleExpression(expr) = &**inner_multiple_expr {
+			// 	expr.get_non_parenthesised()
+			// } else {
+			// 	// TODO could return a variant here...
+			// 	self
+			// }
 		} else if let Expression::Comment { on, .. } = self {
 			on.get_non_parenthesised()
 		} else {
@@ -2336,7 +2291,7 @@ mod tests {
 		assert_matches_ast!(
 			"(45)",
 			Parenthesised(
-				Deref @ MultipleExpression::Single(NumberLiteral(
+				Deref @ MultipleExpression(NumberLiteral(
 					NumberRepresentation::Number { .. },
 					span!(1, 3),
 				)),
@@ -2353,21 +2308,22 @@ mod tests {
 
 	#[test]
 	fn multiple_expression() {
-		assert_matches_ast!(
-			"(45,2)",
-			Parenthesised(
-				Deref @ MultipleExpression::Multiple {
-					lhs:
-						Deref @ MultipleExpression::Single(NumberLiteral(
-							NumberRepresentation::Number { .. },
-							span!(1, 3),
-						)),
-					rhs: NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
-					position: _,
-				},
-				span!(0, 6),
-			)
-		);
+		todo!()
+		// assert_matches_ast!(
+		// 	"(45,2)",
+		// 	Parenthesised(
+		// 		Deref @ MultipleExpression::Multiple {
+		// 			lhs:
+		// 				Deref @ MultipleExpression::Single(NumberLiteral(
+		// 					NumberRepresentation::Number { .. },
+		// 					span!(1, 3),
+		// 				)),
+		// 			rhs: NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
+		// 			position: _,
+		// 		},
+		// 		span!(0, 6),
+		// 	)
+		// );
 	}
 
 	#[test]

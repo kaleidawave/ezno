@@ -282,7 +282,7 @@ impl Statement {
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct VarVariableStatement {
-	pub declarations: Vec<VariableDeclarationItem<Option<Expression>>>,
+	pub declarations: Vec<VariableDeclarationItem>,
 	pub position: Span,
 }
 
@@ -296,7 +296,7 @@ impl ASTNode for VarVariableStatement {
 		let _ = reader.expect_keyword("var")?;
 		let mut declarations = Vec::new();
 		loop {
-			let value = VariableDeclarationItem::<Option<Expression>>::from_reader(reader)?;
+			let value = VariableDeclarationItem::from_reader(reader)?;
 			if value.expression.is_none()
 				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
 			{

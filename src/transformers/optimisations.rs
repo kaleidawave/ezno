@@ -86,15 +86,17 @@ impl VisitorMut<BlockItemMut<'_>, CheckingOutputWithoutDiagnostics> for Statemen
 					// TODO remove if never read
 				}
 				parser::Declaration::Function(func) => {
-					if !data.is_function_called(FunctionId(
+					let function_called = data.is_function_called(FunctionId(
 						chain.get_module(),
 						func.get_position().start,
-					)) {
+					));
+					if !function_called {
 						// Replace with property to not break Object.keys for now
 						// TODO replacing this with variable isn't great but
 						// is the unfortunate design of `StatementOrDeclarationMut`
 						*declaration = parser::Declaration::Variable(
-							parser::declarations::VariableDeclaration::LetDeclaration {
+							parser::declarations::VariableDeclaration {
+								kind: parser::declarations::VariableDeclarationKeyword::Let,
 								declarations: Vec::new(),
 								position: func.get_position(),
 							},

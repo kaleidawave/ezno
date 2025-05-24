@@ -21,17 +21,17 @@ fn get_top_level_identifiers(m: &Module) -> (HashSet<String>, HashSet<String>) {
 	for item in &m.items {
 		match item {
 			StatementOrDeclaration::Declaration(Declaration::Variable(variable)) => {
-				match variable {
-					VariableDeclaration::ConstDeclaration { declarations, position: _ } => {
-						for declaration in declarations {
+				match variable.kind {
+					VariableDeclarationKeyword::Const => {
+						for declaration in &self.declarations {
 							if let VariableField::Name(identifier) = declaration.name.get_ast_ref()
 							{
 								variables.insert(identifier.as_option_str().unwrap().to_owned());
 							}
 						}
 					}
-					VariableDeclaration::LetDeclaration { declarations, position: _ } => {
-						for declaration in declarations {
+					VariableDeclarationKeyword::Let => {
+						for declaration in &self.declarations {
 							if let VariableField::Name(identifier) = declaration.name.get_ast_ref()
 							{
 								variables.insert(identifier.as_option_str().unwrap().to_owned());

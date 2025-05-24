@@ -73,15 +73,7 @@ pub(super) fn synthesise_multiple_expression<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	expecting: TypeId,
 ) -> TypeId {
-	match expression {
-		MultipleExpression::Multiple { lhs, rhs, position: _ } => {
-			synthesise_multiple_expression(lhs, environment, checking_data, TypeId::ANY_TYPE);
-			synthesise_expression(rhs, environment, checking_data, expecting)
-		}
-		MultipleExpression::Single(expression) => {
-			synthesise_expression(expression, environment, checking_data, expecting)
-		}
-	}
+	synthesise_expression(&expression.0, environment, checking_data, expecting)
 }
 
 pub(super) fn synthesise_expression<T: crate::ReadFromFS>(

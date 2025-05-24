@@ -1,6 +1,9 @@
 pub mod optimisations;
 
-use parser::{visiting::BlockItemMut, Declaration, Module, StatementOrDeclaration};
+use parser::{
+	declarations::VariableDeclarationKeyword, visiting::BlockItemMut, Declaration, Module,
+	StatementOrDeclaration,
+};
 
 pub struct ConstToLet;
 
@@ -12,27 +15,10 @@ impl parser::visiting::VisitorMut<BlockItemMut<'_>, ()> for ConstToLet {
 		_chain: &parser::visiting::Chain,
 	) {
 		if let BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Declaration(
-			Declaration::Variable(decl),
+			Declaration::Variable(variable_declaration),
 		)) = item
 		{
-			if let parser::declarations::VariableDeclaration::ConstDeclaration {
-				declarations,
-				position,
-			} = decl
-			{
-				*decl = parser::declarations::VariableDeclaration::LetDeclaration {
-					declarations: declarations
-						.drain(..)
-						.map(|dec| parser::declarations::VariableDeclarationItem {
-							name: dec.name,
-							type_annotation: dec.type_annotation,
-							expression: Some(dec.expression),
-							position: dec.position,
-						})
-						.collect(),
-					position: *position,
-				};
-			}
+			variable_declaration.kind = VariableDeclarationKeyword::Let;
 		}
 	}
 }

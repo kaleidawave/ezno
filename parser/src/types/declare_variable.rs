@@ -10,7 +10,7 @@ use crate::{
 pub struct DeclareVariableDeclaration {
 	pub keyword: VariableKeyword,
 	/// TODO expressions advised against, but still parse
-	pub declarations: Vec<VariableDeclarationItem<Option<crate::Expression>>>,
+	pub declarations: Vec<VariableDeclarationItem>,
 	pub position: Span,
 	pub decorators: Vec<Decorator>,
 }

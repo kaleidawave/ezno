@@ -68,6 +68,7 @@ pub enum ParseErrors<'a> {
 	ExpectedCatchOrFinally,
 	InvalidDeclareItem(&'static str),
 	DestructuringRequiresValue,
+	ConstDeclarationRequiresValue,
 	CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
 	InvalidNumberLiteral,
@@ -180,6 +181,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::TrailingCommaNotAllowedHere => {
 				write!(f, "Trailing comma not allowed here")
+			}
+			ParseErrors::ConstDeclarationRequiresValue => {
+				write!(f, "const declaration requires value")
 			}
 			ParseErrors::InvalidNumberLiteral => {
 				write!(f, "Invalid number literal")

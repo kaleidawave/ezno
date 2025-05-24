@@ -1,4 +1,7 @@
-use parser::{declarations::VariableDeclaration, ASTNode, Declaration};
+use parser::{
+	declarations::{VariableDeclaration, VariableDeclarationKeyword},
+	ASTNode, Declaration,
+};
 
 use crate::{
 	context::Environment, diagnostics::TypeCheckError, features::variables::VariableMutability,
@@ -202,9 +205,9 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 	exported: bool,
 	infer_constraint: bool,
 ) {
-	match declaration {
-		VariableDeclaration::ConstDeclaration { declarations, .. } => {
-			for variable_declaration in declarations {
+	match declaration.kind {
+		VariableDeclarationKeyword::Const => {
+			for variable_declaration in &declaration.declarations {
 				synthesise_variable_declaration_item(
 					variable_declaration,
 					environment,
@@ -214,8 +217,8 @@ pub(super) fn synthesise_variable_declaration<T: crate::ReadFromFS>(
 				);
 			}
 		}
-		VariableDeclaration::LetDeclaration { declarations, .. } => {
-			for variable_declaration in declarations {
+		VariableDeclarationKeyword::Let => {
+			for variable_declaration in &declaration.declarations {
 				let exported = exported.then(|| {
 					let restriction = checking_data
 						.local_type_mappings

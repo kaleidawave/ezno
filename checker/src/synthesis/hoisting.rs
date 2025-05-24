@@ -918,12 +918,9 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 	environment: &mut crate::context::Context<crate::context::environment::Syntax<'_>>,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
-	match declaration {
-		parser::declarations::VariableDeclaration::ConstDeclaration {
-			declarations,
-			position: _,
-		} => {
-			for declaration in declarations {
+	match declaration.kind {
+		parser::declarations::VariableDeclarationKeyword::Const => {
+			for declaration in &declaration.declarations {
 				crate::utilities::notify!("TODO constraint needed to be set for free variable!!!");
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
@@ -942,8 +939,8 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 				);
 			}
 		}
-		parser::declarations::VariableDeclaration::LetDeclaration { declarations, position: _ } => {
-			for declaration in declarations {
+		parser::declarations::VariableDeclarationKeyword::Let => {
+			for declaration in &declaration.declarations {
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
 
