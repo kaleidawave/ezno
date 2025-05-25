@@ -1561,7 +1561,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					name: key.into_name_type(&mut checking_data.types),
 				};
 
-				let function = synthesise_function(method, behavior, environment, checking_data);
+				let function = synthesise_function(&**method, behavior, environment, checking_data);
 
 				let kind = match &method.header {
 					MethodHeader::Get => Some(GetterSetter::Getter),

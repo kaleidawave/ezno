@@ -876,7 +876,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	/// Expects that `//` or `/*` has been parsed
-	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&str, ParseError> {
+	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&'a str, ParseError> {
 		if is_multiline {
 			self.parse_until("*/").map_err(|()| {
 				// TODO might be a problem

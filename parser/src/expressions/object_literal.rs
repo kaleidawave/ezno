@@ -32,7 +32,7 @@ pub enum ObjectLiteralMember {
 		value: Expression,
 		position: Span,
 	},
-	Method(ObjectLiteralMethod),
+	Method(Box<ObjectLiteralMethod>),
 	Comment(String, bool, Span),
 }
 
@@ -217,7 +217,7 @@ impl ASTNode for ObjectLiteralMember {
 			let method: ObjectLiteralMethod =
 				FunctionBase::from_reader_with_header_and_name(reader, header, key)?;
 
-			Ok(Self::Method(method))
+			Ok(Self::Method(Box::new(method)))
 		} else if header.is_no_modifiers() {
 			if reader.is_operator(",") || reader.is_operator("}") {
 				if let PropertyKey::Identifier(name, position, _) = key.get_ast() {

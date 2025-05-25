@@ -149,13 +149,20 @@ impl ASTNode for Statement {
 			Ok(Statement::AestheticSemiColon(start.with_length(1)))
 		} else if reader.is_operator_advance("//") {
 			let content = reader.parse_comment_literal(false)?;
-			Ok(Statement::Comment(content.to_owned(), start.with_length(2 + content.len())))
+			let position = start.with_length(2 + content.len());
+			if reader.get_options().comments.should_add_comment(content) {
+				Ok(Statement::Comment(content.to_owned(), position))
+			} else {
+				Ok(Statement::Empty(position))
+			}
 		} else if reader.is_operator_advance("/*") {
 			let content = reader.parse_comment_literal(true)?;
-			Ok(Statement::MultiLineComment(
-				content.to_owned(),
-				start.with_length(4 + content.len()),
-			))
+			let position = start.with_length(4 + content.len());
+			if reader.get_options().comments.should_add_comment(content) {
+				Ok(Statement::MultiLineComment(content.to_owned(), position))
+			} else {
+				Ok(Statement::Empty(position))
+			}
 		} else if reader.get_options().partial_syntax && reader.starts_with_expression_delimiter() {
 			// Prevents cycic recursion
 			let (_found, position) = crate::lexer::utilities::next_item(reader);
