@@ -413,7 +413,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 						PropertyKey::Type(t) => {
 							print_type_into_buf(*t, buf, cycles, args, types, info, debug);
 						}
-					};
+					}
 					buf.push(']');
 				} else if let Some(Type::PartiallyAppliedGenerics(sgs)) =
 					get_constraint(on, types).map(|ty| types.get_type_by_id(ty))
@@ -500,7 +500,7 @@ pub fn print_type_into_buf<C: InformationChain>(
 					buf.push(']');
 					if let AccessMode::DoNotBindThis = mode {
 						buf.push_str(" no binding of `this`");
-					};
+					}
 					buf.push_str(" = ");
 					print_type_into_buf(*result, buf, cycles, args, types, info, debug);
 				}

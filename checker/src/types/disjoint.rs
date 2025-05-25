@@ -22,7 +22,7 @@ pub fn types_are_disjoint(
 
 	if lhs == rhs || lhs == TypeId::ANY_TYPE || rhs == TypeId::ANY_TYPE {
 		false
-	} else if already_checked.iter().any(|pair| *pair == (lhs, rhs)) {
+	} else if already_checked.contains(&(lhs, rhs)) {
 		// TODO explain why `true`
 		true
 	} else {

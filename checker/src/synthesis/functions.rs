@@ -274,7 +274,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 						allow_reregistration: true,
 					},
 				);
-			};
+			}
 
 			SynthesisedParameter {
 				ty,

@@ -103,16 +103,16 @@ pub trait ASTImplementation: Sized {
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError>;
 
 	#[allow(clippy::needless_lifetimes)]
-	fn synthesise_module<'a, T: crate::ReadFromFS>(
-		module: &Self::Module<'a>,
+	fn synthesise_module<T: crate::ReadFromFS>(
+		module: &Self::Module<'_>,
 		source_id: SourceId,
 		module_context: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	);
 
 	#[allow(clippy::needless_lifetimes)]
-	fn synthesise_definition_module<'a, T: crate::ReadFromFS>(
-		module: &Self::DefinitionFile<'a>,
+	fn synthesise_definition_module<T: crate::ReadFromFS>(
+		module: &Self::DefinitionFile<'_>,
 		source: SourceId,
 		root: &RootContext,
 		checking_data: &mut CheckingData<T, Self>,
@@ -524,7 +524,6 @@ pub fn check_project<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 					.collect(),
 				partial_import_path: point.to_str().unwrap_or(""),
 			});
-			continue;
 		}
 	}
 
@@ -668,7 +667,6 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 					}
 					Err(err) => {
 						checking_data.diagnostics_container.add_error(err);
-						continue;
 					}
 				}
 			}

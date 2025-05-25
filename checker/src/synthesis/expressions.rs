@@ -1282,7 +1282,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 		let member_position = member.get_position().with_source(environment.get_source());
 		match member {
 			ObjectLiteralMember::Comment(..) => {
-				continue;
+				// continue;
 			}
 			ObjectLiteralMember::Spread(spread, pos) => {
 				let spread = synthesise_expression(spread, environment, checking_data, expecting);

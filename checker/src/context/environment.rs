@@ -1368,7 +1368,7 @@ impl Environment<'_> {
 					ty: existing,
 					in_same_context: false,
 				});
-			};
+			}
 		}
 
 		let parameters = parameters.map(|parameters| {

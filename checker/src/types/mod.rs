@@ -320,7 +320,7 @@ impl Type {
 
 	pub fn try_into_special_object(&self) -> Option<&SpecialObject> {
 		if let Type::SpecialObject(s) = self {
-			Some(&*s)
+			Some(s)
 		} else {
 			None
 		}

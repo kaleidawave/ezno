@@ -416,7 +416,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							position: position.with_source(environment.get_source()),
 						},
 					);
-					continue;
 				}
 				Declaration::TypeAlias(alias)
 				| Declaration::Export(Decorated {

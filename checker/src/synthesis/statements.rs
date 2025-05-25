@@ -51,8 +51,8 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 		}
 		Statement::If(if_statement) => {
 			fn run_condition<T: crate::ReadFromFS>(
-				current: (&Box<MultipleExpression>, &BlockOrSingleStatement),
-				others: &[(&Box<MultipleExpression>, &BlockOrSingleStatement)],
+				current: (&MultipleExpression, &BlockOrSingleStatement),
+				others: &[(&MultipleExpression, &BlockOrSingleStatement)],
 				last: Option<&BlockOrSingleStatement>,
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -86,10 +86,11 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				);
 			}
 
+			// TODO can this be an iterator?
 			let others = if_statement
 				.else_conditions
 				.iter()
-				.map(|cond| (&cond.condition, &cond.inner))
+				.map(|cond| (&*cond.condition, &cond.inner))
 				.collect::<Vec<_>>();
 
 			let last = if_statement.trailing_else.as_ref().map(|b| &b.inner);

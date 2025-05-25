@@ -147,6 +147,7 @@ pub struct Names {
 	pub(crate) named_types: HashMap<String, TypeId>,
 
 	/// For debugging only
+	#[allow(clippy::struct_field_names)]
 	pub(crate) variable_names: HashMap<VariableId, String>,
 }
 
@@ -154,6 +155,7 @@ pub struct Names {
 pub struct Context<T: ContextType> {
 	// pub(crate) context_id: ContextId,
 	pub context_id: ContextId,
+	#[allow(clippy::struct_field_names)]
 	pub(crate) context_type: T,
 
 	pub(crate) variables: HashMap<String, VariableOrImport>,

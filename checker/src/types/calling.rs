@@ -1893,7 +1893,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 				} else {
 					todo!();
 					// crate::utilities::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
-				};
+				}
 
 				(param.type_id, (ty, position))
 			})

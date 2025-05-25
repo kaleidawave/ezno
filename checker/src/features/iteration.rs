@@ -642,7 +642,7 @@ fn run_iteration_loop(
 				crate::utilities::notify!("{:?}", result);
 				match result {
 					ApplicationResult::Continue { carry: 0, position: _ } => {
-						continue;
+						// continue;
 					}
 					ApplicationResult::Break { carry: 0, position: _ } => {
 						break;
