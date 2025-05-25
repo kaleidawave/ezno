@@ -43,6 +43,7 @@ jobs:
         if: ${{ github.ref_name != 'main' }}
         with:
           ref: main
+          clean: false
 
       - name: Build Ezno (main branch)
         run: |
