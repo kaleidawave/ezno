@@ -456,27 +456,27 @@ pub(crate) fn apply_events(
 				// TODO
 				let is_under_dyn = true;
 
-				let new_object_ty = match prototype {
-					PrototypeArgument::Yeah(prototype) => {
-						let prototype =
-							substitute(*prototype, type_arguments, top_environment, types);
-						target.get_latest_info(top_environment).new_object(
-							Some(prototype),
-							types,
-							*position,
-							is_under_dyn,
-						)
-					}
-					PrototypeArgument::None => target.get_latest_info(top_environment).new_object(
-						None,
-						types,
-						*position,
-						is_under_dyn,
-					),
-					PrototypeArgument::Function(id) => types.register_type(
-						crate::Type::SpecialObject(SpecialObject::Function(*id, input.this_value)),
-					),
-				};
+				let new_object_ty =
+					match prototype {
+						PrototypeArgument::Yeah(prototype) => {
+							let prototype =
+								substitute(*prototype, type_arguments, top_environment, types);
+							target.get_latest_info(top_environment).new_object(
+								Some(prototype),
+								types,
+								*position,
+								is_under_dyn,
+							)
+						}
+						PrototypeArgument::None => target
+							.get_latest_info(top_environment)
+							.new_object(None, types, *position, is_under_dyn),
+						PrototypeArgument::Function(id) => {
+							types.register_type(crate::Type::SpecialObject(Box::new(
+								SpecialObject::Function(*id, input.this_value),
+							)))
+						}
+					};
 
 				// TODO conditionally if any properties are structurally generic
 				// let new_object_ty_with_curried_arguments =
@@ -765,9 +765,9 @@ pub(crate) fn apply_events(
 					referenced_in_scope_as,
 					function,
 				} => {
-					let new_function_ty = types.register_type(Type::SpecialObject(
+					let new_function_ty = types.register_type(Type::SpecialObject(Box::new(
 						SpecialObject::Function(*function, Default::default()),
-					));
+					)));
 					// Apply curring
 					let new_function_ty = if type_arguments.closures.is_empty() {
 						new_function_ty

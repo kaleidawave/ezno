@@ -940,7 +940,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::ArrowFunction(function) => Instance::RValue(register_arrow_function(
 			expecting,
 			function.header,
-			function,
+			&**function,
 			environment,
 			checking_data,
 		)),
@@ -959,7 +959,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				is_generator,
 				location,
 				name,
-				function,
+				&**function,
 				environment,
 				checking_data,
 			))

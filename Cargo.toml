@@ -48,6 +48,9 @@ serde_json = "1.0"
 simple-json-parser = "0.0"
 js-sys = "0.3"
 
+[patch.crates-io]
+get-field-by-type = { git = 'https://github.com/kaleidawave/get-field-by-type.git', branch = 'gfbt-on-deref' }
+
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # For updating binary
 self-replace = "1.3"

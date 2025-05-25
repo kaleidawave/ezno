@@ -347,7 +347,9 @@ pub enum Callable {
 
 impl Callable {
 	pub(crate) fn from_type(ty: TypeId, types: &TypeStore) -> Self {
-		if let Type::SpecialObject(SpecialObject::Function(func_id, _)) = types.get_type_by_id(ty) {
+		if let Some(SpecialObject::Function(func_id, _)) =
+			types.get_type_by_id(ty).try_into_special_object()
+		{
 			Callable::Fixed(*func_id, ThisValue::UseParent)
 		} else {
 			crate::utilities::notify!("Here!!");
@@ -363,9 +365,9 @@ impl Callable {
 
 	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
-			Callable::Fixed(id, this_value) => {
-				types.register_type(Type::SpecialObject(SpecialObject::Function(id, this_value)))
-			}
+			Callable::Fixed(id, this_value) => types.register_type(Type::SpecialObject(Box::new(
+				SpecialObject::Function(id, this_value),
+			))),
 			Callable::Type(ty) => ty,
 		}
 	}
@@ -374,8 +376,8 @@ impl Callable {
 		match self {
 			Callable::Fixed(id, _this_value) => types.get_function_from_id(id).return_type,
 			Callable::Type(ty) => {
-				if let Type::SpecialObject(SpecialObject::Function(id, _)) =
-					types.get_type_by_id(ty)
+				if let Some(SpecialObject::Function(id, _)) =
+					types.get_type_by_id(ty).try_into_special_object()
 				{
 					types.get_function_from_id(*id).return_type
 				} else {
@@ -394,8 +396,8 @@ impl Callable {
 				.get_parameter_type_at_index(0)
 				.map_or(TypeId::ERROR_TYPE, |(ty, _)| ty),
 			Callable::Type(ty) => {
-				if let Type::SpecialObject(SpecialObject::Function(id, _)) =
-					types.get_type_by_id(ty)
+				if let Some(SpecialObject::Function(id, _)) =
+					types.get_type_by_id(ty).try_into_special_object()
 				{
 					types
 						.get_function_from_id(*id)
@@ -513,13 +515,13 @@ fn get_logical_callable_from_type(
 			};
 			Ok(Logical::Pure(function).into())
 		}
-		Type::SpecialObject(SpecialObject::Function(f, t)) => {
-			let this_value = on.unwrap_or(*t);
-			let from = Some(from.unwrap_or(ty));
-			Ok(Logical::Pure(FunctionLike { from, function: *f, this_value }).into())
-		}
-		Type::SpecialObject(so) => match so {
-			crate::features::objects::SpecialObject::Proxy { .. } => todo!(),
+		Type::SpecialObject(so) => match &**so {
+			SpecialObject::Function(f, t) => {
+				let this_value = on.unwrap_or(*t);
+				let from = Some(from.unwrap_or(ty));
+				Ok(Logical::Pure(FunctionLike { from, function: *f, this_value }).into())
+			}
+			SpecialObject::Proxy { .. } => todo!(),
 			_ => Err(Invalid(ty)),
 		},
 		Type::PartiallyAppliedGenerics(generic) => {
@@ -975,16 +977,18 @@ fn mark_possible_mutation(
 			// All dependent anyway
 			crate::utilities::notify!("TODO if any properties set etc");
 		}
-		Type::SpecialObject(SpecialObject::Function(_, _)) => {
-			crate::utilities::notify!("TODO record that function could be called");
-		}
 		Type::Object(ObjectNature::RealDeal) => {
 			top_environment.possibly_mutated_objects.insert(argument.value, parameter_type);
 			crate::utilities::notify!("TODO record methods could be called here as well");
 		}
-		Type::SpecialObject(_) => {
-			crate::utilities::notify!("TODO record stuff if mutable");
-		}
+		Type::SpecialObject(so) => match &**so {
+			SpecialObject::Function(_, _) => {
+				crate::utilities::notify!("TODO record that function could be called");
+			}
+			_ => {
+				crate::utilities::notify!("TODO record stuff if mutable");
+			}
+		},
 	}
 }
 

@@ -174,7 +174,7 @@ pub enum Type {
 	Constant(crate::Constant),
 	/// Technically could be just a function but...
 	Object(ObjectNature),
-	SpecialObject(SpecialObject),
+	SpecialObject(Box<SpecialObject>),
 
 	/// From a parameter, introduces a set of types > 1
 	RootPolyType(PolyNature),
@@ -313,6 +313,28 @@ impl Type {
 		| Type::AliasTo { parameters, .. } = self
 		{
 			parameters.clone()
+		} else {
+			None
+		}
+	}
+
+	pub fn try_into_special_object(&self) -> Option<&SpecialObject> {
+		if let Type::SpecialObject(s) = self {
+			Some(&*s)
+		} else {
+			None
+		}
+	}
+
+	pub fn try_into_function(&self) -> Option<FunctionId> {
+		if let Type::SpecialObject(obj) = self {
+			if let SpecialObject::Function(func, _) = &**obj {
+				Some(*func)
+			} else {
+				None
+			}
+		} else if let Type::FunctionReference(func) = self {
+			Some(*func)
 		} else {
 			None
 		}

@@ -71,7 +71,7 @@ pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<VariableKeyword>,
 		variable: WithComment<VariableField>,
-		of: Expression,
+		of: Box<Expression>,
 		is_await: bool,
 		position: Span,
 	},
@@ -142,7 +142,7 @@ impl ASTNode for ForLoopCondition {
 
 			let _ = reader.expect_keyword("of")?;
 
-			let of = Expression::from_reader(reader)?;
+			let of = Expression::from_reader(reader).map(Box::new)?;
 			let position = start.union(of.get_position());
 
 			// Not great `is_await`, set from above

@@ -444,8 +444,7 @@ pub(crate) fn type_is_subtype_with_generics(
 	}
 
 	match supertype {
-		Type::FunctionReference(left_func)
-		| Type::SpecialObject(SpecialObject::Function(left_func, _)) => subtype_function(
+		Type::FunctionReference(left_func) => subtype_function(
 			(*left_func, base_type_arguments),
 			(subtype, ty, ty_structure_arguments),
 			state,
@@ -1504,11 +1503,11 @@ pub(crate) fn type_is_subtype_with_generics(
 					)
 				}
 			}
-			Type::SpecialObject(SpecialObject::Function(..)) | Type::FunctionReference(..)
-				if base_type == TypeId::FUNCTION_TYPE =>
-			{
-				SubTypeResult::IsSubType
-			}
+			// Type::SpecialObject(SpecialObject::Function(..)) | Type::FunctionReference(..)
+			// 	if base_type == TypeId::FUNCTION_TYPE =>
+			// {
+			// 	SubTypeResult::IsSubType
+			// }
 			_ty => {
 				// crate::utilities::notify!("{:?} does not match class", base_type);
 				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
@@ -1538,10 +1537,10 @@ pub(crate) fn type_is_subtype_with_generics(
 					information,
 					types,
 				),
-				Type::SpecialObject(SpecialObject::Function(..)) => {
-					crate::utilities::notify!("TODO implement function checking");
-					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-				}
+				// Type::SpecialObject(SpecialObject::Function(..)) => {
+				// 	crate::utilities::notify!("TODO implement function checking");
+				// 	SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+				// }
 				Type::And(a, b) => {
 					// TODO more
 					crate::utilities::notify!("Here LHS interface, RHS and");
@@ -1615,11 +1614,23 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 			}
 		}
-		Type::SpecialObject(SpecialObject::Null) => {
-			crate::utilities::notify!("rhs={:?}", subtype);
-			SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-		}
-		Type::SpecialObject(_) => todo!(),
+		Type::SpecialObject(so) => match &**so {
+			SpecialObject::Null => {
+				crate::utilities::notify!("rhs={:?}", subtype);
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			}
+			SpecialObject::Function(left_func, _) => subtype_function(
+				(*left_func, base_type_arguments),
+				(subtype, ty, ty_structure_arguments),
+				state,
+				information,
+				types,
+			),
+			_ => {
+				crate::utilities::notify!("TODO");
+				SubTypeResult::IsSubType
+			}
+		},
 	}
 }
 
@@ -1630,16 +1641,12 @@ fn subtype_function(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	let right_func = if let Type::FunctionReference(right_func)
-	| Type::SpecialObject(SpecialObject::Function(right_func, _)) = subtype
-	{
+	let right_func = if let Some(right_func) = subtype.try_into_function() {
 		right_func
 	} else if let Some(constraint) = get_constraint(ty, types) {
 		// TODO explain why get_constraint early breaks a bunch of tests
 		let subtype = types.get_type_by_id(constraint);
-		if let Type::FunctionReference(right_func)
-		| Type::SpecialObject(SpecialObject::Function(right_func, _)) = subtype
-		{
+		if let Some(right_func) = subtype.try_into_function() {
 			right_func
 		} else {
 			crate::utilities::notify!("Not function after constraint!! {:?}", subtype);
@@ -1651,7 +1658,7 @@ fn subtype_function(
 	};
 
 	let left_func = types.functions.get(&left_func).unwrap();
-	let right_func = types.functions.get(right_func).unwrap();
+	let right_func = types.functions.get(&right_func).unwrap();
 
 	for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
 		if let Some((right_param_ty, position)) =
@@ -1924,8 +1931,8 @@ fn check_lhs_property_is_super_type_of_rhs(
 
 					if let Ok(LogicalOrValid::Logical(Logical::Pure(get_res))) = get_handler {
 						let function = get_res.as_get_type(types);
-						if let Type::SpecialObject(SpecialObject::Function(id, _)) =
-							types.get_type_by_id(function)
+						if let Some(SpecialObject::Function(id, _)) =
+							types.get_type_by_id(function).try_into_special_object()
 						{
 							let function = types.get_function_from_id(*id);
 							let mut map = crate::Map::new();

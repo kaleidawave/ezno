@@ -231,12 +231,10 @@ pub(crate) fn call_constant_function(
 				};
 
 			let get_type_by_id = types.get_type_by_id(ty);
-			let message = if let Type::SpecialObject(SpecialObject::Function(func, _))
-			| Type::FunctionReference(func) = get_type_by_id
-			{
+			let message = if let Some(func) = get_type_by_id.try_into_function() {
 				let function_type = types
 					.functions
-					.get(func)
+					.get(&func)
 					.ok_or(ConstantFunctionError::CannotComputeConstant)?;
 
 				let effects = &function_type.effect;
@@ -265,23 +263,16 @@ pub(crate) fn call_constant_function(
 		}
 		// For functions
 		"bind" => {
-			let on = this_argument.get_passed().map(|t| types.get_type_by_id(t));
+			let on = this_argument
+				.get_passed()
+				.and_then(|t| types.get_type_by_id(t).try_into_function());
 			let first_argument = arguments.first();
-			if let (
-				Some(
-					Type::SpecialObject(SpecialObject::Function(func, _))
-					| Type::FunctionReference(func),
-				),
-				Some(this_ty),
-			) = (on, first_argument)
-			{
+			if let (Some(func), Some(this_ty)) = (on, first_argument) {
 				let type_id = this_ty
 					.non_spread_type()
 					.map_err(|()| ConstantFunctionError::CannotComputeConstant)?;
-				let value = types.register_type(Type::SpecialObject(SpecialObject::Function(
-					*func,
-					ThisValue::Passed(type_id),
-				)));
+				let function = SpecialObject::Function(func, ThisValue::Passed(type_id));
+				let value = types.register_type(Type::SpecialObject(Box::new(function)));
 				Ok(ConstantOutput::Value(value))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
@@ -642,12 +633,11 @@ pub(crate) fn call_constant_function(
 			crate::utilities::notify!("Here creating proxy");
 			if let [object, trap] = arguments {
 				// TODO checking for both, what about spreading
-				let value = types.register_type(Type::SpecialObject(
-					crate::features::objects::SpecialObject::Proxy(Proxy {
-						handler: trap.non_spread_type().expect("single type"),
-						over: object.non_spread_type().expect("single type"),
-					}),
-				));
+				let proxy = crate::features::objects::SpecialObject::Proxy(Proxy {
+					handler: trap.non_spread_type().expect("single type"),
+					over: object.non_spread_type().expect("single type"),
+				});
+				let value = types.register_type(Type::SpecialObject(Box::new(proxy)));
 				Ok(ConstantOutput::Value(value))
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
@@ -698,16 +688,20 @@ pub(crate) fn call_constant_function(
 		"regexp:exec" => {
 			let this = this_argument.get_passed().map(|t| types.get_type_by_id(t));
 
-			if let Some(Type::SpecialObject(SpecialObject::RegularExpression(regexp))) = this {
-				let pattern_type_id =
-					arguments.first().unwrap().non_spread_type().expect("pattern");
+			if let Some(Type::SpecialObject(s_obj)) = this {
+				if let SpecialObject::RegularExpression(regexp) = &**s_obj {
+					let pattern_type_id =
+						arguments.first().unwrap().non_spread_type().expect("pattern");
 
-				Ok(ConstantOutput::Value(regexp.clone().exec(
-					pattern_type_id,
-					types,
-					environment,
-					call_site,
-				)))
+					Ok(ConstantOutput::Value(regexp.clone().exec(
+						pattern_type_id,
+						types,
+						environment,
+						call_site,
+					)))
+				} else {
+					Err(ConstantFunctionError::CannotComputeConstant)
+				}
 			} else {
 				Err(ConstantFunctionError::CannotComputeConstant)
 			}

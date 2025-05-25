@@ -827,8 +827,8 @@ impl<T: ContextType> Context<T> {
 			vacant.insert(variable);
 
 			// TODO unsure ...
-			let ty = if let Type::SpecialObject(SpecialObject::Function(..)) =
-				types.get_type_by_id(variable_ty)
+			let ty = if let Some(SpecialObject::Function(..)) =
+				types.get_type_by_id(variable_ty).try_into_special_object()
 			{
 				variable_ty
 			} else {

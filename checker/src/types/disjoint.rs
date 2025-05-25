@@ -214,17 +214,9 @@ pub fn types_are_disjoint(
 		} else if let Type::Constant(rhs_cst) = rhs_ty {
 			types_are_disjoint(rhs_cst.get_backing_type(), lhs, already_checked, information, types)
 		} else if let TypeId::FUNCTION_TYPE = lhs {
-			!matches!(
-				rhs_ty,
-				Type::FunctionReference(_)
-					| Type::SpecialObject(crate::types::SpecialObject::Function(..))
-			)
+			rhs_ty.try_into_function().is_none()
 		} else if let TypeId::FUNCTION_TYPE = rhs {
-			!matches!(
-				lhs_ty,
-				Type::FunctionReference(_)
-					| Type::SpecialObject(crate::types::SpecialObject::Function(..))
-			)
+			lhs_ty.try_into_function().is_none()
 		} else if let Type::Object(crate::types::ObjectNature::AnonymousTypeAnnotation(
 			_properties,
 		)) = lhs_ty

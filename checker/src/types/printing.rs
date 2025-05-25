@@ -1,5 +1,6 @@
 use iterator_endiate::EndiateIteratorExt;
 use std::collections::HashSet;
+use std::fmt::Write;
 
 use super::{GenericChain, PolyNature, Type, TypeId, TypeStore};
 use crate::{
@@ -68,8 +69,6 @@ pub fn print_type_into_buf<C: InformationChain>(
 	info: &C,
 	debug: bool,
 ) {
-	use std::fmt::Write;
-
 	let not_in_cycle = cycles.insert(ty);
 	if !not_in_cycle {
 		buf.push_str("*cycle*");
@@ -585,93 +584,8 @@ pub fn print_type_into_buf<C: InformationChain>(
 				buf.push_str(&cst.as_type_name());
 			}
 		}
-		Type::FunctionReference(func_id)
-		| Type::SpecialObject(SpecialObject::Function(func_id, _)) => {
-			let func = types.functions.get(func_id).unwrap();
-
-			if let FunctionBehavior::Constructor { ref name, prototype, .. } = func.behavior {
-				if let Type::Constant(crate::Constant::String(name)) = types.get_type_by_id(*name) {
-					if debug {
-						write!(buf, "constructor(for#{})@{name}#{}", prototype.0, ty.0).unwrap();
-					} else {
-						buf.push_str(name);
-						return;
-					}
-				} else {
-					buf.push_str("*class*");
-				}
-			}
-
-			if debug {
-				let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
-				write!(buf, "(func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
-				if let FunctionEffect::SideEffects {
-					events: _,
-					free_variables,
-					closed_over_variables,
-				} = &func.effect
-				{
-					write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?}")
-						.unwrap();
-				} else {
-					write!(buf, "{:?}", func.effect).unwrap();
-				}
-				if let Type::SpecialObject(SpecialObject::Function(_, ThisValue::Passed(p))) =
-					r#type
-				{
-					buf.push_str(", this ");
-					print_type_into_buf(*p, buf, cycles, args, types, info, debug);
-				}
-				buf.push_str(") = ");
-			}
-			if let Some(ref parameters) = func.type_parameters {
-				buf.push('<');
-				for (not_at_end, param) in parameters.0.iter().nendiate() {
-					buf.push_str(&param.name);
-					// if param.constraint != TypeId::ANY_TYPE {
-					// 	// TODO `extends keyof` visual compat
-					// 	buf.push_str(" extends ");
-					// 	// let ty = memory.get_fixed_constraint(constraint);
-					// 	// TypeDisplay::fmt(ty, buf, indent, cycles, memory);
-					// }
-					if let Some(ref _default) = param.default {
-						todo!()
-					}
-					if not_at_end {
-						buf.push_str(", ");
-					}
-				}
-				buf.push('>');
-			}
-			// TODO don't think this is needed
-			// let args = if let Type::SpecialObject(SpecialObjects::Function(_, this)) = r#type {
-			// 	if let Some(Type::PartiallyAppliedGenerics(sgs))) = this
-			// 		.get_passed()
-			// 		.map(|ty| get_constraint(ty, types).unwrap_or(ty))
-			// 		.map(|ty| types.get_type_by_id(ty))
-			// 	{
-			// 		Some(GenericChain::append(args.as_ref(), &sgs.arguments))
-			// 	} else {
-			// 		args
-			// 	}
-			// } else {
-			// 	args
-			// };
-			buf.push('(');
-			for (not_at_end, param) in func.parameters.parameters.iter().nendiate() {
-				buf.push_str(&param.name);
-				buf.push_str(": ");
-				print_type_into_buf(param.ty, buf, cycles, args, types, info, debug);
-				if func.parameters.rest_parameter.is_some() || not_at_end {
-					buf.push_str(", ");
-				}
-			}
-			if let Some(ref rest_parameter) = func.parameters.rest_parameter {
-				buf.push_str("...");
-				print_type_into_buf(rest_parameter.ty, buf, cycles, args, types, info, debug);
-			}
-			buf.push_str(") => ");
-			print_type_into_buf(func.return_type, buf, cycles, args, types, info, debug);
+		Type::FunctionReference(func) => {
+			print_function((*func, ty, r#type), buf, cycles, args, types, info, debug);
 		}
 		Type::Object(kind) => {
 			if debug {
@@ -865,7 +779,10 @@ pub fn print_type_into_buf<C: InformationChain>(
 				buf.push_str(" }");
 			}
 		}
-		Type::SpecialObject(special_object) => match special_object {
+		Type::SpecialObject(special_object) => match &**special_object {
+			SpecialObject::Function(func, _) => {
+				print_function((*func, ty, r#type), buf, cycles, args, types, info, debug);
+			}
 			SpecialObject::Null => {
 				buf.push_str("null");
 			}
@@ -902,11 +819,100 @@ pub fn print_type_into_buf<C: InformationChain>(
 			SpecialObject::RegularExpression(exp) => {
 				buf.push_str(exp.source());
 			}
-			SpecialObject::Function(..) => unreachable!(),
 		},
 	}
 
 	cycles.remove(&ty);
+}
+
+fn print_function<C: InformationChain>(
+	(func_id, ty, r#type): (crate::types::FunctionId, TypeId, &Type),
+	buf: &mut String,
+	cycles: &mut HashSet<TypeId>,
+	args: GenericChain,
+	types: &TypeStore,
+	info: &C,
+	debug: bool,
+) {
+	let func = types.functions.get(&func_id).unwrap();
+
+	if let FunctionBehavior::Constructor { ref name, prototype, .. } = func.behavior {
+		if let Type::Constant(crate::Constant::String(name)) = types.get_type_by_id(*name) {
+			if debug {
+				write!(buf, "constructor(for#{})@{name}#{}", prototype.0, ty.0).unwrap();
+			} else {
+				buf.push_str(name);
+				return;
+			}
+		} else {
+			buf.push_str("*class*");
+		}
+	}
+
+	if debug {
+		let kind = if matches!(r#type, Type::FunctionReference(_)) { "ref" } else { "" };
+		write!(buf, "(func{kind} #{}, kind {:?}, effect ", ty.0, func.behavior).unwrap();
+		if let FunctionEffect::SideEffects { events: _, free_variables, closed_over_variables } =
+			&func.effect
+		{
+			write!(buf, "*side effects* {free_variables:?} {closed_over_variables:?}").unwrap();
+		} else {
+			write!(buf, "{:?}", func.effect).unwrap();
+		}
+		// if let Type::SpecialObject(SpecialObject::Function(_, ThisValue::Passed(p))) = r#type {
+		// 	buf.push_str(", this ");
+		// 	print_type_into_buf(*p, buf, cycles, args, types, info, debug);
+		// }
+		buf.push_str(") = ");
+	}
+	if let Some(ref parameters) = func.type_parameters {
+		buf.push('<');
+		for (not_at_end, param) in parameters.0.iter().nendiate() {
+			buf.push_str(&param.name);
+			// if param.constraint != TypeId::ANY_TYPE {
+			// 	// TODO `extends keyof` visual compat
+			// 	buf.push_str(" extends ");
+			// 	// let ty = memory.get_fixed_constraint(constraint);
+			// 	// TypeDisplay::fmt(ty, buf, indent, cycles, memory);
+			// }
+			if let Some(ref _default) = param.default {
+				todo!()
+			}
+			if not_at_end {
+				buf.push_str(", ");
+			}
+		}
+		buf.push('>');
+	}
+	// TODO don't think this is needed
+	// let args = if let Type::SpecialObject(SpecialObjects::Function(_, this)) = r#type {
+	// 	if let Some(Type::PartiallyAppliedGenerics(sgs))) = this
+	// 		.get_passed()
+	// 		.map(|ty| get_constraint(ty, types).unwrap_or(ty))
+	// 		.map(|ty| types.get_type_by_id(ty))
+	// 	{
+	// 		Some(GenericChain::append(args.as_ref(), &sgs.arguments))
+	// 	} else {
+	// 		args
+	// 	}
+	// } else {
+	// 	args
+	// };
+	buf.push('(');
+	for (not_at_end, param) in func.parameters.parameters.iter().nendiate() {
+		buf.push_str(&param.name);
+		buf.push_str(": ");
+		print_type_into_buf(param.ty, buf, cycles, args, types, info, debug);
+		if func.parameters.rest_parameter.is_some() || not_at_end {
+			buf.push_str(", ");
+		}
+	}
+	if let Some(ref rest_parameter) = func.parameters.rest_parameter {
+		buf.push_str("...");
+		print_type_into_buf(rest_parameter.ty, buf, cycles, args, types, info, debug);
+	}
+	buf.push_str(") => ");
+	print_type_into_buf(func.return_type, buf, cycles, args, types, info, debug);
 }
 
 #[must_use]

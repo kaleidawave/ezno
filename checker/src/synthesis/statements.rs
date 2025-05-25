@@ -143,7 +143,7 @@ pub(super) fn synthesise_statement<T: crate::ReadFromFS>(
 				position,
 			} => {
 				synthesise_iteration(
-					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: of },
+					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: &**of },
 					information.and_then(|info| info.label),
 					environment,
 					checking_data,

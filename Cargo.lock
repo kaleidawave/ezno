@@ -398,8 +398,7 @@ dependencies = [
 [[package]]
 name = "get-field-by-type"
 version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "510f901658aa70b274793aeb82d6ca00f423a7421c82024f64f3bb79f39bb0fc"
+source = "git+https://github.com/kaleidawave/get-field-by-type.git?branch=gfbt-on-deref#0d5319cc68a01fb09764486cc17d8e530329b008"
 dependencies = [
  "get-field-by-type-derive",
 ]
@@ -407,8 +406,7 @@ dependencies = [
 [[package]]
 name = "get-field-by-type-derive"
 version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3931371c1191271ed6608fb4ac821fbab479f0defa5b1d85cdc756736209225c"
+source = "git+https://github.com/kaleidawave/get-field-by-type.git?branch=gfbt-on-deref#0d5319cc68a01fb09764486cc17d8e530329b008"
 dependencies = [
  "syn-helpers",
 ]

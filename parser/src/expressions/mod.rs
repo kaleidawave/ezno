@@ -146,10 +146,10 @@ pub enum Expression {
 		position: Span,
 	},
 	// Functions
-	ArrowFunction(ArrowFunction),
-	ExpressionFunction(ExpressionFunction),
+	ArrowFunction(Box<ArrowFunction>),
+	ExpressionFunction(Box<ExpressionFunction>),
 	/// Yes classes can exist in expr position :?
-	ClassExpression(ClassDeclaration<ExpressionPosition>),
+	ClassExpression(Box<ClassDeclaration<ExpressionPosition>>),
 	Null(Span),
 	Comment {
 		content: String,
@@ -297,7 +297,7 @@ impl Expression {
 					&& !AssociativityDirection::LeftToRight
 						.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 				{
-					let arrow_function = ArrowFunction::from_reader(reader)?;
+					let arrow_function = ArrowFunction::from_reader(reader).map(Box::new)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
 				}
 				reader.advance(1);
@@ -310,7 +310,7 @@ impl Expression {
 					&& !AssociativityDirection::LeftToRight
 						.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 				{
-					let arrow_function = ArrowFunction::from_reader(reader)?;
+					let arrow_function = ArrowFunction::from_reader(reader).map(Box::new)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
 				} else if reader.get_options().jsx {
 					JSXRoot::from_reader(reader).map(Expression::JSXRoot)?
@@ -334,14 +334,18 @@ impl Expression {
 					current = current["test".len()..].trim_start();
 				}
 				if current.starts_with("function") {
-					Expression::ExpressionFunction(ExpressionFunction::from_reader(reader)?)
+					Expression::ExpressionFunction(
+						ExpressionFunction::from_reader(reader).map(Box::new)?,
+					)
 				} else if AssociativityDirection::LeftToRight
 					.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 				{
 					let (_found, position) = crate::lexer::utilities::next_item(reader);
 					return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
 				} else {
-					return ArrowFunction::from_reader(reader).map(Expression::ArrowFunction);
+					return ArrowFunction::from_reader(reader)
+						.map(Box::new)
+						.map(Expression::ArrowFunction);
 				}
 			} else if reader.is_operator_advance("#") {
 				let property_name = reader.parse_identifier("property name", false)?.to_owned();
@@ -373,7 +377,9 @@ impl Expression {
 				let position = start.union(operand.get_position());
 				Expression::UnaryPrefixAssignmentOperation { operand, operator, position }
 			} else if reader.is_keyword("class") {
-				ClassDeclaration::from_reader(reader).map(Expression::ClassExpression)?
+				ClassDeclaration::from_reader(reader)
+					.map(Box::new)
+					.map(Expression::ClassExpression)?
 			} else if let Some(op) = reader.is_one_of_operators(&["+", "-", "~", "!"]) {
 				let operator = match op {
 					"+" => UnaryOperator::Plus,
@@ -563,6 +569,7 @@ impl Expression {
 						return ArrowFunction::from_reader_with_first_parameter(
 							reader, is_async, identifier,
 						)
+						.map(Box::new)
 						.map(Expression::ArrowFunction);
 					}
 					Expression::VariableReference(name.to_owned(), position)
@@ -2078,7 +2085,7 @@ impl Expression {
 		Expression::FunctionCall {
 			function: Expression::Parenthesised(
 				Box::new(
-					Expression::ArrowFunction(ArrowFunction {
+					Expression::ArrowFunction(Box::new(ArrowFunction {
 						// TODO maybe async
 						header: false,
 						name: (),
@@ -2092,7 +2099,7 @@ impl Expression {
 						type_parameters: None,
 						position,
 						body: ExpressionOrBlock::Block(block),
-					})
+					}))
 					.into(),
 				),
 				position,

@@ -16,7 +16,7 @@ pub struct SwitchStatement {
 #[apply(derive_ASTNode)]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),
-	Case(Expression, Vec<StatementOrDeclaration>),
+	Case(Box<Expression>, Vec<StatementOrDeclaration>),
 }
 
 impl ASTNode for SwitchStatement {
@@ -34,10 +34,10 @@ impl ASTNode for SwitchStatement {
 
 		let mut branches = Vec::new();
 		loop {
-			let case: Option<Expression> = if reader.is_operator_advance("}") {
+			let case: Option<Box<Expression>> = if reader.is_operator_advance("}") {
 				break;
 			} else if reader.is_operator_advance("case") {
-				let case = Expression::from_reader(reader)?;
+				let case = Expression::from_reader(reader).map(Box::new)?;
 				reader.expect(':')?;
 				Some(case)
 			} else if reader.is_operator_advance("default") {

@@ -86,7 +86,7 @@ pub fn type_of_operator(on: TypeId, types: &mut TypeStore) -> TypeId {
 			};
 			// TODO could Cow or something to not allocate?
 			types.new_constant_type(crate::Constant::String(name.to_owned()))
-		} else if let crate::Type::SpecialObject(SpecialObject::Function(..)) = ty {
+		} else if let Some(SpecialObject::Function(..)) = ty.try_into_special_object() {
 			types.new_constant_type(crate::Constant::String("function".to_owned()))
 		} else if let crate::Type::Object(..) | crate::Type::SpecialObject(..) = ty {
 			// includes TypeId::NULL_TYPE
@@ -120,22 +120,23 @@ pub fn instance_of_operator(
 	information: &impl InformationChain,
 	types: &mut TypeStore,
 ) -> TypeId {
-	let rhs_prototype =
-		if let Type::SpecialObject(SpecialObject::Function(func, _)) = types.get_type_by_id(rhs) {
-			use types::functions::FunctionBehavior;
+	let rhs_prototype = if let Some(SpecialObject::Function(func, _)) =
+		types.get_type_by_id(rhs).try_into_special_object()
+	{
+		use types::functions::FunctionBehavior;
 
-			let func = types.get_function_from_id(*func);
-			match &func.behavior {
-				FunctionBehavior::ArrowFunction { .. } | FunctionBehavior::Method { .. } => {
-					TypeId::UNDEFINED_TYPE
-				}
-				FunctionBehavior::Function { prototype, .. }
-				| FunctionBehavior::Constructor { prototype, .. } => *prototype,
+		let func = types.get_function_from_id(*func);
+		match &func.behavior {
+			FunctionBehavior::ArrowFunction { .. } | FunctionBehavior::Method { .. } => {
+				TypeId::UNDEFINED_TYPE
 			}
-		} else {
-			crate::utilities::notify!("Instanceof RHS dependent or not constructor");
-			rhs
-		};
+			FunctionBehavior::Function { prototype, .. }
+			| FunctionBehavior::Constructor { prototype, .. } => *prototype,
+		}
+	} else {
+		crate::utilities::notify!("Instanceof RHS dependent or not constructor");
+		rhs
+	};
 
 	instance_of_operator_rhs_prototype(lhs, rhs_prototype, information, types)
 }

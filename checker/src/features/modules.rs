@@ -318,9 +318,9 @@ pub fn import_items<
 		}
 		ImportKind::All { under, position } => {
 			let value = if let Ok(Ok(ref exports)) = exports {
-				let import_object = crate::Type::SpecialObject(
+				let import_object = crate::Type::SpecialObject(Box::new(
 					crate::features::objects::SpecialObject::Import(exports.clone()),
-				);
+				));
 				checking_data.types.register_type(import_object)
 			} else {
 				crate::utilities::notify!("TODO :?");
