@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -34,49 +33,46 @@ jobs:
         continue-on-error: true
         run: sudo apt-get install valgrind
 
-      - name: Get last run
-        id: get-last-run
-        run: |
-          # First result should come up within 10 runs from main
-          id=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            '/repos/kaleidawave/ezno/actions/runs?branch=main&per_page=10' \
-            --jq '[.workflow_runs[] | select(.path == ".github/workflows/examples.yml")][0].id')
-          echo "run_id=$id" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Build Ezno
+      - uses: actions/checkout@v4
+      - name: Build Ezno (current branch)
         run: cargo build --release
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-      - name: Get base ezno
-        if: github.ref_name != 'main'
-        uses: actions/download-artifact@v4
-        continue-on-error: true
+      - uses: actions/checkout@v4
+        if: ${{ github.ref_name != 'main' }}
         with:
-          name: latest-checker
-          path: previous-ezno
-          run-id: ${{ steps.get-last-run.outputs.run_id }}
+          ref: main
+
+      - name: Build Ezno (main branch)
+        run: |
+          mkdir bin2cmp # = binaries to compare
+          mv ./target/release/ezno bin2cmp/current
+          cargo build --release
+          mv ./target/release/ezno bin2cmp/main
+        if: ${{ github.ref_name != 'main' }}
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: true
 
       - name: Set compilers
         id: compilers
         shell: bash
         run: |
-          if [ -d "previous-ezno" ]; then
-            echo "::notice::Comparing against previous"
-            echo "BINARIES=./target/release/ezno,./previous-ezno/ezno" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Running singularly"
+          if [ -d "bin2cmp" ]; then
+            echo "::notice::Comparing against main branch"
+            echo "BINARIES=bin2cmp/current,bin2cmp/main" >> "$GITHUB_OUTPUT"
+            echo "BINARY=bin2cmp/current" >> "$GITHUB_OUTPUT"
+            else
             echo "BINARIES=./target/release/ezno" >> "$GITHUB_OUTPUT"
+            echo "BINARY=./target/release/ezno" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run checker performance
         shell: bash
         run: |
-          # Generate a file which contains everything that Ezno currently implements  
+          # Generate a file which contains everything that the checker currently implements
+          # It is intentional that this will be on main branch if it is comparing, because we 
+          # do not want to include new tests
           cargo run -p ezno-checker-specification \
            --example amalgamate ./checker/specification/specification.md \
            --comment-headers \
@@ -99,7 +95,7 @@ jobs:
 
           echo "::info::Wrote code to summary"
           
-          command_output=$(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+          command_output=$($BINARY check demo.tsx --timings --max-diagnostics all 2>&1 || true)
           
           diagnostics=""; statistics=""; found_splitter=false;
           while IFS= read -r line; do
@@ -117,49 +113,47 @@ jobs:
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
-          if [ -d "previous-ezno" ]; then
-            OUT=$(./previous-ezno/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
-            $base_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
+          if [ -d "bin2cmp" ]; then
+            OUT=$(./bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+            $main_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
             echo "
             <details>
             <summary>Statistics</summary>
-            
             \`\`\`
             $statistics
             \`\`\`
-            against base
+            against main
             \`\`\`
-            $base_statistics
+            $main_statistics
             \`\`\`
-            against base
+            against main
             </details>
             " >> $GITHUB_STEP_SUMMARY
           else
             echo "<details>
             <summary>Statistics</summary>
-
             \`\`\`
             $statistics
             \`\`\`
             </details>" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Run checker performance w/staging
-        shell: bash
-        if: github.ref_name != 'main'
-        run: |
-          echo "::group::Running with staging"
+      # - name: Run checker performance w/staging
+      #   shell: bash
+      #   if: github.ref_name != 'main'
+      #   run: |
+      #     echo "::group::Running with staging"
           
-          cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
-          cargo run -p ezno-checker-specification \
-           --example amalgamate with-staging.md \
-           --comment-headers \
-           --out ./with-staging.tsx
+      #     cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
+      #     cargo run -p ezno-checker-specification \
+      #      --example amalgamate with-staging.md \
+      #      --comment-headers \
+      #      --out ./with-staging.tsx
 
-          ./target/release/ezno check with-staging.tsx --timings || true
-          ./target/release/ezno check with-staging.tsx --timings || true
+      #     $BINARY check with-staging.tsx --timings || true
+      #     $BINARY check with-staging.tsx --timings || true
 
-          echo "::endgroup::"
+      #     echo "::endgroup::"
             
       - name: Run checker performance on large file
         shell: bash
@@ -171,11 +165,12 @@ jobs:
            --comment-headers \
            --out ./code.tsx
 
+          # Repeat the file
           for i in {1..10}; do
             cat ./code.tsx >> large.tsx
           done
 
-          ./target/release/ezno check large.tsx --timings --max-diagnostics 0 || true
+          $BINARY check large.tsx --timings --max-diagnostics 0 || true
 
           hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check large.tsx'
           echo "::endgroup::"
@@ -196,8 +191,8 @@ jobs:
             {
               valgrind --tool=callgrind --callgrind-out-file=./cpu-out $compiler check demo.tsx --max-diagnostics 0
             } || true
-            ls
-            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never ./cpu_out)"
+            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never cpu_out)"
+            cat cpu_out
             echo "::endgroup::"
             
             echo "::group::Valgrind"
@@ -220,15 +215,16 @@ jobs:
             FILENAME="${URL##*/}"
             curl -s "$URL" > $FILENAME
             echo "::group::Comparison"
-            hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
-              '{compiler} ast-explorer full $FILENAME --check'
+            $BINARY ast-explorer full $FILENAME --check
+            # hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
+            #   '{compiler} ast-explorer full $FILENAME --check'
             echo "::endgroup::"
           done
 
-      - name: Upload checker
-        if: ${{ github.ref_name == 'main' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: latest-checker
-          path: target/release/ezno
-          retention-days: 90
+      # - name: Upload checker
+      #   if: ${{ github.ref_name == 'main' }}
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: latest-checker
+      #     path: target/release/ezno
+      #     retention-days: 90
