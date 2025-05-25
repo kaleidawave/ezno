@@ -39,6 +39,22 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
+      # TEMPORARY LOCATION, SHOULD BE DONE ON MAIN
+      # Code generated from specification.md. this is not meant to accurately represent a 
+      # program but instead give an idea for how it scales across all the type checking features
+      - name: Build Ezno (current branch)
+        run: |
+          # Generate a file which contains everything that the checker currently implements
+          # It is intentional that this will be on main branch if it is comparing, because we 
+          # do not want to include new tests
+
+          cargo run -p ezno-checker-specification \
+           --example amalgamate ./checker/specification/specification.md \
+           --comment-headers \
+           --out ./demo.tsx
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: true
+
       - uses: actions/checkout@v4
         if: ${{ github.ref_name != 'main' }}
         with:
@@ -71,14 +87,6 @@ jobs:
       - name: Run checker performance
         shell: bash
         run: |
-          # Generate a file which contains everything that the checker currently implements
-          # It is intentional that this will be on main branch if it is comparing, because we 
-          # do not want to include new tests
-          cargo run -p ezno-checker-specification \
-           --example amalgamate ./checker/specification/specification.md \
-           --comment-headers \
-           --out ./demo.tsx
-
           echo "### Checking
           \`\`\`shell
           $(hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check demo.tsx')
@@ -87,7 +95,6 @@ jobs:
           echo "<details>
           <summary>Input</summary>
 
-          > Code generated from specification.md. this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
           \`\`\`tsx
           $(cat ./demo.tsx)
           \`\`\`
@@ -161,14 +168,9 @@ jobs:
         run: |
           echo "::group::Running large"
 
-          cargo run -p ezno-checker-specification \
-           --example amalgamate ./checker/specification/specification.md \
-           --comment-headers \
-           --out ./code.tsx
-
           # Repeat the file
           for i in {1..10}; do
-            cat ./code.tsx >> large.tsx
+            cat ./demo.tsx >> large.tsx
           done
 
           $BINARY check large.tsx --timings --max-diagnostics 0 || true

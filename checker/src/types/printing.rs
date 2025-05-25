@@ -7,7 +7,6 @@ use crate::{
 	context::information::{get_value_of_constant_import_variable, InformationChain},
 	features::objects::{Proxy, SpecialObject},
 	types::{
-		calling::ThisValue,
 		functions::{FunctionBehavior, FunctionEffect},
 		generics::generic_type_arguments::GenericArguments,
 		get_constraint, get_simple_property_value,
