@@ -38,7 +38,7 @@ jobs:
               --header "Content-Type: application/json" \
               --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
               --data "{\"project\":\"$name\",\"language\":\"rust\",\"loc\":$lines_of_code}" \
-              https://kaleidawave-projectinformation.web.val.run/update-project;
+              https://project-information-kaleidawave.val.run/update-project;
           }
           
           record "parser" "ezno-parser"
