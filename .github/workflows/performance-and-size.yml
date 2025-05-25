@@ -103,7 +103,7 @@ jobs:
 
           echo "::info::Wrote code to summary"
           
-          command_output=$($BINARY check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+          command_output=$(${{ steps.compilers.outputs.BINARY }} check demo.tsx --timings --max-diagnostics all 2>&1 || true)
           
           diagnostics=""; statistics=""; found_splitter=false;
           while IFS= read -r line; do
@@ -158,8 +158,8 @@ jobs:
       #      --comment-headers \
       #      --out ./with-staging.tsx
 
-      #     $BINARY check with-staging.tsx --timings || true
-      #     $BINARY check with-staging.tsx --timings || true
+      #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
+      #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
 
       #     echo "::endgroup::"
             
@@ -173,7 +173,7 @@ jobs:
             cat ./demo.tsx >> large.tsx
           done
 
-          $BINARY check large.tsx --timings --max-diagnostics 0 || true
+          ${{ steps.compilers.outputs.BINARY }} check large.tsx --timings --max-diagnostics 0 || true
 
           hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check large.tsx'
           echo "::endgroup::"
@@ -218,9 +218,11 @@ jobs:
             FILENAME="${URL##*/}"
             curl -s "$URL" > $FILENAME
             echo "::group::Comparison"
-            $BINARY ast-explorer full $FILENAME --check
+            ${{ steps.compilers.outputs.BINARY }} ast-explorer full $FILENAME --check
+
             # hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
             #   '{compiler} ast-explorer full $FILENAME --check'
+            
             echo "::endgroup::"
           done
 
