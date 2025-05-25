@@ -42,7 +42,7 @@ jobs:
       # TEMPORARY LOCATION, SHOULD BE DONE ON MAIN
       # Code generated from specification.md. this is not meant to accurately represent a 
       # program but instead give an idea for how it scales across all the type checking features
-      - name: Build Ezno (current branch)
+      - name: Generate specification
         run: |
           # Generate a file which contains everything that the checker currently implements
           # It is intentional that this will be on main branch if it is comparing, because we 

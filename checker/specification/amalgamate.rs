@@ -271,7 +271,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					})
 					.collect();
 
-				let function = Expression::ExpressionFunction(ast::ExpressionFunction {
+				let function = Expression::ExpressionFunction(Box::new(ast::ExpressionFunction {
 					header: parser::functions::FunctionHeader::empty(),
 					name: parser::ExpressionPosition(Some(VariableIdentifier::Standard(
 						"declare_variables".to_owned(),
@@ -287,7 +287,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					type_parameters: None,
 					position,
 					body: ast::Block(inside, position),
-				});
+				}));
 
 				// void is temp fix
 				top_level.push(
