@@ -2319,22 +2319,20 @@ mod tests {
 
 	#[test]
 	fn multiple_expression() {
-		todo!()
-		// assert_matches_ast!(
-		// 	"(45,2)",
-		// 	Parenthesised(
-		// 		Deref @ MultipleExpression::Multiple {
-		// 			lhs:
-		// 				Deref @ MultipleExpression::Single(NumberLiteral(
-		// 					NumberRepresentation::Number { .. },
-		// 					span!(1, 3),
-		// 				)),
-		// 			rhs: NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
-		// 			position: _,
-		// 		},
-		// 		span!(0, 6),
-		// 	)
-		// );
+		assert_matches_ast!(
+			"(45,2)",
+			Parenthesised(
+				Deref @ MultipleExpression(
+					BinaryOperation {
+						lhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(1, 3)),
+						operator: BinaryOperator::Comma,
+						rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
+						position: _,
+					},
+				),
+				span!(0, 6),
+			)
+		);
 	}
 
 	#[test]

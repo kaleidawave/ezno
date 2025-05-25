@@ -1,5 +1,4 @@
 use ezno_parser::{
-	declarations::VariableDeclaration,
 	visiting::{Chain, ImmutableVariableOrProperty, VisitOptions, Visitor, Visitors},
 	ASTNode, Declaration, Expression, Module, StatementOrDeclaration, VariableField,
 };

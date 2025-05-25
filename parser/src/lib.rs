@@ -551,8 +551,25 @@ pub(crate) mod test_utils {
 	#[macro_export]
 	#[allow(clippy::crate_in_macro_def)]
 	macro_rules! assert_matches_ast {
+		($source:literal with $options:expr, $ast_pattern:pat) => {{
+			let result = crate::ASTNode::from_string($source.to_owned(), $options);
+			let node = result.unwrap();
+			// AST matchers are partial expressions
+			let matches = ::match_deref::match_deref! {
+				match &node {
+					$ast_pattern => true,
+					_ => false,
+				}
+			};
+
+			if !matches {
+				panic!("{:#?} did not match {}", node, stringify!($ast_pattern));
+			}
+		}};
+
 		($source:literal, $ast_pattern:pat) => {{
-			let node = crate::ASTNode::from_string($source.to_owned(), Default::default()).unwrap();
+			let result = crate::ASTNode::from_string($source.to_owned(), Default::default());
+			let node = result.unwrap();
 			// AST matchers are partial expressions
 			let matches = ::match_deref::match_deref! {
 				match &node {

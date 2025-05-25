@@ -516,12 +516,16 @@ impl TypeAnnotation {
 
 		let start = reader.get_start();
 
-		let mut reference = if let Some(keyword) =
-			reader.is_one_of_keywords_advance(&["true", "false"])
-		{
-			TypeAnnotation::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
+		let mut reference = if reader.starts_with_number() {
+			let (value, length) = reader.parse_number_literal()?;
+			let position = start.with_length(length as usize);
+			Self::NumberLiteral(value, position)
 		} else if reader.is_keyword_advance("this") {
 			TypeAnnotation::This(start.with_length(4))
+		} else if reader.is_keyword_advance("true") {
+			TypeAnnotation::BooleanLiteral(true, start.with_length(4))
+		} else if reader.is_keyword_advance("false") {
+			TypeAnnotation::BooleanLiteral(false, start.with_length(5))
 		} else if reader.is_keyword_advance("infer") {
 			let name = reader.parse_identifier("infer name", false)?;
 			let (position, extends) = if reader.is_keyword_advance("extends") {
@@ -603,10 +607,6 @@ impl TypeAnnotation {
 				#[cfg(feature = "extras")]
 				name,
 			}
-		} else if reader.starts_with_number() {
-			let (value, length) = reader.parse_number_literal()?;
-			let position = start.with_length(length as usize);
-			Self::NumberLiteral(value, position)
 		} else if reader.is_operator_advance("-") {
 			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
@@ -1208,7 +1208,7 @@ mod tests {
 	#[test]
 	fn functions() {
 		assert_matches_ast!(
-			"T => T",
+			"T => T" with crate::ParseOptions { extra_type_annotations: true, ..Default::default() },
 			TypeAnnotation::FunctionLiteral {
 				type_parameters: None,
 				parameters: TypeAnnotationFunctionParameters {
