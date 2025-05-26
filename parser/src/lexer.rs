@@ -1174,10 +1174,6 @@ pub(crate) mod utilities {
 		Some(0)
 	}
 
-	pub fn get_after_operator<'a>(reader: &super::Lexer<'a>, item: &str) -> &'a str {
-		&reader.get_current()[item.len()..]
-	}
-
 	pub fn after_brackets(current: &str) -> &str {
 		use crate::Quoted;
 

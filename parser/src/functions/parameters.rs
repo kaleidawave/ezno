@@ -220,8 +220,10 @@ where
 
 					#[cfg(not(feature = "extras"))]
 					{
-						duplicate =
-							names.iter().any(|existing| name == &**existing).then_some(name);
+						duplicate = names
+							.iter()
+							.any(|existing| name == &**existing)
+							.then_some(name.clone());
 					}
 
 					if let Some(_duplicate) = duplicate {

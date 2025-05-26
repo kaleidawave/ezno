@@ -299,8 +299,8 @@ fn initialiser_to_string<T: source_map::ToString>(
 
 #[cfg(test)]
 mod tests {
-	use super::ForLoopCondition;
-	use crate::{assert_matches_ast, statements::ForLoopStatement, ASTNode};
+	use super::{ForLoopCondition, ForLoopStatement};
+	use crate::{assert_matches_ast, ASTNode};
 
 	#[test]
 	fn condition_without_variable_keyword() {

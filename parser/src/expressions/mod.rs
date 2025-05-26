@@ -1029,7 +1029,7 @@ impl Expression {
 						|| reader.get_current()[len as usize..]
 							.chars()
 							.next()
-							.is_some_and(|chr| crate::lexer::utilities::is_valid_identifier(chr))
+							.is_some_and(crate::lexer::utilities::is_valid_identifier)
 					{
 						return Ok(top);
 					}
@@ -1108,7 +1108,7 @@ impl Expression {
 						|| reader.get_current()[2..]
 							.chars()
 							.next()
-							.is_some_and(|chr| crate::lexer::utilities::is_valid_identifier(chr))
+							.is_some_and(crate::lexer::utilities::is_valid_identifier)
 					{
 						return Ok(top);
 					}
@@ -1127,7 +1127,7 @@ impl Expression {
 						|| reader.get_current()[10..]
 							.chars()
 							.next()
-							.is_some_and(|chr| crate::lexer::utilities::is_valid_identifier(chr))
+							.is_some_and(crate::lexer::utilities::is_valid_identifier)
 					{
 						return Ok(top);
 					}

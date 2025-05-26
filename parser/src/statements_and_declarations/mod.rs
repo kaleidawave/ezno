@@ -59,7 +59,7 @@ const TYPES_STATEMENT_FUNCTION: &str = r"
 // TODO strict mode can affect result
 // TODO reuse
 // Warning expects skip to have been called
-pub(crate) fn is_declaration_start(reader: &crate::Lexer) -> bool {
+pub(crate) fn _is_declaration_start(reader: &crate::Lexer) -> bool {
 	let declaration_keyword = reader.is_one_of_keywords(&[
 		"let",
 		"const",
@@ -399,10 +399,10 @@ impl ASTNode for StatementOrDeclaration {
 			StatementOrDeclaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::Enum(r#enum) => {
-				r#enum.to_string_from_buffer(buf, options, local)
+				r#enum.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::DeclareVariable(dvd) => {
-				dvd.to_string_from_buffer(buf, options, local)
+				dvd.to_string_from_buffer(buf, options, local);
 			}
 			#[cfg(feature = "full-typescript")]
 			StatementOrDeclaration::Namespace(ns) => ns.to_string_from_buffer(buf, options, local),
@@ -414,14 +414,14 @@ impl ASTNode for StatementOrDeclaration {
 			StatementOrDeclaration::Switch(ss) => ss.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::WhileLoop(ws) => ws.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::DoWhileLoop(dws) => {
-				dws.to_string_from_buffer(buf, options, local)
+				dws.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::TryCatch(tcs) => tcs.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::VarVariable(stmt) => {
-				stmt.to_string_from_buffer(buf, options, local)
+				stmt.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::WithStatement(stmt) => {
-				stmt.to_string_from_buffer(buf, options, local)
+				stmt.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Return(ReturnStatement(expression, _)) => {
 				buf.push_str("return");
@@ -540,19 +540,20 @@ impl StatementOrDeclaration {
 		)
 	}
 
+	#[allow(clippy::match_same_arms)]
 	pub fn is_declaration(&self) -> bool {
-		matches!(
-			self,
+		match self {
 			StatementOrDeclaration::Variable(_)
-				| StatementOrDeclaration::Function(_)
-				| StatementOrDeclaration::Class(_)
-				| StatementOrDeclaration::Enum(_)
-				| StatementOrDeclaration::Interface(_)
-				| StatementOrDeclaration::TypeAlias(_)
-				| StatementOrDeclaration::DeclareVariable(_)
-				| StatementOrDeclaration::Namespace(_)
-		)
-		// #[cfg(feature = "full-typescript")]
+			| StatementOrDeclaration::Function(_)
+			| StatementOrDeclaration::Class(_)
+			| StatementOrDeclaration::Enum(_)
+			| StatementOrDeclaration::Interface(_)
+			| StatementOrDeclaration::TypeAlias(_)
+			| StatementOrDeclaration::DeclareVariable(_) => true,
+			#[cfg(feature = "full-typescript")]
+			StatementOrDeclaration::Namespace(_) => true,
+			_ => false,
+		}
 	}
 }
 
