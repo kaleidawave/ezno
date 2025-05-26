@@ -1,23 +1,19 @@
 pub mod optimisations;
 
 use parser::{
-	declarations::VariableDeclarationKeyword, visiting::BlockItemMut, Declaration, Module,
-	StatementOrDeclaration,
+	statements_and_declarations::VariableDeclarationKeyword, Module, StatementOrDeclaration,
 };
 
 pub struct ConstToLet;
 
-impl parser::visiting::VisitorMut<BlockItemMut<'_>, ()> for ConstToLet {
+impl parser::visiting::VisitorMut<StatementOrDeclaration, ()> for ConstToLet {
 	fn visit_mut(
 		&mut self,
-		item: &mut BlockItemMut,
+		item: &mut StatementOrDeclaration,
 		_data: &mut (),
 		_chain: &parser::visiting::Chain,
 	) {
-		if let BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Declaration(
-			Declaration::Variable(variable_declaration),
-		)) = item
-		{
+		if let StatementOrDeclaration::Variable(variable_declaration) = item {
 			variable_declaration.kind = VariableDeclarationKeyword::Let;
 		}
 	}
@@ -25,9 +21,6 @@ impl parser::visiting::VisitorMut<BlockItemMut<'_>, ()> for ConstToLet {
 
 // Removes non import statements
 pub fn filter_imports(m: &mut Module) {
-	m.items = m
-		.items
-		.drain(..)
-		.filter(|p| matches!(p, StatementOrDeclaration::Declaration(Declaration::Import(..))))
-		.collect();
+	m.items =
+		m.items.drain(..).filter(|p| matches!(p, StatementOrDeclaration::Import(..))).collect();
 }

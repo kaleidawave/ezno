@@ -6,7 +6,7 @@ use parser::{
 		import::ImportedItems,
 		import_export::{ImportExportName, ImportExportPart, ImportOrExport},
 		variables::{VariableDeclaration, VariableDeclarationKeyword},
-		DeclareVariableDeclaration, ExportDeclaration, Statement, StatementOrDeclaration,
+		DeclareVariableDeclaration, ExportDeclaration, StatementOrDeclaration,
 	},
 	ASTNode, Decorated, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier,
 };
@@ -710,8 +710,6 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			_ => {}
-			StatementOrDeclaration::Imported { .. } | StatementOrDeclaration::Marker(_, _) => {}
 			_ => {}
 		}
 	}

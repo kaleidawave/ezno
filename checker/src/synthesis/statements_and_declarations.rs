@@ -20,7 +20,7 @@ use parser::{
 	statements_and_declarations::export::{ExportDeclaration, Exportable},
 	statements_and_declarations::variables::{VariableDeclaration, VariableDeclarationKeyword},
 	statements_and_declarations::StatementOrDeclaration,
-	ASTNode, BlockOrSingleStatement, Statement,
+	ASTNode, BlockOrSingleStatement,
 };
 
 use std::collections::HashMap;

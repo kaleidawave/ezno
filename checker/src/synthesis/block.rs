@@ -1,4 +1,4 @@
-use parser::{ASTNode, Statement, StatementOrDeclaration};
+use parser::{ASTNode, StatementOrDeclaration};
 
 use crate::{context::Environment, diagnostics::TypeCheckWarning, CheckingData};
 

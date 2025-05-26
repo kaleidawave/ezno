@@ -208,11 +208,7 @@ impl Visitable for BlockOrSingleStatement {
 			}
 			BlockOrSingleStatement::SingleStatement(s) => {
 				s.visit(visitors, data, options, chain);
-				visitors.visit_statement(
-					crate::visiting::BlockItem::SingleStatement(s),
-					data,
-					chain,
-				);
+				visitors.visit_statement(&s.0, data, chain);
 			}
 		}
 	}
@@ -230,11 +226,7 @@ impl Visitable for BlockOrSingleStatement {
 			}
 			BlockOrSingleStatement::SingleStatement(ref mut s) => {
 				s.visit_mut(visitors, data, options, chain);
-				visitors.visit_statement_mut(
-					crate::visiting::BlockItemMut::SingleStatement(s),
-					data,
-					chain,
-				);
+				visitors.visit_statement_mut(&mut s.0, data, chain);
 			}
 		}
 	}
