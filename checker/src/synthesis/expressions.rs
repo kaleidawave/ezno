@@ -1152,47 +1152,49 @@ fn operator_to_assignment_kind(
 	use parser::expressions::operators::BinaryAssignmentOperator;
 
 	match operator {
-		BinaryAssignmentOperator::LogicalAndAssign => {
+		BinaryAssignmentOperator::LogicalAnd => {
 			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::And)
 		}
-		BinaryAssignmentOperator::LogicalOrAssign => {
+		BinaryAssignmentOperator::LogicalOr => {
 			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::Or)
 		}
-		BinaryAssignmentOperator::LogicalNullishAssignment => AssignmentKind::ConditionalUpdate(
+		BinaryAssignmentOperator::NullCoalescing => AssignmentKind::ConditionalUpdate(
 			crate::features::operations::LogicalOperator::NullCoalescing,
 		),
-		BinaryAssignmentOperator::AddAssign
-		| BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
+		BinaryAssignmentOperator::Add => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Add)
 		}
-		BinaryAssignmentOperator::SubtractAssign => {
+		BinaryAssignmentOperator::Subtract => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Subtract)
 		}
-		BinaryAssignmentOperator::MultiplyAssign => {
+		BinaryAssignmentOperator::Multiply => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Multiply)
 		}
-		BinaryAssignmentOperator::DivideAssign => {
+		BinaryAssignmentOperator::Divide => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Divide)
 		}
-		BinaryAssignmentOperator::RemainderAssign => {
+		BinaryAssignmentOperator::Remainder => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Remainder)
 		}
-		BinaryAssignmentOperator::ExponentAssign => {
+		BinaryAssignmentOperator::Exponent => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Exponent)
 		}
-		BinaryAssignmentOperator::BitwiseShiftLeftAssign => {
+		BinaryAssignmentOperator::BitwiseShiftLeft => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftLeft)
 		}
-		BinaryAssignmentOperator::BitwiseShiftRightAssign => {
+		BinaryAssignmentOperator::BitwiseShiftRight => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftRight)
 		}
-		BinaryAssignmentOperator::BitwiseAndAssign => {
+		BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftRightUnsigned)
+		}
+		BinaryAssignmentOperator::BitwiseAnd => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseAnd)
 		}
-		BinaryAssignmentOperator::BitwiseXOrAssign => {
+		BinaryAssignmentOperator::BitwiseXOr => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseXOr)
 		}
-		BinaryAssignmentOperator::BitwiseOrAssign => {
+		BinaryAssignmentOperator::BitwiseOr => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseOr)
 		}
 	}

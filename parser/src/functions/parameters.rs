@@ -221,7 +221,7 @@ where
 					#[cfg(not(feature = "extras"))]
 					{
 						duplicate =
-							names.iter().any(|existing| &**existing == name).then_some(name);
+							names.iter().any(|existing| name == &**existing).then_some(name);
 					}
 
 					if let Some(_duplicate) = duplicate {

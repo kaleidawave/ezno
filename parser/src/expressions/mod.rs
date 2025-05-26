@@ -2322,14 +2322,12 @@ mod tests {
 		assert_matches_ast!(
 			"(45,2)",
 			Parenthesised(
-				Deref @ MultipleExpression(
-					BinaryOperation {
-						lhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(1, 3)),
-						operator: BinaryOperator::Comma,
-						rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
-						position: _,
-					},
-				),
+				Deref @ MultipleExpression(BinaryOperation {
+					lhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(1, 3)),
+					operator: BinaryOperator::Comma,
+					rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
+					position: _,
+				}),
 				span!(0, 6),
 			)
 		);
