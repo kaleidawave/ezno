@@ -1,9 +1,10 @@
-use crate::{block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression};
+use crate::{
+	block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression, ASTNode,
+	ParseResult, Span,
+};
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
-
-use super::{ASTNode, ParseResult, Span};
 
 /// A [if...else statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/if...else)
 #[apply(derive_ASTNode)]

@@ -17,13 +17,13 @@ pub use crate::expressions::ArrowFunction;
 
 pub mod bases {
 	pub use crate::{
-		declarations::{
-			classes::{ClassConstructorBase, ClassFunctionBase},
-			StatementFunctionBase,
-		},
 		expressions::{
 			arrow_function::ArrowFunctionBase, object_literal::ObjectLiteralMethodBase,
 			ExpressionFunctionBase,
+		},
+		statements_and_declarations::{
+			classes::{ClassConstructorBase, ClassFunctionBase},
+			StatementFunctionBase,
 		},
 	};
 }

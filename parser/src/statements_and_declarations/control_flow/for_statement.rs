@@ -1,11 +1,15 @@
 use crate::{
-	ast::MultipleExpression, block::BlockOrSingleStatement,
-	declarations::variable::VariableDeclaration, derive_ASTNode, ParseError, ParseErrors,
-	VariableField, VariableKeyword, WithComment,
+	ast::MultipleExpression,
+	block::BlockOrSingleStatement,
+	derive_ASTNode,
+	statements_and_declarations::variable::{
+		VarVariableStatement, VariableDeclaration, VariableField, VariableKeyword,
+	},
+	ParseError, ParseErrors, WithComment,
 };
 use visitable_derive::Visitable;
 
-use super::{ASTNode, Expression, ParseResult, Span, VarVariableStatement};
+use crate::{ASTNode, Expression, ParseResult, Span};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]

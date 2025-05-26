@@ -71,9 +71,8 @@ impl ASTNode for SwitchStatement {
 
 				if let (
 					false,
-					StatementOrDeclaration::Statement(
-						crate::Statement::AestheticSemiColon(..) | crate::Statement::Empty(..),
-					),
+					StatementOrDeclaration::AestheticSemiColon(..)
+					| StatementOrDeclaration::Empty(..),
 				) = (retain_blank_lines, &item)
 				{
 					continue;

@@ -247,11 +247,11 @@ mod ast {
 		crate::VariableIdentifier,
 		crate::PropertyReference,
 		crate::Quoted,
-		crate::declarations::import_export::ImportExportName,
-		crate::declarations::import_export::ImportLocation,
+		crate::statements_and_declarations::import_export::ImportExportName,
+		crate::statements_and_declarations::import_export::ImportLocation,
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
-		crate::VariableKeyword,
+		crate::statements_and_declarations::variable::VariableKeyword,
 		source_map::SourceId
 	];
 }

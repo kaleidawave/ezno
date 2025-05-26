@@ -1,12 +1,46 @@
 use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
-
-use crate::{
-	derive_ASTNode, ASTNode, Expression, ParseResult, Span, TypeAnnotation, VariableField,
-	WithComment,
-};
 use visitable_derive::Visitable;
+
+/// re-export
+pub use crate::VariableField;
+use crate::{
+	derive_ASTNode, ASTNode, Expression, ParseError, ParseResult, Span, TypeAnnotation, WithComment,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[apply(derive_ASTNode)]
+pub enum VariableKeyword {
+	Const,
+	Let,
+	Var,
+}
+
+impl VariableKeyword {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		if reader.is_keyword_advance("const") {
+			Ok(Self::Const)
+		} else if reader.is_keyword_advance("let") {
+			Ok(Self::Let)
+		} else if reader.is_keyword_advance("var") {
+			Ok(Self::Var)
+		} else {
+			let error =
+				crate::lexer::utilities::expected_one_of_items(reader, &["const", "let", "var"]);
+			Err(error)
+		}
+	}
+
+	#[must_use]
+	pub fn as_str(&self) -> &str {
+		match self {
+			Self::Const => "const ",
+			Self::Let => "let ",
+			Self::Var => "var ",
+		}
+	}
+}
 
 /// Represents a name =
 #[apply(derive_ASTNode)]
@@ -212,5 +246,63 @@ pub(crate) fn declarations_to_string<T: source_map::ToString>(
 				options.push_gap_optionally(buf);
 			}
 		}
+	}
+}
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[get_field_by_type_target(Span)]
+pub struct VarVariableStatement {
+	pub declarations: Vec<VariableDeclarationItem>,
+	pub position: Span,
+}
+
+impl ASTNode for VarVariableStatement {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		let _ = reader.expect_keyword("var")?;
+		let mut declarations = Vec::new();
+		loop {
+			let value = VariableDeclarationItem::from_reader(reader)?;
+			if value.expression.is_none()
+				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
+			{
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::DestructuringRequiresValue,
+					value.name.get_ast_ref().get_position(),
+				));
+			}
+			declarations.push(value);
+			if !reader.is_operator_advance(",") {
+				break;
+			}
+		}
+
+		let position = if let Some(last) = declarations.last() {
+			start.union(last.get_position())
+		} else {
+			let position = start.with_length(3);
+			if reader.get_options().partial_syntax {
+				position
+			} else {
+				return Err(ParseError::new(crate::ParseErrors::ExpectedDeclaration, position));
+			}
+		};
+
+		Ok(VarVariableStatement { declarations, position })
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		buf.push_str("var ");
+		declarations_to_string(&self.declarations, buf, options, local, false);
 	}
 }

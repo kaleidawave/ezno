@@ -1,104 +1,10 @@
-use super::{ASTNode, Span};
 use derive_enum_from_into::EnumFrom;
 use iterator_endiate::EndiateIteratorExt;
-use visitable_derive::Visitable;
 
 use crate::{
-	declarations::{export::Exportable, ExportDeclaration},
-	derive_ASTNode,
-	marker::MARKER,
-	Declaration, Decorated, Marker, ParseResult, Statement, VisitOptions, Visitable,
+	derive_ASTNode, ASTNode, ParseResult, Span, Statement, StatementOrDeclaration, VisitOptions,
+	Visitable,
 };
-
-#[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType, EnumFrom)]
-#[get_field_by_type_target(Span)]
-#[visit_self(under = statement)]
-pub enum StatementOrDeclaration {
-	Statement(Statement),
-	Declaration(Declaration),
-	/// For bundling,
-	Imported {
-		moved: Box<StatementOrDeclaration>,
-		/// from the import statement
-		originally: Span,
-		from: source_map::SourceId,
-	},
-	/// TODO under cfg
-	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
-	Marker(#[visit_skip_field] Marker<Statement>, Span),
-}
-
-impl StatementOrDeclaration {
-	pub(crate) fn requires_semi_colon(&self) -> bool {
-		// TODO maybe more?
-		match self {
-			Self::Statement(stmt) => stmt.requires_semi_colon(),
-			Self::Declaration(dec) => matches!(
-				dec,
-				Declaration::Variable(..)
-					| Declaration::DeclareVariable(..)
-					| Declaration::Export(Decorated {
-						on: ExportDeclaration::Default { .. }
-							| ExportDeclaration::Item {
-								exported: Exportable::ImportAll { .. }
-									| Exportable::ImportParts { .. }
-									| Exportable::Parts { .. },
-								..
-							},
-						..
-					}) | Declaration::Import(..)
-					| Declaration::TypeAlias(..)
-			),
-			Self::Imported { moved, .. } => moved.requires_semi_colon(),
-			Self::Marker(..) => false,
-		}
-	}
-}
-
-impl ASTNode for StatementOrDeclaration {
-	fn get_position(&self) -> Span {
-		*get_field_by_type::GetFieldByType::get(self)
-	}
-
-	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		if reader.get_options().interpolation_points && reader.is_keyword_advance(MARKER) {
-			// TODO Start::reverse
-			let start = source_map::Start(reader.get_start().0 - MARKER.len() as u32);
-			let span = start.with_length(0);
-			let marker_id = reader.new_partial_point_marker(span);
-			Ok(Self::Marker(marker_id, span))
-		} else if Declaration::is_declaration_start(reader) {
-			let dec = Declaration::from_reader(reader)?;
-			Ok(Self::Declaration(dec))
-		} else {
-			let stmt = Statement::from_reader(reader)?;
-			Ok(Self::Statement(stmt))
-		}
-	}
-
-	fn to_string_from_buffer<T: source_map::ToString>(
-		&self,
-		buf: &mut T,
-		options: &crate::ToStringOptions,
-		local: crate::LocalToStringInformation,
-	) {
-		match self {
-			StatementOrDeclaration::Statement(item) => {
-				item.to_string_from_buffer(buf, options, local);
-			}
-			StatementOrDeclaration::Declaration(item) => {
-				item.to_string_from_buffer(buf, options, local);
-			}
-			StatementOrDeclaration::Marker(_, _) => {
-				assert!(options.expect_markers, "Unexpected marker in AST");
-			}
-			StatementOrDeclaration::Imported { moved, from, originally: _ } => {
-				moved.to_string_from_buffer(buf, options, local.change_source(*from));
-			}
-		}
-	}
-}
 
 /// A "block" of braced statements and declarations
 #[apply(derive_ASTNode)]
@@ -247,15 +153,14 @@ impl ASTNode for BlockOrSingleStatement {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let stmt = Statement::from_reader(reader)?;
-		Ok(match stmt {
-			Statement::Block(blk) => Self::Braced(blk),
-			stmt => {
-				if stmt.requires_semi_colon() {
-					reader.expect_semi_colon()?;
-				}
-				Box::new(stmt).into()
+		if let StatementOrDeclaration::Block(blk) = stmt.0 {
+			Ok(Self::Braced(blk))
+		} else {
+			if stmt.0.requires_semi_colon() {
+				reader.expect_semi_colon()?;
 			}
-		})
+			Ok(Self::SingleStatement(Box::new(stmt)))
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -272,7 +177,7 @@ impl ASTNode for BlockOrSingleStatement {
 				block.to_string_from_buffer(buf, options, local);
 			}
 			BlockOrSingleStatement::SingleStatement(statement) => {
-				if let Statement::Empty(..) = &**statement {
+				if let StatementOrDeclaration::Empty(..) = statement.0 {
 					buf.push(';');
 				} else if options.pretty && !options.single_statement_on_new_line {
 					buf.push_new_line();
@@ -280,7 +185,7 @@ impl ASTNode for BlockOrSingleStatement {
 					statement.to_string_from_buffer(buf, options, local.next_level());
 				} else {
 					statement.to_string_from_buffer(buf, options, local);
-					if statement.requires_semi_colon() {
+					if statement.0.requires_semi_colon() {
 						buf.push(';');
 					}
 				}
@@ -343,9 +248,7 @@ impl From<Statement> for BlockOrSingleStatement {
 
 impl From<crate::Expression> for StatementOrDeclaration {
 	fn from(expr: crate::Expression) -> Self {
-		StatementOrDeclaration::Statement(Statement::Expression(
-			crate::expressions::MultipleExpression::from(expr),
-		))
+		StatementOrDeclaration::Expression(crate::expressions::MultipleExpression::from(expr))
 	}
 }
 
@@ -370,16 +273,14 @@ pub(crate) fn statements_and_declarations_from_reader(
 				let start = reader.get_start().0;
 				let end = reader.get_end().0;
 				let span = Span { start, end, source: () };
-				items.push(StatementOrDeclaration::Statement(Statement::Empty(span)));
+				items.push(StatementOrDeclaration::Empty(span));
 			}
 		}
 
 		let item = StatementOrDeclaration::from_reader(reader)?;
 
 		// Skip emptyies at the start
-		if let (true, StatementOrDeclaration::Statement(Statement::Empty(..))) =
-			(items.is_empty(), &item)
-		{
+		if let (true, StatementOrDeclaration::Empty(..)) = (items.is_empty(), &item) {
 			continue;
 		}
 
@@ -401,8 +302,8 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	let mut last_was_empty = false;
 	for (at_end, item) in items.iter().endiate() {
 		if !options.pretty {
-			if let StatementOrDeclaration::Statement(Statement::Expression(
-				crate::expressions::MultipleExpression(crate::Expression::Null(..)),
+			if let StatementOrDeclaration::Expression(crate::expressions::MultipleExpression(
+				crate::Expression::Null(..),
 			)) = item
 			{
 				continue;
@@ -411,9 +312,8 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 
 		if options.pretty {
 			// Don't print more than two lines in a row
-			if let StatementOrDeclaration::Statement(
-				Statement::AestheticSemiColon(_) | Statement::Empty(_),
-			) = item
+			if let StatementOrDeclaration::AestheticSemiColon(_)
+			| StatementOrDeclaration::Empty(_) = item
 			{
 				if last_was_empty {
 					continue;
@@ -424,14 +324,12 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			}
 		}
 
-		if let (false, StatementOrDeclaration::Declaration(dec)) =
-			(options.include_type_annotations, item)
-		{
-			match dec {
-				Declaration::Function(item) if item.on.name.is_declare => {
+		if !options.include_type_annotations {
+			match item {
+				StatementOrDeclaration::Function(item) if item.on.name.is_declare => {
 					continue;
 				}
-				Declaration::Class(item) if item.on.name.is_declare => {
+				StatementOrDeclaration::Class(item) if item.on.name.is_declare => {
 					continue;
 				}
 				_ => {}

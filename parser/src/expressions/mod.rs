@@ -1,6 +1,6 @@
 use crate::{
-	are_nodes_over_length, bracketed_items_from_reader, bracketed_items_to_string,
-	declarations::ClassDeclaration, derive_ASTNode, functions, number::NumberRepresentation,
+	are_nodes_over_length, bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
+	functions, number::NumberRepresentation, statements_and_declarations::ClassDeclaration,
 	ExpressionPosition, ListItem, Marker, ParseErrors, ParseResult, Quoted,
 };
 
@@ -43,7 +43,7 @@ use operators::{
 pub type ExpressionFunctionBase = functions::GeneralFunctionBase<ExpressionPosition>;
 pub type ExpressionFunction = FunctionBase<ExpressionFunctionBase>;
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 
 /// Expression structures
 ///
@@ -493,7 +493,7 @@ impl Expression {
 						if reader.is_keyword_advance("source") {
 							reader.expect('(')?;
 							let location =
-								crate::declarations::import_export::ImportLocation::from_reader(
+								crate::statements_and_declarations::import_export::ImportLocation::from_reader(
 									reader,
 								)?;
 							reader.expect(')')?;
@@ -2021,7 +2021,7 @@ pub enum ImportExpression {
 	/// [Proposal](https://github.com/tc39/proposal-source-phase-imports)
 	#[cfg(feature = "extras")]
 	ImportSource {
-		location: crate::declarations::import_export::ImportLocation,
+		location: crate::statements_and_declarations::import_export::ImportLocation,
 		position: Span,
 	},
 	DynamicImport {

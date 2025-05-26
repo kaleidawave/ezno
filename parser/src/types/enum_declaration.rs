@@ -1,4 +1,6 @@
-use crate::{declarations::classes::ClassMember, derive_ASTNode, ASTNode, Expression};
+use crate::{
+	derive_ASTNode, statements_and_declarations::classes::ClassMember, ASTNode, Expression,
+};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;

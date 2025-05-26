@@ -45,7 +45,7 @@ pub enum Exportable {
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
 	EnumDeclaration(EnumDeclaration),
-	VarStatement(crate::statements::VarVariableStatement),
+	VarStatement(crate::statements_and_declarations::variable::VarVariableStatement),
 	#[cfg(feature = "full-typescript")]
 	Namespace(crate::types::namespace::Namespace),
 	Parts(Vec<ImportExportPart<ExportDeclaration>>),
@@ -173,7 +173,10 @@ impl ASTNode for ExportDeclaration {
 				position,
 			})
 		} else if reader.is_keyword("var") {
-			let var_stmt = crate::statements::VarVariableStatement::from_reader(reader)?;
+			let var_stmt =
+				crate::statements_and_declarations::variable::VarVariableStatement::from_reader(
+					reader,
+				)?;
 			let position = start.union(var_stmt.get_position());
 			Ok(ExportDeclaration::Item { exported: Exportable::VarStatement(var_stmt), position })
 		} else if reader.is_keyword("interface") {
