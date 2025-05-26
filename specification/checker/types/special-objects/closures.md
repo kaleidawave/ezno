@@ -1,0 +1,1 @@
+> Not an object, more of partially applied generic

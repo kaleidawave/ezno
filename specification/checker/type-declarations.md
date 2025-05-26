@@ -1,0 +1,1 @@
+inferfaces, casts, satisfies, non-null assertions, generics, non-existant etc, generics extends, extends, cyclic type alias, template literal type, infer, edge cases, declare functiom, aliases

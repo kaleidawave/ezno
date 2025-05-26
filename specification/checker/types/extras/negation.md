@@ -1,0 +1,1 @@
+We check disjoint > #TODO copy-notes

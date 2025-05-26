@@ -1,0 +1,1 @@
+Generics are "parameters" for types allow abstraction. This abstraction allows us to define more abstract structures and reduce the amount of written definitions.

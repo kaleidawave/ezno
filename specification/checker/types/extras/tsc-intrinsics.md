@@ -1,0 +1,3 @@
+- Uppercase etc
+- NoInfer
+- Readonly > #TODO check

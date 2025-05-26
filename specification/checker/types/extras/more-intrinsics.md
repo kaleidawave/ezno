@@ -1,0 +1,3 @@
+- Literal
+- Exact #TODO named exclusive?
+- CaseInsenstive (reason for adding)
