@@ -6,7 +6,7 @@ use crate::{
 
 use super::{
 	super::{
-		variable::VariableDeclaration, ClassDeclaration, InterfaceDeclaration, StatementFunction,
+		variables::VariableDeclaration, ClassDeclaration, InterfaceDeclaration, StatementFunction,
 		TypeAlias,
 	},
 	ImportExportPart, ImportLocation,
@@ -45,7 +45,7 @@ pub enum Exportable {
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
 	EnumDeclaration(EnumDeclaration),
-	VarStatement(crate::statements_and_declarations::variable::VarVariableStatement),
+	VarStatement(crate::statements_and_declarations::variables::VarVariableStatement),
 	#[cfg(feature = "full-typescript")]
 	Namespace(crate::types::namespace::Namespace),
 	Parts(Vec<ImportExportPart<ExportDeclaration>>),
@@ -174,7 +174,7 @@ impl ASTNode for ExportDeclaration {
 			})
 		} else if reader.is_keyword("var") {
 			let var_stmt =
-				crate::statements_and_declarations::variable::VarVariableStatement::from_reader(
+				crate::statements_and_declarations::variables::VarVariableStatement::from_reader(
 					reader,
 				)?;
 			let position = start.union(var_stmt.get_position());

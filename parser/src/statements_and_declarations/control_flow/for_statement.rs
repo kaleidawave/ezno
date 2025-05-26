@@ -2,7 +2,7 @@ use crate::{
 	ast::MultipleExpression,
 	block::BlockOrSingleStatement,
 	derive_ASTNode,
-	statements_and_declarations::variable::{
+	statements_and_declarations::variables::{
 		VarVariableStatement, VariableDeclaration, VariableField, VariableKeyword,
 	},
 	ParseError, ParseErrors, WithComment,

@@ -1,7 +1,7 @@
 pub mod classes;
 pub mod control_flow;
 pub mod import_export;
-pub mod variable;
+pub mod variables;
 pub mod with_statement;
 
 pub use import_export::{export, import};
@@ -36,7 +36,7 @@ pub use control_flow::while_statement::{DoWhileStatement, WhileStatement};
 pub use classes::ClassDeclaration;
 pub use export::ExportDeclaration;
 pub use import::ImportDeclaration;
-pub use variable::{
+pub use variables::{
 	VarVariableStatement, VariableDeclaration, VariableDeclarationItem, VariableDeclarationKeyword,
 };
 

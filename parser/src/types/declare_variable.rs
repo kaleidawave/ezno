@@ -1,6 +1,6 @@
 use crate::{
 	derive_ASTNode,
-	statements_and_declarations::variable::{VariableDeclarationItem, VariableKeyword},
+	statements_and_declarations::variables::{VariableDeclarationItem, VariableKeyword},
 	ASTNode, Decorator, ParseResult, Span,
 };
 
@@ -35,7 +35,7 @@ impl ASTNode for DeclareVariableDeclaration {
 		if options.include_type_annotations {
 			buf.push_str("declare ");
 			buf.push_str(self.keyword.as_str());
-			crate::statements_and_declarations::variable::declarations_to_string(
+			crate::statements_and_declarations::variables::declarations_to_string(
 				&self.declarations,
 				buf,
 				options,

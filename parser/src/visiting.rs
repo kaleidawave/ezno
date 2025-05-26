@@ -251,7 +251,7 @@ mod ast {
 		crate::statements_and_declarations::import_export::ImportLocation,
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
-		crate::statements_and_declarations::variable::VariableKeyword,
+		crate::statements_and_declarations::variables::VariableKeyword,
 		source_map::SourceId
 	];
 }
