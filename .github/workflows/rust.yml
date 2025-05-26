@@ -350,7 +350,7 @@ jobs:
       - name: Check for TODO comments
         # TODO can we label these somehow?
         run: | 
-          rg '(TODO|todo\!|#\[ignore\])'
+          rg '(TODO|todo\!|#\[ignore\]|dbg\!)'
 
   publish-ability:
     # TODO only need to do for `.toml` file changes

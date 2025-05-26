@@ -78,11 +78,17 @@ jobs:
           if [ -d "bin2cmp" ]; then
             echo "::notice::Comparing against main branch"
             echo "BINARIES=bin2cmp/current,bin2cmp/main" >> "$GITHUB_OUTPUT"
-            echo "BINARY=bin2cmp/current" >> "$GITHUB_OUTPUT"
+            echo "BINARY=./bin2cmp/current" >> "$GITHUB_OUTPUT"
             else
             echo "BINARIES=./target/release/ezno" >> "$GITHUB_OUTPUT"
             echo "BINARY=./target/release/ezno" >> "$GITHUB_OUTPUT"
           fi
+
+      # TODO temp
+      - name: Testing the binary
+        continue-on-error: true
+        shell: bash
+        run: ${{ steps.compilers.outputs.BINARY }} info
 
       - name: Run checker performance
         id: performance
@@ -95,6 +101,7 @@ jobs:
 
           echo "<details>
           <summary>Input</summary>
+
           \`\`\`tsx
           $(cat ./demo.tsx)
           \`\`\`
@@ -114,6 +121,7 @@ jobs:
 
           echo "<details>
           <summary>Diagnostics</summary>
+
           \`\`\`
           $diagnostics
           \`\`\`
@@ -129,24 +137,27 @@ jobs:
           statistics: ${{ steps.performance.outputs.statistics }}
         run: |
           if [ -d "bin2cmp" ]; then
-            OUT=$(bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+            OUT=$(./bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
             $main_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
             echo "
             <details>
             <summary>Statistics</summary>
+
+            current
             \`\`\`
             $statistics
             \`\`\`
-            against main
+
+            main
             \`\`\`
             $main_statistics
             \`\`\`
-            against main
             </details>
             " >> $GITHUB_STEP_SUMMARY
           else
             echo "<details>
             <summary>Statistics</summary>
+
             \`\`\`
             $statistics
             \`\`\`
@@ -161,7 +172,7 @@ jobs:
           curl \
             --header "Content-Type: application/json" \
             --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
-            --data "{\"project\":\"$project\",\"ref\":\"$ref\",\"branch\":\"$branch\",\"data\":\"$statistics\""}" \
+            --data "{\"project\":\"$project\",\"ref\":\"$ref\",\"branch\":\"$branch\",\"data\":\"$statistics\"}" \
             https://kaleidawave--1dcc8e5438ae11f08e309e149126039e.web.val.run
 
       # - name: Run checker performance w/staging
