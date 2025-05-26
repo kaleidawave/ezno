@@ -79,7 +79,9 @@ pub enum ParseErrors<'a> {
 		location: &'static str,
 	},
 	ExpectedNumberLiteral,
-	NonStandardSyntaxUsedWithoutEnabled,
+	NonStandardSyntaxUsedWithoutEnabled {
+		syntax: &'static str,
+	},
 	ExpectedRule,
 	ExpectedJSXAttribute,
 	InvalidRegexFlag,
@@ -140,8 +142,8 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ClosingTagDoesNotMatch { tag_name: expected, closing_tag_name: found } => {
 				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")
 			}
-			ParseErrors::NonStandardSyntaxUsedWithoutEnabled => {
-				write!(f, "Cannot use this syntax without flag enabled")
+			ParseErrors::NonStandardSyntaxUsedWithoutEnabled { syntax } => {
+				write!(f, "Cannot use '{syntax}' syntax without flag enabled")
 			}
 			ParseErrors::ExpectedStringLiteral { found } => {
 				write!(f, "Expected string literal, found {found:?}")

@@ -610,24 +610,27 @@ impl Expression {
 				UnaryPostfixAssignmentOperator(IncrementOrDecrement::Decrement)
 			),
 			"+" => AfterFirst::BinaryOperator(BinaryOperator::Add),
-			"+=" => AfterFirst::BinaryAssignmentOperation(BinaryAssignmentOperator::Add),
+			"+=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Add),
 			"-" => AfterFirst::BinaryOperator(BinaryOperator::Subtract),
-			"-=" => AfterFirst::BinaryAssignmentOperation(BinaryAssignmentOperator::Subtract),
+			"-=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Subtract),
 			"*" => AfterFirst::BinaryOperator(BinaryOperator::Multiply),
-			"*=" => AfterFirst::BinaryAssignmentOperation(BinaryAssignmentOperator::Multiply),
+			"*=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Multiply),
 			"/" => AfterFirst::BinaryOperator(BinaryOperator::Divide),
-			"/=" => AfterFirst::BinaryAssignmentOperation(BinaryAssignmentOperator::Divide),
-			"**" => AfterFirst::BinaryOperator(BinaryOperator::Exponent),
-			"**=" => AfterFirst::BinaryAssignmentOperation(BinaryAssignmentOperator::Exponent),
+			"/=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Divide),
 			"%" => AfterFirst::BinaryOperator(BinaryOperator::Remainder),
-			"%=" => AfterFirst::BinaryAssignmentOperation(BinaryAssignmentOperator::Remainder),
+			"%=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Remainder),
+			"**" => AfterFirst::BinaryOperator(BinaryOperator::Exponent),
+			"**=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Exponent),
 			"??" => AfterFirst::BinaryOperator(BinaryOperator::NullCoalescing),
-			"??=" => AfterFirst::BinaryAssignmentOperation(BinaryAssignmentOperator::NullCoalescing),
+			"??=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::NullCoalescing),
 			"&&" => AfterFirst::BinaryOperator(BinaryOperator::LogicalAnd),
 			"&&=" => AfterFirst::BinaryOperator(BinaryOperator::LogicalAnd),
 			"||" => AfterFirst::BinaryOperator(BinaryOperator::LogicalOr),
+			"||=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::LogicalOr),
 			"&" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseAnd),
+			"&=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseAnd),
 			"|" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseOr),
+			"|=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseOr),
 			"^" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseXOr),
 			"," => AfterFirst::BinaryOperator(BinaryOperator::Comma),
 			"<" => AfterFirst::BinaryOperator(BinaryOperator::LessThan),
@@ -635,14 +638,17 @@ impl Expression {
 			"<=" => AfterFirst::BinaryOperator(BinaryOperator::LessThanEqual),
 			">=" => AfterFirst::BinaryOperator(BinaryOperator::GreaterThanEqual),
 			"<<" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftLeft),
+			"<<=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftLeft),
 			">>" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRight),
+			">>=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftRight),
 			">>>" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRightUnsigned),
+			">>>=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftRightUnsigned),
 			"==" => AfterFirst::BinaryOperator(BinaryOperator::Equal),
 			"===" => AfterFirst::BinaryOperator(BinaryOperator::StrictEqual),
 			"!=" => AfterFirst::BinaryOperator(BinaryOperator::NotEqual),
 			"!==" => AfterFirst::BinaryOperator(BinaryOperator::StrictNotEqual),
 			"." => AfterFirst::PropertyAccess { optional: false } ,
-			".?" => AfterFirst::PropertyAccess { optional: true } ,
+			"?." => AfterFirst::PropertyAccess { optional: true } ,
 			"[" => AfterFirst::Index { optional: false },
 			"?.[" => AfterFirst::Index { optional: true },
 			"(" => AfterFirst::FunctionCall { optional: false },
@@ -662,14 +668,14 @@ impl Expression {
 		#[cfg_attr(feature = "extras", automaton_mappings(
 			"<@>" => AfterFirst::BinaryOperator(BinaryOperator::Compose),
 			"|>" => AfterFirst::BinaryOperator(BinaryOperator::Pipe),
-			"is" => AfterFirst::BinaryOperator(BinaryOperator::Pipe),
+			"is" => AfterFirst::Is,
 		))]
 		enum AfterFirst {
 			SingleLineComment,
 			MultiLineComment,
 			UnaryPostfixAssignmentOperator(UnaryPostfixAssignmentOperator),
 			BinaryOperator(BinaryOperator),
-			BinaryAssignmentOperation(BinaryAssignmentOperator),
+			BinaryAssignmentOperator(BinaryAssignmentOperator),
 			Assign,
 			TemplateLiteralStart,
 			FunctionCall { optional: bool },
@@ -752,7 +758,7 @@ impl Expression {
 						|| after.is_empty();
 
 					if expresion_level_comment {
-						let is_multiline = matches!(c, AfterFirst::SingleLineComment);
+						let is_multiline = matches!(c, AfterFirst::MultiLineComment);
 						reader.advance(2);
 						let content = reader.parse_comment_literal(is_multiline)?.to_owned();
 						let position = top.get_position().union(reader.get_end());
@@ -798,7 +804,9 @@ impl Expression {
 						let position =
 							source_map::Start(reader.get_end().0).with_length(operator_len);
 						return Err(ParseError::new(
-							ParseErrors::NonStandardSyntaxUsedWithoutEnabled,
+							ParseErrors::NonStandardSyntaxUsedWithoutEnabled {
+								syntax: operator.to_str(),
+							},
 							position,
 						));
 					}
@@ -812,7 +820,7 @@ impl Expression {
 						rhs: Box::new(rhs),
 					};
 				}
-				AfterFirst::BinaryAssignmentOperation(operator) => {
+				AfterFirst::BinaryAssignmentOperator(operator) => {
 					if operator
 						.associativity_direction()
 						.should_return(return_precedence, operator.precedence())
@@ -1007,23 +1015,31 @@ impl Expression {
 				}
 				// TODO extras here etc
 				c @ (AfterFirst::As | AfterFirst::Satisfies | AfterFirst::Is) => {
-					if AssociativityDirection::LeftToRight
-						.should_return(return_precedence, RELATION_PRECEDENCE)
-					{
-						return Ok(top);
-					}
-
-					reader.advance(match c {
+					#[allow(clippy::match_same_arms)]
+					let len: u32 = match c {
 						AfterFirst::As => 2,
 						AfterFirst::Satisfies => 9,
 						AfterFirst::Is => 2,
 						_ => unreachable!(),
-					});
+					};
+					// TODO `reader.get_current()[len as usize..]` temp fix
+					// should add a feature in `derive finite automaton` to discern word boundaries
+					if AssociativityDirection::LeftToRight
+						.should_return(return_precedence, RELATION_PRECEDENCE)
+						|| reader.get_current()[len as usize..]
+							.chars()
+							.next()
+							.is_some_and(|chr| crate::lexer::utilities::is_valid_identifier(chr))
+					{
+						return Ok(top);
+					}
+
 					let top_position = top.get_position();
 
 					let (special_operators, rhs_position): (SpecialOperators, Span) = match c {
 						#[cfg(feature = "full-typescript")]
 						AfterFirst::As => {
+							reader.advance(2);
 							let start = reader.get_start();
 							let (rhs, rhs_position) = if reader.is_keyword_advance("const") {
 								let position = start.with_length("const".len());
@@ -1040,6 +1056,7 @@ impl Expression {
 						}
 						#[cfg(feature = "full-typescript")]
 						AfterFirst::Satisfies => {
+							reader.advance(9);
 							let type_annotation = TypeAnnotation::from_reader_with_precedence(
 								reader,
 								crate::types::type_annotations::TypeOperatorKind::Query,
@@ -1062,7 +1079,7 @@ impl Expression {
 									position,
 								));
 							}
-
+							reader.advance(2);
 							let type_annotation = TypeAnnotation::from_reader_with_precedence(
 								reader,
 								crate::types::type_annotations::TypeOperatorKind::Query,
@@ -1088,6 +1105,10 @@ impl Expression {
 				AfterFirst::In => {
 					if AssociativityDirection::LeftToRight
 						.should_return(return_precedence, RELATION_PRECEDENCE)
+						|| reader.get_current()[2..]
+							.chars()
+							.next()
+							.is_some_and(|chr| crate::lexer::utilities::is_valid_identifier(chr))
 					{
 						return Ok(top);
 					}
@@ -1103,6 +1124,10 @@ impl Expression {
 				AfterFirst::InstanceOf => {
 					if AssociativityDirection::LeftToRight
 						.should_return(return_precedence, RELATION_PRECEDENCE)
+						|| reader.get_current()[10..]
+							.chars()
+							.next()
+							.is_some_and(|chr| crate::lexer::utilities::is_valid_identifier(chr))
 					{
 						return Ok(top);
 					}
@@ -1813,6 +1838,7 @@ impl MultipleExpression {
 		self.to_string_from_buffer(buf, options, local);
 	}
 
+	#[must_use]
 	pub fn get_inner(&self) -> &Expression {
 		&self.0
 	}

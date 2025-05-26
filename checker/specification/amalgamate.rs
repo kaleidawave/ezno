@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let module = match Module::from_string(code.clone(), Default::default()) {
 				Ok(module) => module,
 				Err(err) => {
-					return Err(From::from(format!("Parse error on {code}: {err:?}")));
+					return Err(From::from(format!("Parse error on {code}\nRecieved:{err:?}")));
 				}
 			};
 
