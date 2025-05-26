@@ -1,6 +1,6 @@
 use parser::{
-	declarations::{classes::ClassMember, ClassDeclaration},
 	functions::MethodHeader,
+	statements_and_declarations::classes::{ClassDeclaration, ClassMember},
 	ASTNode, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
 };
 

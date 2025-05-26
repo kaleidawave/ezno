@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 
 use parser::{
-	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField, Expression,
-	ObjectDestructuringField, SpreadDestructuringField, VariableField, VariableIdentifier,
+	statements_and_declarations::variables::VariableDeclarationItem, ASTNode,
+	ArrayDestructuringField, Expression, ObjectDestructuringField, SpreadDestructuringField,
+	VariableField, VariableIdentifier,
 };
 
 use super::expressions::synthesise_expression;

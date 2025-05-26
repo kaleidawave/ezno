@@ -6,7 +6,6 @@
 mod assignments;
 pub mod block;
 pub mod classes;
-pub mod declarations;
 pub mod definitions;
 pub mod expressions;
 mod extensions;
@@ -14,7 +13,7 @@ pub mod functions;
 pub mod hoisting;
 pub mod interactive;
 pub mod interfaces;
-pub mod statements;
+pub mod statements_and_declarations;
 pub mod type_annotations;
 pub mod variables;
 
@@ -31,9 +30,9 @@ use crate::{
 };
 
 use self::{
-	declarations::synthesise_variable_declaration, expressions::synthesise_expression,
-	hoisting::hoist_variable_declaration, type_annotations::synthesise_type_annotation,
-	variables::register_variable,
+	expressions::synthesise_expression, hoisting::hoist_variable_declaration,
+	statements_and_declarations::synthesise_variable_declaration,
+	type_annotations::synthesise_type_annotation, variables::register_variable,
 };
 
 pub struct EznoParser;
@@ -55,7 +54,7 @@ impl crate::ASTImplementation for EznoParser {
 
 	type VariableField<'_a> = parser::VariableField;
 
-	type ForStatementInitiliser<'_a> = parser::statements::ForLoopStatementInitialiser;
+	type ForStatementInitiliser<'_a> = parser::statements_and_declarations::control_flow::for_statement::ForLoopStatementInitialiser;
 
 	fn module_from_string(
 		// TODO remove
@@ -173,8 +172,9 @@ impl crate::ASTImplementation for EznoParser {
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
+		use parser::statements_and_declarations::ForLoopStatementInitialiser;
 		match for_loop_initialiser {
-			parser::statements::ForLoopStatementInitialiser::VariableDeclaration(declaration) => {
+			ForLoopStatementInitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
 				synthesise_variable_declaration(
@@ -186,13 +186,13 @@ impl crate::ASTImplementation for EznoParser {
 					checking_data.options.infer_sensible_constraints_in_for_loops,
 				);
 			}
-			parser::statements::ForLoopStatementInitialiser::VarStatement(stmt) => {
+			ForLoopStatementInitialiser::VarStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
 					"var in for statement initiliser",
 					stmt.get_position().with_source(environment.get_source()),
 				);
 			}
-			parser::statements::ForLoopStatementInitialiser::Expression(expr) => {
+			ForLoopStatementInitialiser::Expression(expr) => {
 				checking_data.raise_unimplemented_error(
 					"expression as for statement initiliser",
 					expr.get_position().with_source(environment.get_source()),

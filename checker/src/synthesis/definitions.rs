@@ -1,6 +1,6 @@
 use parser::{
 	ast::{export::Exportable, ExportDeclaration},
-	ASTNode, Declaration, Decorated, Expression, StatementOrDeclaration,
+	ASTNode, Decorated, Expression, StatementOrDeclaration,
 };
 use source_map::SourceId;
 
@@ -24,13 +24,11 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	super::hoisting::hoist_statements(&definition.items, &mut environment, checking_data);
 
 	for item in &definition.items {
-		if let StatementOrDeclaration::Declaration(
-			Declaration::Class(Decorated { on: class, .. })
-			| Declaration::Export(Decorated {
-				on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
-				..
-			}),
-		) = item
+		if let StatementOrDeclaration::Class(Decorated { on: class, .. })
+		| StatementOrDeclaration::Export(Decorated {
+			on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
+			..
+		}) = item
 		{
 			use super::StatementOrExpressionVariable;
 

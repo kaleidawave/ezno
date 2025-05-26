@@ -1,13 +1,14 @@
 use std::iter;
 
 use parser::{
-	declarations::{
+	statements_and_declarations::{
 		export::Exportable,
+		import::ImportedItems,
 		import_export::{ImportExportName, ImportExportPart, ImportOrExport},
-		DeclareVariableDeclaration, ExportDeclaration,
+		variables::{VariableDeclaration, VariableDeclarationKeyword},
+		DeclareVariableDeclaration, ExportDeclaration, Statement, StatementOrDeclaration,
 	},
-	ASTNode, Declaration, Decorated, ExpressionOrStatementPosition, Statement,
-	StatementOrDeclaration, StatementPosition, VariableIdentifier,
+	ASTNode, Decorated, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier,
 };
 
 use crate::{
@@ -37,287 +38,271 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 ) {
 	// First stage: imports (both types and names) and types
 	for item in items {
-		if let StatementOrDeclaration::Declaration(declaration) = item {
-			match declaration {
-				Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
-					"namespace",
-					ns.position.with_source(environment.get_source()),
-				),
-				Declaration::Interface(Decorated { on: interface, .. })
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported: Exportable::Interface(interface),
-							position: _,
+		match item {
+			StatementOrDeclaration::Namespace(ns) => checking_data.raise_unimplemented_error(
+				"namespace",
+				ns.position.with_source(environment.get_source()),
+			),
+			StatementOrDeclaration::Interface(Decorated { on: interface, .. })
+			| StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item { exported: Exportable::Interface(interface), position: _ },
+				..
+			}) => {
+				let result = environment.declare_interface::<EznoParser>(
+					interface.name.as_option_str().unwrap_or_default(),
+					interface.type_parameters.as_deref(),
+					interface.extends.as_deref(),
+					&mut checking_data.types,
+				);
+
+				if let Ok(DeclareInterfaceResult::Merging { ty: _, in_same_context: true }) =
+					&result
+				{
+					checking_data.diagnostics_container.add_warning(
+						crate::diagnostics::TypeCheckWarning::MergingInterfaceInSameContext {
+							position: interface.position.with_source(environment.get_source()),
 						},
-					..
-				}) => {
-					let result = environment.declare_interface::<EznoParser>(
-						interface.name.as_option_str().unwrap_or_default(),
-						interface.type_parameters.as_deref(),
-						interface.extends.as_deref(),
-						&mut checking_data.types,
 					);
-
-					if let Ok(DeclareInterfaceResult::Merging { ty: _, in_same_context: true }) =
-						&result
-					{
-						checking_data.diagnostics_container.add_warning(
-							crate::diagnostics::TypeCheckWarning::MergingInterfaceInSameContext {
-								position: interface.position.with_source(environment.get_source()),
-							},
-						);
-					}
-
-					if let Ok(
-						DeclareInterfaceResult::Merging { ty, in_same_context: _ }
-						| DeclareInterfaceResult::New(ty),
-					) = result
-					{
-						checking_data
-							.local_type_mappings
-							.types_to_types
-							.push(interface.get_position(), ty);
-
-						if let Declaration::Export(_) = declaration {
-							if let crate::Scope::Module { ref mut exported, .. } =
-								environment.context_type.scope
-							{
-								exported.named_types.insert(
-									interface.name.as_option_str().unwrap_or_default().to_owned(),
-									ty,
-								);
-							}
-						}
-					} else {
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: interface.name.as_option_str().unwrap_or_default().to_owned(),
-								position: interface
-									.get_position()
-									.with_source(environment.get_source()),
-							},
-						);
-					}
 				}
-				Declaration::Class(Decorated { on: class, .. })
-				| Declaration::Export(Decorated {
-					on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
-					..
-				}) => {
-					let result = environment.declare_class::<EznoParser>(
-						class.name.as_option_str().unwrap_or_default(),
-						class.type_parameters.as_deref(),
-						// class.extends.as_deref(),
-						&mut checking_data.types,
-					);
 
-					if let Ok(ty) = result {
-						checking_data
-							.local_type_mappings
-							.types_to_types
-							.push(class.name.identifier.get_position(), ty);
+				if let Ok(
+					DeclareInterfaceResult::Merging { ty, in_same_context: _ }
+					| DeclareInterfaceResult::New(ty),
+				) = result
+				{
+					checking_data
+						.local_type_mappings
+						.types_to_types
+						.push(interface.get_position(), ty);
 
-						if let Declaration::Export(_) = declaration {
-							if let crate::Scope::Module { ref mut exported, .. } =
-								environment.context_type.scope
-							{
-								exported.named_types.insert(
-									class.name.as_option_str().unwrap_or_default().to_owned(),
-									ty,
-								);
-							}
+					if let StatementOrDeclaration::Export(_) = item {
+						if let crate::Scope::Module { ref mut exported, .. } =
+							environment.context_type.scope
+						{
+							exported.named_types.insert(
+								interface.name.as_option_str().unwrap_or_default().to_owned(),
+								ty,
+							);
 						}
-					} else {
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: class.name.as_option_str().unwrap_or_default().to_owned(),
-								position: class
-									.get_position()
-									.with_source(environment.get_source()),
-							},
-						);
 					}
-				}
-				Declaration::TypeAlias(alias)
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item { exported: Exportable::TypeAlias(alias), position: _ },
-					..
-				}) => {
-					let result = environment.declare_alias::<EznoParser>(
-						alias.name.as_option_str().unwrap_or_default(),
-						alias.parameters.as_deref(),
-						// &alias.references,
-						alias.get_position(),
-						&mut checking_data.types,
-					);
-					if let Ok(ty) = result {
-						checking_data
-							.local_type_mappings
-							.types_to_types
-							.push(alias.get_position(), ty);
-
-						if let Declaration::Export(_) = declaration {
-							if let crate::Scope::Module { ref mut exported, .. } =
-								environment.context_type.scope
-							{
-								exported.named_types.insert(
-									alias.name.as_option_str().unwrap_or_default().to_owned(),
-									ty,
-								);
-							}
-						}
-					} else {
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: alias.name.as_option_str().unwrap_or_default().to_owned(),
-								position: alias
-									.get_position()
-									.with_source(environment.get_source()),
-							},
-						);
-					}
-				}
-				Declaration::Import(import) => {
-					let items = match &import.items {
-						parser::declarations::import::ImportedItems::Parts(parts) => {
-							crate::utilities::notify!("{:?}", parts);
-							crate::features::modules::ImportKind::Parts(
-								parts.iter().flatten().filter_map(part_to_name_pair),
-							)
-						}
-						parser::declarations::import::ImportedItems::All { under } => match under {
-							VariableIdentifier::Standard(under, position) => {
-								crate::features::modules::ImportKind::All {
-									under,
-									position: *position,
-								}
-							}
-							VariableIdentifier::Marker(_, _) => {
-								// TODO I think this is best
-								continue;
-							}
+				} else {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name: interface.name.as_option_str().unwrap_or_default().to_owned(),
+							position: interface
+								.get_position()
+								.with_source(environment.get_source()),
 						},
-					};
-					let default_import = import.default.as_ref().and_then(|default_identifier| {
-						match default_identifier {
+					);
+				}
+			}
+			StatementOrDeclaration::Class(Decorated { on: class, .. })
+			| StatementOrDeclaration::Export(Decorated {
+				on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
+				..
+			}) => {
+				let result = environment.declare_class::<EznoParser>(
+					class.name.as_option_str().unwrap_or_default(),
+					class.type_parameters.as_deref(),
+					// class.extends.as_deref(),
+					&mut checking_data.types,
+				);
+
+				if let Ok(ty) = result {
+					checking_data
+						.local_type_mappings
+						.types_to_types
+						.push(class.name.identifier.get_position(), ty);
+
+					if let StatementOrDeclaration::Export(_) = item {
+						if let crate::Scope::Module { ref mut exported, .. } =
+							environment.context_type.scope
+						{
+							exported.named_types.insert(
+								class.name.as_option_str().unwrap_or_default().to_owned(),
+								ty,
+							);
+						}
+					}
+				} else {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name: class.name.as_option_str().unwrap_or_default().to_owned(),
+							position: class.get_position().with_source(environment.get_source()),
+						},
+					);
+				}
+			}
+			StatementOrDeclaration::TypeAlias(alias)
+			| StatementOrDeclaration::Export(Decorated {
+				on: ExportDeclaration::Item { exported: Exportable::TypeAlias(alias), position: _ },
+				..
+			}) => {
+				let result = environment.declare_alias::<EznoParser>(
+					alias.name.as_option_str().unwrap_or_default(),
+					alias.parameters.as_deref(),
+					// &alias.references,
+					alias.get_position(),
+					&mut checking_data.types,
+				);
+				if let Ok(ty) = result {
+					checking_data.local_type_mappings.types_to_types.push(alias.get_position(), ty);
+
+					if let StatementOrDeclaration::Export(_) = item {
+						if let crate::Scope::Module { ref mut exported, .. } =
+							environment.context_type.scope
+						{
+							exported.named_types.insert(
+								alias.name.as_option_str().unwrap_or_default().to_owned(),
+								ty,
+							);
+						}
+					}
+				} else {
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name: alias.name.as_option_str().unwrap_or_default().to_owned(),
+							position: alias.get_position().with_source(environment.get_source()),
+						},
+					);
+				}
+			}
+			StatementOrDeclaration::Import(import) => {
+				let items = match &import.items {
+					ImportedItems::Parts(parts) => {
+						crate::utilities::notify!("{:?}", parts);
+						crate::features::modules::ImportKind::Parts(
+							parts.iter().flatten().filter_map(part_to_name_pair),
+						)
+					}
+					ImportedItems::All { under } => match under {
+						VariableIdentifier::Standard(under, position) => {
+							crate::features::modules::ImportKind::All { under, position: *position }
+						}
+						VariableIdentifier::Marker(_, _) => {
+							// TODO I think this is best
+							continue;
+						}
+					},
+				};
+				let default_import =
+					import.default.as_ref().and_then(
+						|default_identifier| match default_identifier {
 							VariableIdentifier::Standard(name, position) => {
 								Some((name.as_str(), *position))
 							}
 							VariableIdentifier::Marker(..) => None,
-						}
-					});
-					import_items(
-						environment,
-						import.from.get_path().unwrap(),
-						import.position,
-						default_import,
-						items,
-						checking_data,
-						false,
-						import.is_type_annotation_import_only,
-					);
-				}
-				Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported: Exportable::ImportAll { r#as, from },
-							position,
 						},
-					..
-				}) => {
-					let kind = match r#as {
-						Some(VariableIdentifier::Standard(name, position)) => {
-							ImportKind::All { under: name, position: *position }
-						}
-						Some(VariableIdentifier::Marker(_, _)) => {
-							// TODO
-							continue;
-						}
-						None => ImportKind::Everything,
-					};
-
-					import_items::<iter::Empty<_>, _, _>(
-						environment,
-						from.get_path().unwrap(),
-						*position,
-						None,
-						kind,
-						checking_data,
-						true,
+					);
+				import_items(
+					environment,
+					import.from.get_path().unwrap(),
+					import.position,
+					default_import,
+					items,
+					checking_data,
+					false,
+					import.is_type_annotation_import_only,
+				);
+			}
+			StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item { exported: Exportable::ImportAll { r#as, from }, position },
+				..
+			}) => {
+				let kind = match r#as {
+					Some(VariableIdentifier::Standard(name, position)) => {
+						ImportKind::All { under: name, position: *position }
+					}
+					Some(VariableIdentifier::Marker(_, _)) => {
 						// TODO
-						false,
+						continue;
+					}
+					None => ImportKind::Everything,
+				};
+
+				import_items::<iter::Empty<_>, _, _>(
+					environment,
+					from.get_path().unwrap(),
+					*position,
+					None,
+					kind,
+					checking_data,
+					true,
+					// TODO
+					false,
+				);
+			}
+			StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item {
+						exported: Exportable::ImportParts { parts, from, type_definitions_only, .. },
+						position,
+					},
+				..
+			}) => {
+				let parts = parts.iter().filter_map(part_to_name_pair);
+
+				import_items(
+					environment,
+					from.get_path().unwrap(),
+					*position,
+					None,
+					crate::features::modules::ImportKind::Parts(parts),
+					checking_data,
+					true,
+					*type_definitions_only,
+				);
+			}
+			StatementOrDeclaration::Enum(Decorated { on: r#enum, .. })
+			| StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item {
+						exported: Exportable::EnumDeclaration(r#enum),
+						position: _,
+					},
+				..
+			}) => {
+				if checking_data.options.extra_syntax {
+					checking_data.diagnostics_container.add_warning(
+						crate::diagnostics::TypeCheckWarning::ItemMustBeUsedWithFlag {
+							item: "enum",
+							position: r#enum.position.with_source(environment.get_source()),
+						},
 					);
 				}
-				Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported:
-								Exportable::ImportParts { parts, from, type_definitions_only, .. },
+
+				// TODO WIP implementation
+				let result = environment.declare_alias::<EznoParser>(
+					&r#enum.name,
+					None,
+					r#enum.get_position(),
+					&mut checking_data.types,
+				);
+				if let Ok(ty) = result {
+					checking_data
+						.local_type_mappings
+						.types_to_types
+						.push(r#enum.get_position(), ty);
+
+					checking_data.types.update_alias(ty, TypeId::NUMBER_TYPE);
+				} else {
+					let position = r#enum.get_position().with_source(environment.get_source());
+					checking_data.diagnostics_container.add_error(
+						crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
+							name: r#enum.name.clone(),
 							position,
 						},
-					..
-				}) => {
-					let parts = parts.iter().filter_map(part_to_name_pair);
-
-					import_items(
-						environment,
-						from.get_path().unwrap(),
-						*position,
-						None,
-						crate::features::modules::ImportKind::Parts(parts),
-						checking_data,
-						true,
-						*type_definitions_only,
 					);
 				}
-				Declaration::Enum(Decorated { on: r#enum, .. })
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported: Exportable::EnumDeclaration(r#enum),
-							position: _,
-						},
-					..
-				}) => {
-					if checking_data.options.extra_syntax {
-						checking_data.diagnostics_container.add_warning(
-							crate::diagnostics::TypeCheckWarning::ItemMustBeUsedWithFlag {
-								item: "enum",
-								position: r#enum.position.with_source(environment.get_source()),
-							},
-						);
-					}
-
-					// TODO WIP implementation
-					let result = environment.declare_alias::<EznoParser>(
-						&r#enum.name,
-						None,
-						r#enum.get_position(),
-						&mut checking_data.types,
-					);
-					if let Ok(ty) = result {
-						checking_data
-							.local_type_mappings
-							.types_to_types
-							.push(r#enum.get_position(), ty);
-
-						checking_data.types.update_alias(ty, TypeId::NUMBER_TYPE);
-					} else {
-						let position = r#enum.get_position().with_source(environment.get_source());
-						checking_data.diagnostics_container.add_error(
-							crate::diagnostics::TypeCheckError::TypeAlreadyDeclared {
-								name: r#enum.name.clone(),
-								position,
-							},
-						);
-					}
-				}
-				Declaration::DeclareVariable(_)
-				| Declaration::Variable(_)
-				| Declaration::Function(_)
-				| Declaration::Export(..) => {}
+			}
+			StatementOrDeclaration::DeclareVariable(_)
+			| StatementOrDeclaration::Variable(_)
+			| StatementOrDeclaration::Function(_)
+			| StatementOrDeclaration::Export(..) => {}
+			_stmt => {
+				debug_assert!(!_stmt.is_declaration());
 			}
 		}
 	}
@@ -326,267 +311,241 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	let mut second_items = items.iter().peekable();
 	while let Some(item) = second_items.next() {
 		match item {
-			StatementOrDeclaration::Statement(stmt) => {
-				if let Statement::VarVariable(stmt) = stmt {
-					for declaration in &stmt.declarations {
-						let constraint = get_annotation_from_declaration(
-							declaration,
-							environment,
+			StatementOrDeclaration::VarVariable(stmt) => {
+				for declaration in &stmt.declarations {
+					let constraint =
+						get_annotation_from_declaration(declaration, environment, checking_data);
+					register_variable(
+						declaration.name.get_ast_ref(),
+						environment,
+						checking_data,
+						VariableRegisterArguments {
+							constant: false,
+							space: constraint,
+							// Important!
+							initial_value: Some(TypeId::UNDEFINED_TYPE),
+							// `var` declarations can be redeclared!
+							allow_reregistration: true,
+						},
+					);
+				}
+			}
+			StatementOrDeclaration::Namespace(ns) => checking_data.raise_unimplemented_error(
+				"namespace",
+				ns.position.with_source(environment.get_source()),
+			),
+			StatementOrDeclaration::Variable(declaration)
+			| StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item { exported: Exportable::Variable(declaration), position: _ },
+				..
+			}) => {
+				hoist_variable_declaration(declaration, environment, checking_data);
+			}
+			StatementOrDeclaration::Class(Decorated { on: class, .. })
+			| StatementOrDeclaration::Export(Decorated {
+				on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
+				..
+			}) => {
+				let name_position =
+					class.name.identifier.get_position().with_source(environment.get_source());
+
+				let ty = *checking_data
+					.local_type_mappings
+					.types_to_types
+					.get(name_position.start)
+					.unwrap();
+
+				// Lift members
+				let constructor = super::classes::register_statement_class_with_members(
+					ty,
+					class,
+					environment,
+					checking_data,
+				);
+
+				let name = StatementPosition::as_option_str(&class.name).unwrap_or_default();
+				let argument = VariableRegisterArguments {
+					// TODO functions are constant references
+					constant: true,
+					space: Some(constructor),
+					initial_value: None,
+					allow_reregistration: false,
+				};
+
+				environment.register_variable_handle_error(
+					name,
+					argument,
+					name_position,
+					&mut checking_data.diagnostics_container,
+					&mut checking_data.local_type_mappings,
+					checking_data.options.record_all_assignments_and_reads,
+				);
+			}
+			StatementOrDeclaration::Export(Decorated {
+				on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
+				..
+			}) => {
+				// TODO under definition file
+				checking_data.diagnostics_container.add_error(
+					TypeCheckError::FunctionWithoutBodyNotAllowedHere {
+						position: position.with_source(environment.get_source()),
+					},
+				);
+			}
+			StatementOrDeclaration::TypeAlias(alias)
+			| StatementOrDeclaration::Export(Decorated {
+				on: ExportDeclaration::Item { exported: Exportable::TypeAlias(alias), position: _ },
+				..
+			}) => {
+				let ty = checking_data
+					.local_type_mappings
+					.types_to_types
+					.get(alias.get_position().start)
+					.unwrap();
+
+				environment.register_alias(
+					*ty,
+					alias.parameters.as_deref(),
+					&alias.references,
+					alias.get_position(),
+					checking_data,
+				);
+			}
+			StatementOrDeclaration::Interface(Decorated { on: interface, .. })
+			| StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item { exported: Exportable::Interface(interface), position: _ },
+				..
+			}) => {
+				use crate::types::{PolyNature, Type};
+				use crate::ASTImplementation;
+				use crate::Scope;
+
+				let ty = *checking_data
+					.local_type_mappings
+					.types_to_types
+					.get(interface.get_position().start)
+					.unwrap();
+
+				if let Type::Interface { parameters, .. } = checking_data.types.get_type_by_id(ty) {
+					if let Some(parameters) = parameters {
+						let mut sub_environment =
+							environment.new_lexical_environment(Scope::TypeAlias);
+						let parameters = parameters.clone();
+						for parameter in parameters.iter().copied() {
+							let Type::RootPolyType(PolyNature::StructureGeneric { name, .. }) =
+								checking_data.types.get_type_by_id(parameter)
+							else {
+								unreachable!("{:?}", checking_data.types.get_type_by_id(parameter))
+							};
+							sub_environment.named_types.insert(name.clone(), parameter);
+						}
+						for (parameter, ast_parameter) in
+							parameters.into_iter().zip(interface.type_parameters.as_ref().unwrap())
+						{
+							// TODO
+							if let Some(ref extends) = ast_parameter.extends {
+								let new_to = EznoParser::synthesise_type_annotation(
+									extends,
+									&mut sub_environment,
+									checking_data,
+								);
+								checking_data.types.update_generic_extends(parameter, new_to);
+							}
+						}
+
+						// TODO cyclic checking
+						if let Some(ref extends) = interface.extends {
+							let mut iter = extends.iter();
+							let mut extends = EznoParser::synthesise_type_annotation(
+								iter.next().unwrap(),
+								&mut sub_environment,
+								checking_data,
+							);
+							for annotation in iter {
+								let new = EznoParser::synthesise_type_annotation(
+									annotation,
+									&mut sub_environment,
+									checking_data,
+								);
+								extends = checking_data.types.new_and_type(extends, new);
+							}
+							checking_data.types.set_extends_on_interface(ty, extends);
+						}
+
+						super::interfaces::synthesise_signatures(
+							interface.type_parameters.as_deref(),
+							interface.extends.as_deref(),
+							&interface.members,
+							super::interfaces::OnToType(ty),
+							&mut sub_environment,
 							checking_data,
 						);
-						register_variable(
-							declaration.name.get_ast_ref(),
+
+						// TODO temp as object types use the same environment.properties representation
+						{
+							let crate::LocalInformation { current_properties, prototypes, .. } =
+								sub_environment.info;
+							environment.info.current_properties.extend(current_properties);
+							environment.info.prototypes.extend(prototypes);
+						}
+					} else {
+						// TODO cyclic checking
+						if let Some(ref extends) = interface.extends {
+							let mut iter = extends.iter();
+							let mut extends = EznoParser::synthesise_type_annotation(
+								iter.next().unwrap(),
+								environment,
+								checking_data,
+							);
+							for annotation in iter {
+								let new = EznoParser::synthesise_type_annotation(
+									annotation,
+									environment,
+									checking_data,
+								);
+								extends = checking_data.types.new_and_type(extends, new);
+							}
+							checking_data.types.set_extends_on_interface(ty, extends);
+						}
+
+						super::interfaces::synthesise_signatures(
+							interface.type_parameters.as_deref(),
+							interface.extends.as_deref(),
+							&interface.members,
+							super::interfaces::OnToType(ty),
 							environment,
 							checking_data,
-							VariableRegisterArguments {
-								constant: false,
-								space: constraint,
-								// Important!
-								initial_value: Some(TypeId::UNDEFINED_TYPE),
-								// `var` declarations can be redeclared!
-								allow_reregistration: true,
-							},
 						);
 					}
 				}
 			}
-			StatementOrDeclaration::Declaration(dec) => match dec {
-				Declaration::Namespace(ns) => checking_data.raise_unimplemented_error(
-					"namespace",
-					ns.position.with_source(environment.get_source()),
-				),
-				Declaration::Variable(declaration)
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported: Exportable::Variable(declaration),
-							position: _,
-						},
-					..
-				}) => {
-					hoist_variable_declaration(declaration, environment, checking_data);
-				}
-				Declaration::Class(Decorated { on: class, .. })
-				| Declaration::Export(Decorated {
-					on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
-					..
-				}) => {
-					let name_position =
-						class.name.identifier.get_position().with_source(environment.get_source());
+			StatementOrDeclaration::Function(Decorated { on: function, decorators, .. })
+			| StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item { exported: Exportable::Function(function), position: _ },
+				decorators,
+				..
+			}) => {
+				if let Some(VariableIdentifier::Standard(name, name_position)) =
+					function.name.as_option_variable_identifier()
+				{
+					// Copied from classes hoisting
+					let (overloads, actual) = if function.body.0.is_none() {
+						let mut overloads = Vec::new();
+						let shape = super::functions::synthesise_shape(
+							function,
+							environment,
+							checking_data,
+						);
+						overloads.push(shape);
 
-					let ty = *checking_data
-						.local_type_mappings
-						.types_to_types
-						.get(name_position.start)
-						.unwrap();
-
-					// Lift members
-					let constructor = super::classes::register_statement_class_with_members(
-						ty,
-						class,
-						environment,
-						checking_data,
-					);
-
-					let name = StatementPosition::as_option_str(&class.name).unwrap_or_default();
-					let argument = VariableRegisterArguments {
-						// TODO functions are constant references
-						constant: true,
-						space: Some(constructor),
-						initial_value: None,
-						allow_reregistration: false,
-					};
-
-					environment.register_variable_handle_error(
-						name,
-						argument,
-						name_position,
-						&mut checking_data.diagnostics_container,
-						&mut checking_data.local_type_mappings,
-						checking_data.options.record_all_assignments_and_reads,
-					);
-				}
-				Declaration::Export(Decorated {
-					on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
-					..
-				}) => {
-					// TODO under definition file
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-							position: position.with_source(environment.get_source()),
-						},
-					);
-				}
-				Declaration::TypeAlias(alias)
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item { exported: Exportable::TypeAlias(alias), position: _ },
-					..
-				}) => {
-					let ty = checking_data
-						.local_type_mappings
-						.types_to_types
-						.get(alias.get_position().start)
-						.unwrap();
-
-					environment.register_alias(
-						*ty,
-						alias.parameters.as_deref(),
-						&alias.references,
-						alias.get_position(),
-						checking_data,
-					);
-				}
-				Declaration::Interface(Decorated { on: interface, .. })
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported: Exportable::Interface(interface),
-							position: _,
-						},
-					..
-				}) => {
-					use crate::types::{PolyNature, Type};
-					use crate::ASTImplementation;
-					use crate::Scope;
-
-					let ty = *checking_data
-						.local_type_mappings
-						.types_to_types
-						.get(interface.get_position().start)
-						.unwrap();
-
-					if let Type::Interface { parameters, .. } =
-						checking_data.types.get_type_by_id(ty)
-					{
-						if let Some(parameters) = parameters {
-							let mut sub_environment =
-								environment.new_lexical_environment(Scope::TypeAlias);
-							let parameters = parameters.clone();
-							for parameter in parameters.iter().copied() {
-								let Type::RootPolyType(PolyNature::StructureGeneric {
-									name, ..
-								}) = checking_data.types.get_type_by_id(parameter)
-								else {
-									unreachable!(
-										"{:?}",
-										checking_data.types.get_type_by_id(parameter)
-									)
-								};
-								sub_environment.named_types.insert(name.clone(), parameter);
-							}
-							for (parameter, ast_parameter) in parameters
-								.into_iter()
-								.zip(interface.type_parameters.as_ref().unwrap())
-							{
-								// TODO
-								if let Some(ref extends) = ast_parameter.extends {
-									let new_to = EznoParser::synthesise_type_annotation(
-										extends,
-										&mut sub_environment,
-										checking_data,
-									);
-									checking_data.types.update_generic_extends(parameter, new_to);
-								}
-							}
-
-							// TODO cyclic checking
-							if let Some(ref extends) = interface.extends {
-								let mut iter = extends.iter();
-								let mut extends = EznoParser::synthesise_type_annotation(
-									iter.next().unwrap(),
-									&mut sub_environment,
-									checking_data,
-								);
-								for annotation in iter {
-									let new = EznoParser::synthesise_type_annotation(
-										annotation,
-										&mut sub_environment,
-										checking_data,
-									);
-									extends = checking_data.types.new_and_type(extends, new);
-								}
-								checking_data.types.set_extends_on_interface(ty, extends);
-							}
-
-							super::interfaces::synthesise_signatures(
-								interface.type_parameters.as_deref(),
-								interface.extends.as_deref(),
-								&interface.members,
-								super::interfaces::OnToType(ty),
-								&mut sub_environment,
-								checking_data,
-							);
-
-							// TODO temp as object types use the same environment.properties representation
-							{
-								let crate::LocalInformation {
-									current_properties, prototypes, ..
-								} = sub_environment.info;
-								environment.info.current_properties.extend(current_properties);
-								environment.info.prototypes.extend(prototypes);
-							}
-						} else {
-							// TODO cyclic checking
-							if let Some(ref extends) = interface.extends {
-								let mut iter = extends.iter();
-								let mut extends = EznoParser::synthesise_type_annotation(
-									iter.next().unwrap(),
-									environment,
-									checking_data,
-								);
-								for annotation in iter {
-									let new = EznoParser::synthesise_type_annotation(
-										annotation,
-										environment,
-										checking_data,
-									);
-									extends = checking_data.types.new_and_type(extends, new);
-								}
-								checking_data.types.set_extends_on_interface(ty, extends);
-							}
-
-							super::interfaces::synthesise_signatures(
-								interface.type_parameters.as_deref(),
-								interface.extends.as_deref(),
-								&interface.members,
-								super::interfaces::OnToType(ty),
-								environment,
-								checking_data,
-							);
-						}
-					}
-				}
-				Declaration::Function(Decorated { on: function, decorators, .. })
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported: Exportable::Function(function),
-							position: _,
-						},
-					decorators,
-					..
-				}) => {
-					if let Some(VariableIdentifier::Standard(name, name_position)) =
-						function.name.as_option_variable_identifier()
-					{
-						// Copied from classes hoisting
-						let (overloads, actual) = if function.body.0.is_none() {
-							let mut overloads = Vec::new();
-							let shape = super::functions::synthesise_shape(
-								function,
-								environment,
-								checking_data,
-							);
-							overloads.push(shape);
-
-							// Read declarations until
-							while let Some(overload_declaration) = second_items.next_if(|t| {
-								matches!( t, StatementOrDeclaration::Declaration( Declaration::Function(Decorated { on: func, .. })) if func.name.as_option_str().is_some_and(|n| n == name) && !func.has_body())
+						// Read declarations until
+						while let Some(overload_declaration) = second_items.next_if(|t| {
+								matches!(t, StatementOrDeclaration::Function(Decorated { on: func, .. }) if func.name.as_option_str().is_some_and(|n| n == name) && !func.has_body())
 							}) {
-								let parser::StatementOrDeclaration::Declaration(
-									Declaration::Function(Decorated { on: function, .. }),
-								) = &overload_declaration
+								let parser::StatementOrDeclaration::Function(Decorated { on: function, .. }) = &overload_declaration
 								else {
 									unreachable!()
 								};
@@ -598,182 +557,174 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								overloads.push(shape);
 							}
 
-							let upcoming = second_items.peek().and_then(|next| {
-								matches!(
-									next,
-									StatementOrDeclaration::Declaration(Declaration::Function(Decorated { on: func, .. }))
-									if
-										func.name.as_option_str().is_some_and(|n| n == name)
-										&& func.has_body()
-								)
-								.then_some(next)
-							});
+						let upcoming = second_items.peek().and_then(|next| {
+							matches!(
+								next,
+								StatementOrDeclaration::Function(Decorated { on: func, .. })
+								if
+									func.name.as_option_str().is_some_and(|n| n == name)
+									&& func.has_body()
+							)
+							.then_some(next)
+						});
 
-							if let Some(StatementOrDeclaration::Declaration(
-								Declaration::Function(Decorated { on: function, .. }),
-							)) = upcoming
-							{
-								let actual = super::functions::synthesise_shape(
-									function,
-									environment,
-									checking_data,
-								);
-								(overloads, actual)
-							} else if function.name.is_declare {
-								let actual = overloads.pop().unwrap();
-								(overloads, actual)
-							} else {
-								// TODO what about `checking_data.options.lsp_mode`?
-								checking_data.diagnostics_container.add_error(
-									TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-										position: ASTNode::get_position(function)
-											.with_source(environment.get_source()),
-									},
-								);
-								continue;
-							}
-						} else {
+						if let Some(StatementOrDeclaration::Function(Decorated {
+							on: function,
+							..
+						})) = upcoming
+						{
 							let actual = super::functions::synthesise_shape(
 								function,
 								environment,
 								checking_data,
 							);
-							(Vec::new(), actual)
-						};
-
-						let internal_effect = get_internal_function_effect_from_decorators(
-							decorators,
-							name,
+							(overloads, actual)
+						} else if function.name.is_declare {
+							let actual = overloads.pop().unwrap();
+							(overloads, actual)
+						} else {
+							// TODO what about `checking_data.options.lsp_mode`?
+							checking_data.diagnostics_container.add_error(
+								TypeCheckError::FunctionWithoutBodyNotAllowedHere {
+									position: ASTNode::get_position(function)
+										.with_source(environment.get_source()),
+								},
+							);
+							continue;
+						}
+					} else {
+						let actual = super::functions::synthesise_shape(
+							function,
 							environment,
+							checking_data,
 						);
-						let value = super::functions::build_overloaded_function(
-							crate::FunctionId(environment.get_source(), function.position.start),
-							crate::types::functions::FunctionBehavior::Function {
-								this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
-								prototype: TypeId::IS_ASSIGNED_VALUE_LATER,
-								is_async: function.header.is_async(),
-								is_generator: function.header.is_generator(),
-								name: TypeId::IS_ASSIGNED_VALUE_LATER,
-							},
-							overloads,
-							actual,
-							environment,
-							&mut checking_data.types,
-							&mut checking_data.diagnostics_container,
-							if let Some(ie) = internal_effect {
-								ie.into()
-							} else {
-								crate::types::FunctionEffect::Unknown
-							},
-						);
+						(Vec::new(), actual)
+					};
 
-						let variable_id =
-							crate::VariableId(environment.get_source(), name_position.start);
-						checking_data
-							.local_type_mappings
-							.variables_to_constraints
-							.0
-							.insert(variable_id, value);
-
-						let argument = VariableRegisterArguments {
-							// TODO functions are constant references
-							constant: true,
-							space: Some(value),
-							initial_value: Some(value),
-							allow_reregistration: false,
-						};
-
-						let name_position = name_position.with_source(environment.get_source());
-						environment.register_variable_handle_error(
-							name,
-							argument,
-							name_position,
-							&mut checking_data.diagnostics_container,
-							&mut checking_data.local_type_mappings,
-							checking_data.options.record_all_assignments_and_reads,
-						);
-					}
-				}
-				Declaration::Enum(Decorated { on: r#enum, .. })
-				| Declaration::Export(Decorated {
-					on:
-						ExportDeclaration::Item {
-							exported: Exportable::EnumDeclaration(r#enum),
-							position: _,
+					let internal_effect =
+						get_internal_function_effect_from_decorators(decorators, name, environment);
+					let value = super::functions::build_overloaded_function(
+						crate::FunctionId(environment.get_source(), function.position.start),
+						crate::types::functions::FunctionBehavior::Function {
+							this_id: TypeId::IS_ASSIGNED_VALUE_LATER,
+							prototype: TypeId::IS_ASSIGNED_VALUE_LATER,
+							is_async: function.header.is_async(),
+							is_generator: function.header.is_generator(),
+							name: TypeId::IS_ASSIGNED_VALUE_LATER,
 						},
-					..
-				}) => {
+						overloads,
+						actual,
+						environment,
+						&mut checking_data.types,
+						&mut checking_data.diagnostics_container,
+						if let Some(ie) = internal_effect {
+							ie.into()
+						} else {
+							crate::types::FunctionEffect::Unknown
+						},
+					);
+
+					let variable_id =
+						crate::VariableId(environment.get_source(), name_position.start);
+					checking_data
+						.local_type_mappings
+						.variables_to_constraints
+						.0
+						.insert(variable_id, value);
+
 					let argument = VariableRegisterArguments {
+						// TODO functions are constant references
 						constant: true,
-						space: None,
-						initial_value: None,
+						space: Some(value),
+						initial_value: Some(value),
 						allow_reregistration: false,
 					};
 
+					let name_position = name_position.with_source(environment.get_source());
 					environment.register_variable_handle_error(
-						&r#enum.name,
+						name,
 						argument,
-						r#enum.get_position().with_source(environment.get_source()),
+						name_position,
 						&mut checking_data.diagnostics_container,
 						&mut checking_data.local_type_mappings,
 						checking_data.options.record_all_assignments_and_reads,
 					);
 				}
-				Declaration::DeclareVariable(DeclareVariableDeclaration {
-					keyword: _,
-					declarations,
-					position: _,
-					decorators: _,
-				}) => {
-					for declaration in declarations {
-						let constraint = get_annotation_from_declaration(
-							declaration,
-							environment,
-							checking_data,
-						);
+			}
+			StatementOrDeclaration::Enum(Decorated { on: r#enum, .. })
+			| StatementOrDeclaration::Export(Decorated {
+				on:
+					ExportDeclaration::Item {
+						exported: Exportable::EnumDeclaration(r#enum),
+						position: _,
+					},
+				..
+			}) => {
+				let argument = VariableRegisterArguments {
+					constant: true,
+					space: None,
+					initial_value: None,
+					allow_reregistration: false,
+				};
 
-						if constraint.is_none() {
-							crate::utilities::notify!("constraint with no type?");
-						}
+				environment.register_variable_handle_error(
+					&r#enum.name,
+					argument,
+					r#enum.get_position().with_source(environment.get_source()),
+					&mut checking_data.diagnostics_container,
+					&mut checking_data.local_type_mappings,
+					checking_data.options.record_all_assignments_and_reads,
+				);
+			}
+			StatementOrDeclaration::DeclareVariable(DeclareVariableDeclaration {
+				keyword: _,
+				declarations,
+				position: _,
+				decorators: _,
+			}) => {
+				for declaration in declarations {
+					let constraint =
+						get_annotation_from_declaration(declaration, environment, checking_data);
 
-						let value = constraint.unwrap_or(TypeId::ANY_TYPE);
-
-						let ty = checking_data.types.register_type(crate::Type::RootPolyType(
-							crate::types::PolyNature::Open(value),
-						));
-
-						register_variable(
-							declaration.name.get_ast_ref(),
-							environment,
-							checking_data,
-							VariableRegisterArguments {
-								// TODO based on keyword
-								constant: true,
-								space: None,
-								initial_value: Some(ty),
-								allow_reregistration: false,
-							},
-						);
+					if constraint.is_none() {
+						crate::utilities::notify!("constraint with no type?");
 					}
+
+					let value = constraint.unwrap_or(TypeId::ANY_TYPE);
+
+					let ty = checking_data.types.register_type(crate::Type::RootPolyType(
+						crate::types::PolyNature::Open(value),
+					));
+
+					register_variable(
+						declaration.name.get_ast_ref(),
+						environment,
+						checking_data,
+						VariableRegisterArguments {
+							// TODO based on keyword
+							constant: true,
+							space: None,
+							initial_value: Some(ty),
+							allow_reregistration: false,
+						},
+					);
 				}
-				_ => {}
-			},
+			}
+			_ => {}
 			StatementOrDeclaration::Imported { .. } | StatementOrDeclaration::Marker(_, _) => {}
+			_ => {}
 		}
 	}
 
 	// Third stage: functions
 	let third_stage_items = items.iter().peekable();
 	for item in third_stage_items {
-		if let StatementOrDeclaration::Declaration(
-			Declaration::Function(Decorated { on: function, decorators, .. })
-			| Declaration::Export(Decorated {
-				on:
-					ExportDeclaration::Item { exported: Exportable::Function(function), position: _ },
-				decorators,
-				..
-			}),
-		) = item
+		if let StatementOrDeclaration::Function(Decorated { on: function, decorators, .. })
+		| StatementOrDeclaration::Export(Decorated {
+			on: ExportDeclaration::Item { exported: Exportable::Function(function), position: _ },
+			decorators,
+			..
+		}) = item
 		{
 			if let Some(VariableIdentifier::Standard(name, name_position)) =
 				function.name.as_option_variable_identifier()
@@ -792,7 +743,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					//  if function.has_body() {
 					// } else {
 					// 	let last = third_stage_items.find(|f| {
-					// 		if let StatementOrDeclaration::Declaration(Declaration::Function(
+					// 		if let StatementOrDeclaration::Declaration(StatementOrDeclaration::Function(
 					// 			Decorated { on: function, .. },
 					// 		)) = f
 					// 		{
@@ -801,7 +752,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// 			false
 					// 		}
 					// 	});
-					// 	if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+					// 	if let Some(StatementOrDeclaration::Declaration(StatementOrDeclaration::Function(
 					// 		Decorated { on: function, .. },
 					// 	))) = last
 					// 	{
@@ -835,7 +786,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// if function.has_body() {
 					// } else {
 					// 	let last = third_stage_items.take_while(|f| {
-					// 		if let StatementOrDeclaration::Declaration(Declaration::Function(
+					// 		if let StatementOrDeclaration::Declaration(StatementOrDeclaration::Function(
 					// 			Decorated { on: function, .. },
 					// 		)) = f
 					// 		{
@@ -845,7 +796,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// 		}
 					// 	});
 
-					// 	if let Some(StatementOrDeclaration::Declaration(Declaration::Function(
+					// 	if let Some(StatementOrDeclaration::Declaration(StatementOrDeclaration::Function(
 					// 		Decorated { on: function, .. },
 					// 	))) = last
 					// 	{
@@ -875,7 +826,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					.0
 					.insert(variable_id, value);
 
-				if let StatementOrDeclaration::Declaration(Declaration::Export(_)) = item {
+				if let StatementOrDeclaration::Export(_) = item {
 					if let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
 					{
@@ -913,12 +864,12 @@ pub(super) fn part_to_name_pair<T: ImportOrExport>(
 }
 
 pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
-	declaration: &parser::declarations::VariableDeclaration,
+	declaration: &VariableDeclaration,
 	environment: &mut crate::context::Context<crate::context::environment::Syntax<'_>>,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) {
 	match declaration.kind {
-		parser::declarations::VariableDeclarationKeyword::Const => {
+		VariableDeclarationKeyword::Const => {
 			for declaration in &declaration.declarations {
 				crate::utilities::notify!("TODO constraint needed to be set for free variable!!!");
 				let constraint =
@@ -938,7 +889,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 				);
 			}
 		}
-		parser::declarations::VariableDeclarationKeyword::Let => {
+		VariableDeclarationKeyword::Let => {
 			for declaration in &declaration.declarations {
 				let constraint =
 					get_annotation_from_declaration(declaration, environment, checking_data);
