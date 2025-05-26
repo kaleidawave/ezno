@@ -85,6 +85,7 @@ jobs:
           fi
 
       - name: Run checker performance
+        id: performance
         shell: bash
         run: |
           echo "### Checking
@@ -94,7 +95,6 @@ jobs:
 
           echo "<details>
           <summary>Input</summary>
-
           \`\`\`tsx
           $(cat ./demo.tsx)
           \`\`\`
@@ -114,15 +114,22 @@ jobs:
 
           echo "<details>
           <summary>Diagnostics</summary>
-
           \`\`\`
           $diagnostics
           \`\`\`
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
+          echo "statistics=$statistics" >> "$GITHUB_OUTPUT"
+
+      - name: Emit statistics
+        continue-on-error: true
+        shell: bash
+        env:
+          statistics: ${{ steps.performance.outputs.statistics }}
+        run: |
           if [ -d "bin2cmp" ]; then
-            OUT=$(./bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+            OUT=$(bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
             $main_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
             echo "
             <details>
@@ -146,6 +153,17 @@ jobs:
             </details>" >> $GITHUB_STEP_SUMMARY
           fi
 
+          $project="ezno"
+          $ref=$(git log --pretty=format:"%H" -n 1)
+          $branch=$(git rev-parse --abbrev-ref HEAD)
+      
+          # TODO temp
+          curl \
+            --header "Content-Type: application/json" \
+            --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
+            --data "{\"project\":\"$project\",\"ref\":\"$ref\",\"branch\":\"$branch\",\"data\":\"$statistics\""}" \
+            https://kaleidawave--1dcc8e5438ae11f08e309e149126039e.web.val.run
+
       # - name: Run checker performance w/staging
       #   shell: bash
       #   if: github.ref_name != 'main'
@@ -162,7 +180,7 @@ jobs:
       #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
 
       #     echo "::endgroup::"
-            
+
       - name: Run checker performance on large file
         shell: bash
         run: |
