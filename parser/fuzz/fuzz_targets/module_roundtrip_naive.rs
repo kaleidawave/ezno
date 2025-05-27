@@ -11,15 +11,15 @@ use std::str;
 fn do_fuzz(data: &str) -> Corpus {
 	let input = data.trim_start();
 
-	// const STACK_SIZE_MB: usize = 32;
 	let parse_options = ParseOptions {
-		// stack_size: Some(STACK_SIZE_MB * 1024 * 1024),
 		jsx: false,
 		type_annotations: false,
 		// fixes some strange ; issues in asserting outputs same
-		retain_blank_lines: true,
+		retain_blank_lines: false,
+		partial_syntax: false,
 		..Default::default()
 	};
+
 	let Ok(module1) = Module::from_string(input.to_owned(), parse_options) else {
 		return Corpus::Reject;
 	};

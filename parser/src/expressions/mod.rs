@@ -1493,7 +1493,6 @@ impl Expression {
 			}
 			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
 				if options.enforce_limit_length_limit() && local.should_try_pretty_print {
-					dbg!("here");
 					chain_to_string_from_buffer(self, buf, options, local);
 					return;
 				}

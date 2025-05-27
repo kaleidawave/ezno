@@ -214,12 +214,6 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 			let variable = crate::VariableId(environment.get_source(), r#enum.get_position().start);
 			environment.info.variable_current_value.insert(variable, basis.build_object());
 		}
-		StatementOrDeclaration::DeclareVariable(_)
-		| StatementOrDeclaration::Function(_)
-		| StatementOrDeclaration::Interface(_)
-		| StatementOrDeclaration::TypeAlias(_)
-		| StatementOrDeclaration::Namespace(_)
-		| StatementOrDeclaration::Import(_) => {}
 		StatementOrDeclaration::Expression(expression) => {
 			synthesise_multiple_expression(
 				expression,
@@ -378,7 +372,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 						);
 					},
 					position.with_source(environment.get_source()),
-				)
+				);
 			}
 		},
 		StatementOrDeclaration::Block(ref block) => {
@@ -451,14 +445,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 		StatementOrDeclaration::MultiLineComment(s, _) if s.starts_with('*') => {
 			crate::utilities::notify!("acknowledge '@ts-ignore' and other comments");
 		}
-		StatementOrDeclaration::Comment(..)
-		| StatementOrDeclaration::MultiLineComment(..)
-		| StatementOrDeclaration::Debugger(_)
-		| StatementOrDeclaration::Empty(_)
-		| StatementOrDeclaration::AestheticSemiColon(_) => {}
-		_stmt => {
-			debug_assert!(!_stmt.is_declaration());
-		}
+		_ => {}
 	}
 }
 

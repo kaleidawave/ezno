@@ -318,6 +318,7 @@ impl Type {
 		}
 	}
 
+	#[must_use]
 	pub fn try_into_special_object(&self) -> Option<&SpecialObject> {
 		if let Type::SpecialObject(s) = self {
 			Some(s)
@@ -326,6 +327,7 @@ impl Type {
 		}
 	}
 
+	#[must_use]
 	pub fn try_into_function(&self) -> Option<FunctionId> {
 		if let Type::SpecialObject(obj) = self {
 			if let SpecialObject::Function(func, _) = &**obj {

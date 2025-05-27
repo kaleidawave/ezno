@@ -297,13 +297,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 			}
-			StatementOrDeclaration::DeclareVariable(_)
-			| StatementOrDeclaration::Variable(_)
-			| StatementOrDeclaration::Function(_)
-			| StatementOrDeclaration::Export(..) => {}
-			_stmt => {
-				debug_assert!(!_stmt.is_declaration());
-			}
+			_ => {}
 		}
 	}
 

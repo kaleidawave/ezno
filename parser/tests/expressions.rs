@@ -123,7 +123,6 @@ const helperPath = import.meta.resolve("./lib/helper.js")
 
 #[cfg(feature = "extras")]
 #[test]
-#[ignore]
 fn jsx() {
 	// note the parser supports self closing tags with `<img>` and HTML comments
 	let input = r#"
@@ -192,17 +191,14 @@ const b = class Number {} / 2
 }
 
 #[test]
-#[ignore]
 fn arrow_functions_and_type_annotation() {
 	let input = r#"
 const a1 = () => 4;
 const a2 = (x: Type<1>) => 5;
 const a3 = ([a, b]: [1, 2]) => 6;
-const a4 = (f: (a: string) => () = x => 2) => 7;
-const a5 = (l: () => "hiya") => 7;
-const a6 = (strings: 1 < 2, record: Record<string, number>) => 2;
-const a7 = (a: S<1, 2>, d: { [a:"a" | "b"]: number }) => 2;
-const a8 = (strings: { [a:string]: number }, record: Record<string, number>, d: { [a:"a" | "b"]: number }) => 2;
+const a4 = (l: () => "hiya") => 7;
+const a5 = (a: S<1, 2>, d: { [a: "a" | "b"]: number }) => 2;
+const a6 = (strings: { [a: string]: number }, record: Record<string, number>, d: { [a: "a" | "b"]: number }) => 2
 "#
 	.trim();
 

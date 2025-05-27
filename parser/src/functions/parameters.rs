@@ -192,7 +192,7 @@ where
 		loop {
 			reader.skip();
 			let s = reader.after_comment_literals();
-			if s.starts_with(")") {
+			if s.starts_with(')') {
 				reader.skip_including_comments();
 				break;
 			}

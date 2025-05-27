@@ -101,6 +101,7 @@ pub(crate) fn _is_declaration_start(reader: &crate::Lexer) -> bool {
 #[get_field_by_type_target(Span)]
 #[partial_eq_ignore_types(Span)]
 #[try_into_references(&, &mut)]
+#[visit_self]
 pub enum StatementOrDeclaration {
 	Variable(VariableDeclaration),
 	Function(Decorated<StatementFunction>),

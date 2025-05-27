@@ -7,14 +7,12 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn visiting() {
-	let input = r#"
-        const x = "hello world";
-        function y() {
-            if (condition) {
-                do_thing("hello world" + " test")
-            }
-        }
-        "#;
+	let input = r#"const x = "hello world";
+function y() {
+	if (condition) {
+		do_thing("hello world" + " test")
+	}
+}"#;
 
 	let mut module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
@@ -48,6 +46,7 @@ struct AddElseClause;
 
 impl VisitorMut<StatementOrDeclaration, ()> for AddElseClause {
 	fn visit_mut(&mut self, item: &mut StatementOrDeclaration, _data: &mut (), _chain: &Chain) {
+		dbg!(&item);
 		if let StatementOrDeclaration::If(if_statement) = item {
 			if if_statement.trailing_else.is_none() {
 				let inner =

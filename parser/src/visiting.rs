@@ -438,7 +438,7 @@ mod visitors {
 	pub trait VisitorReceiver<T> {
 		fn visit_expression(&mut self, expression: &Expression, data: &mut T, chain: &Chain) {}
 
-		fn visit_statement(
+		fn visit_statement_or_declaration(
 			&mut self,
 			statement: &StatementOrDeclaration,
 			data: &mut T,
@@ -462,7 +462,7 @@ mod visitors {
 			self.expression_visitors.iter_mut().for_each(|vis| vis.visit(expression, data, chain));
 		}
 
-		fn visit_statement(
+		fn visit_statement_or_declaration(
 			&mut self,
 			statement: &StatementOrDeclaration,
 			data: &mut T,
@@ -556,7 +556,7 @@ mod visitors_mut {
 		) {
 		}
 
-		fn visit_statement_mut(
+		fn visit_statement_or_declaration_mut(
 			&mut self,
 			statement: &mut StatementOrDeclaration,
 			data: &mut T,
@@ -612,7 +612,7 @@ mod visitors_mut {
 				.for_each(|vis| vis.visit_mut(expression, data, chain));
 		}
 
-		fn visit_statement_mut(
+		fn visit_statement_or_declaration_mut(
 			&mut self,
 			item: &mut StatementOrDeclaration,
 			data: &mut T,

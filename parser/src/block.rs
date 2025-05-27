@@ -161,8 +161,8 @@ pub(crate) fn statements_and_declarations_from_reader(
 		}
 
 		if reader.get_options().retain_blank_lines && !items.is_empty() {
-			let new_lines = reader.last_was_from_new_line();
-			for _ in 0..new_lines {
+			let new_lines = reader.last_was_from_new_line_consume();
+			for _ in 1..new_lines {
 				// TODO span
 				let start = reader.get_start().0;
 				let end = reader.get_end().0;
@@ -279,11 +279,9 @@ impl Visitable for Block {
 			}
 			let items = self.items_mut();
 			if options.reverse_statements {
-				items.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+				items.rev().for_each(|item| item.visit_mut(visitors, data, options, chain));
 			} else {
-				items
-					.rev()
-					.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+				items.for_each(|item| item.visit_mut(visitors, data, options, chain));
 			}
 		}
 	}
@@ -303,7 +301,7 @@ impl Visitable for BlockOrSingleStatement {
 			}
 			BlockOrSingleStatement::SingleStatement(s) => {
 				s.visit(visitors, data, options, chain);
-				visitors.visit_statement(&s.0, data, chain);
+				visitors.visit_statement_or_declaration(&s.0, data, chain);
 			}
 		}
 	}
@@ -321,7 +319,7 @@ impl Visitable for BlockOrSingleStatement {
 			}
 			BlockOrSingleStatement::SingleStatement(ref mut s) => {
 				s.visit_mut(visitors, data, options, chain);
-				visitors.visit_statement_mut(&mut s.0, data, chain);
+				visitors.visit_statement_or_declaration_mut(&mut s.0, data, chain);
 			}
 		}
 	}

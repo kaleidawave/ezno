@@ -98,6 +98,13 @@ impl<'a> Lexer<'a> {
 		self.state.last_new_lines
 	}
 
+	#[must_use]
+	pub fn last_was_from_new_line_consume(&mut self) -> u32 {
+		let last_new_lines = self.state.last_new_lines;
+		self.state.last_new_lines = 0;
+		last_new_lines
+	}
+
 	pub fn skip(&mut self) {
 		let current = self.get_current();
 		if current.starts_with(char::is_whitespace) {
@@ -938,8 +945,8 @@ impl<'a> Lexer<'a> {
 			if current.starts_with("//") {
 				current = current[current.find('\n').unwrap_or(current.len())..].trim_start();
 			} else if current.starts_with("/*") {
-				current = current[current.find("*/").map(|idx| idx + 2).unwrap_or(current.len())..]
-					.trim_start();
+				current =
+					current[current.find("*/").map_or(current.len(), |idx| idx + 2)..].trim_start();
 			} else {
 				return current;
 			}
