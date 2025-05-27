@@ -137,13 +137,18 @@ jobs:
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
-          echo "statistics=$(echo -n "$statistics" | base64 --wrap=0)" >> "$GITHUB_OUTPUT"
+          echo "here";
+
+          statistics=$(echo -n "$statistics" | base64 --wrap=0)
+          echo "statistics=$statistics" >> "$GITHUB_OUTPUT"
 
       - name: Emit statistics
         continue-on-error: true
         shell: bash
+        env:
+          statistics: ${{ steps.performance.outputs.statistics }}
         run: |
-          statistics=$(echo '${{ steps.performance.outputs.statistics }}' | base64 --decode)
+          statistics=$(echo $statistics | base64 --decode)
 
           if [ -d "bin2cmp" ]; then
             OUT=$(./bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
