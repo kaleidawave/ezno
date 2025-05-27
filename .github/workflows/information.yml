@@ -28,9 +28,12 @@ jobs:
       
       - name: Run type sizes
         run: |
-          RUSTFLAGS=-Zprint-type-sizes cargo +nightly build -j 1 > type-sizes.txt
-          echo "### Type sizes
-          \`\`\`shell
-          $(top-type-sizes < type-sizes.txt)
-          \`\`\`" >> $GITHUB_STEP_SUMMARY
+          RUSTFLAGS=-Zprint-type-sizes cargo +nightly build -j 1 > type-sizes-input.txt
+          top-type-sizes --remove-wrappers < type-sizes-input.txt > type-sizes.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: type-sizes
+          path: type-sizes.txt
+          retention-days: 7
           

@@ -90,8 +90,7 @@ jobs:
         shell: bash
         run: ${{ steps.compilers.outputs.BINARY }} info
 
-      - name: Run checker performance
-        id: performance
+      - name: Compare checker performance
         shell: bash
         run: |
           echo "### Checking
@@ -99,6 +98,9 @@ jobs:
           $(hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check demo.tsx')
           \`\`\`" >> $GITHUB_STEP_SUMMARY
 
+      - name: Print input
+        shell: bash
+        run: |
           echo "<details>
           <summary>Input</summary>
 
@@ -110,13 +112,20 @@ jobs:
 
           echo "::info::Wrote code to summary"
           
-          command_output=$(${{ steps.compilers.outputs.BINARY }} check demo.tsx --timings --max-diagnostics all 2>&1 || true)
+      - name: Test statistics
+        id: performance
+        continue-on-error: true
+        shell: bash
+        run: |
+          command_output=$(
+            ${{ steps.compilers.outputs.BINARY }} check demo.tsx --timings --max-diagnostics all 2>&1 || true
+          )
           
           diagnostics=""; statistics=""; found_splitter=false;
           while IFS= read -r line; do
               if [[ "$line" == "---"* ]]; then found_splitter=true;
               elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
-              else statistics+="$line"$'\n'; fi
+              else statistics += "$line"$'\n'; fi
           done <<< "$command_output"
 
           echo "<details>
@@ -128,14 +137,14 @@ jobs:
           </details>
           " >> $GITHUB_STEP_SUMMARY
 
-          echo "statistics=$statistics" >> "$GITHUB_OUTPUT"
+          echo "statistics=$(echo -n "$statistics" | base64 --wrap=0)" >> "$GITHUB_OUTPUT"
 
       - name: Emit statistics
         continue-on-error: true
         shell: bash
-        env:
-          statistics: ${{ steps.performance.outputs.statistics }}
         run: |
+          statistics=$(echo '${{ steps.performance.outputs.statistics }}' | base64 --decode)
+
           if [ -d "bin2cmp" ]; then
             OUT=$(./bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
             $main_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
@@ -168,7 +177,7 @@ jobs:
           $ref=$(git log --pretty=format:"%H" -n 1)
           $branch=$(git rev-parse --abbrev-ref HEAD)
       
-          # TODO temp
+          # TODO temp URL
           curl \
             --header "Content-Type: application/json" \
             --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
@@ -223,8 +232,8 @@ jobs:
             {
               valgrind --tool=callgrind --callgrind-out-file=./cpu-out $compiler check demo.tsx --max-diagnostics 0
             } || true
-            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never cpu_out)"
-            cat cpu_out
+            cat ./cpu-out
+            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never ./cpu-out)"
             echo "::endgroup::"
             
             echo "::group::Valgrind"
