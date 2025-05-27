@@ -191,11 +191,11 @@ where
 
 		loop {
 			reader.skip();
-			if reader.is_operator(")") {
+			let s = reader.after_comment_literals();
+			if s.starts_with(")") {
+				reader.skip_including_comments();
 				break;
 			}
-			// Skip comments
-			// while reader.conditional_next(TSXToken::is_comment).is_some() {}
 
 			let start = reader.get_start();
 

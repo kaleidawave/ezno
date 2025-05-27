@@ -108,13 +108,13 @@ impl Display for ParseErrors<'_> {
 				f.write_str("Expected ")?;
 				utilities::format_list(f, expected)?;
 				if let Some(found) = found {
-					write!(f, " found {found}")
+					write!(f, ", found {found}")
 				} else {
-					write!(f, " found end of source")
+					write!(f, ", found end of source")
 				}
 			}
 			ParseErrors::ExpectedOperator { expected, found } => {
-				write!(f, "Expected {expected} found {found}")
+				write!(f, "Expected {expected}, found {found}")
 			}
 			ParseErrors::ExpectedOneOfItems { expected, found } => {
 				f.write_str("Expected ")?;

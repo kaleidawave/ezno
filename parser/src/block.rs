@@ -87,55 +87,7 @@ impl Block {
 	}
 }
 
-impl Visitable for Block {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		if options.visit_nested_blocks || chain.is_empty() {
-			{
-				visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
-			}
-			let items = self.items();
-			if options.reverse_statements {
-				items.rev().for_each(|item| item.visit(visitors, data, options, chain));
-			} else {
-				items.for_each(|item| item.visit(visitors, data, options, chain));
-			}
-		}
-	}
-
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		if options.visit_nested_blocks || chain.is_empty() {
-			{
-				visitors.visit_block_mut(
-					&mut crate::block::BlockLikeMut { items: &mut self.0 },
-					data,
-					chain,
-				);
-			}
-			let items = self.items_mut();
-			if options.reverse_statements {
-				items.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
-			} else {
-				items
-					.rev()
-					.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
-			}
-		}
-	}
-}
-
-/// For ifs and other statements
+/// For ifs and other statements bodies
 #[derive(Debug, Clone, PartialEq, EnumFrom)]
 #[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
@@ -194,56 +146,6 @@ impl ASTNode for BlockOrSingleStatement {
 	}
 }
 
-impl Visitable for BlockOrSingleStatement {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::visiting::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		match self {
-			BlockOrSingleStatement::Braced(b) => {
-				b.visit(visitors, data, options, chain);
-			}
-			BlockOrSingleStatement::SingleStatement(s) => {
-				s.visit(visitors, data, options, chain);
-				visitors.visit_statement(&s.0, data, chain);
-			}
-		}
-	}
-
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::visiting::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		match self {
-			BlockOrSingleStatement::Braced(ref mut b) => {
-				b.visit_mut(visitors, data, options, chain);
-			}
-			BlockOrSingleStatement::SingleStatement(ref mut s) => {
-				s.visit_mut(visitors, data, options, chain);
-				visitors.visit_statement_mut(&mut s.0, data, chain);
-			}
-		}
-	}
-}
-
-impl From<Statement> for BlockOrSingleStatement {
-	fn from(stmt: Statement) -> Self {
-		Self::SingleStatement(Box::new(stmt))
-	}
-}
-
-impl From<crate::Expression> for StatementOrDeclaration {
-	fn from(expr: crate::Expression) -> Self {
-		StatementOrDeclaration::Expression(crate::expressions::MultipleExpression::from(expr))
-	}
-}
-
 /// Parse statements, regardless of bracing or not
 pub(crate) fn statements_and_declarations_from_reader(
 	reader: &mut crate::Lexer,
@@ -291,7 +193,7 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 	options: &crate::ToStringOptions,
 	local: crate::LocalToStringInformation,
 ) {
-	let mut last_was_empty = false;
+	// let mut last_was_empty = false;
 	for (at_end, item) in items.iter().endiate() {
 		if !options.pretty {
 			if let StatementOrDeclaration::Expression(crate::expressions::MultipleExpression(
@@ -302,19 +204,19 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 			}
 		}
 
-		if options.pretty {
-			// Don't print more than two lines in a row
-			if let StatementOrDeclaration::AestheticSemiColon(_)
-			| StatementOrDeclaration::Empty(_) = item
-			{
-				if last_was_empty {
-					continue;
-				}
-				last_was_empty = true;
-			} else {
-				last_was_empty = false;
-			}
-		}
+		// if options.pretty {
+		// 	// Don't print more than two lines in a row
+		// 	if let StatementOrDeclaration::AestheticSemiColon(_)
+		// 	| StatementOrDeclaration::Empty(_) = item
+		// 	{
+		// 		if last_was_empty {
+		// 			continue;
+		// 		}
+		// 		last_was_empty = true;
+		// 	} else {
+		// 		last_was_empty = false;
+		// 	}
+		// }
 
 		if !options.include_type_annotations {
 			match item {
@@ -336,5 +238,103 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 		if !at_end && options.pretty {
 			buf.push_new_line();
 		}
+	}
+}
+
+impl Visitable for Block {
+	fn visit<TData>(
+		&self,
+		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		if options.visit_nested_blocks || chain.is_empty() {
+			{
+				visitors.visit_block(&crate::block::BlockLike { items: &self.0 }, data, chain);
+			}
+			let items = self.items();
+			if options.reverse_statements {
+				items.rev().for_each(|item| item.visit(visitors, data, options, chain));
+			} else {
+				items.for_each(|item| item.visit(visitors, data, options, chain));
+			}
+		}
+	}
+
+	fn visit_mut<TData>(
+		&mut self,
+		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		if options.visit_nested_blocks || chain.is_empty() {
+			{
+				visitors.visit_block_mut(
+					&mut crate::block::BlockLikeMut { items: &mut self.0 },
+					data,
+					chain,
+				);
+			}
+			let items = self.items_mut();
+			if options.reverse_statements {
+				items.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+			} else {
+				items
+					.rev()
+					.for_each(|statement| statement.visit_mut(visitors, data, options, chain));
+			}
+		}
+	}
+}
+
+impl Visitable for BlockOrSingleStatement {
+	fn visit<TData>(
+		&self,
+		visitors: &mut (impl crate::visiting::VisitorReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		match self {
+			BlockOrSingleStatement::Braced(b) => {
+				b.visit(visitors, data, options, chain);
+			}
+			BlockOrSingleStatement::SingleStatement(s) => {
+				s.visit(visitors, data, options, chain);
+				visitors.visit_statement(&s.0, data, chain);
+			}
+		}
+	}
+
+	fn visit_mut<TData>(
+		&mut self,
+		visitors: &mut (impl crate::visiting::VisitorMutReceiver<TData> + ?Sized),
+		data: &mut TData,
+		options: &VisitOptions,
+		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+	) {
+		match self {
+			BlockOrSingleStatement::Braced(ref mut b) => {
+				b.visit_mut(visitors, data, options, chain);
+			}
+			BlockOrSingleStatement::SingleStatement(ref mut s) => {
+				s.visit_mut(visitors, data, options, chain);
+				visitors.visit_statement_mut(&mut s.0, data, chain);
+			}
+		}
+	}
+}
+
+impl From<Statement> for BlockOrSingleStatement {
+	fn from(stmt: Statement) -> Self {
+		Self::SingleStatement(Box::new(stmt))
+	}
+}
+
+impl From<crate::Expression> for StatementOrDeclaration {
+	fn from(expr: crate::Expression) -> Self {
+		StatementOrDeclaration::Expression(crate::expressions::MultipleExpression::from(expr))
 	}
 }

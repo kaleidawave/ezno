@@ -904,8 +904,6 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			if reader.is_operator(")") {
 				break;
 			}
-			// Skip comments
-			// while reader.conditional_next(TSXToken::is_comment).is_some() {}
 
 			let start = reader.get_start();
 

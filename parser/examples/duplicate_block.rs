@@ -1,6 +1,6 @@
 use ezno_parser::{
 	visiting::{Chain, ImmutableVariableOrProperty, VisitOptions, Visitor, Visitors},
-	ASTNode, Declaration, Expression, Module, StatementOrDeclaration, VariableField,
+	ASTNode, Expression, Module, StatementOrDeclaration, VariableField,
 };
 use std::collections::HashSet;
 
@@ -19,14 +19,14 @@ fn get_top_level_identifiers(m: &Module) -> (HashSet<String>, HashSet<String>) {
 	let (mut variables, types): (HashSet<_>, HashSet<_>) = Default::default();
 	for item in &m.items {
 		match item {
-			StatementOrDeclaration::Declaration(Declaration::Variable(variable)) => {
+			StatementOrDeclaration::Variable(variable) => {
 				for declaration in &variable.declarations {
 					if let VariableField::Name(identifier) = declaration.name.get_ast_ref() {
 						variables.insert(identifier.as_option_str().unwrap().to_owned());
 					}
 				}
 			}
-			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
+			StatementOrDeclaration::Function(function) => {
 				variables.insert(function.on.name.identifier.as_option_str().unwrap().to_owned());
 			}
 			_ => {}

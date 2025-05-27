@@ -119,6 +119,48 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
+	pub fn skip_including_comments(&mut self) {
+		let current = self.get_current();
+		let start = self.head;
+		self.state.last_new_lines = 0;
+
+		let mut comment = false;
+		let mut multiline_comment = false;
+
+		for (idx, chr) in current.char_indices() {
+			if comment {
+				if let '\n' = chr {
+					comment = false;
+				} else {
+					continue;
+				}
+			}
+			if multiline_comment {
+				if current[idx.saturating_sub(2)..].starts_with("*/") {
+					multiline_comment = false;
+				} else {
+					continue;
+				}
+			}
+
+			if current[idx..].starts_with("//") {
+				comment = true;
+			} else if current[idx..].starts_with("/*") {
+				multiline_comment = true;
+			} else if !chr.is_whitespace() {
+				self.head = start + idx as u32;
+				return;
+			}
+
+			if let '\n' = chr {
+				self.state.last_new_lines += 1;
+			}
+		}
+
+		// Else if
+		self.head += current.len() as u32;
+	}
+
 	pub fn is_keyword(&mut self, keyword: &str) -> bool {
 		self.skip();
 		let current = self.get_current();
@@ -896,7 +938,8 @@ impl<'a> Lexer<'a> {
 			if current.starts_with("//") {
 				current = current[current.find('\n').unwrap_or(current.len())..].trim_start();
 			} else if current.starts_with("/*") {
-				current = current[current.find("*/").unwrap_or(current.len())..].trim_start();
+				current = current[current.find("*/").map(|idx| idx + 2).unwrap_or(current.len())..]
+					.trim_start();
 			} else {
 				return current;
 			}
@@ -938,27 +981,33 @@ impl<'a> Lexer<'a> {
 	// TODO WIP
 	#[must_use]
 	pub fn after_variable_start(&self) -> &'a str {
-		let mut current = self.get_current().trim_start();
-		if current.starts_with("const") {
-			current = current["const".len()..].trim_start();
-		} else if current.starts_with("let") {
-			current = current["let".len()..].trim_start();
-		} else if current.starts_with("var") {
-			current = current["var".len()..].trim_start();
-		}
+		let current = self.get_current().trim_start();
+		let current = current
+			.strip_prefix("const")
+			.or_else(|| current.strip_prefix("let"))
+			.or_else(|| current.strip_prefix("var"))
+			.unwrap_or(current);
 
+		let current = current.trim_start();
 		if current.starts_with('{') || current.starts_with('[') {
 			let mut paren_count: u32 = 0;
-			// TODO account for string literals and comments
+			// TODO account for string literals, regex and comments
+			// For arrow
+			let mut last_was_equal = false;
 			for (idx, chr) in current.as_bytes().iter().enumerate() {
 				if let b'(' | b'{' | b'[' | b'<' = chr {
 					paren_count += 1;
 				} else if let b')' | b'}' | b']' | b'>' = chr {
+					if let (true, b'>') = (last_was_equal, chr) {
+						last_was_equal = false;
+						continue;
+					}
 					paren_count = paren_count.saturating_sub(1);
 					if paren_count == 0 {
 						return current[(idx + 1)..].trim_start();
 					}
 				}
+				last_was_equal = matches!(chr, b'=');
 			}
 		} else {
 			// let mut paren_count: u32 = 0;
@@ -993,6 +1042,7 @@ impl<'a> Lexer<'a> {
 			Ok(())
 		} else {
 			let current = self.get_current();
+			dbg!(current);
 			let until_empty = crate::lexer::utilities::next_empty_occurance(current);
 			let position = self.get_start().with_length(until_empty);
 			let error =

@@ -670,6 +670,7 @@ impl Expression {
 			"|>" => AfterFirst::BinaryOperator(BinaryOperator::Pipe),
 			"is" => AfterFirst::Is,
 		))]
+		#[allow(unused)]
 		enum AfterFirst {
 			SingleLineComment,
 			MultiLineComment,
@@ -747,31 +748,35 @@ impl Expression {
 
 			match next {
 				c @ (AfterFirst::SingleLineComment | AfterFirst::MultiLineComment) => {
-					let after = reader.after_comment_literals();
-					let expresion_level_comment = after
-						.starts_with(|chr: char| !chr.is_alphanumeric())
-						|| after.starts_with("in")
-						|| after.starts_with("instanceof")
-						|| after.starts_with("as")
-						|| after.starts_with("satisfies")
-						|| after.starts_with("is")
-						|| after.is_empty();
+					// Lol this is how it works
+					// if return_precedence == 15 {
+					// 	return Ok(top);
+					// }
+					// let after = reader.after_comment_literals();
+					// let expresion_level_comment = after
+					// 	.starts_with(|chr: char| !chr.is_alphanumeric())
+					// 	|| after.starts_with("in")
+					// 	|| after.starts_with("instanceof")
+					// 	|| after.starts_with("as")
+					// 	|| after.starts_with("satisfies")
+					// 	|| after.starts_with("is")
+					// 	|| after.is_empty();
 
-					if expresion_level_comment {
-						let is_multiline = matches!(c, AfterFirst::MultiLineComment);
-						reader.advance(2);
-						let content = reader.parse_comment_literal(is_multiline)?.to_owned();
-						let position = top.get_position().union(reader.get_end());
-						top = Expression::Comment {
-							is_multiline,
-							content,
-							position,
-							on: Box::new(top),
-							prefix: false,
-						};
-					} else {
-						return Ok(top);
-					}
+					// if expresion_level_comment {
+					let is_multiline = matches!(c, AfterFirst::MultiLineComment);
+					reader.advance(2);
+					let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+					let position = top.get_position().union(reader.get_end());
+					top = Expression::Comment {
+						is_multiline,
+						content,
+						position,
+						on: Box::new(top),
+						prefix: false,
+					};
+					// } else {
+					// 	return Ok(top);
+					// }
 				}
 				AfterFirst::UnaryPostfixAssignmentOperator(operator) => {
 					if operator
@@ -780,6 +785,10 @@ impl Expression {
 					{
 						return Ok(top);
 					}
+					if let Expression::Comment { prefix: false, .. } = top {
+						return Ok(top);
+					}
+
 					reader.advance(operator.to_str().len() as u32);
 					let position = top.get_position().union(reader.get_end());
 					// Increment and decrement are the only two postfix operations
@@ -960,13 +969,7 @@ impl Expression {
 						let marker = reader.new_partial_point_marker(position);
 						PropertyReference::Marker(marker)
 					} else {
-						reader.skip();
-						while reader.is_one_of(&["//", "/*"]).is_some() {
-							let is_multiline = reader.starts_with_slice("/*");
-							reader.advance(2);
-							let _content = reader.parse_comment_literal(is_multiline)?;
-						}
-
+						reader.skip_including_comments();
 						let is_private = reader.is_operator_advance("#");
 						let property = reader.parse_identifier("property name", false)?.to_owned();
 						PropertyReference::Standard { property, is_private }
@@ -980,6 +983,10 @@ impl Expression {
 					};
 				}
 				AfterFirst::NonNullAssertion => {
+					if let Expression::Comment { prefix: false, .. } = top {
+						return Ok(top);
+					}
+
 					// TODO
 					reader.advance(1);
 					#[cfg(feature = "extras")]
@@ -1186,13 +1193,11 @@ impl Expression {
 			Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
 			Self::Comment { ref on, .. } => on.get_precedence(),
 			Self::SpecialOperators(SpecialOperators::Yield { .. }, _) => YIELD_OPERATORS_PRECEDENCE,
+			// I think this is correct
 			#[cfg(feature = "full-typescript")]
-			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => {
-				PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE
-			}
+			Self::SpecialOperators(SpecialOperators::NonNullAssertion(..), _) => 15,
 			// All these are relational and have the same precedence
 			Self::SpecialOperators(..) => RELATION_PRECEDENCE,
-			// TODO unsure about this one...?
 			#[cfg(feature = "extras")]
 			Self::IsExpression(..) => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
 		}
@@ -1458,11 +1463,11 @@ impl Expression {
 			Self::VariableReference(name, position) => {
 				buf.add_mapping(&position.with_source(local.under));
 				let is_reserved = crate::lexer::utilities::is_reserved_word(name);
-				if is_reserved {
+				if is_reserved && local2.on_left {
 					buf.push('(');
 				}
 				buf.push_str(name);
-				if is_reserved {
+				if is_reserved && local2.on_left {
 					buf.push(')');
 				}
 			}
@@ -1500,7 +1505,7 @@ impl Expression {
 					parent.get_non_parenthesised()
 				{
 					buf.push('(');
-					parent.to_string_from_buffer(buf, options, local);
+					parent.get_non_parenthesised().to_string_from_buffer(buf, options, local);
 					buf.push(')');
 				} else {
 					parent.to_string_from_buffer(buf, options, local);

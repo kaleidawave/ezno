@@ -217,7 +217,9 @@ impl ASTNode for StatementOrDeclaration {
 			// state.append_keyword_at_pos(start.0, TSXKeyword::Class);
 			ClassDeclaration::from_reader(reader)
 				.map(|on| StatementOrDeclaration::Class(Decorated::new(decorators, on)))
-		} else if reader.is_keyword("import") {
+		} else if reader.is_keyword("import")
+			&& !reader.get_current()[6..].trim_start().starts_with(['.', '('])
+		{
 			ImportDeclaration::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("export") {
 			ExportDeclaration::from_reader(reader)
@@ -513,31 +515,43 @@ impl StatementOrDeclaration {
 		)
 	}
 
+	#[allow(clippy::match_same_arms)]
 	pub(crate) fn requires_semi_colon(&self) -> bool {
-		// TODO Self::Imported { moved, .. } => moved.requires_semi_colon(),
-		matches!(
-			self,
+		match self {
 			StatementOrDeclaration::VarVariable(_)
-				| StatementOrDeclaration::Expression(_)
-				| StatementOrDeclaration::DoWhileLoop(_)
-				| StatementOrDeclaration::Continue(..)
-				| StatementOrDeclaration::Break(..)
-				| StatementOrDeclaration::Return(..)
-				| StatementOrDeclaration::Throw(..)
-				| StatementOrDeclaration::Variable(..)
-				| StatementOrDeclaration::DeclareVariable(..)
-				| StatementOrDeclaration::Export(Decorated {
-					on: import_export::export::ExportDeclaration::Default { .. }
-						| import_export::export::ExportDeclaration::Item {
-							exported: import_export::export::Exportable::ImportAll { .. }
-								| import_export::export::Exportable::ImportParts { .. }
-								| import_export::export::Exportable::Parts { .. },
-							..
-						},
-					..
-				}) | StatementOrDeclaration::Import(..)
-				| StatementOrDeclaration::TypeAlias(..)
-		)
+			| StatementOrDeclaration::DoWhileLoop(_)
+			| StatementOrDeclaration::Continue(..)
+			| StatementOrDeclaration::Break(..)
+			| StatementOrDeclaration::Return(..)
+			| StatementOrDeclaration::Throw(..)
+			| StatementOrDeclaration::Variable(..)
+			| StatementOrDeclaration::DeclareVariable(..)
+			| StatementOrDeclaration::Import(..)
+			| StatementOrDeclaration::TypeAlias(..) => true,
+			StatementOrDeclaration::Export(Decorated {
+				on:
+					import_export::export::ExportDeclaration::Default { .. }
+					| import_export::export::ExportDeclaration::Item {
+						exported:
+							import_export::export::Exportable::ImportAll { .. }
+							| import_export::export::Exportable::ImportParts { .. }
+							| import_export::export::Exportable::Parts { .. },
+						..
+					},
+				..
+			}) => true,
+			StatementOrDeclaration::Expression(_expr) => true,
+			// StatementOrDeclaration::Expression(expr) => match &expr.0 {
+			// 	// TODO temp fix
+			// 	crate::Expression::Comment { .. } => false,
+			// 	expr => {
+			// 		dbg!(&expr);
+			// 		true
+			// 	}
+			// }
+			StatementOrDeclaration::Imported { moved, .. } => moved.requires_semi_colon(),
+			_ => false,
+		}
 	}
 
 	#[allow(clippy::match_same_arms)]
