@@ -1,10 +1,62 @@
-Parameter values are inferred using an *expected parameter type*
+This is where some existing known type inferes a constraint on something untyped.
+
+#### Expected parameter from variable declaration
+
+> Technically works with inference but this method should be less overhead + produce better positioned errors
 
 ```ts
-const x: (s: string) => void = (s) => s satisfies number;
-// TODO function + satisfies
+const x: (a: string) => number = a => a.to;
 ```
 
-> I called this *forwards* because the type -> (forward) implies the type. *backwards* refers to usage of a type being modifying <- the constraint
+- No property 'to' on string
 
-> TODO problems with generics
+#### Expected argument from parameter declaration
+
+```ts
+function map(a: (a: number) => number) {}
+
+// No annotation on `a`. But error comes from body
+// (rather than parameter assignment)
+map(a => a.t)
+```
+
+- No property 't' on number
+
+#### Object function inference
+
+```ts
+interface MyObject {
+	a(b: string): any;
+}
+
+const obj: MyObject = {
+	a(b) {
+		b satisfies number;
+	}
+}
+```
+
+- Expected number, found string
+
+#### Generic argument/constraint leads to inference
+
+```ts
+function callFunction<T>(fn: (p: T) => void) {
+	// ...
+}
+
+callFunction<string>(a => {
+	a satisfies number;
+})
+```
+
+- Expected number, found string
+
+#### Computed generics from collection
+
+```ts
+const x = [1, 2, 3];
+x.map(a => (a satisfies string, 2))
+```
+
+- Expected string, found 1 | 2 | 3

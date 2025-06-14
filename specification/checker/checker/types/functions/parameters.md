@@ -1,3 +1,0 @@
-- Spread
-- Default (+ effects)
-- Generics?

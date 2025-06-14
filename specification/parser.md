@@ -92,6 +92,7 @@ const y = ;
 - Pipe operator
 - Destructuring with type annotations (> #TODO see TS issue, breaks things)
 - > #TODO things tracked in ecmascript proposals (import etc)
+
 ### The parser as a library
 
 #### Rust and WASM (API)
@@ -119,6 +120,7 @@ const y = ;
 ```rs
 > #TODO code here
 ```
+
 #### Comments
 
 > #TODO

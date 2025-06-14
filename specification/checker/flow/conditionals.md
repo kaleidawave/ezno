@@ -1,4 +1,0 @@
-- Checking dead branches
-- Narrowing
-- Check each branch
-- Unify environment state

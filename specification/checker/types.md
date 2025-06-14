@@ -1,4 +1,0 @@
-- See definitions
-- TypeId
-- Type, Constructor, etc
-- Printing (recursion aware + JSON output #TODO-start)
