@@ -632,6 +632,7 @@ impl Expression {
 			"|" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseOr),
 			"|=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseOr),
 			"^" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseXOr),
+			"^=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseXOr),
 			"," => AfterFirst::BinaryOperator(BinaryOperator::Comma),
 			"<" => AfterFirst::BinaryOperator(BinaryOperator::LessThan),
 			">" => AfterFirst::BinaryOperator(BinaryOperator::GreaterThan),
@@ -698,12 +699,12 @@ impl Expression {
 				match automaton.get_next(chr) {
 					GetNextResult::Result {
 						result,
-						ate_character: _, // Should always be true
+						ate_item: _, // Should always be true
 					} => return result,
 					GetNextResult::NewState(new_state) => {
 						automaton = new_state;
 					}
-					GetNextResult::InvalidCharacter(_err) => {
+					GetNextResult::InvalidItem(_err) => {
 						// todo!("{}", err)
 						return AfterFirst::Exit;
 					}

@@ -357,6 +357,12 @@ impl ASTNode for StatementOrDeclaration {
 			// Prevents cycic recursion
 			let (_found, position) = crate::lexer::utilities::next_item(reader);
 			Err(ParseError::new(ParseErrors::ExpectedExpression, position))
+		} else if reader.get_options().interpolation_points
+			&& reader.is_keyword_advance(crate::marker::MARKER)
+		{
+			let position = start.with_length(0);
+			let marker_id = reader.new_partial_point_marker(position);
+			Ok(StatementOrDeclaration::Marker(marker_id, position))
 		} else {
 			#[cfg(feature = "extras")]
 			if reader.is_keyword("from") {

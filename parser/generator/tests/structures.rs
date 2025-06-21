@@ -3,6 +3,7 @@ use ezno_parser::{
 	source_map,
 	statements_and_declarations::{
 		StatementOrDeclaration, VariableDeclaration, VariableDeclarationItem,
+		VariableDeclarationKeyword,
 	},
 	ASTNode, Expression,
 };
@@ -50,7 +51,8 @@ fn stmt_with_expr_interpolation() {
 			type_annotation: None,
 			position: source_map::Nullable::NULL,
 		};
-		let expected = StatementOrDeclaration::Variable(VariableDeclaration::LetDeclaration {
+		let expected = StatementOrDeclaration::Variable(VariableDeclaration {
+			kind: VariableDeclarationKeyword::Let,
 			declarations: vec![declaration],
 			position: source_map::Nullable::NULL,
 		});
@@ -78,7 +80,8 @@ fn stmt_with_var_name_interpolation() {
 			type_annotation: None,
 			position: source_map::Nullable::NULL,
 		};
-		let expected = StatementOrDeclaration::Variable(VariableDeclaration::LetDeclaration {
+		let expected = StatementOrDeclaration::Variable(VariableDeclaration {
+			kind: VariableDeclarationKeyword::Let,
 			declarations: vec![declaration],
 			position: source_map::Nullable::NULL,
 		});

@@ -143,7 +143,7 @@ impl<'a> Lexer<'a> {
 				}
 			}
 			if multiline_comment {
-				if current[idx.saturating_sub(2)..].starts_with("*/") {
+				if current.get(idx.saturating_sub(2)..).is_some_and(|current| current.starts_with("*/")) {
 					multiline_comment = false;
 				} else {
 					continue;
