@@ -24,9 +24,20 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      # TODO abstract
+      - name: Download shell-language
+        run: |
+          mkdir bin
+          gh release download -R kaleidawave/experiments assets -p shell-language -D bin
+          ls -R .
+          chmod +x ./bin/shell-language
+          echo "$(pwd)/bin" >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
-          packages: hyperfine ripgrep
+          packages: hyperfine
       
       - name: Install valgrind
         id: install-valgrind
@@ -61,213 +72,132 @@ jobs:
           ref: main
           clean: false
 
-      - name: Build Ezno (main branch)
+      - name: Build Ezno
+        shell: shell-language {0}
         run: |
-          mkdir bin2cmp # = binaries to compare
-          mv ./target/release/ezno bin2cmp/current
-          cargo build --release
-          mv ./target/release/ezno bin2cmp/main
+          # TODO offsets based on branches
+          echo run cargo build --release
+          move ./target/release/ezno "binaries/ezno"
         if: ${{ github.ref_name != 'main' }}
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-      - name: Set compilers
-        id: compilers
-        shell: bash
-        run: |
-          if [ -d "bin2cmp" ]; then
-            echo "::notice::Comparing against main branch"
-            echo "BINARIES=bin2cmp/current,bin2cmp/main" >> "$GITHUB_OUTPUT"
-            echo "BINARY=./bin2cmp/current" >> "$GITHUB_OUTPUT"
-            else
-            echo "BINARIES=./target/release/ezno" >> "$GITHUB_OUTPUT"
-            echo "BINARY=./target/release/ezno" >> "$GITHUB_OUTPUT"
-          fi
-
-      # TODO temp
-      - name: Testing the binary
-        continue-on-error: true
-        shell: bash
-        run: ${{ steps.compilers.outputs.BINARY }} info
-
       - name: Compare checker performance
-        shell: bash
+        shell: shell-language {0}
         run: |
-          echo "### Checking
-          \`\`\`shell
-          $(hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check demo.tsx')
-          \`\`\`" >> $GITHUB_STEP_SUMMARY
+          let to = env GITHUB_STEP_SUMMARY
+          let binaries = files "binaries/*"
+          let binaries = replace $binaries "\n" ","
+
+          append $to "### Checking\n"
+          let output = run hyperfine -i -L binary $binaries './{binary} check demo.tsx'
+          append $to "```shell\n\$output\n```"
 
       - name: Print input
-        shell: bash
+        shell: shell-language {0}
         run: |
-          echo "<details>
-          <summary>Input</summary>
-
-          \`\`\`tsx
-          $(cat ./demo.tsx)
-          \`\`\`
-          </details>
-          " >> $GITHUB_STEP_SUMMARY
-
+          let to = env GITHUB_STEP_SUMMARY
+          append $to "<details><summary>Input</summary>\n"
+          let content = read ./demo.tsx
+          append $to "```tsx\n$content\n```\n</details>"
           echo "::info::Wrote code to summary"
           
       - name: Test statistics
         id: performance
         continue-on-error: true
-        shell: bash
+        shell: shell-language {0}
         run: |
-          command_output=$(
-            ${{ steps.compilers.outputs.BINARY }} check demo.tsx --timings --max-diagnostics all 2>&1 || true
-          )
+          let to = env GITHUB_STEP_SUMMARY
+          for files "binaries/*" each
+            append $to "### $file (demo)"
+            echo "Running $file"
+            let out = run "./$file" check demo.tsx --timings --max-diagnostics all
+
+            let diagnostics = rbefore $out "---"
+            let statistics = rafter $out "---"
+
+            append $to "<details><summary>Diagnostics</summary>\n```$diagnostics```\n</details>"
+            append $to "<details><summary>Statistics</summary>\n```$statistics```\n</details>"
+
+        # $project="ezno"
+        # $ref=$(git log --pretty=format:"%H" -n 1)
+        # $branch=$(git rev-parse --abbrev-ref HEAD)
+    
+        # # TODO temp URL
+        # curl \
+        #   --header "Content-Type: application/json" \
+        #   --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
+        #   --data "{\"project\":\"$project\",\"ref\":\"$ref\",\"branch\":\"$branch\",\"data\":\"$statistics\"}" \
+        #   https://kaleidawave--1dcc8e5438ae11f08e309e149126039e.web.val.run
           
-          diagnostics=""; statistics=""; found_splitter=false;
-          while IFS= read -r line; do
-              if [[ "$line" == "---"* ]]; then found_splitter=true;
-              elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
-              else statistics += "$line"$'\n'; fi
-          done <<< "$command_output"
-
-          echo "<details>
-          <summary>Diagnostics</summary>
-
-          \`\`\`
-          $diagnostics
-          \`\`\`
-          </details>
-          " >> $GITHUB_STEP_SUMMARY
-
-          echo "here";
-
-          statistics=$(echo -n "$statistics" | base64 --wrap=0)
-          echo "statistics=$statistics" >> "$GITHUB_OUTPUT"
-
-      - name: Emit statistics
-        continue-on-error: true
-        shell: bash
-        env:
-          statistics: ${{ steps.performance.outputs.statistics }}
-        run: |
-          statistics=$(echo $statistics | base64 --decode)
-
-          if [ -d "bin2cmp" ]; then
-            OUT=$(./bin2cmp/main check demo.tsx --timings --max-diagnostics all 2>&1 || true)
-            $main_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
-            echo "
-            <details>
-            <summary>Statistics</summary>
-
-            current
-            \`\`\`
-            $statistics
-            \`\`\`
-
-            main
-            \`\`\`
-            $main_statistics
-            \`\`\`
-            </details>
-            " >> $GITHUB_STEP_SUMMARY
-          else
-            echo "<details>
-            <summary>Statistics</summary>
-
-            \`\`\`
-            $statistics
-            \`\`\`
-            </details>" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          $project="ezno"
-          $ref=$(git log --pretty=format:"%H" -n 1)
-          $branch=$(git rev-parse --abbrev-ref HEAD)
-      
-          # TODO temp URL
-          curl \
-            --header "Content-Type: application/json" \
-            --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
-            --data "{\"project\":\"$project\",\"ref\":\"$ref\",\"branch\":\"$branch\",\"data\":\"$statistics\"}" \
-            https://kaleidawave--1dcc8e5438ae11f08e309e149126039e.web.val.run
-
-      # - name: Run checker performance w/staging
-      #   shell: bash
-      #   if: github.ref_name != 'main'
-      #   run: |
-      #     echo "::group::Running with staging"
-          
-      #     cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
-      #     cargo run -p ezno-checker-specification \
-      #      --example amalgamate with-staging.md \
-      #      --comment-headers \
-      #      --out ./with-staging.tsx
-
-      #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
-      #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
-
-      #     echo "::endgroup::"
+        # - name: Run checker performance w/staging
+        #   shell: bash
+        #   if: github.ref_name != 'main'
+        #   run: |
+        #     echo "::group::Running with staging"
+        #     cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
+        #     cargo run -p ezno-checker-specification \
+        #      --example amalgamate with-staging.md \
+        #      --comment-headers \
+        #      --out ./with-staging.tsx
+        #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
+        #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
+        #     echo "::endgroup::"
 
       - name: Run checker performance on large file
-        shell: bash
+        shell: shell-language {0}
         run: |
-          echo "::group::Running large"
+          let demo = read "./demo.tsx"
+          let large = repeat demo 10
+          write "./large.tsx" $large
 
-          # Repeat the file
-          for i in {1..10}; do
-            cat ./demo.tsx >> large.tsx
-          done
+          let to = env GITHUB_STEP_SUMMARY
+          for files "binaries/*" each
+            append $to "### $file (large)"
+            echo "Running $file"
+            let out = run "./$file" check large.tsx --timings
 
-          ${{ steps.compilers.outputs.BINARY }} check large.tsx --timings --max-diagnostics 0 || true
-
-          hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check large.tsx'
-          echo "::endgroup::"
+            let statistics = rafter $out "---"
+            append $to "<details><summary>Statistics</summary>\n```$statistics```\n</details>"
+            
+            let out = run hyperfine -i "./$file" check large.tsx
+            append $to "```shell\n$out\n```"
 
       - name: Valgrind and callgrind
-        shell: bash
+        shell: shell-language {0}
         if: ${{ steps.install-valgrind.outcome == 'success' }}
         continue-on-error: true
         run: |
-          IFS=',' read -ra ITEMS <<< ${{ steps.compilers.outputs.BINARIES }}
+          let to = env GITHUB_STEP_SUMMARY
+          for files "binaries/*" each
+            let output = run valgrind $file "./demo.tsx" --check --merge-stdout-and-stderr
+            let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
+            let allocated = replace $allocated "," ""
+            let allocated = format_number $allocated
+            append $to "- `$file`: `$allocated` allocated"
 
-          export RUST_BACKTRACE=1
+            let output = run valgrind --tool=callgrind $file "./demo.tsx" --check --merge-stdout-and-stderr
+            let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name
+            let instructions = format_number $instructions
+            append $to "- `$file`: `$instructions` instructions"
 
-          for compiler in ${ITEMS[@]}; do
-            echo "::group::Running $compiler"
+      # - name: Run parsing & stringing (minfied) benchmarks
+      #   shell: bash
+      #   continue-on-error: true
+      #   run: |
+      #     CORPUS_URL="https://gist.githubusercontent.com/kaleidawave/6708f604bc403021b56cb54ea50cac62/raw/javascript_files.txt"
+
+      #     curl -s "$CORPUS_URL" | while IFS= read -r URL; do
+      #       FILENAME="${URL##*/}"
+      #       curl -s "$URL" > $FILENAME
+      #       echo "::group::Comparison"
+      #       ${{ steps.compilers.outputs.BINARY }} ast-explorer full $FILENAME --check
+
+      #       # hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
+      #       #   '{compiler} ast-explorer full $FILENAME --check'
             
-            echo "::group::Callgrind"
-            {
-              valgrind --tool=callgrind --callgrind-out-file=./cpu-out $compiler check demo.tsx --max-diagnostics 0
-            } || true
-            cat ./cpu-out
-            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never ./cpu-out)"
-            echo "::endgroup::"
-            
-            echo "::group::Valgrind"
-            {
-              valgrind --log-file=memory-out $compiler check demo.tsx --max-diagnostics 0
-            } || true
-            echo "::notice::Memory usage:$(rg "([0-9,]*) bytes allocated" -or '$1' -N --color never memory-out)"
-            echo "::endgroup::"
-
-            echo "::endgroup::"
-          done
-
-      - name: Run parsing & stringing (minfied) benchmarks
-        shell: bash
-        continue-on-error: true
-        run: |
-          CORPUS_URL="https://gist.githubusercontent.com/kaleidawave/6708f604bc403021b56cb54ea50cac62/raw/javascript_files.txt"
-
-          curl -s "$CORPUS_URL" | while IFS= read -r URL; do
-            FILENAME="${URL##*/}"
-            curl -s "$URL" > $FILENAME
-            echo "::group::Comparison"
-            ${{ steps.compilers.outputs.BINARY }} ast-explorer full $FILENAME --check
-
-            # hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
-            #   '{compiler} ast-explorer full $FILENAME --check'
-            
-            echo "::endgroup::"
-          done
+      #       echo "::endgroup::"
+      #     done
 
       # - name: Upload checker
       #   if: ${{ github.ref_name == 'main' }}
