@@ -14,7 +14,7 @@ class Y {
 	constructor() {
 		x += 6 * x;
 	}
-	
+
 	get a() {
 		for (let i = 0; i < 5; i++) {
 
@@ -23,7 +23,7 @@ class Y {
 
 	set b() {
 		while (false) {
-			
+
 		}
 
 		switch (false) {

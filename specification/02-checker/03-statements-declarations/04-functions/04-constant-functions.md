@@ -36,7 +36,6 @@ These are work in progress, but we can
 
 > Using `simple-json-parser`
 
-
 > #TODO-start
 
 #### String operations (constant functions can use `this`)

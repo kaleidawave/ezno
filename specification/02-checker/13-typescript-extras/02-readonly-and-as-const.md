@@ -28,5 +28,4 @@ func2(obj)
 
 > This is where usage a parameter gets a type via a type (on some variable or parameter somewhere). Aka from above or the usage of the function
 
-
 > Constraint inference is where the parameter gets it from below. Usage of the parameter value

@@ -9,7 +9,7 @@ x.a satisfies 3;
 x.b satisfies string;
 
 const obj = Object.setPrototypeOf(
-  {}, 
+  {},
   Math.random() ? { a: 2 } : { get a() { return 0 } }
 );
 

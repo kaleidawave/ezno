@@ -158,7 +158,6 @@ With advanced_numbers
 
 > This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
 
-
 > This would need to support [Symbol.toPrimitive] + a bunch of error handling
 
 ```ts
