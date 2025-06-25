@@ -15,6 +15,10 @@ on:
         type: string
         default: HEAD
         description: The reference to run the task on
+      information:
+        type: string
+        default: ""
+        description: Some data associated with the action
 
 env:
   CACHE_PATHS: |
@@ -76,7 +80,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}
+          name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}${{ inputs.information }}
           path: target/release/ezno
           retention-days: 30
 

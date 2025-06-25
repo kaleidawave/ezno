@@ -9,8 +9,48 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  temp:
+    runs-on: ubuntu-latest
+    if: true
+
+    strategy:
+      matrix: 
+        ref: [
+          "35dbeb145150906ba91ec8582ebb38650f1c7d34",
+          "506be8be8b6f1de2423ecab6413b31e3cb0ce58c"
+        ]
+      fail-fast: true
+
+    steps:
+    - name: TEMP
+      run: echo "checking out ${{ matrix.ref }}"
+      shell: bash
+    - uses: actions/checkout@v4
+      id: checkout
+      with:
+        ref: ${{ matrix.ref }}
+    - uses: dtolnay/rust-toolchain@stable
+    
+    - name: TEMP
+      run: git status
+      shell: bash
+
+    - name: Build binary
+      run: cargo run --release
+      shell: bash
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}
+        path: target/release/ezno
+        retention-days: 30
+
   run-benchmarks:
     runs-on: ubuntu-latest
+    needs: temp
+
+    env:
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@v4
@@ -33,8 +73,6 @@ jobs:
           ls -R .
           chmod +x ./bin/shell-language
           echo "$(pwd)/bin" >> "$GITHUB_PATH"
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
@@ -99,13 +137,27 @@ jobs:
           gh run download -p binary-${{ runner.os }}* -D binaries
           ls -R .
 
-      # TODO not quite what it is meant to do
+      # get other binaries and last
+
       - name: Build latest version of binaries
         if: ${{ steps.download-binaries.conclusion == 'failure' }}
         run: |
           mkdir binaries
           cargo build --release
           mv target/releases/ezno binaries
+
+      - id: get-branch
+        run: echo "branch=$(git rev-parse --abbrev-ref HEAD)"" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.get-branch.outputs.branch }}-last
+          path: target/release/ezno
+          overwrite: true
+          retention-days: 30
+
+      # start of performance
 
       - name: Compare checker performance
         shell: shell-language {0}
@@ -133,7 +185,7 @@ jobs:
         run: |
           let to = env GITHUB_STEP_SUMMARY
           for files "binaries/*" each
-            append $to "### $file (demo)"
+            append $to "#### $file: `demo.tsx`"
             let out = run "./$file" check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
             let diagnostics = rbefore $out "---"
@@ -153,7 +205,7 @@ jobs:
 
           let to = env GITHUB_STEP_SUMMARY
           for files "binaries/*" each
-            append $to "### $file (large)"
+            append $to "#### $file: `large.tsx`"
             echo "Running $file"
             let out = run "./$file" check large.tsx --timings --merge-stdout-and-stderr
 
@@ -170,16 +222,18 @@ jobs:
         run: |
           let to = env GITHUB_STEP_SUMMARY
           for files "binaries/*" each
+            append $to "#### $file: instructions and memory usage"
+
             let output = run valgrind $file "./demo.tsx" --check --merge-stdout-and-stderr
             let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
             let allocated = replace $allocated "," ""
             let allocated = format_number $allocated
-            append $to "- `$file`: `$allocated` allocated"
 
             let output = run valgrind --tool=callgrind $file "./demo.tsx" --check --merge-stdout-and-stderr
             let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name
             let instructions = format_number $instructions
-            append $to "- `$file`: `$instructions` instructions"
+
+            append $to "- `$file`: `$allocated` allocated and $instructions` instructions"
 
       # - name: Run parsing & stringing (minfied) benchmarks
       #   shell: bash
