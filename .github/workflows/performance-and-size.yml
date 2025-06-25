@@ -15,7 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 50 # I think this is okay
+          # I think this is okay
+          # TODO can we do some sort of sparse checkout
+          fetch-depth: 100 
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -38,12 +40,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      # TODO temp
-      - name: Check shell-language
-        run: shell-language
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: hyperfine
+
+      - name: Install valgrind
+        id: install-valgrind
+        continue-on-error: true
+        run: sudo apt-get install valgrind
 
       # TODO temp
-      - name: Check shell-language
+      - name: List references and branches
         shell: shell-language {0}
         run: |
           let acc = constant ""
@@ -51,28 +58,22 @@ jobs:
             let branch = git name-rev --name-only --refs="refs/heads/*" $ref
             echo "$ref $branch"
             let branch = if_contains $branch "~" "" $branch
-            let item = if_equal $branch "" "" "$ref $branch"
+            let item = if_equal $branch "" "" "$branch->$ref"
             let acc = concatenate $acc $item
             set break = if_equal $branch "master" "break" ""
 
           for constant $acc each
-            echo "--- $iter ---"
+            let branch = before $iter "->"
+            let ref = after $iter "->"
+            let name = replace $branch "/" "-"
 
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        with:
-          packages: hyperfine
-      
-      - name: Install valgrind
-        id: install-valgrind
-        continue-on-error: true
-        run: sudo apt-get install valgrind
+            echo run git checkout $ref --force
+            echo run git status
+            echo "Building binary @$branch"
+            echo run cargo build --release
+            move ./target/release/ezno "binaries/ezno-$name"
 
-      - name: Build Ezno (current branch)
-        run: cargo build --release
-        env:
-          CARGO_PROFILE_RELEASE_DEBUG: true
-
-      # TEMPORARY LOCATION, SHOULD BE DONE ON MAIN
+      # THIS IS DONE ON THE LEAST REVISION
       # Code generated from specification.md. this is not meant to accurately represent a 
       # program but instead give an idea for how it scales across all the type checking features
       - name: Generate specification
@@ -88,22 +89,6 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_DEBUG: true
 
-      - uses: actions/checkout@v4
-        if: ${{ github.ref_name != 'main' }}
-        with:
-          ref: main
-          clean: false
-
-      - name: Build Ezno
-        shell: shell-language {0}
-        run: |
-          # TODO offsets based on branches
-          echo run cargo build --release
-          move ./target/release/ezno "binaries/ezno"
-        if: ${{ github.ref_name != 'main' }}
-        env:
-          CARGO_PROFILE_RELEASE_DEBUG: true
-
       - name: Compare checker performance
         shell: shell-language {0}
         run: |
@@ -113,7 +98,7 @@ jobs:
 
           append $to "### Checking\n"
           let output = run hyperfine -i -L binary $binaries './{binary} check demo.tsx'
-          append $to "```shell\n\$output\n```"
+          append $to "```shell\n$output\n```"
 
       - name: Print input
         shell: shell-language {0}
@@ -140,31 +125,6 @@ jobs:
 
             append $to "<details><summary>Diagnostics</summary>\n```$diagnostics```\n</details>"
             append $to "<details><summary>Statistics</summary>\n```$statistics```\n</details>"
-
-        # $project="ezno"
-        # $ref=$(git log --pretty=format:"%H" -n 1)
-        # $branch=$(git rev-parse --abbrev-ref HEAD)
-    
-        # # TODO temp URL
-        # curl \
-        #   --header "Content-Type: application/json" \
-        #   --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
-        #   --data "{\"project\":\"$project\",\"ref\":\"$ref\",\"branch\":\"$branch\",\"data\":\"$statistics\"}" \
-        #   https://kaleidawave--1dcc8e5438ae11f08e309e149126039e.web.val.run
-          
-        # - name: Run checker performance w/staging
-        #   shell: bash
-        #   if: github.ref_name != 'main'
-        #   run: |
-        #     echo "::group::Running with staging"
-        #     cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
-        #     cargo run -p ezno-checker-specification \
-        #      --example amalgamate with-staging.md \
-        #      --comment-headers \
-        #      --out ./with-staging.tsx
-        #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
-        #     ${{ steps.compilers.outputs.BINARY }} check with-staging.tsx --timings || true
-        #     echo "::endgroup::"
 
       - name: Run checker performance on large file
         shell: shell-language {0}
@@ -220,11 +180,3 @@ jobs:
             
       #       echo "::endgroup::"
       #     done
-
-      # - name: Upload checker
-      #   if: ${{ github.ref_name == 'main' }}
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: latest-checker
-      #     path: target/release/ezno
-      #     retention-days: 90
