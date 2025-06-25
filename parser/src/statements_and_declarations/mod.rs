@@ -56,46 +56,9 @@ const TYPES_STATEMENT_FUNCTION: &str = r"
 	}
 ";
 
-// TODO strict mode can affect result
-// TODO reuse
-// Warning expects skip to have been called
-pub(crate) fn _is_declaration_start(reader: &crate::Lexer) -> bool {
-	let declaration_keyword = reader.is_one_of_keywords(&[
-		"let",
-		"const",
-		"class",
-		"enum",
-		"interface",
-		"type",
-		"namespace",
-		"declare",
-		"import",
-		"export",
-		// Extra
-		"from",
-	]);
+pub type ClassDeclarationStatement = ClassDeclaration<StatementPosition>;
 
-	if let Some("from") = declaration_keyword {
-		reader.get_options().reversed_imports
-	} else if let Some(name @ ("import" | "export" | "namespace" | "type")) = declaration_keyword {
-		let after_declaration_keyword = reader.get_current()[name.len()..].trim_start();
-
-		// TODO more (is operator like?)
-		let is_declaration_keyword_expression = after_declaration_keyword.starts_with('(')
-			|| after_declaration_keyword.starts_with('.')
-			|| after_declaration_keyword.starts_with('[')
-			|| after_declaration_keyword.starts_with('(')
-			|| after_declaration_keyword.starts_with('=');
-
-		!is_declaration_keyword_expression
-	} else if declaration_keyword.is_some() {
-		true
-	} else {
-		crate::lexer::utilities::is_function_header(reader.get_current())
-	}
-}
-
-/// A statement. See [Declaration]s and [StatementOrDeclaration] for more
+/// A statement or declaration. See [Statement] which is a subset of items
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -104,8 +67,8 @@ pub(crate) fn _is_declaration_start(reader: &crate::Lexer) -> bool {
 #[visit_self]
 pub enum StatementOrDeclaration {
 	Variable(VariableDeclaration),
-	Function(Decorated<StatementFunction>),
-	Class(Decorated<ClassDeclaration<StatementPosition>>),
+	Function(Box<Decorated<StatementFunction>>),
+	Class(Box<Decorated<ClassDeclarationStatement>>),
 	Enum(Decorated<EnumDeclaration>),
 	Interface(Decorated<InterfaceDeclaration>),
 	TypeAlias(TypeAlias),
@@ -127,7 +90,7 @@ pub enum StatementOrDeclaration {
 	Switch(SwitchStatement),
 	WhileLoop(WhileStatement),
 	DoWhileLoop(DoWhileStatement),
-	TryCatch(TryCatchStatement),
+	TryCatch(Box<TryCatchStatement>),
 	// Control flow
 	Return(ReturnStatement),
 	// TODO maybe an actual label struct instead of `Option<String>`
@@ -162,6 +125,7 @@ pub enum StatementOrDeclaration {
 	Marker(#[visit_skip_field] Marker<Statement>, Span),
 }
 
+/// Return with an optional expression
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -200,6 +164,8 @@ impl ASTNode for StatementOrDeclaration {
 		// then need to throw a parse error
 		let decorators = decorators_from_reader(reader)?;
 
+		// TODO can use finite automaton here
+
 		if reader.is_keyword("const") {
 			// Const can be either variable declaration or `const enum`
 			if reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
@@ -217,7 +183,7 @@ impl ASTNode for StatementOrDeclaration {
 		} else if reader.is_keyword("class") {
 			// state.append_keyword_at_pos(start.0, TSXKeyword::Class);
 			ClassDeclaration::from_reader(reader)
-				.map(|on| StatementOrDeclaration::Class(Decorated::new(decorators, on)))
+				.map(|on| StatementOrDeclaration::Class(Box::new(Decorated::new(decorators, on))))
 		} else if reader.is_keyword("import")
 			&& !reader.get_current()[6..].trim_start().starts_with(['.', '('])
 		{
@@ -234,6 +200,9 @@ impl ASTNode for StatementOrDeclaration {
 			let alias = TypeAlias::from_reader(reader)?;
 			crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
 			Ok(alias.into())
+		} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
+			let function = StatementFunction::from_reader(reader)?;
+			Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
 		} else if reader.is_keyword("declare") {
 			let start = reader.get_start();
 			reader.advance("declare".len() as u32);
@@ -247,12 +216,12 @@ impl ASTNode for StatementOrDeclaration {
 				let mut class = ClassDeclaration::<StatementPosition>::from_reader(reader)?;
 				class.name.is_declare = true;
 				class.position.start = start.0;
-				Ok(StatementOrDeclaration::Class(Decorated::new(decorators, class)))
+				Ok(StatementOrDeclaration::Class(Box::new(Decorated::new(decorators, class))))
 			} else if reader.is_keyword("function") || reader.is_keyword("async") {
 				let mut function = StatementFunction::from_reader(reader)?;
 				function.name.is_declare = true;
 				function.position.start = start.0;
-				Ok(StatementOrDeclaration::Function(Decorated::new(decorators, function)))
+				Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
 			} else if reader.is_keyword("type") {
 				let mut alias = TypeAlias::from_reader(reader)?;
 				alias.name.is_declare = true;
@@ -272,9 +241,6 @@ impl ASTNode for StatementOrDeclaration {
 					&["let", "const", "var", "class", "type", "async", "function", "namespace"],
 				))
 			}
-		} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
-			let function = StatementFunction::from_reader(reader)?;
-			Ok(StatementOrDeclaration::Function(Decorated::new(decorators, function)))
 		} else if reader.is_keyword("if") {
 			IfStatement::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("for") {
@@ -286,7 +252,7 @@ impl ASTNode for StatementOrDeclaration {
 		} else if reader.is_keyword("do") {
 			DoWhileStatement::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("try") {
-			TryCatchStatement::from_reader(reader).map(Into::into)
+			TryCatchStatement::from_reader(reader).map(Box::new).map(Into::into)
 		} else if reader.is_keyword("var") {
 			VarVariableStatement::from_reader(reader).map(StatementOrDeclaration::VarVariable)
 		} else if reader.is_keyword("with") {
@@ -535,19 +501,20 @@ impl StatementOrDeclaration {
 			| StatementOrDeclaration::DeclareVariable(..)
 			| StatementOrDeclaration::Import(..)
 			| StatementOrDeclaration::TypeAlias(..) => true,
+			StatementOrDeclaration::Expression(_expr) => true,
 			StatementOrDeclaration::Export(Decorated {
-				on:
-					import_export::export::ExportDeclaration::Default { .. }
-					| import_export::export::ExportDeclaration::Item {
-						exported:
-							import_export::export::Exportable::ImportAll { .. }
-							| import_export::export::Exportable::ImportParts { .. }
-							| import_export::export::Exportable::Parts { .. },
-						..
-					},
+				on: import_export::export::ExportDeclaration::Default { .. },
 				..
 			}) => true,
-			StatementOrDeclaration::Expression(_expr) => true,
+			StatementOrDeclaration::Export(Decorated {
+				on: import_export::export::ExportDeclaration::Item { exported, .. },
+				..
+			}) => matches!(
+				&**exported,
+				import_export::export::Exportable::ImportAll { .. }
+					| import_export::export::Exportable::ImportParts { .. }
+					| import_export::export::Exportable::Parts { .. }
+			),
 			// StatementOrDeclaration::Expression(expr) => match &expr.0 {
 			// 	// TODO temp fix
 			// 	crate::Expression::Comment { .. } => false,

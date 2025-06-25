@@ -39,7 +39,8 @@ impl std::fmt::Display for NumberSign {
 	}
 }
 
-/// Some of these can't be parsed, but are there to make so that a number expression can be generated from a f64
+/// Some of these can't be parsed into this form, but are here so that
+/// a number representation can be generated from a f64
 ///
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone)]

@@ -68,7 +68,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 		StatementOrDeclaration::Export(exported) => {
 			match &exported.on {
 				ExportDeclaration::Item { exported, position: _ } => {
-					match exported {
+					match &**exported {
 						// Skipped as this is done earlier
 						Exportable::Class(class) => {
 							let existing_id = checking_data
@@ -125,7 +125,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 						Exportable::ImportAll { .. }
 						| Exportable::ImportParts { .. }
 						| Exportable::Function(_)
-						| Exportable::EnumDeclaration(_)
+						| Exportable::Enum(_)
 						| Exportable::Interface(_)
 						| Exportable::Namespace(_)
 						| Exportable::TypeAlias(_) => {}

@@ -5,26 +5,6 @@ use crate::{
 	Span,
 };
 
-// pub(super) enum NumberLiteralType {
-// 	BinaryLiteral,
-// 	/// strict mode done at the parse level
-// 	OctalLiteral,
-// 	HexadecimalLiteral,
-// 	/// Base 10
-// 	Decimal {
-// 		/// has decimal point
-// 		fractional: bool,
-// 	},
-// 	BigInt,
-// 	Exponent,
-// }
-
-// impl Default for NumberLiteralType {
-// 	fn default() -> Self {
-// 		Self::Decimal { fractional: false }
-// 	}
-// }
-
 // TODO state for "use strict" etc?
 // TODO hold Keywords map, markers, syntax errors etc
 #[derive(Default)]
@@ -143,7 +123,10 @@ impl<'a> Lexer<'a> {
 				}
 			}
 			if multiline_comment {
-				if current.get(idx.saturating_sub(2)..).is_some_and(|current| current.starts_with("*/")) {
+				if current
+					.get(idx.saturating_sub(2)..)
+					.is_some_and(|current| current.starts_with("*/"))
+				{
 					multiline_comment = false;
 				} else {
 					continue;
