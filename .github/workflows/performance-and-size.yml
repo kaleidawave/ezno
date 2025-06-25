@@ -16,7 +16,7 @@ env:
 jobs:
   temp:
     runs-on: ubuntu-latest
-    if: true
+    if: false
 
     strategy:
       matrix: 
@@ -38,9 +38,16 @@ jobs:
       run: cargo build --release
       shell: bash
 
+    - run: echo "branch=$(git rev-parse --abbrev-ref HEAD)"
+
+    - id: get-branch
+      run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+      shell: bash
+
     - uses: actions/upload-artifact@v4
       with:
-        name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}-${{ steps.checkout.outputs.commit }}
+        # '-${{ steps.get-branch.outputs.branch }}'
+        name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.commit }}
         path: target/release/ezno
         retention-days: 30
 
@@ -118,6 +125,7 @@ jobs:
 
       - name: Get latest version of demo.tsx
         id: download-demo-tsx
+        continue-on-error: true
         run: |
           gh run download -n specification-${{ github.ref_name }}
           ls -R .
@@ -132,6 +140,7 @@ jobs:
 
       - name: Get latest version of binaries
         id: download-binaries
+        continue-on-error: true
         run: |
           mkdir binaries
           gh run download -p binary-${{ runner.os }}* -D binaries
@@ -147,7 +156,7 @@ jobs:
           mv target/releases/ezno binaries
 
       - id: get-branch
-        run: echo "branch=$(git rev-parse --abbrev-ref HEAD)"" >> $GITHUB_OUTPUT
+        run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
         shell: bash
 
       - uses: actions/upload-artifact@v4
@@ -178,7 +187,7 @@ jobs:
           append $to "<details><summary>Input</summary>\n"
           append $to "```tsx\n$content\n```\n</details>"
           
-      - name: Test statistics
+      - name: Print diagnostics and statistics
         id: performance
         continue-on-error: true
         shell: shell-language {0}
@@ -215,7 +224,7 @@ jobs:
             let out = run hyperfine -i "./$file" check large.tsx
             append $to "```shell\n$out\n```"
 
-      - name: Valgrind and callgrind
+      - name: Valgrind and Callgrind statistics
         shell: shell-language {0}
         if: ${{ steps.install-valgrind.outcome == 'success' }}
         continue-on-error: true
