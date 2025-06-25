@@ -36,7 +36,7 @@ jobs:
       shell: bash
 
     - name: Build binary
-      run: cargo run --release
+      run: cargo build --release
       shell: bash
 
     - uses: actions/upload-artifact@v4
