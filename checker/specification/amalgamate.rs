@@ -177,9 +177,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							));
 						}
 					}
-					StatementOrDeclaration::Function(Decorated { on: function, .. })
-						if function.name.is_declare =>
-					{
+					StatementOrDeclaration::Function(decorated) if decorated.on.name.is_declare => {
+						let function = &decorated.on;
 						use parser::type_annotations::{
 							TypeAnnotation, TypeAnnotationFunctionParameter,
 							TypeAnnotationFunctionParameters,
@@ -238,8 +237,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						| StatementOrDeclaration::Interface(Decorated { .. }) => {
 							top_level.push(item);
 						}
-						StatementOrDeclaration::Function(Decorated { on: function, .. })
-							if function.name.is_declare => {}
+						StatementOrDeclaration::Function(decorated)
+							if decorated.on.name.is_declare => {}
 						StatementOrDeclaration::DeclareVariable(..) => {}
 						item => {
 							inside.push(item);

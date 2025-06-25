@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50 # I think this is okay
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -31,8 +34,6 @@ jobs:
           gh release download -R kaleidawave/experiments assets -p shell-language -D bin
           ls -R .
           chmod +x ./bin/shell-language
-          # TEMP
-          ./bin/shell-language
           echo "$(pwd)/bin" >> "$GITHUB_PATH"
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,7 +67,6 @@ jobs:
         continue-on-error: true
         run: sudo apt-get install valgrind
 
-      - uses: actions/checkout@v4
       - name: Build Ezno (current branch)
         run: cargo build --release
         env:

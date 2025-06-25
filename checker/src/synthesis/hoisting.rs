@@ -26,7 +26,14 @@ use crate::{
 	CheckingData, ReadFromFS, TypeId,
 };
 
-use super::{definitions::*, variables::register_variable, EznoParser};
+use super::{
+	definitions::{
+		as_class, as_enum, as_function, as_interface, as_type_alias, as_variable_declaration,
+		get_internal_function_effect_from_decorators,
+	},
+	variables::register_variable,
+	EznoParser,
+};
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
