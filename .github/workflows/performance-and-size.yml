@@ -31,9 +31,31 @@ jobs:
           gh release download -R kaleidawave/experiments assets -p shell-language -D bin
           ls -R .
           chmod +x ./bin/shell-language
+          # TEMP
+          ./shell-language
           echo "$(pwd)/bin" >> "$GITHUB_PATH"
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # TODO temp
+      - name: Check shell-language
+        run: shell-language
+
+      # TODO temp
+      - name: Check shell-language
+        shell: shell-language {0}
+        run: |
+          let acc = constant ""
+          for git log --format=%H each
+            let branch = git name-rev --name-only --refs="refs/heads/*" $ref
+            echo "$ref $branch"
+            let branch = if_contains $branch "~" "" $branch
+            let item = if_equal $branch "" "" "$ref $branch"
+            let acc = concatenate $acc $item
+            set break = if_equal $branch "master" "break" ""
+
+          for constant $acc each
+            echo "--- $iter ---"
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
         with:
