@@ -388,6 +388,7 @@ jobs:
     needs: validity
     steps:
       - uses: actions/checkout@v4
+
       - name: Kick off other workflow if the PR has a label
         if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}"

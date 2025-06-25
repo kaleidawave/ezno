@@ -14,10 +14,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          # I think this is okay
-          # TODO can we do some sort of sparse checkout
-          fetch-depth: 100 
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -49,45 +45,67 @@ jobs:
         continue-on-error: true
         run: sudo apt-get install valgrind
 
-      # TODO temp
-      - name: List references and branches
-        shell: shell-language {0}
+      # - name: Find items at branches
+      #   shell: shell-language {0}
+      #   run: |
+      #     let branch = "${{ github.head_ref }}"
+      #     gh run download -n <name1>
+
+      #     # # Trick
+      #     # let x = repeat "\n" 10
+      #     # for constant $x each
+      #     #   echo $branch
+      # - name: Build items at branches
+      #   shell: shell-language {0}
+      #   run: |
+      #     let acc = constant ""
+      #     for git log --format=%H each
+      #       let branch = git name-rev --name-only --refs="refs/heads/*" $ref
+      #       echo "$ref $branch"
+      #       let branch = if_contains $branch "~" "" $branch
+      #       let item = if_equal $branch "" "" "$branch->$ref"
+      #       let acc = concatenate $acc $item
+      #       set break = if_equal $branch "master" "break" ""
+
+      #     for constant $acc each
+      #       let branch = before $iter "->"
+      #       let ref = after $iter "->"
+      #       let name = replace $branch "/" "-"
+
+      #       echo run git checkout $ref --force
+      #       echo run git status
+      #       echo "Building binary @$branch"
+      #       echo run cargo build --release
+      #       move ./target/release/ezno "binaries/ezno-$name"
+
+      - name: Get latest version of demo.tsx
+        id: download-demo-tsx
         run: |
-          let acc = constant ""
-          for git log --format=%H each
-            let branch = git name-rev --name-only --refs="refs/heads/*" $ref
-            echo "$ref $branch"
-            let branch = if_contains $branch "~" "" $branch
-            let item = if_equal $branch "" "" "$branch->$ref"
-            let acc = concatenate $acc $item
-            set break = if_equal $branch "master" "break" ""
-
-          for constant $acc each
-            let branch = before $iter "->"
-            let ref = after $iter "->"
-            let name = replace $branch "/" "-"
-
-            echo run git checkout $ref --force
-            echo run git status
-            echo "Building binary @$branch"
-            echo run cargo build --release
-            move ./target/release/ezno "binaries/ezno-$name"
-
-      # THIS IS DONE ON THE LEAST REVISION
-      # Code generated from specification.md. this is not meant to accurately represent a 
-      # program but instead give an idea for how it scales across all the type checking features
-      - name: Generate specification
+          gh run download -n specification-${{ github.ref_name }}
+          ls -R .
+        
+      - name: Build latest version of demo.tsx
+        if: ${{ steps.download-demo-tsx.conclusion == 'failure' }}
         run: |
-          # Generate a file which contains everything that the checker currently implements
-          # It is intentional that this will be on main branch if it is comparing, because we 
-          # do not want to include new tests
-
           cargo run -p ezno-checker-specification \
-           --example amalgamate ./checker/specification/specification.md \
-           --comment-headers \
-           --out ./demo.tsx
-        env:
-          CARGO_PROFILE_RELEASE_DEBUG: true
+            --example amalgamate ./checker/specification/specification.md \
+            --comment-headers \
+            --out demo.tsx
+
+      - name: Get latest version of binaries
+        id: download-binaries
+        run: |
+          mkdir binaries
+          gh run download -p binary-${{ runner.os }}* -D binaries
+          ls -R .
+
+      # TODO not quite what it is meant to do
+      - name: Build latest version of binaries
+        if: ${{ steps.download-binaries.conclusion == 'failure' }}
+        run: |
+          mkdir binaries
+          cargo build --release
+          mv target/releases/ezno binaries
 
       - name: Compare checker performance
         shell: shell-language {0}
@@ -104,10 +122,9 @@ jobs:
         shell: shell-language {0}
         run: |
           let to = env GITHUB_STEP_SUMMARY
-          append $to "<details><summary>Input</summary>\n"
           let content = read ./demo.tsx
+          append $to "<details><summary>Input</summary>\n"
           append $to "```tsx\n$content\n```\n</details>"
-          echo "::info::Wrote code to summary"
           
       - name: Test statistics
         id: performance
@@ -117,30 +134,31 @@ jobs:
           let to = env GITHUB_STEP_SUMMARY
           for files "binaries/*" each
             append $to "### $file (demo)"
-            echo "Running $file"
-            let out = run "./$file" check demo.tsx --timings --max-diagnostics all
+            let out = run "./$file" check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
             let diagnostics = rbefore $out "---"
             let statistics = rafter $out "---"
 
-            append $to "<details><summary>Diagnostics</summary>\n```$diagnostics```\n</details>"
-            append $to "<details><summary>Statistics</summary>\n```$statistics```\n</details>"
+            append $to "<details><summary>Diagnostics</summary>\n"
+            append $to "```$diagnostics\n```\n</details>"
+            append $to "<details><summary>Statistics</summary>\n"
+            append $to "```$statistics\n```\n</details>"
 
       - name: Run checker performance on large file
         shell: shell-language {0}
         run: |
           let demo = read "./demo.tsx"
-          let large = repeat demo 10
+          let large = repeat $demo 10
           write "./large.tsx" $large
 
           let to = env GITHUB_STEP_SUMMARY
           for files "binaries/*" each
             append $to "### $file (large)"
             echo "Running $file"
-            let out = run "./$file" check large.tsx --timings
+            let out = run "./$file" check large.tsx --timings --merge-stdout-and-stderr
 
             let statistics = rafter $out "---"
-            append $to "<details><summary>Statistics</summary>\n```$statistics```\n</details>"
+            append $to "<details><summary>Statistics</summary>\n\n```$statistics\n```\n</details>"
             
             let out = run hyperfine -i "./$file" check large.tsx
             append $to "```shell\n$out\n```"

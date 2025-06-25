@@ -1,0 +1,143 @@
+name: Run certain tasks on repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        type: string
+        required: true
+        description: What task to run
+      runs-on:
+        type: string
+        default: ubuntu-latest
+        description: The machine to run it on
+      ref:
+        type: string
+        default: HEAD
+        description: The reference to run the task on
+
+env:
+  CACHE_PATHS: |
+    ~/.cargo/bin/
+    ~/.cargo/registry/index/
+    ~/.cargo/registry/cache/
+    ~/.cargo/git/db/
+    target/
+
+jobs:
+  type_sizes:
+    runs-on: ${{ inputs.runs-on }}
+    if: ${{ inputs.task == 'type-sizes' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # TODO replace with own tool
+      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      #   with:
+      #     packages: top-type-sizes
+      
+      # - name: Run type sizes
+      #   run: |
+      #     RUSTFLAGS=-Zprint-type-sizes cargo +nightly build -j 1 > type-sizes-input.txt
+      #     top-type-sizes --remove-wrappers < type-sizes-input.txt > type-sizes.txt
+
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: type-sizes
+      #     path: type-sizes.txt
+      #     retention-days: 7
+
+  generate_binary:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'generate-binary' }}
+    steps:
+      - uses: actions/checkout@v4
+        id: checkout
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: TEMP
+        run: git status
+        shell: bash
+
+      - name: Build binary
+        run: cargo run --release
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}
+          path: target/release/ezno
+          retention-days: 30
+
+  generate_demo:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'generate-binary' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Generate specification
+        run: |
+          # Generate a file which contains everything that the checker currently implements
+          # It is intentional that this will be on main branch if it is comparing, because we 
+          # do not want to include new tests
+
+          cargo run -p ezno-checker-specification \
+           --example amalgamate ./checker/specification/specification.md \
+           --comment-headers \
+           --out demo.tsx
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: specification-${{ github.ref_name }}
+          path: demo.tsx
+          retention-days: 30
+          
+  fix_up_commit:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'fix-up-commit' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run automated fixes
+        run: |
+          # Run clippy on projects
+          cargo clippy --fix --manifest-path ./parser/Cargo.toml --allow-dirty
+          cargo clippy --fix --manifest-path ./checker/Cargo.toml --allow-dirty
+          cargo clippy --fix --allow-dirty
+
+          # Format
+          cargo fmt
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .
+          git commit -m "Run 'clippy --fix' & 'cargo fmt'"
+          git push
