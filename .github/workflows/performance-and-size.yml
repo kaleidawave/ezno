@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      paths: 
+        default: "[]"
+        type: string
+        description: Some binaries to build and compare with
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,6 +20,7 @@ jobs:
 
     strategy:
       matrix: 
+        # ref: ${{ fromJson(inputs.paths) }} 
         ref: [
           "35dbeb145150906ba91ec8582ebb38650f1c7d34",
           "506be8be8b6f1de2423ecab6413b31e3cb0ce58c"
@@ -22,32 +28,26 @@ jobs:
       fail-fast: true
 
     steps:
-    - name: TEMP
-      run: echo "checking out ${{ matrix.ref }}"
-      shell: bash
     - uses: actions/checkout@v4
       id: checkout
       with:
         ref: ${{ matrix.ref }}
     - uses: dtolnay/rust-toolchain@stable
     
-    - name: TEMP
-      run: git status
-      shell: bash
-
     - name: Build binary
       run: cargo build --release
       shell: bash
 
     - uses: actions/upload-artifact@v4
       with:
-        name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}
+        name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}-${{ steps.checkout.outputs.commit }}
         path: target/release/ezno
         retention-days: 30
 
   run-benchmarks:
     runs-on: ubuntu-latest
     needs: temp
+    if: ${{ always() }}
 
     env:
       GH_TOKEN: ${{ github.token }}
