@@ -1,6 +1,8 @@
 This is implemented through disjoint testing
 
-#### `Not`
+> TODO explain more, link to narrowing, split the test below up
+
+### `Not`
 
 ```ts
 declare let a: number;

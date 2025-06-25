@@ -1,0 +1,4 @@
+- Types
+- Type operations
+	- Subtyping
+	- Disjoint

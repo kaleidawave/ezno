@@ -1,4 +1,4 @@
-#### Simple early return
+### Simple early return
 
 ```ts
 declare let string: string;
@@ -15,7 +15,7 @@ stringIsHi(string) satisfies number;
 
 - Expected number, found boolean
 
-#### More early returns
+### More early returns
 
 ```ts
 function func(value: number) {

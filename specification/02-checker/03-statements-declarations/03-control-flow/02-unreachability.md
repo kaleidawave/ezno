@@ -1,9 +1,6 @@
-TODO
+> #TODO Break and return
 
-- Break
-- Return
-
-#### `throw` through function
+### `throw` through function
 
 > This is done through event application
 

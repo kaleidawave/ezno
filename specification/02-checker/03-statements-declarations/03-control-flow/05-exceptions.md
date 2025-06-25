@@ -1,6 +1,6 @@
 > Also see events
 
-#### Try-catch and throw
+### Try-catch and throw
 
 ```ts
 try {
@@ -14,7 +14,7 @@ console.log("Error caught!")
 
 - Expected string, found 2
 
-#### Throw effects carry through
+### Throw effects carry through
 
 ```ts
 function throwType(a) {
@@ -32,7 +32,7 @@ console.log("Error caught!")
 
 - Expected string, found 3
 
-#### Catch annotation
+### Catch annotation
 
 > Thanks to #131
 

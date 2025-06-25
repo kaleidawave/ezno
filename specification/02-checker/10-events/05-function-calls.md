@@ -1,6 +1,6 @@
 A inner function being called is an event
 
-#### Effects carry through dependent calls
+### Effects carry through dependent calls
 
 ```ts
 let a: number = 2
@@ -16,7 +16,7 @@ a satisfies string
 
 - Expected string, found 4
 
-#### Updates recognised inside of events
+### Updates recognised inside of events
 
 ```ts
 let a: number = 2
@@ -35,7 +35,7 @@ out satisfies string
 
 - Expected string, found 3
 
-#### Effects across functions
+### Effects across functions
 
 ```ts
 let value: number = 2;

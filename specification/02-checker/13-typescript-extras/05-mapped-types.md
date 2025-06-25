@@ -1,6 +1,6 @@
 > #TODO copy from post
 
-#### Generic condition
+### Generic condition
 
 ```ts
 declare function isNumber<T>(t: T): T extends number ? "yeess" : "nno";
@@ -11,7 +11,7 @@ isNumber("5") satisfies number;
 
 - Expected number, found "nno"
 
-#### Simple key
+### Simple key
 
 ```ts
 type Record2<K extends string, T> = { [P in K]: T }
@@ -25,7 +25,7 @@ myRecord.hello;
 - Expected string, found number
 - No property 'hello' on { [\"hi\"]: number }
 
-#### Assignment
+### Assignment
 
 ```ts
 const x: Record<"test", boolean> = { no: false },
@@ -37,7 +37,7 @@ const x: Record<"test", boolean> = { no: false },
 - Type { no: false } is not assignable to type { [\"test\"]: boolean }
 - Type { test: 6 } is not assignable to type { [\"test\"]: boolean }
 
-#### Union and types as keys
+### Union and types as keys
 
 ```ts
 declare let obj1: Record<"hi" | "hello", boolean>;
@@ -50,7 +50,7 @@ obj1.bye;
 
 - No property 'bye' on { ["hi" | "hello"]: boolean }
 
-#### Readonly and optionality carries through
+### Readonly and optionality carries through
 
 ```ts
 type Mapped<T> = {
@@ -67,7 +67,7 @@ x.b satisfies number;
 - Cannot write to property 'a'
 - Expected number, found number | undefined
 
-#### Specialisation
+### Specialisation
 
 ```ts
 type Pick<T, K extends keyof T> = {
@@ -90,7 +90,7 @@ y.a;
 - Expected { ["a" | "b"]: X["a" | "b"] }, found { a: 5, b: 6 }
 - No property 'a' on { ["b" | "c"]: X["b" | "c"] }
 
-#### Optional
+### Optional
 
 ```ts
 type Partial<T> = {
@@ -103,7 +103,7 @@ type Partial<T> = {
 
 - Expected { [keyof { a: number, b: string }]?: { a: number, b: string }[keyof { a: number, b: string }] }, found { a: \"hi\" }
 
-#### Negated optionality
+### Negated optionality
 
 ```ts
 type Required<T> = {
@@ -117,7 +117,7 @@ type Required<T> = {
 
 - Expected { [keyof { a?: number }]: { a?: number }[keyof { a?: number }] }, found {}
 
-#### Readonly
+### Readonly
 
 ```ts
 type Immutable<T> = {
@@ -131,7 +131,7 @@ x.a = "hi";
 
 - Cannot write to property 'a'
 
-#### Negated readonly
+### Negated readonly
 
 ```ts
 type Mutable<T> = {
@@ -146,7 +146,7 @@ x.a = "hi";
 
 - Type 4 does not meet property constraint string
 
-#### `as` rewrite
+### `as` rewrite
 
 ```ts
 type PrefixKeys<T> = {
@@ -162,6 +162,6 @@ x.property_b
 
 - No property 'property_b' on { [`property_${keyof X & string}`]: X[keyof X & string] }
 
-### Readonly and `as const`
+### Implementation
 
-> TODO constrained inference
+This is enabled by keys to be generic

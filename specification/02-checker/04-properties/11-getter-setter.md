@@ -2,7 +2,9 @@ Getters are setters are special values, when they are read or written to it does
 
 > They are not related to descriptors
 
-#### Getters
+## Getters
+
+### Getters
 
 ```ts
 let global: number = 0;
@@ -20,7 +22,7 @@ object.value satisfies boolean
 - Expected string, found 1
 - Expected boolean, found 2
 
-#### Getter `this`
+### Getter `this`
 
 ```ts
 const object = {
@@ -35,7 +37,7 @@ object.value satisfies string
 
 - Expected string, found 4
 
-#### Assigning to getter
+### Assigning to getter
 
 ```ts
 const obj = { get prop() { return 2 } };
@@ -45,7 +47,9 @@ obj.prop satisfies 2;
 
 - Cannot write to property 'prop' as it is a getter
 
-#### Setter `this`
+## Setters
+
+### Setter `this`
 
 ```ts
 let a = 2;
@@ -62,7 +66,7 @@ obj.x satisfies 5;
 
 - Expected 5, found "some value"
 
-#### Setter assignment type
+### Setter assignment type
 
 ```ts
 const obj = {
@@ -76,7 +80,7 @@ obj.value = 5;
 
 - Argument of type 5 is not assignable to parameter of type string (in setter)
 
-#### Setter side effect
+### Setter side effect
 
 ```ts
 let a = 2;
@@ -93,7 +97,7 @@ a satisfies 2;
 
 - Expected 2, found "some value"
 
-#### Setter return
+### Setter return
 
 > Returns the RHS not the return type
 > TODO warning in the setter
@@ -105,7 +109,9 @@ result satisfies string;
 
 - Expected string, found 5
 
-#### Getters AND setter
+## Combined
+
+### Getters AND setter
 
 > This involves property lookup skipping setter and getters
 
@@ -128,7 +134,7 @@ global satisfies 10
 
 - Expected string, found 0
 
-#### Getters AND setter can be type via `Object.defineProperty`
+### Getters AND setter can be type via `Object.defineProperty`
 
 > TODO parameter checking as well
 

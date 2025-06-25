@@ -1,6 +1,6 @@
 Iteration is an event
 
-#### While loop unrolling
+### While loop unrolling
 
 ```ts
 let a: number = 1, i: number = 0;
@@ -14,7 +14,7 @@ a satisfies 8;
 
 - Expected 8, found 32
 
-#### While loop event in the condition
+### While loop event in the condition
 
 ```ts
 let a: number = 1, i: number = 0;
@@ -27,7 +27,7 @@ a satisfies 8;
 
 - Expected 8, found 32
 
-#### Do while loop
+### Do while loop
 
 ```ts
 let a: number = 0;
@@ -40,7 +40,7 @@ a satisfies 8;
 
 - Expected 8, found 3
 
-#### For loop with initialiser and condition
+### For loop with initialiser and condition
 
 ```ts
 let a: string = "";
@@ -53,7 +53,7 @@ a satisfies number;
 
 - Expected number, found "0123456789"
 
-#### While loop with unknown number of iterations
+### While loop with unknown number of iterations
 
 ```ts
 declare let i: number;
@@ -69,7 +69,7 @@ a satisfies string;
 
 > Important that type is widened to 'number' (think it is an open poly in this case)
 
-#### Limit to iterations
+### Limit to iterations
 
 > #TODO link to stability
 
@@ -85,7 +85,7 @@ a satisfies string;
 
 - Expected string, found number
 
-#### While loop unrolling as a side-effect
+### While loop unrolling as a side-effect
 
 ```ts
 function loop(n: number, c: string) {
@@ -102,7 +102,7 @@ loop(10, "!") satisfies number;
 
 - Expected number, found "!!!!!!!!!!"
 
-#### Break in a while loop
+### Break in a while loop
 
 ```ts
 let a: number = 2, i: number = 0;
@@ -118,7 +118,7 @@ a satisfies 2;
 
 - Expected 2, found 8
 
-#### Continue in a while loop
+### Continue in a while loop
 
 > With the continue the update to `a` only happens on even runs (5 times)
 

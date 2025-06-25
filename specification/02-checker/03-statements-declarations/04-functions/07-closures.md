@@ -1,6 +1,10 @@
 > #TODO link...?
 
-#### Reading variable
+### Implementation
+
+This works by a special variant of generics, rather than arguments it is a *context*, which is handled by environment.
+
+### Reading variable
 
 ```ts
 function kestrel(a) {
@@ -14,7 +18,7 @@ kestrel(3)(2) satisfies 4
 
 - Expected 4, found 3
 
-#### Nesting
+### Nesting
 
 ```ts
 function kestrel2(a) {
@@ -26,7 +30,7 @@ kestrel2(3)(2)(1) satisfies 4
 
 - Expected 4, found 7
 
-#### Carry across objects
+### Carry across objects
 
 ```ts
 function magicNumber(a: number) {
@@ -47,7 +51,7 @@ myNumber.doubled() satisfies 6
 
 - Expected 6, found 8
 
-#### Stateful
+### Stateful
 
 ```ts
 function myClosure(a) {
@@ -65,7 +69,7 @@ value.getValue() satisfies 6
 
 - Expected 6, found 10
 
-#### Class constructors
+### Class constructors
 
 ```ts
 function func(a: number, b: number) {
@@ -91,7 +95,7 @@ c2.plusB() satisfies string;
 
 - Expected string, found 14
 
-#### Getters closures
+### Getters closures
 
 ```ts
 function Closure(n: string) {

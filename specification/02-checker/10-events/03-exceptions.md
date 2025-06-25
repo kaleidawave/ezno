@@ -1,6 +1,6 @@
 `throw` is a special event type. This tests things relating to it
 
-#### `throw` short-circuit
+### `throw` short-circuit
 
 ```ts
 let x: number = 2;
@@ -21,7 +21,7 @@ x satisfies string;
 
 - Expected string, found 2
 
-#### Function effect
+### Function effect
 
 ```ts
 function exceptionToResult(cb: () => number) {
@@ -39,7 +39,7 @@ console.log("Error caught!")
 
 - Expected 8, found 12
 
-#### Checked thrown type from callback
+### Checked thrown type from callback
 
 ```ts
 function exceptionToResult(cb: () => number) {
@@ -56,7 +56,7 @@ console.log("Error caught!")
 
 - Cannot throw "not a number" in block that expects number
 
-#### Internal function effect
+### Internal function effect
 
 ```ts
 function exceptionToResult(s: string) {
@@ -71,7 +71,7 @@ console.log("Error caught!")
 
 - Cannot catch type number because the try block throws SyntaxError
 
-#### Conditional throw
+### Conditional throw
 
 > This emits a warning if a throw was created in a conditional branch
 
@@ -93,9 +93,9 @@ try { checkedLn(-5) } catch {}
 
 - Conditional '[Error] { message: \"Cannot log\" }' was thrown in function
 
-### Extras
+## Extras
 
-#### Unconditional throw warning
+### Unconditional throw warning
 
 ```ts
 function safeDivide(num: number, denom: number) {

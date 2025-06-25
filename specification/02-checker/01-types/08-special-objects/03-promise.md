@@ -1,4 +1,4 @@
-#### `fetch`
+### `fetch`
 
 > Uses external `Promise`
 
@@ -11,4 +11,9 @@ resp.ok satisfies number;
 - Expected string, found Promise\<Response>
 - Expected number, found boolean
 
-### Classes
+### To implement
+
+Promises should be a special object that store
+
+- A returned type
+- A progress of where events are

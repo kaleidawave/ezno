@@ -3,7 +3,7 @@
 
 This is more of a linting feature. It emits an error when an object literal specifies a property it was not expecting
 
-#### Excess property at declaration
+### Excess property at declaration
 
 ```ts
 interface MyObject { property: string }
@@ -13,7 +13,7 @@ const a: MyObject = { property: "hello", another: 2 }
 
 - 'another' is not a property of MyObject
 
-#### Excess property at argument
+### Excess property at argument
 
 ```ts
 interface MyObject { property: string }
@@ -30,7 +30,7 @@ func<MyObject>({ property: "hello", "something else": 2 })
 - 'another' is not a property of MyObject
 - 'something else' is not a property of MyObject
 
-#### Excess property at return type
+### Excess property at return type
 
 ```ts
 interface MyObject { property: string }
@@ -42,7 +42,7 @@ function returnNewObject(): MyObject {
 
 - 'another' is not a property of MyObject
 
-#### Excess property checks through spread and condition
+### Excess property checks through spread and condition
 
 > For some reason TSC does not support this
 

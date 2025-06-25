@@ -1,4 +1,4 @@
-#### Non-existent types
+### Non-existent types
 
 ```ts
 type X = number;
@@ -7,7 +7,7 @@ const a: Y = 2;
 
 - Could not find type 'Y'
 
-#### Type shadowing
+### Type shadowing
 
 > TODO maybe should test loops, functions, function parameters etc...
 
@@ -26,7 +26,7 @@ type B = YEA;
 - Could not find type 'YEA'
 - Type "hello world" is not assignable to type X
 
-#### Generics pass down
+### Generics pass down
 
 > Too many generics here, doesn't get caught for some reason?
 
@@ -40,7 +40,7 @@ function add() {
 
 - Argument of type "hi" is not assignable to parameter of type number
 
-#### Declare variable
+### Declare variable
 
 ```ts
 declare const global_number: number
@@ -49,7 +49,7 @@ const my_number: string = global_number
 
 - Type number is not assignable to type string
 
-#### Invalid intersection
+### Invalid intersection
 
 > Based on disjoint
 

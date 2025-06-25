@@ -1,6 +1,6 @@
 Functions are classes are regular objects.
 
-#### Function and class name
+### Function and class name
 
 > TODO should also check that it is readonly
 

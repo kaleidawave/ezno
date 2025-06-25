@@ -1,6 +1,6 @@
 Type checking is a recursive algorithm. It is important that this checking does not get stuck in a lpp[]
 
-#### Cyclic object check
+### Cyclic object check
 
 ```ts
 interface X {
@@ -18,7 +18,7 @@ myObject satisfies X;
 
 - Expected X, found { a: 2 }
 
-#### Cyclic type alias
+### Cyclic type alias
 
 ```ts
 type Node<T> = { parent: Node<T>, value: T } | null;

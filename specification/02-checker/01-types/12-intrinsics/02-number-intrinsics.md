@@ -27,11 +27,11 @@ There are two motivations for this
 
 > Also because I was taking a course on numbers (that started with residues, before moving on to FLT for 8n etc) and wanted to use some things in it
 
-#### Not not a number
+### Not not a number
 
 > #TODO
 
-#### Number intrinsics
+### Number intrinsics
 
 ```ts
 5 satisfies MultipleOf<2>;
@@ -48,9 +48,9 @@ There are two motivations for this
 - Expected GreaterThan\<2>, found -4
 - Expected LessThan\<2>, found 2
 
-### Inferred ranges
+## Inferred ranges
 
-#### Ranges for internal types
+### Ranges for internal types
 
 ```ts
 function func(a: number) {
@@ -63,7 +63,7 @@ With advanced_numbers
 
 - Expected string, found boolean
 
-#### Ranges after operations
+### Ranges after operations
 
 ```ts
 function func(a: number) {
@@ -77,7 +77,7 @@ With advanced_numbers
 - Expected null, found GreaterThan<-5> & LessThan<5> | -5 | 5
 - Expected string, found GreaterThan<18> & LessThan<22> | 18 | 22
 
-#### Modulo range
+### Modulo range
 
 ```ts
 function func(x: number) {
@@ -91,7 +91,7 @@ With advanced_numbers
 
 ### More
 
-#### Transistivity
+### Transistivity
 
 ```ts
 function func(a: number, b: number, c: number) {

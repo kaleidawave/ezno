@@ -1,6 +1,10 @@
-Objects can have a prototype. This is recorded in the context and is the prototype is a `TypeId`.
+Objects can have a prototype. 
 
-#### Set prototype
+### Implementation
+
+This is recorded in the context and is the prototype is a `TypeId`.
+
+### Set prototype
 
 ```ts
 const x = { a: 3 };
@@ -20,7 +24,7 @@ result satisfies string;
 - Expected string, found 2
 - Expected string, found true
 
-#### Get prototype
+### Get prototype
 
 ```ts
 const x = { a: 3 };
@@ -32,3 +36,5 @@ const p_of_x = Object.getPrototypeOf(x);
 ```
 
 - Expected string, found true
+
+> #TODO check cyclic-ness doesn't blow up

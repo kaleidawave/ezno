@@ -1,4 +1,4 @@
-#### Infer and extends distribution
+### Infer and extends distribution
 
 ```ts
 type ElementOf<T> = T extends Array<infer U> ? U : never;
@@ -15,7 +15,7 @@ n satisfies ElementOf<"not array">;
 
 - Expected string, found number
 
-#### Infer with extends clause
+### Infer with extends clause
 
 ```ts
 type X<T> = T extends { a: infer I extends string } ? I : string;

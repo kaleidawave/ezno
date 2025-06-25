@@ -1,4 +1,4 @@
-#### Object destructuring
+### Object destructuring
 
 ```ts
 const object = { a: 1, b: 2 }
@@ -8,7 +8,7 @@ a satisfies 1; b satisfies string;
 
 - Expected string, found 2
 
-#### Nested object destructuring
+### Nested object destructuring
 
 ```ts
 const object = { a: { b: { c: 2 } } }
@@ -18,7 +18,7 @@ d satisfies 1;
 
 - Expected 1, found 2
 
-#### Object destructuring assignment
+### Object destructuring assignment
 
 > Added in #127
 

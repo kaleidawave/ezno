@@ -2,7 +2,7 @@
 
 The parser contains: AST definitions, string -> AST functions, AST -> string functions (including with *pretty* mode and generating source maps), methods for traversing (visiting) and manipulating AST. A macro for generating AST. Functions for turning AST to JSON in WASM (> #TODO-issue is up in the air). It contains AST source positions. It is tested against test-262 > #TODO link.
 
-### (supported) Syntax
+## (supported) Syntax
 
 > #TODO a program that covers most of JS syntax (skip some operators and stuff)
 
@@ -59,7 +59,7 @@ function b() {
 console?.log(message)
 ```
 
-#### TypeScript
+### TypeScript
 
 Supports *all* of TypeScript syntax
 
@@ -73,7 +73,7 @@ Supports *all* of TypeScript syntax
 satisfies, as, 'const generics', enum
 ```
 
-#### Partial syntax
+### Partial syntax
 
 We can have parse (and analyse) partially formed AST nodes
 
@@ -84,10 +84,11 @@ const y = ;
 
 > The reason for this is LSPs
 
-#### Extra syntax
+### Extra syntax
 
 > Under flags (right?).
 > #TODO examples for each
+
 - `is` expression and `is` binary operator
 
 - Generator keyword
@@ -100,35 +101,35 @@ const y = ;
 - Destructuring with type annotations (> #TODO see TS issue, breaks things)
 - > #TODO things tracked in ecmascript proposals (import etc)
 
-### The parser as a library
+## The parser as a library
 
-#### Rust and WASM (API)
-
-> #TODO
-
-#### Configuration (parsing)
+### Rust and WASM (API)
 
 > #TODO
 
-#### Configuration (output)
+### Configuration (parsing)
 
 > #TODO
 
-#### Visiting (immutable and mutable)
+### Configuration (output)
+
+> #TODO
+
+### Visiting (immutable and mutable)
 
 > #TODO holding state etc
 
-#### Syntax errors
+### Syntax errors
 
 > #TODO parser errors
 
-#### Generator macro
+### Generator macro
 
 > #TODO code here
 
 ```rs
 ```
 
-#### Comments
+### Comments
 
 > #TODO

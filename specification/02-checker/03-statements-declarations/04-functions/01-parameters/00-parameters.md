@@ -2,7 +2,7 @@
 - Default (+ effects)
 - Generics?
 
-#### Type of parameter
+### Type of parameter
 
 ```ts
 function func(a: number) {
@@ -12,7 +12,7 @@ function func(a: number) {
 
 - Expected string, found number
 
-#### Default parameter value type check
+### Default parameter value type check
 
 > Thanks to #132
 
@@ -25,7 +25,7 @@ function outer(a: number) {
 
 - Cannot use a default value of type number for parameter of type string
 
-#### Variadic function parameter type
+### Variadic function parameter type
 
 > aka rest parameter type
 
@@ -37,7 +37,7 @@ function variadic(...r: string[]) {
 
 - Expected boolean, found Array\<string>
 
-#### Destructuring parameter
+### Destructuring parameter
 
 ```ts
 function myFunction({ a }: { a: number }) {
@@ -51,7 +51,7 @@ myFunction({ a: 6 }) satisfies string;
 - Expected boolean, found number
 - Expected string, found 6
 
-#### Argument type against parameter
+### Argument type against parameter
 
 ```ts
 function func(a: number) {}
@@ -60,7 +60,7 @@ func("hello world")
 
 - Argument of type "hello world" is not assignable to parameter of type number
 
-#### Parameters retain argument values
+### Parameters retain argument values
 
 ```ts
 function id(a) {
@@ -72,7 +72,7 @@ const d: 3 = id(2)
 
 - Type 2 is not assignable to type 3
 
-#### Get value of property on parameter
+### Get value of property on parameter
 
 ```ts
 function getA(obj: { a: string }) {
@@ -84,7 +84,7 @@ const d: 3 = getA({ a: "hi" })
 
 - Type "hi" is not assignable to type 3
 
-#### Missing argument
+### Missing argument
 
 ```ts
 function func(p1: number, p2: string) {}
@@ -94,7 +94,7 @@ func(4)
 
 - Missing argument
 
-#### Excess argument
+### Excess argument
 
 ```ts
 function func(p1: number) {}
@@ -104,9 +104,9 @@ func(4, "extra")
 
 - Excess argument
 
-### TO SORT
+## TO SORT
 
-#### Assignment to parameter
+### Assignment to parameter
 
 ```ts
 function alterParameter(a: number, b: { prop: string }) {

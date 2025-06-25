@@ -1,4 +1,4 @@
-#### `in` operator
+### `in` operator
 
 ```ts
 const obj = { a: 2 };

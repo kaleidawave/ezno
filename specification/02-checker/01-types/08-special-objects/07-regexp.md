@@ -1,5 +1,9 @@
 > Thanks to https://github.com/kaleidawave/ezno/pull/184 and https://crates.io/crates/regress library
 
+### Implementation
+
+Uses the [`regress`](https://crates.io/crates/regress) crate!
+
 #### Literals and constructors
 
 Both syntax and `new RegExp` works
@@ -12,7 +16,7 @@ Both syntax and `new RegExp` works
 
 > #TODO
 
-#### `RegExp` constructor
+### `RegExp` constructor
 
 > RegExp = Regular expression
 > In the future, their definition could be considered and evaluated at runtime
@@ -23,7 +27,7 @@ const regexp = /hi/ satisfies string;
 
 - Expected string, found /hi/
 
-#### Invalid regular expressions
+### Invalid regular expressions
 
 ```ts
 const regexp1 = /(?a2)/;
@@ -33,7 +37,7 @@ const regexp2 = new RegExp("?a2");
 - Invalid regular expression: Invalid token at named capture group identifier
 - Invalid regular expression: Invalid atom character
 
-#### Constant `RegExp.exec`
+### Constant `RegExp.exec`
 
 ```ts
 const regexp = /hi/;
@@ -47,7 +51,7 @@ match.input satisfies boolean;
 - Expected string, found 0
 - Expected boolean, found "hi"
 
-#### Constant `RegExp.exec` groups
+### Constant `RegExp.exec` groups
 
 ```ts
 const regexp = /Hi (?<name>.*)/;
@@ -59,7 +63,7 @@ match.groups satisfies string;
 - Expected number, found "Hi Ben"
 - Expected string, found { name: "Ben" }
 
-#### Constant `RegExp.exec` groups greedy
+### Constant `RegExp.exec` groups greedy
 
 ```ts
 const regexp = /.*(?<x>[a-z]+)(?<y>[0-9]+)/;

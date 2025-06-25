@@ -1,8 +1,8 @@
 Events can be run conditionally. Additionally function calls can be run.
 
-### Conditions
+## Conditions
 
-#### Known conditional event result
+### Known conditional event result
 
 ```ts
 let a: number = 2;
@@ -19,7 +19,7 @@ a satisfies 4;
 
 - Expected 4, found 3
 
-#### Unknown conditional events result
+### Unknown conditional events result
 
 ```ts
 declare let cond: bool;
@@ -36,9 +36,9 @@ a satisfies 2;
 
 - Expected 2, found 2 | 3
 
-### Running functions
+## Running functions
 
-#### Across
+### Across
 
 ```ts
 let a = 0;
@@ -53,7 +53,7 @@ a satisfies 4;
 
 - Expected 4, found 3
 
-#### Tree shaking ⭐
+### Tree shaking ⭐
 
 > #TODO move
 

@@ -1,27 +1,29 @@
-#### Checking
+### Checking
 
 #TODO
 
-#### Output
+### Output
 
 #TODO
 
 - constant mathematics & NaN
 - typeof etc
 
-#### Constant compilation
+### Constant compilation
 
 #TODO
 
 > #TODO-link to instrisics
 
-#### Relations - disjoint
+### Relations - disjoint
 
 #TODO
 
 > Uses disjoint typing #TODO-link
 
-#### Arithmetic
+## Operations
+
+### Arithmetic
 
 ```ts
 const x: 4 = 2 + 3
@@ -32,7 +34,7 @@ const z: 8 = (2 * 3) - 2
 - Type 5 is not assignable to type 4
 - Type 4 is not assignable to type 8
 
-#### Bitwise arithmetic
+### Bitwise arithmetic
 
 ```ts
 const x: 2 = 2 & 3
@@ -43,7 +45,7 @@ const z: 14 = 8 | 4
 - Type 5 is not assignable to type 6
 - Type 12 is not assignable to type 14
 
-#### Logical operators
+### Logical operators
 
 ```ts
 const x: 2 = 3 && 2
@@ -59,7 +61,7 @@ const z: false = true || 4
 - Expression is always true
 - Type true is not assignable to type false
 
-#### Equality
+### Equality
 
 ```ts
 (4 === 2) satisfies true;
@@ -69,7 +71,7 @@ const z: false = true || 4
 - Expected true, found false
 - Expected string, found true
 
-#### Inequality
+### Inequality
 
 ```ts
 (Math.PI > 3) satisfies true;
@@ -84,7 +86,7 @@ const z: false = true || 4
 - Expected string, found true
 - Expected 5, found false
 
-#### Updating assignments
+### Updating assignments
 
 ```ts
 let a = 5, b = 6;
@@ -97,7 +99,7 @@ b satisfies 23;
 - Expected 4, found 6
 - Expected 23, found 24
 
-#### Operator short circuiting
+### Operator short circuiting
 
 ```ts
 let a: number = 0
@@ -111,7 +113,7 @@ a satisfies 2;
 
 - Expected 2, found 1
 
-#### Conditional assignment
+### Conditional assignment
 
 ```ts
 let a = false, b = 4;
@@ -128,7 +130,7 @@ b satisfies string;
 - Expression is always true
 - Expected string, found 5
 
-#### Inequality checks
+### Inequality checks
 
 ```ts
 function func1(a: GreaterThan<4>) {
@@ -154,7 +156,7 @@ With advanced_numbers
 - This equality is always false as LessThan<2> and 6 have no overlap
 - Expected null, found boolean
 
-#### Arithmetic operand check
+### Arithmetic operand check
 
 > This is allowed under non strict casts option (and will return NaN) but the tests run with strict casts on
 
@@ -168,7 +170,7 @@ console + 2
 
 - Cannot Console Add 2
 
-#### Inequality operand check
+### Inequality operand check
 
 ```ts
 function isLessThan(a: number) {
@@ -180,7 +182,7 @@ function isLessThan(a: number) {
 
 - Cannot number LessThan Console
 
-#### Unary operand check
+### Unary operand check
 
 ```ts
 function func(a: number, b: boolean) {
@@ -195,11 +197,11 @@ function func(a: number, b: boolean) {
 - Cannot LogicalNot number
 - Cannot BitwiseNot boolean
 
-### Disjoint equality
+## Disjoint equality
 
 > TODO link to types/disjoint
 
-#### Disjoint equality
+### Disjoint equality
 
 ```ts
 function neverEqual(a: string, b: number) {
@@ -214,7 +216,7 @@ function sometimes(a: string | number, b: number) {
 - This equality is always false as string and number have no overlap
 - Expected string, found boolean
 
-#### Disjoint equality for number intrinsics
+### Disjoint equality for number intrinsics
 
 ```ts
 declare function getNumberBetweenFive(): InclusiveRange<0, 5> & Integer;
@@ -229,7 +231,7 @@ getNumberBetweenFive() === 7;
 
 ### Known equality
 
-#### Identity equality
+### Identity equality
 
 > Can only do it not NaN
 
@@ -245,7 +247,7 @@ With advanced_numbers
 - Expected string, found true
 - Expected null, found boolean
 
-#### Disjoint multiple of with range
+### Disjoint multiple of with range
 
 > TODO need to redo range to use interesection of less than and greater than
 
@@ -267,7 +269,7 @@ With advanced_numbers
 
 - This equality is always false as MultipleOf<10> and GreaterThan<31> & LessThan<37> have no overlap
 
-#### Disjoint not
+### Disjoint not
 
 ```ts
 function func1(param: Not<string>) {
@@ -285,9 +287,9 @@ function func3(p1: Not<string>, p2: Not<number>) {
 
 - This equality is always false as "hi" and Not\<string> have no overlap
 
-### Constant results
+## Constant results
 
-#### NaN
+### NaN
 
 ```ts
 const value: string = 0 / 0 + 1;
@@ -295,7 +297,7 @@ const value: string = 0 / 0 + 1;
 
 - Type NaN is not assignable to type string
 
-#### Always known math
+### Always known math
 
 ```ts
 // True regardless of
@@ -309,9 +311,9 @@ declare let x: NotNotANumber;
 
 - Expected string, found (a: number) => 1
 
-### Types
+## Types
 
-#### Type of mathematical operator
+### Type of mathematical operator
 
 ```ts
 declare var x: number;
@@ -320,7 +322,7 @@ declare var x: number;
 
 - Expected string, found number
 
-#### Type of relation operators
+### Type of relation operators
 
 ```ts
 declare var x: number;
@@ -334,7 +336,7 @@ declare var x: number;
 - Expected string, found boolean
 - Expected Math, found boolean
 
-#### Type of logical operators
+### Type of logical operators
 
 ```ts
 declare var x: number, y: boolean;
@@ -343,9 +345,9 @@ declare var x: number, y: boolean;
 
 - Expected string, found boolean | number
 
-### NOT SURE
+## NOT SURE
 
-#### Operators across conditions
+### Operators across conditions
 
 ```ts
 function func(param: boolean) {

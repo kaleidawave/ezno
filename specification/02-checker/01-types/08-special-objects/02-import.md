@@ -1,8 +1,8 @@
-> #TODO-link for full imports stuff
+> #TODO-link for full module stuff
 
-#### `import.meta`
+### `import.meta`
 
-> Unfortunately because of bundling `url` and `resolve` cannot have known results so just `string`
+> Unfortunately because of bundling affecting `url` (and thus `resolve`) we cannot have known results so just `string`
 
 ```ts
 import.meta.url satisfies number;

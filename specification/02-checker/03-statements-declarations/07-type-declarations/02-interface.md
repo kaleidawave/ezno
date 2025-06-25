@@ -1,4 +1,4 @@
-#### Interfaces
+### Interfaces
 
 ```ts
 interface X {
@@ -11,7 +11,7 @@ const x: X = { a: 2, b: false }
 
 - Type { a: 2, b: false } is not assignable to type X
 
-#### Interface extends
+### Interface extends
 
 ```ts
 interface X {
@@ -34,7 +34,7 @@ interface Z extends X, Y {
 - Expected Z, found { a: "", b: 4, c: "hello" }
 - Expected Z, found { c: "hi" }
 
-#### Interface merging
+### Interface merging
 
 ```ts
 interface X {
@@ -54,7 +54,7 @@ interface X {
 
 - Type { a: "field", b: false, c: false } is not assignable to type X
 
-#### Interfaces do not merge with aliases
+### Interfaces do not merge with aliases
 
 ```ts
 type X = { a: string }
@@ -71,7 +71,7 @@ type X = { a: string }
 
 - Type { b: "NaN" } is not assignable to type X
 
-#### Optional interface member
+### Optional interface member
 
 ```ts
 interface Optional {

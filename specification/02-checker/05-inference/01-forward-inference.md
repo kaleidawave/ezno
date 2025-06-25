@@ -1,6 +1,6 @@
 This is where some existing known type inferes a constraint on something untyped.
 
-#### Expected parameter from variable declaration
+### Expected parameter from variable declaration
 
 > Technically works with inference but this method should be less overhead + produce better positioned errors
 
@@ -10,7 +10,7 @@ const x: (a: string) => number = a => a.to;
 
 - No property 'to' on string
 
-#### Expected argument from parameter declaration
+### Expected argument from parameter declaration
 
 ```ts
 function map(a: (a: number) => number) {}
@@ -22,7 +22,7 @@ map(a => a.t)
 
 - No property 't' on number
 
-#### Object function inference
+### Object function inference
 
 ```ts
 interface MyObject {
@@ -38,7 +38,7 @@ const obj: MyObject = {
 
 - Expected number, found string
 
-#### Generic argument/constraint leads to inference
+### Generic argument/constraint leads to inference
 
 ```ts
 function callFunction<T>(fn: (p: T) => void) {
@@ -52,7 +52,7 @@ callFunction<string>(a => {
 
 - Expected number, found string
 
-#### Computed generics from collection
+### Computed generics from collection
 
 ```ts
 const x = [1, 2, 3];

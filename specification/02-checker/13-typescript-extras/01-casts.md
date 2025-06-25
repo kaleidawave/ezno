@@ -1,4 +1,4 @@
-#### As casts
+### As casts
 
 > Disabled normally, allowed for these tests. Provides TSC compatibility and because narrowing not implemented (including secret feature)
 
@@ -14,7 +14,7 @@ global satisfies boolean;
 - Expected boolean, found any
 - Expected number, found string
 
-#### Non-null assertions
+### Non-null assertions
 
 > TODO this currently only works on conditionals
 

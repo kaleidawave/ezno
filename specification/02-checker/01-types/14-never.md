@@ -1,4 +1,4 @@
-#### `never` subtyping
+### `never` subtyping
 
 ```ts
 function getSpecialNumber(): number {
@@ -10,7 +10,7 @@ getSpecialNumber satisfies string;
 
 - Expected string, found () => number
 
-#### Union with never
+### Union with never
 
 ```ts
 declare function func<T>(): T | string;

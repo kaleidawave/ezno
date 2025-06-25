@@ -1,4 +1,8 @@
-#### Delete properties
+> This is an Ezno feature, thanks to events
+
+> #TODO in a function as well
+
+### Delete properties
 
 ```ts
 const x = { a: 2, b: 3 }
@@ -8,9 +12,7 @@ const b = x.b;
 
 - No property 'b' on { a: 2 }
 
-#### Un-delete-able property
-
-> TODO in a function as well
+### Un-delete-able property
 
 ```ts
 const x: { a?: number } = { a: 4 };

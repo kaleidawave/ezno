@@ -3,7 +3,7 @@
 - Constructor
 - static fields
 
-#### Property keys
+### Property keys
 
 > Property keys are synthesised once and their effects run once (as opposed to their value)
 
@@ -22,7 +22,7 @@ global satisfies string;
 - Expected "a", found "b"
 - Expected string, found 1
 
-#### Property field side effects
+### Property field side effects
 
 ```ts
 let global: number = 0;
@@ -39,7 +39,7 @@ class X {
 - Expected string, found 1
 - Expected boolean, found 3
 
-#### Mix of property fields and assigned
+### Mix of property fields and assigned
 
 > Property fields are assigned first
 
@@ -62,7 +62,7 @@ x.prop2 satisfies boolean;
 - Expected string, found 1
 - Expected boolean, found 2
 
-#### Class methods
+### Class methods
 
 ```ts
 class X {
@@ -81,7 +81,7 @@ x.getObject(2) satisfies string
 
 - Expected string, found { a: 4, b: 2 }
 
-#### Automatic class constructor
+### Automatic class constructor
 
 ```ts
 class X {
@@ -93,7 +93,7 @@ class X {
 
 - Expected 3, found 2
 
-#### Static class property
+### Static class property
 
 ```ts
 class X {
@@ -105,7 +105,7 @@ X.a satisfies 3
 
 - Expected 3, found 2
 
-#### Use before defined
+### Use before defined
 
 > Declared same as `let` and `const`
 
@@ -116,7 +116,7 @@ class X { }
 
 - Variable 'X' used before declaration
 
-#### Called without new
+### Called without new
 
 > Declared same as `let` and `const`
 
@@ -127,7 +127,7 @@ const x = X();
 
 - Class constructor must be called with new
 
-#### Class type `extends`
+### Class type `extends`
 
 ```ts
 class BaseClass {
@@ -143,7 +143,7 @@ new Class().b satisfies 5
 
 - Expected 5, found false
 
-#### Static blocks
+### Static blocks
 
 ```ts
 class X {
@@ -159,7 +159,7 @@ X.x satisfies 3;
 
 - Type 3 is not assignable to type 4
 
-#### Hoisting of class type
+### Hoisting of class type
 
 ```ts
 function doThingWithClass(instance: Class) {
@@ -183,7 +183,7 @@ class Class extends BaseClass {
 - Expected boolean, found number
 - Argument of type 4 is not assignable to parameter of type string
 
-#### Hoisting of class type with `extends`
+### Hoisting of class type with `extends`
 
 ```ts
 function doThingWithClass(instance: Class) {
@@ -202,7 +202,7 @@ class Class extends BaseClass {
 
 - Expected string, found boolean
 
-#### `super` call
+### `super` call
 
 ```ts
 let b: number = 0;
@@ -226,7 +226,9 @@ b satisfies 1;
 
 - Expected "hello", found "hi"
 
-#### Nominal-ness
+### Nominal-ness
+
+> #TODO-location
 
 ```ts
 class X { a: number = 2 }
@@ -240,7 +242,7 @@ doThingWithX(new Y())
 
 - Argument of type [Y] { a: 2 } is not assignable to parameter of type X
 
-#### Generics to constructor
+### Generics to constructor
 
 ```ts
 class Box<T> {
@@ -256,7 +258,7 @@ const myBox = new Box<number>("hi");
 
 - Argument of type "hi" is not assignable to parameter of type number
 
-#### Constructor
+### Constructor
 
 ```ts
 class X {

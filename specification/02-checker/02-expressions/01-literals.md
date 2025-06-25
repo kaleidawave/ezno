@@ -6,7 +6,7 @@ There are several kinds of expression types
 - Strings
 - Booleans
 
-#### Escape sequences handled
+### Escape sequences handled
 
 ```ts
 const x: "\"" = '"';

@@ -1,4 +1,4 @@
-#### Template literal type specialisation
+### Template literal type specialisation
 
 > Uses `+` logic behind the scenes
 
@@ -10,7 +10,7 @@ Concat("test", "something") satisfies boolean
 
 - Expected boolean, found "test, something"
 
-#### Template literal types
+### Template literal types
 
 > Last one tests printing
 
@@ -32,7 +32,7 @@ const invalidNum3: `${1}` = "2";
 - Type 1 is not assignable to type "1"
 - Type \"2\" is not assignable to type "1"
 
-#### Disjoint template literals
+### Disjoint template literals
 
 ```ts
 function func(a: `a${string}`, b: `b${string}`, c: string) {
@@ -44,7 +44,7 @@ function func(a: `a${string}`, b: `b${string}`, c: string) {
 - This equality is always false as `a${string}` and `b${string}` have no overlap
 - Expected string, found boolean
 
-#### String slice matching pattern
+### String slice matching pattern
 
 ```ts
 type GetPrefix<S, End> = S extends `${infer T} ${End}` ? T : false;
@@ -53,3 +53,7 @@ type GetPrefix<S, End> = S extends `${infer T} ${End}` ? T : false;
 ```
 
 - Expected "Hello", found 4
+
+### Implementation
+
+#TODO

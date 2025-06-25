@@ -1,4 +1,4 @@
-#### `instanceof` operator
+### `instanceof` operator
 
 ```ts
 ([] instanceof Array) satisfies true;
@@ -23,3 +23,7 @@ isArray({ }) satisfies null;
 - Expected 4, found false
 - Expected string, found true
 - Expected null, found false
+
+#### Implementation
+
+This looks at the prototype of objects. #TODO-check it also descends

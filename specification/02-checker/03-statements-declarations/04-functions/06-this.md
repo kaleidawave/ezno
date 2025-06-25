@@ -1,8 +1,15 @@
 > [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/this)
 
-The `this` reference can mean multiple things,
+The `this` reference can mean multiple things.
 
-#### This in object literal
+### Implementation
+
+Every function type has two references
+
+- a function id
+- an optional `TypeId` representing the value of `this`
+
+### This in object literal
 
 ```ts
 const obj = {
@@ -18,7 +25,7 @@ obj.getA() satisfies 6;
 
 - Expected 6, found 5
 
-#### This passed around
+### This passed around
 
 ```ts
 function getToUpperCase(s: string) {
@@ -30,7 +37,7 @@ getToUpperCase("hi")() satisfies "HEY";
 
 - Expected "HEY", found "HI"
 
-#### This as generic argument
+### This as generic argument
 
 ```ts
 function callToUpperCase(s: string) {
@@ -42,7 +49,7 @@ callToUpperCase("hi") satisfies "HEY";
 
 - Expected "HEY", found "HI"
 
-#### String internal `this` unbinding error
+### String internal `this` unbinding error
 
 > Thanks to `this` checking in #127
 
@@ -54,7 +61,7 @@ toUpperCase();
 
 - The 'this' context of the function is expected to be string, found undefined
 
-#### Calling `new` on a function
+### Calling `new` on a function
 
 ```ts
 function MyClass(value) {
@@ -66,7 +73,7 @@ new MyClass("hi").value satisfies "hello"
 
 - Expected "hello", found "hi"
 
-#### `new` on function with assigned prototype
+### `new` on function with assigned prototype
 
 ```ts
 function MyClass(value) {
@@ -82,7 +89,7 @@ object.other satisfies "hello";
 
 - Expected "hello", found 2
 
-#### Checking with function prototype
+### Checking with function prototype
 
 ```ts
 function MyClass(this: { other: string }) { }
@@ -94,7 +101,7 @@ const m = new MyClass();
 
 - The 'this' context of the function is expected to be { other: string }, found { other: 2 }
 
-#### Class `this` unbinding
+### Class `this` unbinding
 
 > Thanks to `this` checking added in #127
 
@@ -110,3 +117,9 @@ method();
 ```
 
 - The 'this' context of the function is expected to be X, found undefined
+
+## To implement
+
+### `.call`
+
+#TODO

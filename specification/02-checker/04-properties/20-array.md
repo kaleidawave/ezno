@@ -1,6 +1,10 @@
+### Implementation
+
 Arrays are regular objects with a prototype pointing to the `Array` class
 
-#### Array push
+Methods can mutate properties thanks to event application
+
+### Array push
 
 ```ts
 const x = [1];
@@ -12,7 +16,7 @@ x.length satisfies 4;
 - Expected 3, found "hi"
 - Expected 4, found 2
 
-#### Array pop
+### Array pop
 
 ```ts
 const myArray = [6, "hi"]
@@ -22,7 +26,7 @@ myArray.length satisfies 1;
 
 - Expected 3, found "hi"
 
-#### Array push restriction
+### Array push restriction
 
 ```ts
 const x: Array<number> = [1]
@@ -31,7 +35,7 @@ x.push("hi");
 
 - Argument of type \"hi\" is not assignable to parameter of type number
 
-#### Array property checking
+### Array property checking
 
 ```ts
 const numbers1: Array<number> = [1, 2, "3"],

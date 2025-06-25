@@ -1,4 +1,4 @@
-#### Calling higher order function
+### Calling higher order function
 
 ```ts
 function addTwoToResult(func: (n: number) => number) {
@@ -10,7 +10,7 @@ addTwoToResult((a: number) => a * 4) satisfies 5
 
 - Expected 5, found 18
 
-#### Calling higher order function that is constant
+### Calling higher order function that is constant
 
 ```ts
 function call(func: (n: number) => number) {
@@ -22,7 +22,7 @@ call(Math.sqrt) satisfies 2
 
 - Expected 2, found 3
 
-#### Constant call and operation with a parameter
+### Constant call and operation with a parameter
 
 > An example of the generic constructor type (namely call and operation)
 
@@ -36,7 +36,7 @@ floorPlusB(100.22, 5) satisfies 8
 
 - Expected 8, found 105
 
-#### Arguments in to rest parameter
+### Arguments in to rest parameter
 
 ```ts
 function myRestFunction(...r: string[]) {
@@ -48,7 +48,7 @@ myRestFunction("hello ", "world") satisfies number;
 
 - Expected number, found ["hello ", "world"]
 
-#### Builder pattern
+### Builder pattern
 
 > Testing for `this` returning
 
@@ -71,7 +71,7 @@ class StringBuilder {
 
 - Expected number, found "Hello Ben"
 
-#### Dependent operations
+### Dependent operations
 
 ```ts
 function isFive(a: number): boolean {
@@ -92,7 +92,7 @@ hasPropertyX({ x: 5 }) satisfies number;
 - Expected string, found false
 - Expected number, found true
 
-#### Calling non-callable
+### Calling non-callable
 
 ```ts
 const x = "hi"

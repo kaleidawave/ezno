@@ -1,21 +1,27 @@
 We recieve a type constructor and we try to deduce information about it
 
+### Implementation
+
+#TODO
+
 #### De Morgan laws
 
-#### Number instrincs
+#TODO
+
+### Number instrincs
 
 > #TODO-link
 
-#### Inferred guards - annotation byepass
+### Inferred guards - annotation byepass
 
 > Using events and the constant compilation model #TODO-link
 
-#### Inferred guards - annotation checking
+### Inferred guards - annotation checking
 
 > Not sure why TS does not do this
 > #TODO-link to checking
 
-#### Equality
+### Equality
 
 ```ts
 function eqNarrow(a: string) {
@@ -27,7 +33,7 @@ function eqNarrow(a: string) {
 
 - Expected "hello", found "hi"
 
-#### Condition outside of `if`
+### Condition outside of `if`
 
 ```ts
 function eqNarrow(a: string) {
@@ -40,7 +46,7 @@ function eqNarrow(a: string) {
 
 - Expected "hello", found "hi"
 
-#### Condition as a function
+### Condition as a function
 
 ```ts
 function eqNarrow(a: string) {
@@ -54,7 +60,7 @@ function eqNarrow(a: string) {
 
 - Expected "hello", found "hi"
 
-#### Reference passed around
+### Reference passed around
 
 ```ts
 function eqNarrow(a: string) {
@@ -67,7 +73,7 @@ function eqNarrow(a: string) {
 
 - Expected "hello", found "hi"
 
-#### `typeof` operator
+### `typeof` operator
 
 ```ts
 function typeOfNarrow(param: any) {
@@ -79,7 +85,7 @@ function typeOfNarrow(param: any) {
 
 - Expected number, found string
 
-#### Boolean narrowing
+### Boolean narrowing
 
 ```ts
 function booleanNarrow(param: boolean) {
@@ -95,7 +101,7 @@ function booleanNarrow(param: boolean) {
 - Expected string, found true
 - Expected number, found false
 
-#### Narrowing from operators
+### Narrowing from operators
 
 ```ts
 function operatorNarrows(thing: string | null) {
@@ -109,7 +115,7 @@ function operatorNarrows(thing: string | null) {
 - Expected number, found string | "something"
 - Expected boolean, found "hi"
 
-#### Logic
+### Logic
 
 ```ts
 function logicNarrow(thing: any, other: any) {
@@ -126,7 +132,7 @@ function logicNarrow(thing: any, other: any) {
 - Expected string, found { thing: string, other: 4 }
 - Expected null, found string | number
 
-#### Eating cases
+### Eating cases
 
 > TODO This tests two things. Context negation through final event and negating effect of typeof
 
@@ -141,7 +147,7 @@ function func(param: boolean | string | number) {
 
 - Expected null, found string | number
 
-#### Prototype narrowed
+### Prototype narrowed
 
 ```ts
 function func(param: Array<string> | string) {
@@ -153,7 +159,7 @@ function func(param: Array<string> | string) {
 
 - Expected null, found Array\<string>
 
-#### Type generated from prototype
+### Type generated from prototype
 
 ```ts
 function func(param: any) {
@@ -165,7 +171,7 @@ function func(param: any) {
 
 - Expected null, found Array\<any>
 
-#### Narrowing via property result
+### Narrowing via property result
 
 ```ts
 function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: number }) {
@@ -178,7 +184,7 @@ function narrowPropertyEquals(param: { tag: "a", a: string } | { tag: "b", b: nu
 
 - Expected null, found { tag: "a", a: string }
 
-#### Narrowing via `in`
+### Narrowing via `in`
 
 ```ts
 function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number }) {
@@ -191,7 +197,7 @@ function narrowFromTag(param: { tag: "a", a: string } | { tag: "b", b: number })
 
 - Expected null, found { tag: "a", a: string }
 
-#### Build object
+### Build object
 
 > TODO `.prop === 2` doesn't work because of get on `ANY_TYPE`
 
@@ -205,7 +211,7 @@ function buildObject(param: any) {
 
 - Expected null, found { a: any }
 
-#### Object equality
+### Object equality
 
 ```ts
 function conditional(param: boolean) {
@@ -220,7 +226,7 @@ function conditional(param: boolean) {
 
 - Expected string, found [{ b: 2, a: 3 }, { c: 6 }]
 
-#### From condition equality
+### From condition equality
 
 ```ts
 function conditional(param: boolean) {
@@ -234,7 +240,7 @@ function conditional(param: boolean) {
 
 - Expected string, found { a: 1 }
 
-#### Across free variable
+### Across free variable
 
 ```ts
 function conditional(param: boolean) {
@@ -248,7 +254,7 @@ function conditional(param: boolean) {
 
 - Expected string, found () => true
 
-#### Edge case
+### Edge case
 
 > De-Morgans laws for and
 
@@ -273,7 +279,7 @@ function func2(param: string | number | boolean) {
 - Expected null, found string | number
 - Expected undefined, found string | boolean
 
-#### Mutation
+### Mutation
 
 > TODO test more
 
@@ -290,7 +296,7 @@ function func(param: boolean) {
 
 - Expected null, found false
 
-#### Assertions annotation
+### Assertions annotation
 
 ```ts
 declare function isNumber(param: any): asserts param is number;
@@ -303,7 +309,7 @@ if (isNumber(value)) {
 
 - Expected string, found number
 
-#### Assertions annotation return type checked
+### Assertions annotation return type checked
 
 ```ts
 function func1(param: any): asserts param is number {
@@ -321,7 +327,7 @@ function func2(param: any): asserts param is boolean {
 
 - Cannot return asserts param is string because the function is expected to return asserts param is number
 
-#### External predicate
+### External predicate
 
 ```ts
 function func(param: number | Array<string>) {
@@ -333,7 +339,7 @@ function func(param: number | Array<string>) {
 
 - Expected null, found Array\<string>
 
-#### Number `isNan`
+### Number `isNan`
 
 ```ts
 function func(param: number) {
@@ -351,7 +357,7 @@ function func(param: number) {
 - Expected string, found Not\<NaN>
 - Expected null, found Not\<NaN>
 
-#### Narrowing falsy values
+### Narrowing falsy values
 
 ```ts
 function getName(name?: string) {
@@ -366,7 +372,7 @@ function getName(name?: string) {
 
 - Expected undefined, found string
 
-#### Implication from equality
+### Implication from equality
 
 ```ts
 function func(a: boolean) {
@@ -379,7 +385,7 @@ function func(a: boolean) {
 
 - Expected "hi", found true
 
-#### Narrowing in for loop
+### Narrowing in for loop
 
 > Can't do modulo because of post mutation
 
@@ -393,7 +399,7 @@ With advanced_numbers
 
 - This equality is always false as LessThan<3> and 50 have no overlap
 
-#### Narrowing chains
+### Narrowing chains
 
 ```ts
 export type User = { username: string, password: string };
@@ -416,7 +422,7 @@ function run(auth: Auth)  {
 - Expected string, found boolean
 - Expected boolean, found { username: string, password: string }
 
-#### Narrowing free variable
+### Narrowing free variable
 
 ```ts
 function func(value: any) {

@@ -1,4 +1,4 @@
-#### Functions create objects
+### Functions create objects
 
 ```ts
 function newObject() {

@@ -1,4 +1,4 @@
-#### Readonly property
+### Readonly property
 
 ```ts
 function x(p: { readonly a: string, b: string }) {
@@ -9,7 +9,7 @@ function x(p: { readonly a: string, b: string }) {
 
 - Cannot write to property 'a'
 
-#### Readonly to readonly
+### Readonly to readonly
 
 ```ts
 function func1(p: { a: string, b: string }) {
@@ -23,9 +23,3 @@ func2(obj)
 ```
 
 - Argument of type { a: string, b: string } is not assignable to parameter of type Readonly<{ a: string }>
-
-### Forward inference
-
-> This is where usage a parameter gets a type via a type (on some variable or parameter somewhere). Aka from above or the usage of the function
-
-> Constraint inference is where the parameter gets it from below. Usage of the parameter value

@@ -1,4 +1,4 @@
-#### void operator
+### void operator
 
 ```ts
 (void 2) satisfies string;

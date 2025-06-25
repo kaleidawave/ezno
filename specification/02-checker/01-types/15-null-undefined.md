@@ -1,4 +1,4 @@
-#### Null and undefined
+### Null and undefined
 
 ```ts
 undefined satisfies null;

@@ -2,7 +2,7 @@ All these examples find errors, it is important that after an error the type che
 
 > A checker that shows one error at a time would be very frustrating to use
 
-#### Use type annotation in the presence of error
+### Use type annotation in the presence of error
 
 > Note x and y are still string and the function still returns string
 
@@ -25,7 +25,7 @@ const z: number = getString(2);
 - Could not find variable 'h' in scope
 - Type string is not assignable to type number
 
-#### Errors carries
+### Errors carries
 
 > Note only one error raised. This prevents the compiler presenting loads of errors if an origin is invalid
 

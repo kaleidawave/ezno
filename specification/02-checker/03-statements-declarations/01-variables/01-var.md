@@ -1,6 +1,6 @@
 [var](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/var)
 
-#### `var`
+### `var`
 
 ```ts
 s satisfies string;
@@ -11,7 +11,7 @@ s satisfies number;
 - Expected string, found undefined
 - Expected number, found "hello"
 
-#### `var` can be reregistered
+### `var` can be reregistered
 
 ```ts
 {

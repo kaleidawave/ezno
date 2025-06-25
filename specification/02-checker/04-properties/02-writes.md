@@ -1,4 +1,4 @@
-#### Set property with key
+### Set property with key
 
 ```ts
 const obj: { a?: number, b?: number } = { a: 2 }
@@ -13,7 +13,7 @@ obj satisfies string;
 
 - Expected string, found { a: 2, b: 6 }
 
-#### Assigning to types as keys
+### Assigning to types as keys
 
 ```ts
 const obj = { a: 1, b: 2, c: 3 };
@@ -23,7 +23,7 @@ obj satisfies { [s: string]: boolean };
 
 - Expected { [string]: boolean }, found { a: 1, b: 2, c: 3 }
 
-#### Through another variable
+### Through another variable
 
 ```ts
 const obj1 = { a: 5 };
@@ -37,7 +37,7 @@ obj1.a = "hello";
 
 > As would violate any usage of `obj2`
 
-#### Assinging to non existent property
+### Assinging to non existent property
 
 > Allowing this could break objects passed to functions
 

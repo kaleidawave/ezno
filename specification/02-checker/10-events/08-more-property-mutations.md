@@ -1,6 +1,6 @@
-Extending from [./reads-and-assignments.md]
+Extending from [[01-reads-and-assignments.md]]
 
-#### `delete` as an effect
+### `delete` as an effect
 
 ```ts
 function dewete(param: { prop?: string }) {

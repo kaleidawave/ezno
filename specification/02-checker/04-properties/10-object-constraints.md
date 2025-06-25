@@ -1,4 +1,6 @@
-#### Object property constraints
+> #TODO explain why objects have constraints
+
+### Object property constraints
 
 ```ts
 const my_obj: { a: number } = { a: 2 }
@@ -7,7 +9,7 @@ my_obj.a = "hello world"
 
 - Type "hello world" does not meet property constraint number
 
-#### Nested constraint
+### Nested constraint
 
 ```ts
 const obj1 = { a: 5 };
@@ -19,7 +21,7 @@ obj1.a = "hello";
 
 - Type "hello" does not meet property constraint number
 
-#### And object constraint
+### And object constraint
 
 ```ts
 {

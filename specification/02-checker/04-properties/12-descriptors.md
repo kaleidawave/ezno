@@ -4,7 +4,7 @@ This file tests some setup of this and use of it.
 
 > TODO defineProperties
 
-#### `Object.defineProperty` writable
+### `Object.defineProperty` writable
 
 ```ts
 const obj = {};
@@ -19,7 +19,7 @@ obj.property = 70;
 - Expected string, found 42
 - Cannot write to property 'property'
 
-#### Descriptor carries across assignments
+### Descriptor carries across assignments
 
 When assigning, the descriptors carry over. This checks that this assignment is not overwritten.
 
@@ -37,7 +37,7 @@ Object.getOwnPropertyDescriptor(obj, 'property') satisfies string;
 
 - Expected string, found { value: 70, writable: true, enumerable: false, configurable: false }
 
-#### `Object.defineProperty` getter and setter
+### `Object.defineProperty` getter and setter
 
 > TODO setter
 
@@ -54,7 +54,7 @@ obj.property satisfies string;
 
 - Expected string, found 1
 
-#### `Object.defineProperty` configurable
+### `Object.defineProperty` configurable
 
 ```ts
 const obj = {};
@@ -64,7 +64,7 @@ Object.defineProperty(obj, 'property', { value: "hi" });
 
 - Property 'property' not configurable
 
-#### `Object.getOwnPropertyDescriptor`
+### `Object.getOwnPropertyDescriptor`
 
 > TODO getOwnPropertyDescriptors
 
@@ -80,7 +80,7 @@ Object.getOwnPropertyDescriptor(obj, 'b').writable satisfies false;
 
 - Expected string, found { value: "something", writable: true, enumerable: true, configurable: true }
 
-#### `Object.assign`
+### `Object.assign`
 
 > TODO multiple RHS
 
@@ -92,7 +92,7 @@ obj satisfies string;
 
 - Expected string, found { a: 1, b: 2, c: 3 }
 
-#### `Object.freeze`
+### `Object.freeze`
 
 > When `Object.freeze` is called, the object's `isSealed` is inferred as `true`
 
@@ -106,7 +106,7 @@ Object.isSealed(obj) satisfies true;
 
 - Cannot write to property 'property'
 
-#### `Object.seal`
+### `Object.seal`
 
 > When `Object.seal` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
 
@@ -126,7 +126,7 @@ Object.isFrozen(obj) satisfies false;
 
 - Cannot write to property 'property'
 
-#### `Object.preventExtensions`
+### `Object.preventExtensions`
 
 > When `Object.preventExtensions` is called, the object's `isFrozen` and `isSealed` are inferred as `true`
 
@@ -146,7 +146,7 @@ Object.isSealed(obj) satisfies false;
 
 - Cannot write to property 'property'
 
-#### `Object.isExtensible`
+### `Object.isExtensible`
 
 > The object that has been applied `Object.seal`, `Object.freeze` and `Object.preventExtensions` returns `false` by `Object.isExtensible`, otherwise returns `true`
 
@@ -171,9 +171,9 @@ Object.isSealed(obj) satisfies false;
 
 - Expected 5, found false
 
-#### `enumerable` in for-in
+### `enumerable` in for-in
 
-> TODO links
+> #TODO-link
 
 ```ts
 const obj = { n: 1, b: 2 };

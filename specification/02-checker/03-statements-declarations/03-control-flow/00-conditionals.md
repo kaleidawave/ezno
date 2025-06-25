@@ -3,7 +3,7 @@
 - Check each branch
 - Unify environment state
 
-#### Conditional
+### Conditional
 
 ```ts
 function func<T extends boolean>(condition: T) {
@@ -21,7 +21,7 @@ func satisfies string;
 
 - Expected string, found \<T>(condition: T) => T ? 4 : 3
 
-#### Resolving conditional
+### Resolving conditional
 
 ```ts
 function isNegative(x: number) {
@@ -34,7 +34,7 @@ isNegative(4) satisfies boolean
 - Expected number, found "negative"
 - Expected boolean, found "positive"
 
-#### *Conclusive* conditional update
+### *Conclusive* conditional update
 
 ```ts
 let a: number = 0
@@ -53,7 +53,7 @@ a satisfies 3
 - Expected 2, found 0
 - Expected 3, found 1
 
-#### If and else (across function)
+### If and else (across function)
 
 ```ts
 function print_number(value: number) {
@@ -78,7 +78,7 @@ print_number(-1) satisfies "TWO"
 - Expected "100", found "some number"
 - Expected "TWO", found "some number"
 
-#### Unknown condition assignment
+### Unknown condition assignment
 
 ```ts
 let i = 0;

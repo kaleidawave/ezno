@@ -1,4 +1,4 @@
-#### `keyof` type annotation
+### `keyof` type annotation
 
 ```ts
 interface X {
@@ -11,7 +11,7 @@ interface X {
 
 - Expected keyof X, found "c"
 
-#### Subtyping edge cases
+### Subtyping edge cases
 
 ```ts
 "hi" satisfies { length: 3 };

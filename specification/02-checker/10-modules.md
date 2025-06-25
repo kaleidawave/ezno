@@ -1,10 +1,8 @@
-#### `import.meta`
-
-> Thanks to [#141](https://github.com/kaleidawave/ezno/pull/141)
+### `import.meta`
 
 > TODO link to special object
 
-#### Import and export named
+### Import and export named
 
 also *imports work with and without extensions*
 
@@ -29,7 +27,7 @@ export { private as "non identifier" }
 - Expected boolean, found 3.142857142857143
 - Expected 8, found 2
 
-#### Imports are constant
+### Imports are constant
 
 ```ts
 import { PI } from "./constants";
@@ -41,7 +39,7 @@ export let PI = 4;
 
 - Cannot assign to constant
 
-#### Import default
+### Import default
 
 ```ts
 import PI from "./pi";
@@ -53,7 +51,7 @@ export default 4;
 
 - Expected string, found 4
 
-#### Import type
+### Import type
 
 ```ts
 import { MyNumber } from "./types";
@@ -65,7 +63,7 @@ export type MyNumber = string;
 
 - Expected MyNumber, found 2
 
-#### Import type and variable
+### Import type and variable
 
 ```ts
 import { MyNumber } from "./types";
@@ -80,7 +78,7 @@ export const MyNumber = 6;
 - Expected MyNumber, found 2
 - Expected boolean, found 6
 
-#### Export let
+### Export let
 
 ```ts
 import { counter, incrementCounter } from "./mutable";
@@ -101,7 +99,7 @@ export function incrementCounter() {
 - Expected string, found 2
 - Expected string, found 4
 
-#### Import star
+### Import star
 
 ```ts
 import * as the from "./many";
@@ -114,7 +112,7 @@ export const a = 2, b = 3, c = 4;
 
 - Expected string, found { a: 2, b: 3, c: 4 }
 
-#### Import from non existent file
+### Import from non existent file
 
 ```ts
 import { a } from "./two";
@@ -127,7 +125,7 @@ export const a = 2;
 
 - Cannot find ./two
 
-#### Import where export does not exist
+### Import where export does not exist
 
 ```ts
 import b, { a } from "./export";
@@ -141,7 +139,7 @@ export const c = 2;
 - Cannot find default export from module './export'
 - a not exported from ./export
 
-#### Import conflicts with existing name
+### Import conflicts with existing name
 
 ```ts
 import { x } from "./export1";
@@ -159,7 +157,7 @@ export const z = 2;
 
 - Cannot import using conflicting name
 
-#### Import from invalid file
+### Import from invalid file
 
 ```ts
 import { a } from "./export";
@@ -172,7 +170,7 @@ export default const;
 
 - Found reserved identifier
 
-#### Only synthesis module once
+### Only synthesis module once
 
 ```ts
 import { a } from "./export1";
@@ -195,7 +193,7 @@ export const the = ((4 satisfies 1),3);
 
 > The fact the `Expected 1, found 4` only occurs once means that the module was only synthesised once
 
-#### Use export in scope
+### Use export in scope
 
 ```ts
 export const x = 2;
@@ -204,7 +202,7 @@ x satisfies 3;
 
 - Expected 3, found 2
 
-#### Imports don't leak non exports
+### Imports don't leak non exports
 
 ```ts
 import { x } from "./exports"
@@ -217,7 +215,7 @@ const y = "122LH"
 
 - Could not find variable 'y' in scope
 
-#### Import side effect
+### Import side effect
 
 > Don't take this as permission to do this
 
@@ -241,7 +239,7 @@ export const x = { a: 2 };
 - Expected string, found { a: 2 }
 - Expected number, found { a: 2, b: 4 }
 
-#### Import package
+### Import package
 
 > Yay doesn't require type definition to be shipped!!
 

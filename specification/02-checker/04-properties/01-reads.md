@@ -1,6 +1,6 @@
 This file contains reading properties
 
-#### Index into string
+### Index into string
 
 ```ts
 ("something"[2]) satisfies number;
@@ -8,7 +8,7 @@ This file contains reading properties
 
 - Expected number, found "m"
 
-#### Optional effect key
+### Optional effect key
 
 ```ts
 let i: number = 0;
@@ -23,7 +23,7 @@ i satisfies string;
 - Expression is always true
 - Expected string, found 1
 
-#### Optional property access
+### Optional property access
 
 ```ts
 interface X {
@@ -42,7 +42,7 @@ function func(x: X | null) {
 - No property 'a' on X | null
 - Expected number, found undefined | string
 
-#### Property on an or type
+### Property on an or type
 
 ```ts
 function getProp(obj: { prop: 3, prop2: 6 } | { prop: 2 }) {
@@ -56,7 +56,7 @@ getProp satisfies string
 - No property 'prop2' on { prop: 3, prop2: 6 } | { prop: 2 }
 - Expected string, found (obj: { prop: 3, prop2: 6 } | { prop: 2 }) => 3 | 2
 
-#### Indexing into (fixed) type
+### Indexing into (fixed) type
 
 ```ts
 interface ThePrimitives {
@@ -70,7 +70,7 @@ interface ThePrimitives {
 
 - Expected string, found 2
 
-#### Indexing into (generic) type
+### Indexing into (generic) type
 
 ```ts
 function getProp<T extends { prop: string, other: string }>(t: T): T["prop"] {
@@ -86,7 +86,7 @@ function getOther<T extends { prop: string, other: string }>(t: T): T["other"] {
 
 - Cannot return T["other"] because the function is expected to return T["prop"]
 
-#### Index into dependent array
+### Index into dependent array
 
 ```ts
 function getFirst(array: number[]) {
@@ -98,7 +98,7 @@ getFirst satisfies boolean;
 
 - Expected boolean, found (array: Array\<number>) => number | undefined
 
-#### Index into dependent string
+### Index into dependent string
 
 ```ts
 function getSecondCharacter(s: string) {
@@ -112,7 +112,7 @@ getSecondCharacter("string") satisfies "b";
 - Expected boolean, found (s: string) => string | undefined
 - Expected "b", found "t"
 
-#### Or object missing property
+### Or object missing property
 
 ```ts
 function get(obj: {a: 2} | { b: 3 }) {
@@ -124,7 +124,7 @@ function get(obj: {a: 2} | { b: 3 }) {
 
 - No property 'a' on { a: 2 } | { b: 3 }
 
-#### Object literal (constant) computed key
+### Object literal (constant) computed key
 
 ```ts
 const y = { ["EZNO".toLowerCase()]: 7 }
@@ -135,7 +135,7 @@ y.not_a_key
 - Expected 3, found 7
 - No property 'not_a_key' on { ezno: 7 }
 
-#### Properties on or
+### Properties on or
 
 ```ts
 declare let key: "a" | "b";
@@ -146,7 +146,7 @@ object[key] satisfies boolean;
 
 - Expected boolean, found "apple" | "banana"
 
-#### Properties on big or
+### Properties on big or
 
 > TODO this creates a fat or type
 

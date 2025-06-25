@@ -1,4 +1,6 @@
-#### `Uppercase`
+TypeScript implements a few intrinsic types to 
+
+### `Uppercase`
 
 ```ts
 const a: Uppercase<"something" |"hi"> = "HI";
@@ -7,7 +9,9 @@ const b: Uppercase<string> = "hi"
 
 - Type \"hi\" is not assignable to type Uppercase\<string>
 
-#### `CaseInsensitive`
+### `CaseInsensitive`
+
+> Ezno only
 
 ```ts
 "Hi" satisfies CaseInsensitive<"hi">;

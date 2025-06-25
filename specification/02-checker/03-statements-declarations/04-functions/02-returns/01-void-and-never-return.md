@@ -1,4 +1,4 @@
-#### `void` return type
+### `void` return type
 
 > This works similarly to undefined except that it accepts any function return type
 
@@ -17,7 +17,7 @@ runWithCallback(() => 3)
 - Expected string, found void
 - Cannot return 5 because the function is expected to return void
 
-#### `throw` in body
+### `throw` in body
 
 ```ts
 function throwSomething() {

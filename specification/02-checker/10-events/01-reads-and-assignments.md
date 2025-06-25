@@ -1,17 +1,17 @@
 > This is where the idea started
 
-#### Enabling a new model for variable values ⭐
+### Enabling a new model for variable values ⭐
 
 > #TODO Removing (as) assertions and satisfies
 
-#### Catching the exterior assignment ⭐
+### Catching the exterior assignment ⭐
 
 problem with how subtyping works and mutability.
 We can check if the property being assigned meets the constraints of the object > #TODO-link
 
 > Catches things that TS cannot check, whilest still allowing the pattern that flow does not
 
-#### Handling properties on new objects
+### Handling properties on new objects
 
 We want objects to be unique for disjoint analysis. We need to append, this uses the same mechanism but flags that this event is an assignment.
 
@@ -19,7 +19,7 @@ We want objects to be unique for disjoint analysis. We need to append, this uses
 function construct(value) { return { value } }
 ```
 
-#### Assignment to free variable
+### Assignment to free variable
 
 ```ts
 let a: number = 0
@@ -36,7 +36,7 @@ let b: 2 = a
 
 - Type 4 is not assignable to type 2
 
-#### Assignment to free variable from parameter
+### Assignment to free variable from parameter
 
 > TODO move
 
@@ -54,7 +54,7 @@ let b: 2 = a
 
 - Type 4 is not assignable to type 2
 
-#### Free variable property update object inside function
+### Free variable property update object inside function
 
 ```ts
 const obj: { a: number } = { a: 2 }
@@ -69,9 +69,9 @@ obj.a satisfies 3
 
 - Expected 3, found 4
 
-### [Temporal Dead Zone](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/let#temporal_dead_zone_tdz) inside functions
+## [Temporal Dead Zone](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/let#temporal_dead_zone_tdz) inside functions
 
-#### TDZ from free variable (across function)
+### TDZ from free variable (across function)
 
 ```ts
 function getX() {
@@ -89,7 +89,7 @@ let x: number = 5;
 
 > Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
-#### TDZ errors through nested getter
+### TDZ errors through nested getter
 
 ```ts
 function func(obj: { prop: number }) {
@@ -103,9 +103,9 @@ let b: number = 0;
 
 - Variable 'b' used before declaration
 
-### Assignment through union
+## Assignment through union
 
-#### Assignment to union
+### Assignment to union
 
 > Solves the common subtyping issue between read and write properties
 
@@ -132,7 +132,7 @@ setAtoString(myObject);
 > `readA` is allowed, which is disallowed in Hegel, but here is allowed to preserve TSC compatibility (and because how structural subtyping is implemented)
 > Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
-#### Mutation
+### Mutation
 
 > TODO link to array
 
@@ -149,9 +149,9 @@ fakeRead(array1)
 
 - Invalid assignment through parameter
 
-### TO SORT
+## TO SORT
 
-#### Property assignment from conditional
+### Property assignment from conditional
 
 ```ts
 function getObject(condition: boolean) {
@@ -165,7 +165,7 @@ function getObject(condition: boolean) {
 
 - Expected string, found 4
 
-#### Assigning to parameter observed via effect
+### Assigning to parameter observed via effect
 
 ```ts
 function add_property(obj: { prop: number }) {

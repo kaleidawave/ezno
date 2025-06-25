@@ -1,4 +1,4 @@
-#### Default parameter
+### Default parameter
 
 ```ts
 function withDefault(x: number = 1) {
@@ -11,7 +11,7 @@ withDefault(3) satisfies 3;
 
 - Expected 2, found 1
 
-#### Default parameter side effect
+### Default parameter side effect
 
 ```ts
 let b: number = 0
@@ -27,7 +27,7 @@ b satisfies 1;
 
 - Expected 1, found 2
 
-#### Optional parameter type
+### Optional parameter type
 
 > Effectively optional parameter with the default value being undefined
 
@@ -39,7 +39,7 @@ function optionally(p?: number) {
 
 - Expected string, found number | undefined
 
-#### Calling optional parameter type
+### Calling optional parameter type
 
 ```ts
 function optionally(p?: number) {
@@ -55,7 +55,7 @@ optionally("hello world");
 
 - Argument of type "hello world" is not assignable to parameter of type number | undefined
 
-#### Default parameter side effect on parameter
+### Default parameter side effect on parameter
 
 ```ts
 function doThing(a: number, b: number = (a += 2)) {

@@ -3,7 +3,7 @@
 - Early return (inference)
 - throw
 
-#### (simple) return type checking
+### (simple) return type checking
 
 ```ts
 function func(): string {
@@ -13,7 +13,7 @@ function func(): string {
 
 - Cannot return 2 because the function is expected to return string
 
-#### Return generics mismatch
+### Return generics mismatch
 
 ```ts
 function getSecond1<T, U>(p1: T, p2: U): U {
@@ -27,7 +27,7 @@ function getSecond2<T, U>(p1: T, p2: U): U {
 
 - Cannot return T because the function is expected to return U
 
-#### Return type annotation is used in constraint
+### Return type annotation is used in constraint
 
 > While could use the returned type (as done in the second example). Using the annotation prevents other code breaking if the body changes
 > As shown later, this doesn't affect what is returned if called
@@ -50,7 +50,7 @@ getNumber2() satisfies 6;
 
 - Expected () => 4, found () => number
 
-#### Function return type subtyping
+### Function return type subtyping
 
 ```ts
 const x: (a: number) => number = p => 4;

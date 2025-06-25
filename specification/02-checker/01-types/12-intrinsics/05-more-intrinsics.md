@@ -1,4 +1,4 @@
-#### Literal special type
+### Literal special type
 
 ```ts
 function register(a: Literal<string>) {
@@ -19,7 +19,17 @@ function func(param: object) {
 - Type object is not assignable to type Literal\<object>
 - Argument of type string is not assignable to parameter of type Literal\<string>
 
-#### `NoInfer`
+> #TODO ors and conditionals
+
+#### Implementation
+
+It checks that the type is a `Constant` and that the larger type matches the argument.
+
+#### Use cases
+
+You may want to disable a function being allowed to take arbitary strings
+
+### `NoInfer`
 
 ```ts
 declare function func<T>(a: T, b: NoInfer<T>): T;
@@ -31,7 +41,13 @@ func("hi", "hello") satisfies number;
 
 - Expected number, found "hi"
 
-#### `Exclusive`
+#### Uses case
+
+> #TODO
+
+### `Exclusive`
+
+> #TODO name `exact`
 
 ```ts
 interface X { a: number }
@@ -42,3 +58,7 @@ x satisfies Exclusive<X>;
 ```
 
 - Expected Exclusive\<X>, found { a: 1, b: 2 }
+
+#### Uses case
+
+> #TODO

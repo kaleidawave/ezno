@@ -1,6 +1,8 @@
 > [Template literals](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals)
 
-#### Template literal calling error
+> #TODO-link to template literal types
+
+### Template literal calling error
 
 ```ts
 function myTag(static_parts: Array<string>, count: number) {
@@ -11,7 +13,7 @@ myTag`Count is ${"not a number!!"}`;
 
 - Argument of type \"not a number!!\" is not assignable to parameter of type number (in template literal)
 
-#### (untagged) Template literal
+### (untagged) Template literal
 
 ```ts
 const name = "Ben";
@@ -20,7 +22,7 @@ const name = "Ben";
 
 - Expected "Hi Ben", found "Hello Ben"
 
-#### Tagged template literal
+### Tagged template literal
 
 ```ts
 function myTag(static_parts: Array<string>, other: string) {
