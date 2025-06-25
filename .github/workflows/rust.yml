@@ -55,11 +55,14 @@ jobs:
       - name: Check Rust formatting with rustfmt
         run: cargo fmt --all --check
 
+      # TODO replace with own tool
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        if: false
         with:
           packages: taplo-cli
 
       - name: Check TOML formatting with taplo
+        if: false
         run: taplo fmt --check **/*/Cargo.toml
 
   tests:

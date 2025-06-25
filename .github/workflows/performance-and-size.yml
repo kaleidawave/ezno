@@ -32,7 +32,7 @@ jobs:
           ls -R .
           chmod +x ./bin/shell-language
           # TEMP
-          ./shell-language
+          ./bin/shell-language
           echo "$(pwd)/bin" >> "$GITHUB_PATH"
         env:
           GH_TOKEN: ${{ github.token }}
