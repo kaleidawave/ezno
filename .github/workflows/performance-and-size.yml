@@ -144,16 +144,15 @@ jobs:
         run: |
           mkdir binaries
           gh run download -p binary-${{ runner.os }}* -D binaries
-          ls -R .
 
       # get other binaries and last
 
       - name: Build latest version of binaries
         if: ${{ steps.download-binaries.conclusion == 'failure' }}
+        shell: shell-language {0}
         run: |
-          mkdir binaries
-          cargo build --release
-          mv target/releases/ezno binaries
+          echo run cargo build --release
+          move target/releases/ezno binaries
 
       - id: get-branch
         run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
@@ -171,6 +170,9 @@ jobs:
       - name: Compare checker performance
         shell: shell-language {0}
         run: |
+          # Ensure binaries are executable
+          ee binaries
+          
           let to = env GITHUB_STEP_SUMMARY
           let binaries = files "binaries/*"
           let binaries = replace $binaries "\n" ","
