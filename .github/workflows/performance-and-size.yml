@@ -3,7 +3,7 @@ name: Performance and size
 on:
   push:
     branches: [main]
-  # workflow_dispatch:
+  workflow_dispatch:
   #   inputs:
   #     paths: 
   #       default: "[]"
