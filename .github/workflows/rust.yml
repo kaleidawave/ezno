@@ -211,8 +211,9 @@ jobs:
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           name: wasm-build
+          overwrite: true
           path: src/js-cli-and-library/dist
-          retention-days: 3
+          retention-days: 90
 
   fuzzing_parser:
     if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}

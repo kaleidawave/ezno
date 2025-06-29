@@ -3,12 +3,12 @@ name: Performance and size
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      paths: 
-        default: "[]"
-        type: string
-        description: Some binaries to build and compare with
+  # workflow_dispatch:
+  #   inputs:
+  #     paths: 
+  #       default: "[]"
+  #       type: string
+  #       description: Some binaries to build and compare with
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +16,7 @@ env:
 jobs:
   temp:
     runs-on: ubuntu-latest
-    if: false
+    if: true
 
     strategy:
       matrix: 
@@ -38,17 +38,11 @@ jobs:
       run: cargo build --release
       shell: bash
 
-    - run: echo "branch=$(git rev-parse --abbrev-ref HEAD)"
-
-    - id: get-branch
-      run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
-      shell: bash
-
     - uses: actions/upload-artifact@v4
       with:
         # '-${{ steps.get-branch.outputs.branch }}'
-        name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.commit }}
-        path: target/release/ezno
+        name: binary-${{ runner.os }}${{ runner.arch }}-temp-${{ matrix.ref }}
+        path: binaries
         retention-days: 30
 
   run-benchmarks:
@@ -90,46 +84,12 @@ jobs:
         continue-on-error: true
         run: sudo apt-get install valgrind
 
-      # - name: Find items at branches
-      #   shell: shell-language {0}
-      #   run: |
-      #     let branch = "${{ github.head_ref }}"
-      #     gh run download -n <name1>
-
-      #     # # Trick
-      #     # let x = repeat "\n" 10
-      #     # for constant $x each
-      #     #   echo $branch
-      # - name: Build items at branches
-      #   shell: shell-language {0}
-      #   run: |
-      #     let acc = constant ""
-      #     for git log --format=%H each
-      #       let branch = git name-rev --name-only --refs="refs/heads/*" $ref
-      #       echo "$ref $branch"
-      #       let branch = if_contains $branch "~" "" $branch
-      #       let item = if_equal $branch "" "" "$branch->$ref"
-      #       let acc = concatenate $acc $item
-      #       set break = if_equal $branch "master" "break" ""
-
-      #     for constant $acc each
-      #       let branch = before $iter "->"
-      #       let ref = after $iter "->"
-      #       let name = replace $branch "/" "-"
-
-      #       echo run git checkout $ref --force
-      #       echo run git status
-      #       echo "Building binary @$branch"
-      #       echo run cargo build --release
-      #       move ./target/release/ezno "binaries/ezno-$name"
-
       - name: Get latest version of demo.tsx
+        uses: actions/download-artifact@v4
         id: download-demo-tsx
-        continue-on-error: true
-        run: |
-          gh run download -n specification-${{ github.ref_name }}
-          ls -R .
-        
+        with:
+          name: specification-${{ github.ref_name }}
+      
       - name: Build latest version of demo.tsx
         if: ${{ steps.download-demo-tsx.conclusion == 'failure' }}
         run: |
@@ -138,30 +98,30 @@ jobs:
             --comment-headers \
             --out demo.tsx
 
-      - name: Get latest version of binaries
-        id: download-binaries
-        continue-on-error: true
-        run: |
-          mkdir binaries
-          gh run download -p binary-${{ runner.os }}* -D binaries
-
       # get other binaries and last
+
+      - name: Get latest version of binaries
+        uses: actions/download-artifact@v4
+        id: download-binaries
+        with:
+          pattern: binary-${{ runner.os }}*
+          path: binaries
+          merge-multiple: true
 
       - name: Build latest version of binaries
         if: ${{ steps.download-binaries.conclusion == 'failure' }}
         shell: shell-language {0}
         run: |
           echo run cargo build --release
-          move target/releases/ezno binaries
+          copy target/releases/ezno binaries
+          copy target/releases/ezno binary-${{ runner.os }}${{ runner.arch }}-general-fixes-last
 
-      - id: get-branch
-        run: echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload current binary
+        uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.get-branch.outputs.branch }}-last
-          path: target/release/ezno
+          # TODO temp branch
+          name: binary-${{ runner.os }}${{ runner.arch }}-general-fixes-last
+          path: binaries/ezno
           overwrite: true
           retention-days: 30
 
@@ -176,6 +136,8 @@ jobs:
           let to = env GITHUB_STEP_SUMMARY
           let binaries = files "binaries/*"
           let binaries = replace $binaries "\n" ","
+
+          echo "Found $binaries"
 
           append $to "### Checking\n"
           let output = run hyperfine -i -L binary $binaries './{binary} check demo.tsx'
