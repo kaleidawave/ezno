@@ -16,7 +16,7 @@ env:
 jobs:
   TEMP:
     runs-on: ubuntu-latest
-    if: true
+    if: false
 
     strategy:
       matrix: 
@@ -118,7 +118,10 @@ jobs:
 
       # TEMP
       - name: TEMP create 'binaries' folder
-        run: mkdir binaries
+        continue-on-error: true
+        run: |
+          mkdir -p binaries
+          ls -R binaries
 
       # start of performance
 
