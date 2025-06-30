@@ -16,7 +16,7 @@ env:
 jobs:
   temp:
     runs-on: ubuntu-latest
-    if: true
+    if: false
 
     strategy:
       matrix: 
@@ -86,6 +86,7 @@ jobs:
 
       - name: Get latest version of demo.tsx
         uses: actions/download-artifact@v4
+        continue-on-error: true
         id: download-demo-tsx
         with:
           name: specification-${{ github.ref_name }}
@@ -103,27 +104,18 @@ jobs:
       - name: Get latest version of binaries
         uses: actions/download-artifact@v4
         id: download-binaries
+        continue-on-error: true
         with:
           pattern: binary-${{ runner.os }}*
           path: binaries
           merge-multiple: true
 
       - name: Build latest version of binaries
-        if: ${{ steps.download-binaries.conclusion == 'failure' }}
         shell: shell-language {0}
         run: |
           echo run cargo build --release
           copy target/releases/ezno binaries
           copy target/releases/ezno binary-${{ runner.os }}${{ runner.arch }}-general-fixes-last
-
-      - name: Upload current binary
-        uses: actions/upload-artifact@v4
-        with:
-          # TODO temp branch
-          name: binary-${{ runner.os }}${{ runner.arch }}-general-fixes-last
-          path: binaries/ezno
-          overwrite: true
-          retention-days: 30
 
       # start of performance
 
@@ -207,6 +199,25 @@ jobs:
             let instructions = format_number $instructions
 
             append $to "- `$file`: `$allocated` allocated and $instructions` instructions"
+
+      # final steps
+
+      - name: Upload binaries
+        shell: shell-language {0}
+        run: copy target/releases/ezno binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
+
+      # TEMP
+      - name: Temp what context
+        run: echo '::debug::${{ toJson(github) }}'
+
+      - name: Upload current binary
+        uses: actions/upload-artifact@v4
+        with:
+          # TODO temp branch
+          name: binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
+          path: binaries/ezno/binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
+          overwrite: true
+          retention-days: 30
 
       # - name: Run parsing & stringing (minfied) benchmarks
       #   shell: bash
