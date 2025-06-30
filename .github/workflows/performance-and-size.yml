@@ -14,9 +14,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  temp:
+  TEMP:
     runs-on: ubuntu-latest
-    if: false
+    if: true
 
     strategy:
       matrix: 
@@ -41,13 +41,13 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         # '-${{ steps.get-branch.outputs.branch }}'
-        name: binary-${{ runner.os }}${{ runner.arch }}-temp-${{ matrix.ref }}
-        path: binaries
+        name: binary-${{ runner.os }}${{ runner.arch }}-TEMP-${{ matrix.ref }}
+        path: target/release/ezno
         retention-days: 30
 
   run-benchmarks:
     runs-on: ubuntu-latest
-    needs: temp
+    needs: TEMP
     if: ${{ always() }}
 
     env:
@@ -92,7 +92,7 @@ jobs:
           name: specification-${{ github.ref_name }}
       
       - name: Build latest version of demo.tsx
-        if: ${{ steps.download-demo-tsx.conclusion == 'failure' }}
+        if: ${{ steps.download-demo-tsx.outcome == 'failure' }}
         run: |
           cargo run -p ezno-checker-specification \
             --example amalgamate ./checker/specification/specification.md \
@@ -101,7 +101,7 @@ jobs:
 
       # get other binaries and last
 
-      - name: Get latest version of binaries
+      - name: Get binaries to compare
         uses: actions/download-artifact@v4
         id: download-binaries
         continue-on-error: true
@@ -114,8 +114,11 @@ jobs:
         shell: shell-language {0}
         run: |
           echo run cargo build --release
-          copy target/releases/ezno binaries
-          copy target/releases/ezno binary-${{ runner.os }}${{ runner.arch }}-general-fixes-last
+          copy target/release/ezno binaries
+
+      # TEMP
+      - name: TEMP create 'binaries' folder
+        run: mkdir binaries
 
       # start of performance
 
@@ -207,13 +210,13 @@ jobs:
         run: copy target/releases/ezno binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
 
       # TEMP
-      - name: Temp what context
+      - name: TEMP what context
         run: echo '::debug::${{ toJson(github) }}'
 
       - name: Upload current binary
         uses: actions/upload-artifact@v4
         with:
-          # TODO temp branch
+          # TODO TEMP branch
           name: binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
           path: binaries/ezno/binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
           overwrite: true
