@@ -40,7 +40,6 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        # '-${{ steps.get-branch.outputs.branch }}'
         name: binary-${{ runner.os }}${{ runner.arch }}-TEMP-${{ matrix.ref }}
         path: target/release/ezno
         retention-days: 30
@@ -55,6 +54,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # TODO temp
+          ref: general-fixes
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -66,7 +68,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # TODO abstract
+      # TODO extract
       - name: Download shell-language
         run: |
           mkdir bin
@@ -84,15 +86,16 @@ jobs:
         continue-on-error: true
         run: sudo apt-get install valgrind
 
-      - name: Get latest version of demo.tsx
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download-demo-tsx
-        with:
-          name: specification-${{ github.ref_name }}
-      
+      # - name: Get latest version of demo.tsx
+      #   uses: actions/download-artifact@v4
+      #   continue-on-error: true
+      #   id: download-demo-tsx
+      #   with:
+      #     name: specification-${{ github.ref_name }}
+
+      # TODO is there a way to cache this?
       - name: Build latest version of demo.tsx
-        if: ${{ steps.download-demo-tsx.outcome == 'failure' }}
+        # if: ${{ steps.download-demo-tsx.outcome == 'failure' }}
         run: |
           cargo run -p ezno-checker-specification \
             --example amalgamate ./checker/specification/specification.md \
@@ -101,27 +104,20 @@ jobs:
 
       # get other binaries and last
 
-      - name: Get binaries to compare
-        uses: actions/download-artifact@v4
+      - name: Create 'binaries' folder
+        continue-on-error: true
+        run: mkdir -p binaries
+
+      - name: Get binaries to compare against
         id: download-binaries
         continue-on-error: true
-        with:
-          pattern: binary-${{ runner.os }}*
-          path: binaries
-          merge-multiple: true
+        run: gh run download -p "binary-*" -D binaries -R ${{ env.REPO }}
 
-      - name: Build latest version of binaries
+      - name: Build latest version of binary
         shell: shell-language {0}
         run: |
           echo run cargo build --release
-          copy target/release/ezno binaries
-
-      # TEMP
-      - name: TEMP create 'binaries' folder
-        continue-on-error: true
-        run: |
-          mkdir -p binaries
-          ls -R binaries
+          copy target/release/ezno binaries/latest/ezno
 
       # start of performance
 
@@ -132,20 +128,22 @@ jobs:
           ee binaries
           
           let to = env GITHUB_STEP_SUMMARY
-          let binaries = files "binaries/*"
-          let binaries = replace $binaries "\n" ","
 
+          let binaries = files "binaries/**/*" then replace $binaries "\n" ","
           echo "Found $binaries"
 
-          append $to "### Checking\n"
           let output = run hyperfine -i -L binary $binaries './{binary} check demo.tsx'
+
+          append $to "### Checking `demo.tsx`\n"
           append $to "```shell\n$output\n```"
 
       - name: Print input
+        if: false
         shell: shell-language {0}
         run: |
           let to = env GITHUB_STEP_SUMMARY
           let content = read ./demo.tsx
+
           append $to "<details><summary>Input</summary>\n"
           append $to "```tsx\n$content\n```\n</details>"
           
@@ -155,36 +153,46 @@ jobs:
         shell: shell-language {0}
         run: |
           let to = env GITHUB_STEP_SUMMARY
-          for files "binaries/*" each
-            append $to "#### $file: `demo.tsx`"
+          append $to "#### check demo.tsx"
+          for files "binaries/**/*" each
             let out = run "./$file" check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
-            let diagnostics = rbefore $out "---"
-            let statistics = rafter $out "---"
+            let diagnostics = rbefore $out "---" then trim
+            let statistics = rafter $out "---" then trim
 
-            append $to "<details><summary>Diagnostics</summary>\n"
-            append $to "```$diagnostics\n```\n</details>"
-            append $to "<details><summary>Statistics</summary>\n"
-            append $to "```$statistics\n```\n</details>"
+            # append $to "<details><summary>Diagnostics</summary>\n"
+            # append $to "```\n$diagnostics\n```\n</details>\n"
+
+            append $to "\n<details><summary>Statistics for $file</summary>\n"
+            append $to "```\n$statistics\n```\n</details>\n"
 
       - name: Run checker performance on large file
         shell: shell-language {0}
         run: |
-          let demo = read "./demo.tsx"
-          let large = repeat $demo 10
+          let large = read "./demo.tsx" then repeat 10
           write "./large.tsx" $large
 
-          let to = env GITHUB_STEP_SUMMARY
-          for files "binaries/*" each
-            append $to "#### $file: `large.tsx`"
-            echo "Running $file"
-            let out = run "./$file" check large.tsx --timings --merge-stdout-and-stderr
+          let binaries = files "binaries/**/*"
+          set binaries = replace $binaries "\n" ","
 
-            let statistics = rafter $out "---"
-            append $to "<details><summary>Statistics</summary>\n\n```$statistics\n```\n</details>"
-            
-            let out = run hyperfine -i "./$file" check large.tsx
-            append $to "```shell\n$out\n```"
+          append $to "### check large.tsx"
+          let output = run hyperfine -i -L binary $binaries './{binary} check large.tsx'
+          append $to "```shell\n$output\n```\n"
+
+          append $to "<details><summary>Statistics</summary>\n"
+          
+          let to = env GITHUB_STEP_SUMMARY
+          for files "binaries/**/*" each
+            let out = run "./$file" check large.tsx --timings --merge-stdout-and-stderr
+            append $to "##### $file check large.tsx"
+          
+            let statistics = rafter $out "---" then trim
+            append $to "```\n$statistics\n```\n"
+
+          append $to "</details>\n"
+          
+          # echo run hyperfine -i -L binary $binaries './{binary} check large.tsx' --export-markdown out.md
+          # read out.md then append $to $piped
 
       - name: Valgrind and Callgrind statistics
         shell: shell-language {0}
@@ -192,36 +200,30 @@ jobs:
         continue-on-error: true
         run: |
           let to = env GITHUB_STEP_SUMMARY
-          for files "binaries/*" each
-            append $to "#### $file: instructions and memory usage"
+          append $to "#### Instructions and memory usage"
 
-            let output = run valgrind $file "./demo.tsx" --check --merge-stdout-and-stderr
+          for files "binaries/**/*" each
+            let output = run valgrind $file check ./demo.tsx --merge-stdout-and-stderr
             let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
-            let allocated = replace $allocated "," ""
-            let allocated = format_number $allocated
+            let allocated = replace $allocated "," "" then format_number
 
-            let output = run valgrind --tool=callgrind $file "./demo.tsx" --check --merge-stdout-and-stderr
-            let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name
-            let instructions = format_number $instructions
+            let output = run valgrind --tool=callgrind $file check ./demo.tsx --merge-stdout-and-stderr
+            let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name then format_number
 
-            append $to "- `$file`: `$allocated` allocated and $instructions` instructions"
+            append $to "- `$file`: `$allocated` allocated and `$instructions` instructions\n"
 
       # final steps
 
-      - name: Upload binaries
+      - name: Move binary
         shell: shell-language {0}
-        run: copy target/releases/ezno binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
-
-      # TEMP
-      - name: TEMP what context
-        run: echo '::debug::${{ toJson(github) }}'
+        run: copy target/release/ezno binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
 
       - name: Upload current binary
         uses: actions/upload-artifact@v4
         with:
           # TODO TEMP branch
           name: binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
-          path: binaries/ezno/binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
+          path: binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
           overwrite: true
           retention-days: 30
 
