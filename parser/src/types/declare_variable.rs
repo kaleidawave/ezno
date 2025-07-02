@@ -1,6 +1,7 @@
 use crate::{
-	declarations::VariableDeclarationItem, derive_ASTNode, ASTNode, Decorator, ParseResult, Span,
-	VariableKeyword,
+	derive_ASTNode,
+	statements_and_declarations::variables::{VariableDeclarationItem, VariableKeyword},
+	ASTNode, Decorator, ParseResult, Span,
 };
 
 /// A `declare var/let/const` thingy.
@@ -10,7 +11,7 @@ use crate::{
 pub struct DeclareVariableDeclaration {
 	pub keyword: VariableKeyword,
 	/// TODO expressions advised against, but still parse
-	pub declarations: Vec<VariableDeclarationItem<Option<crate::Expression>>>,
+	pub declarations: Vec<VariableDeclarationItem>,
 	pub position: Span,
 	pub decorators: Vec<Decorator>,
 }
@@ -34,7 +35,7 @@ impl ASTNode for DeclareVariableDeclaration {
 		if options.include_type_annotations {
 			buf.push_str("declare ");
 			buf.push_str(self.keyword.as_str());
-			crate::declarations::variable::declarations_to_string(
+			crate::statements_and_declarations::variables::declarations_to_string(
 				&self.declarations,
 				buf,
 				options,

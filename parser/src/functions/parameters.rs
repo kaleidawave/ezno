@@ -191,11 +191,11 @@ where
 
 		loop {
 			reader.skip();
-			if reader.is_operator(")") {
+			let s = reader.after_comment_literals();
+			if s.starts_with(')') {
+				reader.skip_including_comments();
 				break;
 			}
-			// Skip comments
-			// while reader.conditional_next(TSXToken::is_comment).is_some() {}
 
 			let start = reader.get_start();
 
@@ -220,7 +220,10 @@ where
 
 					#[cfg(not(feature = "extras"))]
 					{
-						duplicate = names.iter().any(|existing| existing == name).then_some(name);
+						duplicate = names
+							.iter()
+							.any(|existing| name == &**existing)
+							.then_some(name.clone());
 					}
 
 					if let Some(_duplicate) = duplicate {

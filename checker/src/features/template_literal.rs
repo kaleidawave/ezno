@@ -18,7 +18,7 @@ use crate::{
 #[allow(clippy::needless_pass_by_value)]
 pub fn synthesise_template_literal_expression<'a, T, A>(
 	tag: Option<TypeId>,
-	parts_iter: impl Iterator<Item = (Cow<'a, str>, &'a A::MultipleExpression<'a>)> + 'a,
+	parts_iter: impl Iterator<Item = (Cow<'a, str>, &'a A::Expression<'a>)> + 'a,
 	final_part: Cow<'a, str>,
 	position: SpanWithSource,
 	environment: &mut Environment,
@@ -27,7 +27,7 @@ pub fn synthesise_template_literal_expression<'a, T, A>(
 where
 	T: crate::ReadFromFS,
 	A: crate::ASTImplementation,
-	A::MultipleExpression<'a>: 'a,
+	A::Expression<'a>: 'a,
 {
 	if let Some(tag) = tag {
 		// TODO use tuple type
@@ -57,7 +57,7 @@ where
 				static_part_count += 1;
 			}
 			{
-				let value = A::synthesise_multiple_expression(
+				let value = A::synthesise_expression(
 					dynamic_part,
 					TypeId::ANY_TYPE,
 					environment,
@@ -70,8 +70,8 @@ where
 					crate::utilities::notify!("Need to cast to string...");
 					value
 				};
-				let position = A::multiple_expression_position(dynamic_part)
-					.with_source(environment.get_source());
+				let position =
+					A::expression_position(dynamic_part).with_source(environment.get_source());
 				arguments.push(SynthesisedArgument { value, position, spread: false });
 			}
 		}
@@ -160,7 +160,7 @@ where
 				crate::utilities::notify!("Invalid template literal concatenation");
 				return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 			}
-			let rhs = A::synthesise_multiple_expression(
+			let rhs = A::synthesise_expression(
 				dynamic_part,
 				TypeId::ANY_TYPE,
 				environment,

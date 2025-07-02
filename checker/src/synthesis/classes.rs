@@ -1,6 +1,6 @@
 use parser::{
-	declarations::{classes::ClassMember, ClassDeclaration},
 	functions::MethodHeader,
+	statements_and_declarations::classes::{ClassDeclaration, ClassMember},
 	ASTNode, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
 };
 
@@ -238,7 +238,7 @@ fn synthesise_class_declaration_extends_and_members<
 					name: key.into_name_type(&mut checking_data.types),
 				};
 
-				let function = synthesise_function(method, behavior, environment, checking_data);
+				let function = synthesise_function(&**method, behavior, environment, checking_data);
 
 				let property = function_to_property(
 					getter_setter,
@@ -361,7 +361,7 @@ fn synthesise_class_declaration_extends_and_members<
 			internal_marker,
 			name: name_as_type_id,
 		};
-		synthesise_function(constructor, behavior, environment, checking_data)
+		synthesise_function(&**constructor, behavior, environment, checking_data)
 	} else {
 		let function_id = FunctionId(environment.get_source(), class.position.start);
 		FunctionType::new_auto_constructor(
@@ -442,7 +442,7 @@ fn synthesise_class_declaration_extends_and_members<
 					};
 
 					let function =
-						synthesise_function(method, behavior, environment, checking_data);
+						synthesise_function(&**method, behavior, environment, checking_data);
 
 					let property = function_to_property(
 						getter_setter,
@@ -612,7 +612,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					} else {
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-								position: ASTNode::get_position(method)
+								position: ASTNode::get_position(&**method)
 									.with_source(environment.get_source()),
 							},
 						);

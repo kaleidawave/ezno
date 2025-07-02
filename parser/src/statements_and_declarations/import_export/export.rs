@@ -6,7 +6,7 @@ use crate::{
 
 use super::{
 	super::{
-		variable::VariableDeclaration, ClassDeclaration, InterfaceDeclaration, StatementFunction,
+		variables::VariableDeclaration, ClassDeclaration, InterfaceDeclaration, StatementFunction,
 		TypeAlias,
 	},
 	ImportExportPart, ImportLocation,
@@ -21,7 +21,7 @@ use visitable_derive::Visitable;
 #[get_field_by_type_target(Span)]
 pub enum ExportDeclaration {
 	/// `export *Exportable*`
-	Item { exported: Exportable, position: Span },
+	Item { exported: Box<Exportable>, position: Span },
 	/// `export default ...`
 	Default { expression: Box<Expression>, position: Span },
 	/// In TypeScript you can `export default name` in type definition modules
@@ -44,8 +44,8 @@ pub enum Exportable {
 	Variable(VariableDeclaration),
 	Interface(InterfaceDeclaration),
 	TypeAlias(TypeAlias),
-	EnumDeclaration(EnumDeclaration),
-	VarStatement(crate::statements::VarVariableStatement),
+	Enum(EnumDeclaration),
+	VarStatement(crate::statements_and_declarations::variables::VarVariableStatement),
 	#[cfg(feature = "full-typescript")]
 	Namespace(crate::types::namespace::Namespace),
 	Parts(Vec<ImportExportPart<ExportDeclaration>>),
@@ -119,7 +119,7 @@ impl ASTNode for ExportDeclaration {
 			let end = reader.get_end();
 
 			Ok(ExportDeclaration::Item {
-				exported: Exportable::ImportAll { r#as, from },
+				exported: Box::new(Exportable::ImportAll { r#as, from }),
 				position: start.union(end),
 			})
 		} else if reader.is_operator("{") {
@@ -133,7 +133,11 @@ impl ASTNode for ExportDeclaration {
 				let from = ImportLocation::from_reader(reader)?;
 				let end = reader.get_end();
 				Ok(Self::Item {
-					exported: Exportable::ImportParts { parts, from, type_definitions_only: false },
+					exported: Box::new(Exportable::ImportParts {
+						parts,
+						from,
+						type_definitions_only: false,
+					}),
 					position: start.union(end),
 				})
 			} else {
@@ -141,12 +145,18 @@ impl ASTNode for ExportDeclaration {
 				let (parts, _) =
 					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
 				let end = reader.get_end();
-				Ok(Self::Item { exported: Exportable::Parts(parts), position: start.union(end) })
+				Ok(Self::Item {
+					exported: Box::new(Exportable::Parts(parts)),
+					position: start.union(end),
+				})
 			}
 		} else if reader.is_keyword("class") {
 			let class_declaration = ClassDeclaration::from_reader(reader)?;
 			let position = start.union(class_declaration.get_position());
-			Ok(ExportDeclaration::Item { exported: Exportable::Class(class_declaration), position })
+			Ok(ExportDeclaration::Item {
+				exported: Box::new(Exportable::Class(class_declaration)),
+				position,
+			})
 		} else if let Some(keyword) = reader.is_one_of_keywords(&["const", "let"]) {
 			if keyword == "const"
 				&& reader.get_current()["const".len()..].trim_start().starts_with("enum ")
@@ -154,14 +164,14 @@ impl ASTNode for ExportDeclaration {
 				let enum_declaration = EnumDeclaration::from_reader(reader)?;
 				let position = start.union(enum_declaration.get_position());
 				Ok(ExportDeclaration::Item {
-					exported: Exportable::EnumDeclaration(enum_declaration),
+					exported: Box::new(Exportable::Enum(enum_declaration)),
 					position,
 				})
 			} else {
 				let variable_declaration = VariableDeclaration::from_reader(reader)?;
 				let position = start.union(variable_declaration.get_position());
 				Ok(ExportDeclaration::Item {
-					exported: Exportable::Variable(variable_declaration),
+					exported: Box::new(Exportable::Variable(variable_declaration)),
 					position,
 				})
 			}
@@ -169,18 +179,24 @@ impl ASTNode for ExportDeclaration {
 			let function_declaration = StatementFunction::from_reader(reader)?;
 			let position = start.union(function_declaration.get_position());
 			Ok(ExportDeclaration::Item {
-				exported: Exportable::Function(function_declaration),
+				exported: Box::new(Exportable::Function(function_declaration)),
 				position,
 			})
 		} else if reader.is_keyword("var") {
-			let var_stmt = crate::statements::VarVariableStatement::from_reader(reader)?;
+			let var_stmt =
+				crate::statements_and_declarations::variables::VarVariableStatement::from_reader(
+					reader,
+				)?;
 			let position = start.union(var_stmt.get_position());
-			Ok(ExportDeclaration::Item { exported: Exportable::VarStatement(var_stmt), position })
+			Ok(ExportDeclaration::Item {
+				exported: Box::new(Exportable::VarStatement(var_stmt)),
+				position,
+			})
 		} else if reader.is_keyword("interface") {
 			let interface_declaration = InterfaceDeclaration::from_reader(reader)?;
 			let position = start.union(interface_declaration.get_position());
 			Ok(ExportDeclaration::Item {
-				exported: Exportable::Interface(interface_declaration),
+				exported: Box::new(Exportable::Interface(interface_declaration)),
 				position,
 			})
 		} else if reader.is_keyword("type") {
@@ -193,24 +209,24 @@ impl ASTNode for ExportDeclaration {
 				let _ = reader.expect_keyword("from")?;
 				let from = ImportLocation::from_reader(reader)?;
 				let end = reader.get_end();
-				let exported = Exportable::ImportParts {
+				let exported = Box::new(Exportable::ImportParts {
 					parts,
 					from,
 					// Important
 					type_definitions_only: true,
-				};
+				});
 				Ok(Self::Item { exported, position: start.union(end) })
 			} else {
 				let type_alias = TypeAlias::from_reader(reader)?;
 				let position = start.union(type_alias.get_position());
-				Ok(Self::Item { exported: Exportable::TypeAlias(type_alias), position })
+				Ok(Self::Item { exported: Box::new(Exportable::TypeAlias(type_alias)), position })
 			}
 		} else if reader.is_keyword("enum") {
 			let enum_declaration = EnumDeclaration::from_reader(reader)?;
 			let position = start.union(enum_declaration.get_position());
 			// .map(|on| Declaration::Enum(Decorated::new(decorators, on)))
 			Ok(ExportDeclaration::Item {
-				exported: Exportable::EnumDeclaration(enum_declaration),
+				exported: Box::new(Exportable::Enum(enum_declaration)),
 				position,
 			})
 		} else {
@@ -219,7 +235,10 @@ impl ASTNode for ExportDeclaration {
 				let namespace = crate::types::namespace::Namespace::from_reader(reader)?;
 				let position = start.union(namespace.get_position());
 
-				return Ok(Self::Item { exported: Exportable::Namespace(namespace), position });
+				return Ok(Self::Item {
+					exported: Box::new(Exportable::Namespace(namespace)),
+					position,
+				});
 			}
 
 			// TODO vary list on certain parameters
@@ -239,7 +258,7 @@ impl ASTNode for ExportDeclaration {
 		match self {
 			ExportDeclaration::Item { exported, .. } => {
 				buf.push_str("export ");
-				match exported {
+				match &**exported {
 					Exportable::Class(class_declaration) => {
 						class_declaration.to_string_from_buffer(buf, options, local);
 					}
@@ -255,7 +274,7 @@ impl ASTNode for ExportDeclaration {
 					Exportable::TypeAlias(type_alias) => {
 						type_alias.to_string_from_buffer(buf, options, local);
 					}
-					Exportable::EnumDeclaration(enum_declaration) => {
+					Exportable::Enum(enum_declaration) => {
 						enum_declaration.to_string_from_buffer(buf, options, local);
 					}
 					Exportable::VarStatement(var_stmt) => {

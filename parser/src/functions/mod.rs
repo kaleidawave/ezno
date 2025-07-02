@@ -17,13 +17,13 @@ pub use crate::expressions::ArrowFunction;
 
 pub mod bases {
 	pub use crate::{
-		declarations::{
-			classes::{ClassConstructorBase, ClassFunctionBase},
-			StatementFunctionBase,
-		},
 		expressions::{
 			arrow_function::ArrowFunctionBase, object_literal::ObjectLiteralMethodBase,
 			ExpressionFunctionBase,
+		},
+		statements_and_declarations::{
+			classes::{ClassConstructorBase, ClassFunctionBase},
+			StatementFunctionBase,
 		},
 	};
 }
@@ -325,6 +325,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader)?;
+		reader.skip_including_comments();
 		let name = T::from_reader(reader)?;
 		Ok((header, name))
 	}
@@ -560,8 +561,11 @@ impl MethodHeader {
 				slice => unreachable!("{slice:?}"),
 			}
 		} else {
+			reader.skip_including_comments();
 			let is_async = reader.is_keyword_advance("async");
+			reader.skip_including_comments();
 			let generator = GeneratorSpecifier::from_reader(reader);
+			reader.skip_including_comments();
 			MethodHeader::Regular { is_async, generator }
 		}
 	}
@@ -621,6 +625,7 @@ impl ASTNode for FunctionBody {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// If type annotations. Allow elided bodies for function overloading
+		reader.skip_including_comments();
 		let body = if reader.is_operator("{") || !reader.get_options().type_annotations {
 			Some(Block::from_reader(reader)?)
 		} else {

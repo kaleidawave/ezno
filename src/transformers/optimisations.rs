@@ -1,12 +1,12 @@
 use checker::FunctionId;
 use parser::{
-	declarations::{
-		classes::{ClassMember, ClassProperty},
-		ClassDeclaration,
-	},
 	expressions::object_literal::ObjectLiteralMember,
-	visiting::{BlockItemMut, VisitorMut},
-	ASTNode, Expression, ExpressionOrStatementPosition, SourceId, StatementOrDeclaration,
+	statements_and_declarations::{
+		classes::{ClassMember, ClassProperty},
+		ClassDeclaration, StatementOrDeclaration,
+	},
+	visiting::VisitorMut,
+	ASTNode, Expression, ExpressionOrStatementPosition, SourceId,
 };
 
 use crate::build::CheckingOutputWithoutDiagnostics;
@@ -70,52 +70,42 @@ impl VisitorMut<Expression, CheckingOutputWithoutDiagnostics> for ExpressionOpti
 /// - Removes dead functions
 pub struct StatementOptimiser;
 
-impl VisitorMut<BlockItemMut<'_>, CheckingOutputWithoutDiagnostics> for StatementOptimiser {
+impl VisitorMut<StatementOrDeclaration, CheckingOutputWithoutDiagnostics> for StatementOptimiser {
 	fn visit_mut(
 		&mut self,
-		item: &mut BlockItemMut,
+		item: &mut StatementOrDeclaration,
 		data: &mut CheckingOutputWithoutDiagnostics,
 		chain: &parser::visiting::Chain,
 	) {
-		if let BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Declaration(
-			declaration,
-		)) = item
-		{
-			match declaration {
-				parser::Declaration::Variable(_) => {
-					// TODO remove if never read
-				}
-				parser::Declaration::Function(func) => {
-					if !data.is_function_called(FunctionId(
-						chain.get_module(),
-						func.get_position().start,
-					)) {
-						// Replace with property to not break Object.keys for now
-						// TODO replacing this with variable isn't great but
-						// is the unfortunate design of `StatementOrDeclarationMut`
-						*declaration = parser::Declaration::Variable(
-							parser::declarations::VariableDeclaration::LetDeclaration {
-								declarations: Vec::new(),
-								position: func.get_position(),
-							},
-						)
-					}
-				}
-				parser::Declaration::Class(cls) => {
-					shake_class(&mut cls.on, data, chain.get_module());
-				}
-				parser::Declaration::Import(_) => {
-					// TODO imported items
-				}
-				parser::Declaration::Export(_) => {
-					// TODO exported items
-				}
-				parser::Declaration::Enum(_)
-				| parser::Declaration::Interface(_)
-				| parser::Declaration::TypeAlias(_)
-				| parser::Declaration::DeclareVariable(_)
-				| parser::Declaration::Namespace(_) => {}
+		match item {
+			parser::StatementOrDeclaration::Variable(_) => {
+				// TODO remove if never read
 			}
+			parser::StatementOrDeclaration::Function(func) => {
+				let function_called = data
+					.is_function_called(FunctionId(chain.get_module(), func.get_position().start));
+				if !function_called {
+					// Replace with property to not break Object.keys for now
+					// TODO replacing this with variable isn't great but
+					// is the unfortunate design of `StatementOrDeclarationMut`
+					*item = parser::StatementOrDeclaration::Empty(func.get_position());
+				}
+			}
+			parser::StatementOrDeclaration::Class(cls) => {
+				shake_class(&mut cls.on, data, chain.get_module());
+			}
+			parser::StatementOrDeclaration::Import(_) => {
+				// TODO imported items
+			}
+			parser::StatementOrDeclaration::Export(_) => {
+				// TODO exported items
+			}
+			parser::StatementOrDeclaration::Enum(_)
+			| parser::StatementOrDeclaration::Interface(_)
+			| parser::StatementOrDeclaration::TypeAlias(_)
+			| parser::StatementOrDeclaration::DeclareVariable(_)
+			| parser::StatementOrDeclaration::Namespace(_) => {}
+			_ => {}
 		}
 	}
 }

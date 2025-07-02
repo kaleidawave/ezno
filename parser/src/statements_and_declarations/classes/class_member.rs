@@ -20,8 +20,8 @@ pub type IsStatic = bool;
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable)]
 pub enum ClassMember {
-	Constructor(ClassConstructor),
-	Method(IsStatic, ClassFunction),
+	Constructor(Box<ClassConstructor>),
+	Method(IsStatic, Box<ClassFunction>),
 	Property(IsStatic, ClassProperty),
 	StaticBlock(Block),
 	/// Really for interfaces but here
@@ -86,7 +86,7 @@ impl ASTNode for ClassMember {
 		let _ = reader.is_keyword_advance("private");
 
 		if reader.is_keyword("constructor") {
-			let constructor = ClassConstructor::from_reader(reader)?;
+			let constructor = ClassConstructor::from_reader(reader).map(Box::new)?;
 			return Ok(ClassMember::Constructor(constructor));
 		}
 
@@ -137,7 +137,8 @@ impl ASTNode for ClassMember {
 		reader.skip();
 
 		if reader.starts_with('(') || reader.starts_with('<') {
-			let function = ClassFunction::from_reader_with_config(reader, header, key)?;
+			let function =
+				ClassFunction::from_reader_with_config(reader, header, key).map(Box::new)?;
 			Ok(ClassMember::Method(is_static, function))
 		} else {
 			if !header.is_no_modifiers() {

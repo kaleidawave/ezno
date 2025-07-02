@@ -44,9 +44,8 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 			crate::Scope::PassThrough { source: self.source },
 			&mut self.checking_data,
 			|environment, checking_data| {
-				if let Some(parser::StatementOrDeclaration::Statement(
-					parser::Statement::Expression(expression),
-				)) = item.items.last()
+				if let Some(parser::StatementOrDeclaration::Expression(expression)) =
+					item.items.last()
 				{
 					synthesise_block(
 						&item.items[..(item.items.len() - 1)],

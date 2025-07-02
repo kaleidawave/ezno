@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 
 use parser::{
-	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField, Expression,
-	ObjectDestructuringField, SpreadDestructuringField, VariableField, VariableIdentifier,
+	statements_and_declarations::variables::VariableDeclarationItem, ASTNode,
+	ArrayDestructuringField, Expression, ObjectDestructuringField, SpreadDestructuringField,
+	VariableField, VariableIdentifier,
 };
 
 use super::expressions::synthesise_expression;
@@ -218,11 +219,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 /// TODO `U::as_option_expr()`
 ///
 /// TODO no idea how arrays and objects are checked here
-pub(super) fn synthesise_variable_declaration_item<
-	T: crate::ReadFromFS,
-	U: parser::ast::variable::DeclarationExpression + 'static,
->(
-	variable_declaration: &VariableDeclarationItem<U>,
+pub(super) fn synthesise_variable_declaration_item<T: crate::ReadFromFS>(
+	variable_declaration: &VariableDeclarationItem,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: Option<VariableMutability>,
@@ -239,9 +237,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	// let name =
 	// 	types.new_constant_type(crate::Constant::String(name_object.to_owned()));
 
-	let value_ty = if let Some(expression) =
-		U::as_option_expression_ref(&variable_declaration.expression)
-	{
+	let value_ty = if let Some(ref expression) = variable_declaration.expression {
 		let expected: TypeId =
 			var_ty_and_pos.as_ref().map_or(TypeId::ANY_TYPE, |(var_ty, _)| *var_ty);
 

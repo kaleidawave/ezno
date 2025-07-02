@@ -1,4 +1,4 @@
-use crate::{ASTNode, Expression, PropertyReference, Statement, VariableIdentifier};
+use crate::{ASTNode, Expression, PropertyReference, StatementOrDeclaration, VariableIdentifier};
 
 /// A trait which means that self can be pushed to a [`TokenSender`]
 pub trait IntoAST<T> {
@@ -66,8 +66,8 @@ impl IntoAST<Expression> for f64 {
 	}
 }
 
-impl IntoAST<Statement> for Expression {
-	fn into_ast(self) -> Statement {
-		Statement::Expression(self.into())
+impl IntoAST<StatementOrDeclaration> for Expression {
+	fn into_ast(self) -> StatementOrDeclaration {
+		StatementOrDeclaration::Expression(self.into())
 	}
 }

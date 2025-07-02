@@ -219,7 +219,7 @@ mod tests {
 		match build_result {
 			Ok(output) => {
 				let first_source = &output.artifacts[0].content;
-				let expectation = "function make_observable(obj){return new Proxy(obj,{get(on,prop,_rec){return on[prop]}})}function get_a(){return 1};const obj={a(){return get_a()},b:null,c:2};const value=make_observable(obj);const a_value=value.a();const c_value=value.c";
+				let expectation = "function make_observable(obj){return new Proxy(obj,{get(on,prop,_rec){return on[prop]}})}function get_a(){return 1}const obj={a(){return get_a()},b:null,c:2};const value=make_observable(obj);const a_value=value.a();const c_value=value.c";
 
 				pretty_assertions::assert_eq!(first_source, expectation);
 			}

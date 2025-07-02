@@ -73,15 +73,7 @@ pub(super) fn synthesise_multiple_expression<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	expecting: TypeId,
 ) -> TypeId {
-	match expression {
-		MultipleExpression::Multiple { lhs, rhs, position: _ } => {
-			synthesise_multiple_expression(lhs, environment, checking_data, TypeId::ANY_TYPE);
-			synthesise_expression(rhs, environment, checking_data, expecting)
-		}
-		MultipleExpression::Single(expression) => {
-			synthesise_expression(expression, environment, checking_data, expecting)
-		}
-	}
+	synthesise_expression(&expression.0, environment, checking_data, expecting)
 }
 
 pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
@@ -231,7 +223,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			Instance::RValue(synthesise_template_literal_expression::<_, EznoParser>(
 				tag,
-				parts.iter().map(|(l, r)| (strings::unescape_string_content(l), r)),
+				parts.iter().map(|(l, r)| (strings::unescape_string_content(l), &r.0)),
 				strings::unescape_string_content(final_part),
 				position.with_source(environment.get_source()),
 				environment,
@@ -386,6 +378,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						position.with_source(environment.get_source()),
 					);
 					return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+				}
+				BinaryOperator::Comma => {
+					return rhs_ty;
 				}
 				operator => {
 					unreachable!("{:?}", operator)
@@ -945,7 +940,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::ArrowFunction(function) => Instance::RValue(register_arrow_function(
 			expecting,
 			function.header,
-			function,
+			&**function,
 			environment,
 			checking_data,
 		)),
@@ -964,7 +959,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				is_generator,
 				location,
 				name,
-				function,
+				&**function,
 				environment,
 				checking_data,
 			))
@@ -1157,47 +1152,49 @@ fn operator_to_assignment_kind(
 	use parser::expressions::operators::BinaryAssignmentOperator;
 
 	match operator {
-		BinaryAssignmentOperator::LogicalAndAssign => {
+		BinaryAssignmentOperator::LogicalAnd => {
 			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::And)
 		}
-		BinaryAssignmentOperator::LogicalOrAssign => {
+		BinaryAssignmentOperator::LogicalOr => {
 			AssignmentKind::ConditionalUpdate(crate::features::operations::LogicalOperator::Or)
 		}
-		BinaryAssignmentOperator::LogicalNullishAssignment => AssignmentKind::ConditionalUpdate(
+		BinaryAssignmentOperator::NullCoalescing => AssignmentKind::ConditionalUpdate(
 			crate::features::operations::LogicalOperator::NullCoalescing,
 		),
-		BinaryAssignmentOperator::AddAssign
-		| BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
+		BinaryAssignmentOperator::Add => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Add)
 		}
-		BinaryAssignmentOperator::SubtractAssign => {
+		BinaryAssignmentOperator::Subtract => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Subtract)
 		}
-		BinaryAssignmentOperator::MultiplyAssign => {
+		BinaryAssignmentOperator::Multiply => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Multiply)
 		}
-		BinaryAssignmentOperator::DivideAssign => {
+		BinaryAssignmentOperator::Divide => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Divide)
 		}
-		BinaryAssignmentOperator::RemainderAssign => {
+		BinaryAssignmentOperator::Remainder => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Remainder)
 		}
-		BinaryAssignmentOperator::ExponentAssign => {
+		BinaryAssignmentOperator::Exponent => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::Exponent)
 		}
-		BinaryAssignmentOperator::BitwiseShiftLeftAssign => {
+		BinaryAssignmentOperator::BitwiseShiftLeft => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftLeft)
 		}
-		BinaryAssignmentOperator::BitwiseShiftRightAssign => {
+		BinaryAssignmentOperator::BitwiseShiftRight => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftRight)
 		}
-		BinaryAssignmentOperator::BitwiseAndAssign => {
+		BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
+			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseShiftRightUnsigned)
+		}
+		BinaryAssignmentOperator::BitwiseAnd => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseAnd)
 		}
-		BinaryAssignmentOperator::BitwiseXOrAssign => {
+		BinaryAssignmentOperator::BitwiseXOr => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseXOr)
 		}
-		BinaryAssignmentOperator::BitwiseOrAssign => {
+		BinaryAssignmentOperator::BitwiseOr => {
 			AssignmentKind::PureUpdate(MathematicalOrBitwiseOperation::BitwiseOr)
 		}
 	}
@@ -1287,7 +1284,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 		let member_position = member.get_position().with_source(environment.get_source());
 		match member {
 			ObjectLiteralMember::Comment(..) => {
-				continue;
+				// continue;
 			}
 			ObjectLiteralMember::Spread(spread, pos) => {
 				let spread = synthesise_expression(spread, environment, checking_data, expecting);
@@ -1566,7 +1563,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					name: key.into_name_type(&mut checking_data.types),
 				};
 
-				let function = synthesise_function(method, behavior, environment, checking_data);
+				let function = synthesise_function(&**method, behavior, environment, checking_data);
 
 				let kind = match &method.header {
 					MethodHeader::Get => Some(GetterSetter::Getter),

@@ -6,8 +6,8 @@ use parser::{
 	functions,
 	source_map::{Nullable, SourceId, Span},
 	visiting::{VisitOptions, Visitors},
-	ASTNode, Declaration, Decorated, Expression, Module, Statement, StatementOrDeclaration,
-	StatementPosition, VariableField, VariableIdentifier, WithComment,
+	ASTNode, Decorated, Expression, Module, StatementOrDeclaration, StatementPosition,
+	VariableField, VariableIdentifier, WithComment,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let module = match Module::from_string(code.clone(), Default::default()) {
 				Ok(module) => module,
 				Err(err) => {
-					return Err(From::from(format!("Parse error on {code}: {err:?}")));
+					return Err(From::from(format!("Parse error on {code}\nRecieved:{err:?}")));
 				}
 			};
 
@@ -150,32 +150,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			// TODO quick fix to also register interface and type alias names to prevent conflicts
 			for item in &module.items {
 				match item {
-					StatementOrDeclaration::Declaration(
-						Declaration::TypeAlias(TypeAlias {
-							name:
-								StatementPosition {
-									identifier: VariableIdentifier::Standard(s, _), ..
-								},
-							..
-						})
-						| Declaration::Interface(Decorated {
-							on:
-								InterfaceDeclaration {
-									name:
-										StatementPosition {
-											identifier: VariableIdentifier::Standard(s, _),
-											..
-										},
-									..
-								},
-							..
-						}),
-					) => {
+					StatementOrDeclaration::TypeAlias(TypeAlias {
+						name:
+							StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
+						..
+					})
+					| StatementOrDeclaration::Interface(Decorated {
+						on:
+							InterfaceDeclaration {
+								name:
+									StatementPosition {
+										identifier: VariableIdentifier::Standard(s, _),
+										..
+									},
+								..
+							},
+						..
+					}) => {
 						names.insert(s.clone());
 					}
-					StatementOrDeclaration::Declaration(Declaration::DeclareVariable(
-						declare_variable,
-					)) => {
+					StatementOrDeclaration::DeclareVariable(declare_variable) => {
 						for declaration in &declare_variable.declarations {
 							declare_lets.push((
 								declaration.name.get_ast_ref().clone(),
@@ -183,10 +177,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							));
 						}
 					}
-					StatementOrDeclaration::Declaration(Declaration::Function(Decorated {
-						on: function,
-						..
-					})) if function.name.is_declare => {
+					StatementOrDeclaration::Function(decorated) if decorated.on.name.is_declare => {
+						let function = &decorated.on;
 						use parser::type_annotations::{
 							TypeAnnotation, TypeAnnotationFunctionParameter,
 							TypeAnnotationFunctionParameters,
@@ -241,17 +233,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
 				for item in module.items {
 					match item {
-						StatementOrDeclaration::Declaration(
-							Declaration::TypeAlias(TypeAlias { .. })
-							| Declaration::Interface(Decorated { .. }),
-						) => {
+						StatementOrDeclaration::TypeAlias(TypeAlias { .. })
+						| StatementOrDeclaration::Interface(Decorated { .. }) => {
 							top_level.push(item);
 						}
-						StatementOrDeclaration::Declaration(Declaration::Function(Decorated {
-							on: function,
-							..
-						})) if function.name.is_declare => {}
-						StatementOrDeclaration::Declaration(Declaration::DeclareVariable(..)) => {}
+						StatementOrDeclaration::Function(decorated)
+							if decorated.on.name.is_declare => {}
+						StatementOrDeclaration::DeclareVariable(..) => {}
 						item => {
 							inside.push(item);
 						}
@@ -271,7 +259,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					})
 					.collect();
 
-				let function = Expression::ExpressionFunction(ast::ExpressionFunction {
+				let function = Expression::ExpressionFunction(Box::new(ast::ExpressionFunction {
 					header: parser::functions::FunctionHeader::empty(),
 					name: parser::ExpressionPosition(Some(VariableIdentifier::Standard(
 						"declare_variables".to_owned(),
@@ -287,11 +275,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					type_parameters: None,
 					position,
 					body: ast::Block(inside, position),
-				});
+				}));
 
 				// void is temp fix
 				top_level.push(
-					Statement::Expression(
+					StatementOrDeclaration::Expression(
 						Expression::UnaryOperation {
 							operator: operators::UnaryOperator::Void,
 							operand: Box::new(function),

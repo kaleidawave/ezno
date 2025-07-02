@@ -55,7 +55,7 @@ impl Default for TypeStore {
 			Type::Class { name: "string".to_owned(), type_parameters: None },
 			// sure?
 			Type::Constant(Constant::Undefined),
-			Type::SpecialObject(SpecialObject::Null),
+			Type::SpecialObject(Box::new(SpecialObject::Null)),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
 			Type::Class { name: "Array".to_owned(), type_parameters: Some(vec![TypeId::T_TYPE]) },
@@ -448,7 +448,10 @@ impl TypeStore {
 	pub fn new_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
-		self.register_type(Type::SpecialObject(SpecialObject::Function(id, Default::default())))
+		self.register_type(Type::SpecialObject(Box::new(SpecialObject::Function(
+			id,
+			Default::default(),
+		))))
 	}
 
 	pub fn new_hoisted_function_type(&mut self, function_type: FunctionType) -> TypeId {
@@ -506,7 +509,7 @@ impl TypeStore {
 		_position: &Span,
 	) -> Result<TypeId, String> {
 		let regexp = RegExp::new(pattern, flags)?;
-		let ty = Type::SpecialObject(SpecialObject::RegularExpression(regexp));
+		let ty = Type::SpecialObject(Box::new(SpecialObject::RegularExpression(regexp)));
 		Ok(self.register_type(ty))
 	}
 
@@ -641,10 +644,10 @@ impl TypeStore {
 	pub(crate) fn new_class_constructor_type(&mut self, constructor: FunctionType) -> TypeId {
 		let id = constructor.id;
 		self.functions.insert(id, constructor);
-		self.register_type(Type::SpecialObject(SpecialObject::Function(
+		self.register_type(Type::SpecialObject(Box::new(SpecialObject::Function(
 			id,
 			crate::types::calling::ThisValue::UseParent,
-		)))
+		))))
 	}
 
 	pub(crate) fn create_this_object(&mut self) -> TypeId {
