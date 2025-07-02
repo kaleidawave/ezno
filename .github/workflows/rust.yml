@@ -14,7 +14,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: ['*']
 
 env:
   CARGO_TERM_COLOR: always
@@ -55,11 +55,14 @@ jobs:
       - name: Check Rust formatting with rustfmt
         run: cargo fmt --all --check
 
+      # TODO replace with own tool
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        if: false
         with:
           packages: taplo-cli
 
       - name: Check TOML formatting with taplo
+        if: false
         run: taplo fmt --check **/*/Cargo.toml
 
   tests:
@@ -164,23 +167,20 @@ jobs:
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: 
-          cargo check -p ezno-parser --no-default-features
+        run: cargo check -p ezno-parser --no-default-features
 
       - name: Check parser generator
         if: steps.changes.outputs.parser == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: 
-          cargo test -p ezno-ast-generator
+        run: cargo test -p ezno-ast-generator
 
       - name: Check checker without default features
         if: steps.changes.outputs.checker == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: 
-          cargo check -p ezno-checker --no-default-features
+        run: cargo check -p ezno-checker --no-default-features
 
       - name: Build and test WASM
-        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        if: github.ref_name == 'main' || !github.event.pull_request.draft
         timeout-minutes: 5
         run: |
           # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
@@ -211,8 +211,9 @@ jobs:
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           name: wasm-build
+          overwrite: true
           path: src/js-cli-and-library/dist
-          retention-days: 3
+          retention-days: 90
 
   fuzzing_parser:
     if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
@@ -340,6 +341,21 @@ jobs:
       - name: Lint code with clippy
         run: cargo clippy
 
+  work_in_progress:
+    needs: validity
+    runs-on: ubuntu-latest
+    if: github.ref_name != 'main' && !github.event.pull_request.draft
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+        with:
+          packages: ripgrep
+      - name: Check for TODO comments
+        # TODO can we label these somehow?
+        run: | 
+          rg '(TODO|todo\!|#\[ignore\]|dbg\!)'
+
   publish-ability:
     # TODO only need to do for `.toml` file changes
     runs-on: ubuntu-latest
@@ -373,6 +389,7 @@ jobs:
     needs: validity
     steps:
       - uses: actions/checkout@v4
+
       - name: Kick off other workflow if the PR has a label
         if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}"
