@@ -147,6 +147,7 @@ pub struct Names {
 	pub(crate) named_types: HashMap<String, TypeId>,
 
 	/// For debugging only
+	#[allow(clippy::struct_field_names)]
 	pub(crate) variable_names: HashMap<VariableId, String>,
 }
 
@@ -154,6 +155,7 @@ pub struct Names {
 pub struct Context<T: ContextType> {
 	// pub(crate) context_id: ContextId,
 	pub context_id: ContextId,
+	#[allow(clippy::struct_field_names)]
 	pub(crate) context_type: T,
 
 	pub(crate) variables: HashMap<String, VariableOrImport>,
@@ -827,8 +829,8 @@ impl<T: ContextType> Context<T> {
 			vacant.insert(variable);
 
 			// TODO unsure ...
-			let ty = if let Type::SpecialObject(SpecialObject::Function(..)) =
-				types.get_type_by_id(variable_ty)
+			let ty = if let Some(SpecialObject::Function(..)) =
+				types.get_type_by_id(variable_ty).try_into_special_object()
 			{
 				variable_ty
 			} else {

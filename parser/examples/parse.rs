@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let mut fs = Files::default();
 
-	let to_string_options = to_string_output.then(|| ToStringOptions {
+	let to_string_options = (to_string_output || pretty).then(|| ToStringOptions {
 		expect_markers: true,
 		include_type_annotations: type_annotations,
 		pretty,

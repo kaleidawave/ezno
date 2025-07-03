@@ -4,7 +4,6 @@
 
 mod block;
 mod comments;
-pub mod declarations;
 mod errors;
 pub mod expressions;
 mod extensions;
@@ -16,19 +15,18 @@ mod modules;
 pub mod number;
 pub mod options;
 pub mod property_key;
-pub mod statements;
+pub mod statements_and_declarations;
 pub mod strings;
 pub mod types;
 mod variable_fields;
 pub mod visiting;
 
-pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
+pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement};
 pub use comments::WithComment;
-pub use declarations::Declaration;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
-pub use expressions::{Expression, PropertyReference};
+pub use expressions::{Expression, MultipleExpression, PropertyReference};
 pub use extensions::{
 	decorators::{Decorated, Decorator},
 	is_expression, jsx,
@@ -40,7 +38,7 @@ pub use modules::Module;
 pub use options::*;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
-pub use statements::Statement;
+pub use statements_and_declarations::{Statement, StatementOrDeclaration};
 pub use strings::Quoted;
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
@@ -451,39 +449,6 @@ pub(crate) fn bracketed_items_to_string<T: source_map::ToString, U: ASTNode>(
 	buf.push(right_bracket);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(derive_ASTNode)]
-pub enum VariableKeyword {
-	Const,
-	Let,
-	Var,
-}
-
-impl VariableKeyword {
-	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		if reader.is_keyword_advance("const") {
-			Ok(Self::Const)
-		} else if reader.is_keyword_advance("let") {
-			Ok(Self::Let)
-		} else if reader.is_keyword_advance("var") {
-			Ok(Self::Var)
-		} else {
-			let error =
-				crate::lexer::utilities::expected_one_of_items(reader, &["const", "let", "var"]);
-			Err(error)
-		}
-	}
-
-	#[must_use]
-	pub fn as_str(&self) -> &str {
-		match self {
-			Self::Const => "const ",
-			Self::Let => "let ",
-			Self::Var => "var ",
-		}
-	}
-}
-
 /// TODO WIP!
 ///
 /// Conditionally computes the node length
@@ -525,8 +490,6 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
-		declarations::classes::*,
-		declarations::*,
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
@@ -534,7 +497,8 @@ pub mod ast {
 			Parameter, ParameterData, SpreadParameter,
 		},
 		number::NumberRepresentation,
-		statements::*,
+		statements_and_declarations::classes::*,
+		statements_and_declarations::*,
 		variable_fields::*,
 		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
 		StatementPosition, VariableField, VariableIdentifier, WithComment,
@@ -551,8 +515,25 @@ pub(crate) mod test_utils {
 	#[macro_export]
 	#[allow(clippy::crate_in_macro_def)]
 	macro_rules! assert_matches_ast {
+		($source:literal with $options:expr, $ast_pattern:pat) => {{
+			let result = crate::ASTNode::from_string($source.to_owned(), $options);
+			let node = result.unwrap();
+			// AST matchers are partial expressions
+			let matches = ::match_deref::match_deref! {
+				match &node {
+					$ast_pattern => true,
+					_ => false,
+				}
+			};
+
+			if !matches {
+				panic!("{:#?} did not match {}", node, stringify!($ast_pattern));
+			}
+		}};
+
 		($source:literal, $ast_pattern:pat) => {{
-			let node = crate::ASTNode::from_string($source.to_owned(), Default::default()).unwrap();
+			let result = crate::ASTNode::from_string($source.to_owned(), Default::default());
+			let node = result.unwrap();
 			// AST matchers are partial expressions
 			let matches = ::match_deref::match_deref! {
 				match &node {

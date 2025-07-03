@@ -410,6 +410,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 				Ok(module) => {
 					let options = ToStringOptions {
 						trailing_semicolon: true,
+						max_line_length: 60,
 						include_type_annotations: true,
 						..Default::default()
 					};

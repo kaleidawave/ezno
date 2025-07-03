@@ -874,11 +874,8 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	}
 }
 
-pub(crate) fn get_annotation_from_declaration<
-	T: crate::ReadFromFS,
-	U: parser::declarations::variable::DeclarationExpression + 'static,
->(
-	declaration: &parser::declarations::VariableDeclarationItem<U>,
+pub(crate) fn get_annotation_from_declaration<T: crate::ReadFromFS>(
+	declaration: &parser::statements_and_declarations::variables::VariableDeclarationItem,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<TypeId> {

@@ -7,7 +7,7 @@ use crate::{ast::MultipleExpression, derive_ASTNode, ASTNode, Expression, Statem
 #[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct SwitchStatement {
-	pub case: MultipleExpression,
+	pub case: Box<MultipleExpression>,
 	pub branches: Vec<SwitchBranch>,
 	pub position: Span,
 }
@@ -16,7 +16,7 @@ pub struct SwitchStatement {
 #[apply(derive_ASTNode)]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),
-	Case(Expression, Vec<StatementOrDeclaration>),
+	Case(Box<Expression>, Vec<StatementOrDeclaration>),
 }
 
 impl ASTNode for SwitchStatement {
@@ -28,16 +28,16 @@ impl ASTNode for SwitchStatement {
 		let start = reader.expect_keyword("switch")?;
 
 		reader.expect('(')?;
-		let case = MultipleExpression::from_reader(reader)?;
+		let case = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect(')')?;
 		reader.expect('{')?;
 
 		let mut branches = Vec::new();
 		loop {
-			let case: Option<Expression> = if reader.is_operator_advance("}") {
+			let case: Option<Box<Expression>> = if reader.is_operator_advance("}") {
 				break;
 			} else if reader.is_operator_advance("case") {
-				let case = Expression::from_reader(reader)?;
+				let case = Expression::from_reader(reader).map(Box::new)?;
 				reader.expect(':')?;
 				Some(case)
 			} else if reader.is_operator_advance("default") {
@@ -71,9 +71,8 @@ impl ASTNode for SwitchStatement {
 
 				if let (
 					false,
-					StatementOrDeclaration::Statement(
-						crate::Statement::AestheticSemiColon(..) | crate::Statement::Empty(..),
-					),
+					StatementOrDeclaration::AestheticSemiColon(..)
+					| StatementOrDeclaration::Empty(..),
 				) = (retain_blank_lines, &item)
 				{
 					continue;

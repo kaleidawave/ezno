@@ -1,11 +1,15 @@
 use crate::{
-	ast::MultipleExpression, block::BlockOrSingleStatement,
-	declarations::variable::VariableDeclaration, derive_ASTNode, ParseError, ParseErrors,
-	VariableField, VariableKeyword, WithComment,
+	ast::MultipleExpression,
+	block::BlockOrSingleStatement,
+	derive_ASTNode,
+	statements_and_declarations::variables::{
+		VarVariableStatement, VariableDeclaration, VariableField, VariableKeyword,
+	},
+	ParseError, ParseErrors, WithComment,
 };
 use visitable_derive::Visitable;
 
-use super::{ASTNode, Expression, ParseResult, Span, VarVariableStatement};
+use crate::{ASTNode, Expression, ParseResult, Span};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
@@ -62,7 +66,7 @@ impl ASTNode for ForLoopStatement {
 pub enum ForLoopStatementInitialiser {
 	VariableDeclaration(VariableDeclaration),
 	VarStatement(VarVariableStatement),
-	Expression(MultipleExpression),
+	Expression(Box<MultipleExpression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Visitable)]
@@ -71,7 +75,7 @@ pub enum ForLoopCondition {
 	ForOf {
 		keyword: Option<VariableKeyword>,
 		variable: WithComment<VariableField>,
-		of: Expression,
+		of: Box<Expression>,
 		is_await: bool,
 		position: Span,
 	},
@@ -79,13 +83,13 @@ pub enum ForLoopCondition {
 		keyword: Option<VariableKeyword>,
 		variable: WithComment<VariableField>,
 		/// Yes `of` is single expression, `in` is multiple
-		r#in: MultipleExpression,
+		r#in: Box<MultipleExpression>,
 		position: Span,
 	},
 	Statements {
 		initialiser: Option<ForLoopStatementInitialiser>,
-		condition: Option<MultipleExpression>,
-		afterthought: Option<MultipleExpression>,
+		condition: Option<Box<MultipleExpression>>,
+		afterthought: Option<Box<MultipleExpression>>,
 		position: Span,
 	},
 }
@@ -124,7 +128,7 @@ impl ASTNode for ForLoopCondition {
 
 			let _ = reader.expect_keyword("in")?;
 
-			let r#in = MultipleExpression::from_reader(reader)?;
+			let r#in = MultipleExpression::from_reader(reader).map(Box::new)?;
 			let position = start.union(r#in.get_position());
 			Self::ForIn { variable, keyword, r#in, position }
 		} else if after_stuff.starts_with("of") {
@@ -142,7 +146,7 @@ impl ASTNode for ForLoopCondition {
 
 			let _ = reader.expect_keyword("of")?;
 
-			let of = Expression::from_reader(reader)?;
+			let of = Expression::from_reader(reader).map(Box::new)?;
 			let position = start.union(of.get_position());
 
 			// Not great `is_await`, set from above
@@ -157,7 +161,7 @@ impl ASTNode for ForLoopCondition {
 			} else if reader.is_operator(";") {
 				None
 			} else {
-				let expr = MultipleExpression::from_reader(reader)?;
+				let expr = MultipleExpression::from_reader(reader).map(Box::new)?;
 				Some(ForLoopStatementInitialiser::Expression(expr))
 			};
 
@@ -165,13 +169,13 @@ impl ASTNode for ForLoopCondition {
 			let condition = if reader.is_operator(";") {
 				None
 			} else {
-				Some(MultipleExpression::from_reader(reader)?)
+				Some(MultipleExpression::from_reader(reader).map(Box::new)?)
 			};
 			let _semi_colon_two = reader.expect(';')?;
 			let afterthought = if reader.is_operator(")") {
 				None
 			} else {
-				Some(MultipleExpression::from_reader(reader)?)
+				Some(MultipleExpression::from_reader(reader).map(Box::new)?)
 			};
 
 			let position = start.union(reader.get_end());
@@ -220,17 +224,17 @@ impl ASTNode for ForLoopCondition {
 
 					if let Some(initialiser) = initialiser {
 						initialiser_to_string(initialiser, &mut buf, options, local);
-					};
+					}
 					large = buf.source.len() > room;
 					if !large {
 						if let Some(condition) = condition {
 							condition.to_string_from_buffer(&mut buf, options, local);
-						};
+						}
 						large = buf.source.len() > room;
 						if !large {
 							if let Some(afterthought) = afterthought {
 								afterthought.to_string_from_buffer(&mut buf, options, local);
-							};
+							}
 							large = buf.source.len() > room;
 						}
 					}
@@ -295,8 +299,8 @@ fn initialiser_to_string<T: source_map::ToString>(
 
 #[cfg(test)]
 mod tests {
-	use super::ForLoopCondition;
-	use crate::{assert_matches_ast, statements::ForLoopStatement, ASTNode};
+	use super::{ForLoopCondition, ForLoopStatement};
+	use crate::{assert_matches_ast, ASTNode};
 
 	#[test]
 	fn condition_without_variable_keyword() {

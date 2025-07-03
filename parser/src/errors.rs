@@ -68,6 +68,7 @@ pub enum ParseErrors<'a> {
 	ExpectedCatchOrFinally,
 	InvalidDeclareItem(&'static str),
 	DestructuringRequiresValue,
+	ConstDeclarationRequiresValue,
 	CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
 	InvalidNumberLiteral,
@@ -78,7 +79,9 @@ pub enum ParseErrors<'a> {
 		location: &'static str,
 	},
 	ExpectedNumberLiteral,
-	NonStandardSyntaxUsedWithoutEnabled,
+	NonStandardSyntaxUsedWithoutEnabled {
+		syntax: &'static str,
+	},
 	ExpectedRule,
 	ExpectedJSXAttribute,
 	InvalidRegexFlag,
@@ -105,13 +108,13 @@ impl Display for ParseErrors<'_> {
 				f.write_str("Expected ")?;
 				utilities::format_list(f, expected)?;
 				if let Some(found) = found {
-					write!(f, " found {found}")
+					write!(f, ", found {found}")
 				} else {
-					write!(f, " found end of source")
+					write!(f, ", found end of source")
 				}
 			}
 			ParseErrors::ExpectedOperator { expected, found } => {
-				write!(f, "Expected {expected} found {found}")
+				write!(f, "Expected {expected}, found {found}")
 			}
 			ParseErrors::ExpectedOneOfItems { expected, found } => {
 				f.write_str("Expected ")?;
@@ -139,8 +142,8 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ClosingTagDoesNotMatch { tag_name: expected, closing_tag_name: found } => {
 				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")
 			}
-			ParseErrors::NonStandardSyntaxUsedWithoutEnabled => {
-				write!(f, "Cannot use this syntax without flag enabled")
+			ParseErrors::NonStandardSyntaxUsedWithoutEnabled { syntax } => {
+				write!(f, "Cannot use '{syntax}' syntax without flag enabled")
 			}
 			ParseErrors::ExpectedStringLiteral { found } => {
 				write!(f, "Expected string literal, found {found:?}")
@@ -180,6 +183,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::TrailingCommaNotAllowedHere => {
 				write!(f, "Trailing comma not allowed here")
+			}
+			ParseErrors::ConstDeclarationRequiresValue => {
+				write!(f, "const declaration requires value")
 			}
 			ParseErrors::InvalidNumberLiteral => {
 				write!(f, "Invalid number literal")

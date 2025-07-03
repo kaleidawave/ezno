@@ -125,16 +125,7 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 				Ok(Self::PropertyOnSuper(property, position))
 			}
 			// Yah weird and recursion is fine here
-			Expression::Parenthesised(inner, _) => {
-				if let MultipleExpression::Single(expression) = *inner {
-					TryFrom::try_from(expression)
-				} else {
-					Err(ParseError::new(
-						crate::ParseErrors::InvalidLHSAssignment,
-						inner.get_position(),
-					))
-				}
-			}
+			Expression::Parenthesised(inner, _) => TryFrom::try_from(inner.0),
 			#[cfg(feature = "full-typescript")]
 			Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(on),

@@ -497,7 +497,7 @@ impl ASTNode for InterfaceMember {
 				}
 				buf.push('[');
 				buf.push_str(name.as_str());
-				buf.push(':');
+				buf.push_str(": ");
 				indexer_type.to_string_from_buffer(buf, options, local);
 				buf.push_str("]: ");
 				return_type.to_string_from_buffer(buf, options, local);

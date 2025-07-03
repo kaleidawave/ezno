@@ -391,7 +391,7 @@ fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNod
 	// TODO count new lines etc
 	loop {
 		reader.skip();
-		for _ in 0..reader.last_was_from_new_line() {
+		for _ in 0..reader.last_was_from_new_line_consume() {
 			children.push(JSXNode::LineBreak);
 		}
 		if reader.starts_with_slice("</") {

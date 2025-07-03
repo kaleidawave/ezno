@@ -1,41 +1,42 @@
 use ezno_ast_generator::{expr, stmt};
-use ezno_parser::ASTNode;
+use ezno_parser::{
+	source_map,
+	statements_and_declarations::{
+		StatementOrDeclaration, VariableDeclaration, VariableDeclarationItem,
+		VariableDeclarationKeyword,
+	},
+	ASTNode, Expression,
+};
 use pretty_assertions::assert_eq;
 
 #[test]
 fn expr() {
-	let x = expr!(x = 4);
+	let expr = expr!(x = 4);
 	{
-		use ezno_parser::{source_map, Expression};
-		assert_eq!(
-			x,
-			Expression::Assignment {
-				lhs: ezno_parser::ast::LHSOfAssignment::VariableOrPropertyAccess(
-					ezno_parser::ast::VariableOrPropertyAccess::Variable(
-						"x".to_owned(),
-						source_map::Nullable::NULL
-					)
+		let expected = Expression::Assignment {
+			lhs: ezno_parser::ast::LHSOfAssignment::VariableOrPropertyAccess(
+				ezno_parser::ast::VariableOrPropertyAccess::Variable(
+					"x".to_owned(),
+					source_map::Nullable::NULL,
 				),
-				rhs: Expression::NumberLiteral(
-					ezno_parser::number::NumberRepresentation::from(4f64),
-					source_map::Nullable::NULL
-				)
-				.into(),
-				position: source_map::Nullable::NULL
-			}
-		);
+			),
+			rhs: Expression::NumberLiteral(
+				ezno_parser::number::NumberRepresentation::from(4f64),
+				source_map::Nullable::NULL,
+			)
+			.into(),
+			position: source_map::Nullable::NULL,
+		};
+		assert_eq!(expr, expected);
 	}
 }
 
 #[test]
 fn stmt_with_expr_interpolation() {
 	let number = 4.2f64.sin();
-	let y = stmt!(let y = #number);
+	let statement = stmt!(let y = #number);
 	{
-		use ezno_parser::{
-			declarations::{VariableDeclaration, VariableDeclarationItem},
-			source_map, Declaration, Expression, StatementOrDeclaration,
-		};
+		eprintln!("{:#?}", statement);
 		let declaration = VariableDeclarationItem {
 			name: ezno_parser::WithComment::None(ezno_parser::VariableField::Name(
 				ezno_parser::VariableIdentifier::Standard(
@@ -50,13 +51,12 @@ fn stmt_with_expr_interpolation() {
 			type_annotation: None,
 			position: source_map::Nullable::NULL,
 		};
-		let expected = StatementOrDeclaration::Declaration(Declaration::Variable(
-			VariableDeclaration::LetDeclaration {
-				declarations: vec![declaration],
-				position: source_map::Nullable::NULL,
-			},
-		));
-		assert_eq!(y, expected);
+		let expected = StatementOrDeclaration::Variable(VariableDeclaration {
+			kind: VariableDeclarationKeyword::Let,
+			declarations: vec![declaration],
+			position: source_map::Nullable::NULL,
+		});
+		assert_eq!(statement, expected);
 	}
 }
 
@@ -65,10 +65,6 @@ fn stmt_with_var_name_interpolation() {
 	let name = "test";
 	let statement = stmt!(let #name = 4);
 	{
-		use ezno_parser::{
-			declarations::{VariableDeclaration, VariableDeclarationItem},
-			source_map, Declaration, Expression, StatementOrDeclaration,
-		};
 		eprintln!("{:#?}", statement);
 		let declaration = VariableDeclarationItem {
 			name: ezno_parser::WithComment::None(ezno_parser::VariableField::Name(
@@ -84,12 +80,11 @@ fn stmt_with_var_name_interpolation() {
 			type_annotation: None,
 			position: source_map::Nullable::NULL,
 		};
-		let expected = StatementOrDeclaration::Declaration(Declaration::Variable(
-			VariableDeclaration::LetDeclaration {
-				declarations: vec![declaration],
-				position: source_map::Nullable::NULL,
-			},
-		));
+		let expected = StatementOrDeclaration::Variable(VariableDeclaration {
+			kind: VariableDeclarationKeyword::Let,
+			declarations: vec![declaration],
+			position: source_map::Nullable::NULL,
+		});
 		assert_eq!(statement, expected);
 	}
 }

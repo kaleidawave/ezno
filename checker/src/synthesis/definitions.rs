@@ -1,7 +1,4 @@
-use parser::{
-	ast::{export::Exportable, ExportDeclaration},
-	ASTNode, Declaration, Decorated, Expression, StatementOrDeclaration,
-};
+use parser::{ast::ExportDeclaration, ASTNode, Expression, StatementOrDeclaration};
 use source_map::SourceId;
 
 use super::classes::synthesise_class_declaration;
@@ -24,14 +21,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	super::hoisting::hoist_statements(&definition.items, &mut environment, checking_data);
 
 	for item in &definition.items {
-		if let StatementOrDeclaration::Declaration(
-			Declaration::Class(Decorated { on: class, .. })
-			| Declaration::Export(Decorated {
-				on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
-				..
-			}),
-		) = item
-		{
+		if let Some((class, _decorators)) = as_class(item) {
 			use super::StatementOrExpressionVariable;
 
 			let class_type = *checking_data
@@ -58,6 +48,142 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	(Names { variables, named_types, variable_names }, info)
 }
 
+pub(crate) fn as_class(
+	item: &parser::StatementOrDeclaration,
+) -> Option<(&parser::statements_and_declarations::ClassDeclarationStatement, &[parser::Decorator])>
+{
+	if let parser::StatementOrDeclaration::Class(decorated) = item {
+		Some((&decorated.on, &decorated.decorators))
+	} else if let parser::StatementOrDeclaration::Export(decorated) = item {
+		if let parser::statements_and_declarations::export::ExportDeclaration::Item {
+			exported,
+			position: _,
+		} = &decorated.on
+		{
+			if let parser::statements_and_declarations::export::Exportable::Class(item) =
+				&**exported
+			{
+				Some((item, &decorated.decorators))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
+pub(crate) fn as_function(
+	item: &parser::StatementOrDeclaration,
+) -> Option<(&parser::statements_and_declarations::StatementFunction, &[parser::Decorator])> {
+	if let StatementOrDeclaration::Function(decorated) = item {
+		Some((&decorated.on, &decorated.decorators))
+	} else if let StatementOrDeclaration::Export(decorated) = item {
+		if let ExportDeclaration::Item { exported, position: _ } = &decorated.on {
+			if let parser::statements_and_declarations::export::Exportable::Function(item) =
+				&**exported
+			{
+				Some((item, &decorated.decorators))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
+pub(crate) fn as_enum(
+	item: &parser::StatementOrDeclaration,
+) -> Option<(&parser::statements_and_declarations::EnumDeclaration, &[parser::Decorator])> {
+	if let StatementOrDeclaration::Enum(decorated) = item {
+		Some((&decorated.on, &decorated.decorators))
+	} else if let StatementOrDeclaration::Export(decorated) = item {
+		if let ExportDeclaration::Item { exported, position: _ } = &decorated.on {
+			if let parser::statements_and_declarations::export::Exportable::Enum(item) = &**exported
+			{
+				Some((item, &decorated.decorators))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
+pub(crate) fn as_interface(
+	item: &parser::StatementOrDeclaration,
+) -> Option<(&parser::statements_and_declarations::InterfaceDeclaration, &[parser::Decorator])> {
+	if let StatementOrDeclaration::Interface(decorated) = item {
+		Some((&decorated.on, &decorated.decorators))
+	} else if let StatementOrDeclaration::Export(decorated) = item {
+		if let ExportDeclaration::Item { exported, position: _ } = &decorated.on {
+			if let parser::statements_and_declarations::export::Exportable::Interface(item) =
+				&**exported
+			{
+				Some((item, &decorated.decorators))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
+pub(crate) fn as_type_alias(
+	item: &parser::StatementOrDeclaration,
+) -> Option<(&parser::statements_and_declarations::TypeAlias, &[parser::Decorator])> {
+	if let StatementOrDeclaration::TypeAlias(alias) = item {
+		Some((alias, &[]))
+	} else if let StatementOrDeclaration::Export(decorated) = item {
+		if let ExportDeclaration::Item { exported, position: _ } = &decorated.on {
+			if let parser::statements_and_declarations::export::Exportable::TypeAlias(item) =
+				&**exported
+			{
+				Some((item, &decorated.decorators))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
+pub(crate) fn as_variable_declaration(
+	item: &parser::StatementOrDeclaration,
+) -> Option<(&parser::statements_and_declarations::VariableDeclaration, &[parser::Decorator])> {
+	if let StatementOrDeclaration::Variable(item) = item {
+		Some((item, &[]))
+	} else if let StatementOrDeclaration::Export(decorated) = item {
+		if let ExportDeclaration::Item { exported, position: _ } = &decorated.on {
+			if let parser::statements_and_declarations::export::Exportable::Variable(item) =
+				&**exported
+			{
+				Some((item, &decorated.decorators))
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	} else {
+		None
+	}
+}
+
 pub(crate) fn get_internal_function_effect_from_decorators(
 	decorators: &[parser::Decorator],
 	function_name: &str,
@@ -66,7 +192,7 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 	decorators.iter().find_map(|decorator| {
 		if decorator.name.len() == 1 {
 			let decorator_name = decorator.name.first().map(String::as_str)?;
-			if matches!(decorator_name, "Constant" | "InputOutput") {
+			if let "Constant" | "InputOutput" = decorator_name {
 				let (identifier, may_throw) =
 					if let Some(arguments) = decorator.arguments.as_ref() {
 						let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =

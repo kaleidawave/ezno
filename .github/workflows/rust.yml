@@ -14,7 +14,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: '*'
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
@@ -177,20 +177,23 @@ jobs:
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: cargo check -p ezno-parser --no-default-features
+        run: 
+          cargo check -p ezno-parser --no-default-features
 
       - name: Check parser generator
         if: steps.changes.outputs.parser == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: cargo test -p ezno-ast-generator
+        run: 
+          cargo test -p ezno-ast-generator
 
       - name: Check checker without default features
         if: steps.changes.outputs.checker == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: cargo check -p ezno-checker --no-default-features
+        run: 
+          cargo check -p ezno-checker --no-default-features
 
       - name: Build and test WASM
-        if: github.ref_name == 'main' || !github.event.pull_request.draft
+        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         timeout-minutes: 5
         run: |
           # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
