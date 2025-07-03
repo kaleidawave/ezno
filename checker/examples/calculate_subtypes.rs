@@ -14,16 +14,19 @@ fn main() {
 	let mut environment = root.new_testing_context();
 	let mut types = TypeStore::default();
 
+	eprintln!("--- basics ---");
 	basics(&mut environment, &mut types);
+	eprintln!("--------------\n");
+
+	eprintln!("--- contributions ---");
 	contributions(&mut environment, &mut types);
+	eprintln!("---------------------");
 }
 
 fn basics(environment: &mut Environment, types: &mut TypeStore) {
 	let five = types.new_constant_type(Constant::Number(5f64.try_into().unwrap()));
 
 	let string_or_number = types.new_or_type(TypeId::STRING_TYPE, TypeId::NUMBER_TYPE);
-
-	eprintln!("--- basics ---");
 
 	{
 		let result = type_is_subtype_object(TypeId::NUMBER_TYPE, five, environment, types);
@@ -42,8 +45,6 @@ fn basics(environment: &mut Environment, types: &mut TypeStore) {
 
 		eprintln!("string | number :> string {result:?}");
 	}
-
-	eprintln!("--------------\n");
 }
 
 fn contributions(environment: &mut Environment, types: &mut TypeStore) {

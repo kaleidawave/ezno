@@ -3,6 +3,10 @@ fn main() {
 	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
 	use std::{fs, path::Path};
 
+	fn resolver(path: &std::path::Path) -> Option<Vec<u8>> {
+		fs::read(path).ok()
+	}
+
 	let default_path = Path::new("private").join("tocheck").join("aaa.tsx");
 	let simple_dts_path = Path::new("checker").join("definitions").join("simple.d.ts");
 	let overrides_dts_path = Path::new("checker").join("definitions").join("overrides.d.ts");
@@ -21,8 +25,6 @@ fn main() {
 	let debug_dts = args.iter().any(|item| item == "--debug-dts");
 	let extras = args.iter().any(|item| item == "--extras");
 	let advanced_numbers = args.iter().any(|item| item == "--advanced-numbers");
-
-	let resolver = |path: &std::path::Path| fs::read(path).ok();
 
 	let type_definition_files = if no_lib {
 		Vec::new()

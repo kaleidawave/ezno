@@ -557,7 +557,7 @@ impl ASTNode for Statement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let statement_or_declaration = StatementOrDeclaration::from_reader(reader)?;
 		if statement_or_declaration.is_declaration() {
-			todo!("error here")
+			Err(ParseError::new(ParseErrors::ExpectedStatement, statement_or_declaration.get_position()))
 		} else {
 			Ok(Self(statement_or_declaration))
 		}

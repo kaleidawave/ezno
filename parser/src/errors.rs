@@ -85,6 +85,7 @@ pub enum ParseErrors<'a> {
 	ExpectedRule,
 	ExpectedJSXAttribute,
 	InvalidRegexFlag,
+	ExpectedStatement,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
@@ -214,6 +215,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::InvalidRegexFlag => {
 				write!(f, "Regexp flags must be 'd', 'g', 'i', 'm', 's', 'u' or 'y'")
+			}
+			ParseErrors::ExpectedStatement => {
+				write!(f, "Only statements are valid here")
 			}
 			ParseErrors::ExpectedDeclaration => {
 				write!(f, "Expected identifier after variable declaration keyword")
