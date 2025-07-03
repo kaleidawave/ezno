@@ -39,6 +39,7 @@ path = "src/main.rs"
 
 argh = "0.1"
 base64 = "0.22"
+# TODO requires https://github.com/kaleidawave/source-map/pull/7
 codespan-reporting = "0.11"
 enum-variants-strings = "0.3"
 # For `StrComparison` for string comparison
@@ -47,11 +48,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simple-json-parser = "0.0"
 js-sys = "0.3"
-
-# TODO temp
-[patch.crates-io]
-get-field-by-type = { git = 'https://github.com/kaleidawave/get-field-by-type.git', branch = 'gfbt-on-deref' }
-derive-finite-automaton = { git = 'https://github.com/kaleidawave/derive-finite-automaton.git', branch = 'add-support-for-binary-strings' }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # For updating binary
@@ -83,7 +79,7 @@ wasm-bindgen-derive = "0.3"
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1"
 js-sys = "0.3"
-tsify = "0.4"
+tsify = "0.5"
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"

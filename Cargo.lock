@@ -150,16 +150,18 @@ dependencies = [
 
 [[package]]
 name = "derive-finite-automaton"
-version = "0.2.0"
-source = "git+https://github.com/kaleidawave/derive-finite-automaton.git?branch=add-support-for-binary-strings#c16dc44f47b5eb42d36d03691f1dfb094464526f"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "981f57b12958c919ada3f9109d4c247edd5f34981b33faacb1ff90799ddfd3b0"
 dependencies = [
  "derive-finite-automaton-derive",
 ]
 
 [[package]]
 name = "derive-finite-automaton-derive"
-version = "0.2.0"
-source = "git+https://github.com/kaleidawave/derive-finite-automaton.git?branch=add-support-for-binary-strings#c16dc44f47b5eb42d36d03691f1dfb094464526f"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88c81e1d575abcdcb7c644e57bc8fbded0af25a55baf7004a7ebfe47364de390"
 dependencies = [
  "either_n",
  "proc-macro2",
@@ -255,7 +257,7 @@ dependencies = [
  "serde-wasm-bindgen 0.6.5",
  "serde_json",
  "simple-json-parser",
- "tsify",
+ "tsify 0.5.5",
  "wasm-bindgen",
  "wasm-bindgen-derive",
 ]
@@ -290,7 +292,7 @@ dependencies = [
  "simple-json-parser",
  "source-map",
  "temporary-annex",
- "tsify",
+ "tsify 0.5.5",
  "wasm-bindgen",
 ]
 
@@ -324,7 +326,7 @@ dependencies = [
  "serde",
  "source-map",
  "temporary-annex",
- "tsify",
+ "tsify 0.5.5",
  "wasm-bindgen",
 ]
 
@@ -395,8 +397,9 @@ dependencies = [
 
 [[package]]
 name = "get-field-by-type"
-version = "0.0.4"
-source = "git+https://github.com/kaleidawave/get-field-by-type.git?branch=gfbt-on-deref#0d5319cc68a01fb09764486cc17d8e530329b008"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b9ad7dfa5390d8c7f1029c42b8af5884a237d7dac2f7f1e0f223963a6172521"
 dependencies = [
  "get-field-by-type-derive",
 ]
@@ -404,7 +407,8 @@ dependencies = [
 [[package]]
 name = "get-field-by-type-derive"
 version = "0.0.4"
-source = "git+https://github.com/kaleidawave/get-field-by-type.git?branch=gfbt-on-deref#0d5319cc68a01fb09764486cc17d8e530329b008"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3931371c1191271ed6608fb4ac821fbab479f0defa5b1d85cdc756736209225c"
 dependencies = [
  "syn-helpers",
 ]
@@ -432,6 +436,19 @@ name = "gloo-utils"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "037fcb07216cb3a30f7292bd0176b050b7b9a052ba830ef7d5d65f6dc64ba58e"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "gloo-utils"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5555354113b18c547c1d3a98fbf7fb32a9ff4f6fa112ce823a21641a0ba3aa"
 dependencies = [
  "js-sys",
  "serde",
@@ -973,6 +990,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1006,7 +1034,7 @@ dependencies = [
  "js-sys",
  "serde",
  "serde-wasm-bindgen 0.4.5",
- "tsify",
+ "tsify 0.4.5",
  "wasm-bindgen",
 ]
 
@@ -1019,7 +1047,7 @@ dependencies = [
  "codespan-reporting",
  "self-rust-tokenize",
  "serde",
- "tsify",
+ "tsify 0.4.5",
  "wasm-bindgen",
 ]
 
@@ -1097,11 +1125,24 @@ version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6b26cf145f2f3b9ff84e182c448eaf05468e247f148cf3d2a7d67d78ff023a0"
 dependencies = [
- "gloo-utils",
+ "gloo-utils 0.1.7",
  "serde",
  "serde-wasm-bindgen 0.5.0",
  "serde_json",
- "tsify-macros",
+ "tsify-macros 0.4.5",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "tsify"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2ec91b85e6c6592ed28636cb1dd1fac377ecbbeb170ff1d79f97aac5e38926d"
+dependencies = [
+ "gloo-utils 0.2.0",
+ "serde",
+ "serde_json",
+ "tsify-macros 0.5.5",
  "wasm-bindgen",
 ]
 
@@ -1113,7 +1154,19 @@ checksum = "7a94b0f0954b3e59bfc2c246b4c8574390d94a4ad4ad246aaf2fb07d7dfd3b47"
 dependencies = [
  "proc-macro2",
  "quote",
- "serde_derive_internals",
+ "serde_derive_internals 0.28.0",
+ "syn 2.0.104",
+]
+
+[[package]]
+name = "tsify-macros"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a324606929ad11628a19206d7853807481dcaecd6c08be70a235930b8241955"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals 0.29.1",
  "syn 2.0.104",
 ]
 
