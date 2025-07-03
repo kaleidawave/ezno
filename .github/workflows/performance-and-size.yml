@@ -111,7 +111,7 @@ jobs:
       - name: Get binaries to compare against
         id: download-binaries
         continue-on-error: true
-        run: gh run download -p "binary-*" -D binaries -R ${{ env.REPO }}
+        run: gh run download -p "binary-*" -D binaries
 
       - name: Build latest version of binary
         shell: shell-language {0}
@@ -129,7 +129,7 @@ jobs:
           
           let to = env GITHUB_STEP_SUMMARY
 
-          let binaries = files "binaries/**/*" then replace $binaries "\n" ","
+          let binaries = files "binaries/**/*" then replace "\n" ","
           echo "Found $binaries"
 
           let output = run hyperfine -i -L binary $binaries './{binary} check demo.tsx'
@@ -163,28 +163,26 @@ jobs:
             # append $to "<details><summary>Diagnostics</summary>\n"
             # append $to "```\n$diagnostics\n```\n</details>\n"
 
-            append $to "\n<details><summary>Statistics for $file</summary>\n"
+            append $to "\n<details><summary>Statistics for $file check demo.tsx</summary>\n"
             append $to "```\n$statistics\n```\n</details>\n"
 
       - name: Run checker performance on large file
         shell: shell-language {0}
         run: |
+          let to = env GITHUB_STEP_SUMMARY
           let large = read "./demo.tsx" then repeat 10
           write "./large.tsx" $large
 
           let binaries = files "binaries/**/*"
           set binaries = replace $binaries "\n" ","
 
-          append $to "### check large.tsx"
+          append $to "#### check large.tsx"
           let output = run hyperfine -i -L binary $binaries './{binary} check large.tsx'
           append $to "```shell\n$output\n```\n"
 
-          append $to "<details><summary>Statistics</summary>\n"
-          
-          let to = env GITHUB_STEP_SUMMARY
           for files "binaries/**/*" each
             let out = run "./$file" check large.tsx --timings --merge-stdout-and-stderr
-            append $to "##### $file check large.tsx"
+            append $to "<details><summary>Statistics for $file check large.tsx</summary>\n"
           
             let statistics = rafter $out "---" then trim
             append $to "```\n$statistics\n```\n"
@@ -200,7 +198,7 @@ jobs:
         continue-on-error: true
         run: |
           let to = env GITHUB_STEP_SUMMARY
-          append $to "#### Instructions and memory usage"
+          append $to "#### Instructions and memory usage for `check demo.tsx`"
 
           for files "binaries/**/*" each
             let output = run valgrind $file check ./demo.tsx --merge-stdout-and-stderr
@@ -210,7 +208,7 @@ jobs:
             let output = run valgrind --tool=callgrind $file check ./demo.tsx --merge-stdout-and-stderr
             let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name then format_number
 
-            append $to "- `$file`: `$allocated` allocated and `$instructions` instructions\n"
+            append $to "- `$file`: `$allocated` bytes allocated and `$instructions` instructions\n"
 
       # final steps
 
