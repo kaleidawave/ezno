@@ -13,10 +13,6 @@ libfuzzer-sys = "0.4"
 [dependencies.ezno-checker]
 path = ".."
 
-# TODO
-[patch.crates-io]
-get-field-by-type = { git = 'https://github.com/kaleidawave/get-field-by-type.git', branch = 'gfbt-on-deref' }
-
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
