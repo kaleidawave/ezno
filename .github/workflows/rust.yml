@@ -390,8 +390,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - run: echo "${{github.ref_name}} with ${{ github.event.pull_request.labels.*.name }} ${{ contains(github.event.pull_request.labels.*.name, 'compiler-performance') }}"
+
       - name: Kick off other workflow if the PR has a label
-        if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
+        if: true
+        # if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}"
         env:
           GH_TOKEN: ${{ github.token }}
