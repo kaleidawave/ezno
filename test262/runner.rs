@@ -75,6 +75,7 @@ fn main() {
 			let mut features = None::<String>;
 			let mut flags = None::<String>;
 
+			// Parse frontmatter
 			{
 				let now = std::time::Instant::now();
 				let result = simple_yaml_parser::parse(metadata, |key, value| {
@@ -155,6 +156,7 @@ fn main() {
 					(":pass", (matched as i64).into()),
 					(":parser_out", (&*reason).into()),
 				];
+
 				statement.bind::<&[(_, sqlite::Value)]>(values).expect("Could not bind");
 
 				while let Ok(sqlite::State::Row) = statement.next() {}
@@ -178,7 +180,8 @@ fn main() {
 	);
 
 	{
-		let query = "SELECT cast(SUM(pass) AS FLOAT) / COUNT(*) FROM results;";
+		let query = "SELECT cast(SUM(pass) AS FLOAT) / COUNT(*) 
+		FROM results;";
 		eprintln!("Results '{query}'");
 		connection
 			.iterate(query, |pairs| {
@@ -191,7 +194,11 @@ fn main() {
 	}
 	{
 		let query =
-			"SELECT parser_out, COUNT(*) FROM results GROUP BY parser_out ORDER BY COUNT(*) DESC";
+			"SELECT parser_out, COUNT(*) 
+			FROM results 
+			GROUP BY parser_out 
+			ORDER BY COUNT(*) DESC";
+
 		eprintln!("Breakdown of fails '{query}'");
 		connection
 			.iterate(query, |pairs| {
