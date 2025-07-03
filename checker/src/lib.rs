@@ -13,6 +13,9 @@ pub mod types;
 pub mod utilities;
 
 #[cfg(feature = "ezno-parser")]
+pub mod api;
+
+#[cfg(feature = "ezno-parser")]
 pub mod synthesis;
 
 use std::{
