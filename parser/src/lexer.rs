@@ -37,6 +37,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
+	#[inline]
 	pub fn get_options(&self) -> &ParseOptions {
 		&self.options
 	}
@@ -66,11 +67,9 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub fn get_some_current(&self) -> (&'a str, usize) {
-		(
-			&self.script
-				[self.head as usize..std::cmp::min(self.script.len(), self.head as usize + 20)],
-			self.head as usize,
-		)
+		let next: usize = std::cmp::min(self.script.len(), self.head as usize + 20);
+		let start: usize = self.head as usize;
+		(&self.script[start..next], self.head as usize)
 	}
 
 	#[must_use]
@@ -85,25 +84,27 @@ impl<'a> Lexer<'a> {
 		last_new_lines
 	}
 
+	#[inline]
 	pub fn skip(&mut self) {
 		let current = self.get_current();
 		if current.starts_with(char::is_whitespace) {
-			let start = self.head;
 			self.state.last_new_lines = 0;
-
-			for (idx, chr) in current.char_indices() {
-				if !chr.is_whitespace() {
-					self.head = start + idx as u32;
-					return;
-				}
-				if let '\n' = chr {
-					self.state.last_new_lines += 1;
-				}
-			}
-
-			// Else if
-			self.head += current.len() as u32;
 		}
+		let start = self.head;
+
+		// TODO match_indices
+		for (idx, chr) in current.char_indices() {
+			if !chr.is_whitespace() {
+				self.head = start + idx as u32;
+				return;
+			}
+			if let '\n' = chr {
+				self.state.last_new_lines += 1;
+			}
+		}
+
+		// Else if
+		self.head += current.len() as u32;
 	}
 
 	pub fn skip_including_comments(&mut self) {
@@ -164,14 +165,8 @@ impl<'a> Lexer<'a> {
 
 	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
 		self.skip();
-		let current = self.get_current();
-		let length = keyword.len();
-		if current.starts_with(keyword)
-			&& current[length..]
-				.chars()
-				.next()
-				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
-		{
+		if self.is_keyword(keyword) {
+			let length = keyword.len();
 			self.state.last_new_lines = 0;
 			self.head += length as u32;
 			true
@@ -404,17 +399,25 @@ impl<'a> Lexer<'a> {
 			UnicodeBracedEscape { first_bracket: bool },
 		}
 
+		// TODO temp
+		let allow_dot = location == "type name";
+
 		self.skip();
 		let current = self.get_current();
 		let start = self.get_start();
 		let mut iter = current.char_indices();
 		let mut state = State::Standard;
+
+		// https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-names-and-keywords
+
 		if let Some((_, chr)) = iter.next() {
 			if let '\\' = chr {
 				state = State::StartOfUnicode;
 			} else {
 				// Note `is_alphabetic` here
-				let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
+				let first_is_valid = chr == '_'
+					|| chr == '$' || unicode_ident::is_xid_start(chr)
+					|| unicode_ident::is_xid_continue(chr);
 				if !first_is_valid {
 					return Err(ParseError::new(
 						ParseErrors::ExpectedIdentifier { location },
@@ -487,8 +490,8 @@ impl<'a> Lexer<'a> {
 					if let '\\' = chr {
 						state = State::StartOfUnicode;
 					} else {
-						// Note `is_alphanumeric` here
-						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
+						let is_valid = unicode_ident::is_xid_continue(chr)
+							|| chr == '$' || (allow_dot && chr == '.');
 						if !is_valid {
 							let value = &current[..idx];
 							let is_invalid = check_reserved
@@ -1032,7 +1035,7 @@ impl<'a> Lexer<'a> {
 			Ok(())
 		} else {
 			let current = self.get_current();
-			dbg!(current);
+			// dbg!(current);
 			let until_empty = crate::lexer::utilities::next_empty_occurance(current);
 			let position = self.get_start().with_length(until_empty);
 			let error =

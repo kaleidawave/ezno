@@ -410,22 +410,19 @@ impl Expression {
 				let position = start.union(operand.get_position());
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 			} else if reader.is_keyword_advance("yield") {
-				let is_delegated = reader.is_operator_advance("*");
-				let yielded = if reader.is_one_of_operators(&[";"]).is_some() {
+				let yielded = if reader.starts_with_expression_delimiter() {
 					None
 				} else {
+					let is_delegated = reader.is_operator_advance("*");
 					let expression = Expression::from_reader_with_precedence(
 						reader,
 						YIELD_OPERATORS_PRECEDENCE,
 					)?;
-					Some(Box::new(expression))
+					Some((is_delegated, Box::new(expression)))
 				};
 
 				let position = start.union(reader.get_end());
-				Expression::SpecialOperators(
-					SpecialOperators::Yield { yielded, is_delegated },
-					position,
-				)
+				Expression::SpecialOperators(SpecialOperators::Yield { yielded }, position)
 			} else if let Some(keyword) = reader.is_one_of_keywords_advance(&["true", "false"]) {
 				Expression::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
 			} else if reader.is_keyword_advance("this") {
@@ -490,7 +487,10 @@ impl Expression {
 					let mut expr = None;
 					#[cfg(feature = "extras")]
 					{
-						if reader.is_keyword_advance("source") {
+						let is_source = reader.is_keyword_advance("source");
+						// TODO
+						let _is_defer = reader.is_keyword_advance("defer");
+						if is_source {
 							reader.expect('(')?;
 							let location =
 								crate::statements_and_declarations::import_export::ImportLocation::from_reader(
@@ -952,13 +952,13 @@ impl Expression {
 
 					reader.advance(length);
 
-					// TODO not sure
-					if let Expression::ObjectLiteral(..) = top {
-						return Err(ParseError::new(
-							ParseErrors::CannotAccessObjectLiteralDirectly,
-							source_map::Start(top.get_position().get_end().0).with_length(1),
-						));
-					}
+					// // TODO not sure
+					// if let Expression::ObjectLiteral(..) = top {
+					// 	return Err(ParseError::new(
+					// 		ParseErrors::CannotAccessObjectLiteralDirectly,
+					// 		source_map::Start(top.get_position().get_end().0).with_length(1),
+					// 	));
+					// }
 
 					let property = if let Some(Some(length)) = reader
 						.get_options()
@@ -1349,14 +1349,14 @@ impl Expression {
 						local2.with_precedence(self_precedence),
 					);
 				}
-				SpecialOperators::Yield { yielded, is_delegated } => {
+				SpecialOperators::Yield { yielded } => {
 					buf.push_str("yield");
-					if *is_delegated {
-						buf.push('*');
-					}
 					// TODO can be dropped sometimes
 					buf.push(' ');
-					if let Some(ref yielded) = yielded {
+					if let Some((is_delegated, ref yielded)) = yielded {
+						if *is_delegated {
+							buf.push('*');
+						}
 						yielded.to_string_using_precedence(
 							buf,
 							options,
@@ -1485,6 +1485,12 @@ impl Expression {
 			Self::Import(ImportExpression::ImportSource { location, .. }) => {
 				buf.push_str("import.source(");
 				location.to_string_from_buffer(buf);
+				buf.push(')');
+			}
+			#[cfg(feature = "extras")]
+			Self::Import(ImportExpression::ImportDefer { path, .. }) => {
+				buf.push_str("import.defer(");
+				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
 			Self::Import(ImportExpression::DynamicImport { path, .. }) => {
@@ -1968,8 +1974,8 @@ pub enum SpecialOperators {
 		rhs: Box<Expression>,
 	},
 	Yield {
-		yielded: Option<Box<Expression>>,
-		is_delegated: bool,
+		// .0 = 'is_delegated'
+		yielded: Option<(bool, Box<Expression>)>,
 	},
 	#[cfg(feature = "extras")]
 	Is {
@@ -2027,6 +2033,12 @@ pub enum ImportExpression {
 	#[cfg(feature = "extras")]
 	ImportSource {
 		location: crate::statements_and_declarations::import_export::ImportLocation,
+		position: Span,
+	},
+	/// [Proposal](https://github.com/tc39/proposal-defer-import-eval)
+	#[cfg(feature = "extras")]
+	ImportDefer {
+		path: Box<Expression>,
 		position: Span,
 	},
 	DynamicImport {

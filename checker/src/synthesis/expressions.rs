@@ -1089,7 +1089,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					&mut checking_data.types,
 				))
 			}
-			SpecialOperators::Yield { yielded: _, is_delegated: _ } => {
+			SpecialOperators::Yield { yielded: _ } => {
 				checking_data.raise_unimplemented_error(
 					"yield expression",
 					position.with_source(environment.get_source()),
@@ -1121,6 +1121,13 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::Import(ImportExpression::ImportSource { position, .. }) => {
 			checking_data.raise_unimplemented_error(
 				"import.source",
+				position.with_source(environment.get_source()),
+			);
+			return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+		}
+		Expression::Import(ImportExpression::ImportDefer { position, .. }) => {
+			checking_data.raise_unimplemented_error(
+				"import.derfer",
 				position.with_source(environment.get_source()),
 			);
 			return TypeId::UNIMPLEMENTED_ERROR_TYPE;

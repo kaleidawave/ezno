@@ -40,6 +40,7 @@ derive-debug-extras = { version = "0.3", features = [
 ] }
 derive-partial-eq-extras = "0.2"
 derive-enum-from-into = "0.2"
+unicode-ident = "1.0.18"
 
 temporary-annex = "0.1.0"
 iterator-endiate = "0.2"

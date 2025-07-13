@@ -327,6 +327,7 @@ dependencies = [
  "source-map",
  "temporary-annex",
  "tsify 0.5.5",
+ "unicode-ident",
  "wasm-bindgen",
 ]
 

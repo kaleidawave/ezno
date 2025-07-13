@@ -39,14 +39,14 @@ pub enum TypeAnnotation {
 	/// Function literal e.g. `(x: string) => string`
 	FunctionLiteral {
 		type_parameters: Option<Vec<TypeParameter>>,
-		parameters: TypeAnnotationFunctionParameters,
+		parameters: Box<TypeAnnotationFunctionParameters>,
 		return_type: Box<TypeAnnotation>,
 		position: Span,
 	},
 	/// Construction literal e.g. `new (x: string) => string`
 	ConstructorLiteral {
 		type_parameters: Option<Vec<TypeParameter>>,
-		parameters: TypeAnnotationFunctionParameters,
+		parameters: Box<TypeAnnotationFunctionParameters>,
 		return_type: Box<TypeAnnotation>,
 		position: Span,
 	},
@@ -102,11 +102,7 @@ pub enum TypeAnnotation {
 	/// For operation precedence reasons
 	ParenthesizedReference(Box<TypeAnnotation>, Span),
 	/// With decorators
-	Decorated(
-		Decorator,
-		#[cfg_attr(target_family = "wasm", tsify(type = "TypeAnnotation"))] Box<Self>,
-		Span,
-	),
+	Decorated(Box<Decorator>, Box<TypeAnnotation>, Span),
 	/// Allowed in certain positions
 	This(Span),
 	#[cfg(feature = "extras")]
@@ -237,27 +233,38 @@ impl CommonTypes {
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, PartialEq)]
-pub enum TypeName {
-	Name(String),
-	// For `Intl.Int` or something
-	FromNamespace(Vec<String>),
-}
+pub struct TypeName(pub(crate) String);
 
 impl TypeName {
-	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
-		match self {
-			TypeName::Name(name) => {
-				buf.push_str(name);
+	pub fn from_parts<'a>(parts: impl Iterator<Item = &'a str>) -> Self {
+		let mut buf = String::new();
+		for part in parts {
+			if !buf.is_empty() {
+				buf.push('.');
 			}
-			TypeName::FromNamespace(namespace) => {
-				for (not_at_end, item) in namespace.iter().nendiate() {
-					buf.push_str(item);
-					if not_at_end {
-						buf.push('.');
-					}
-				}
-			}
+			buf.push_str(part);
 		}
+		TypeName(buf)
+	}
+
+	pub fn is_namespace_reference(&self) -> bool {
+		self.0.contains('.')
+	}
+
+	pub fn parts(&self) -> impl Iterator<Item = &str> + '_ {
+		self.0.split('.')
+	}
+
+	pub fn raw(&self) -> &str {
+		&self.0
+	}
+
+	pub fn from_raw(on: String) -> Self {
+		Self(on)
+	}
+
+	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
+		buf.push_str(&self.0);
 	}
 }
 
@@ -573,7 +580,7 @@ impl TypeAnnotation {
 			let position = start.union(return_type.get_position());
 			TypeAnnotation::ConstructorLiteral {
 				position,
-				parameters,
+				parameters: Box::new(parameters),
 				type_parameters,
 				return_type,
 			}
@@ -622,7 +629,7 @@ impl TypeAnnotation {
 			let this_declaration =
 				Self::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = start.union(this_declaration.get_position());
-			Self::Decorated(decorator, Box::new(this_declaration), position)
+			Self::Decorated(Box::new(decorator), Box::new(this_declaration), position)
 		} else if reader.is_operator("(") {
 			// Function literal or group
 			let after = reader.after_brackets();
@@ -635,7 +642,7 @@ impl TypeAnnotation {
 				Self::FunctionLiteral {
 					position: start.union(return_type.get_position()),
 					type_parameters: None,
-					parameters,
+					parameters: Box::new(parameters),
 					return_type: Box::new(return_type),
 				}
 			} else {
@@ -652,7 +659,7 @@ impl TypeAnnotation {
 			Self::FunctionLiteral {
 				position: start.union(return_type.get_position()),
 				type_parameters: Some(type_parameters),
-				parameters,
+				parameters: Box::new(parameters),
 				return_type: Box::new(return_type),
 			}
 		} else if reader.is_operator_advance("{") {
@@ -692,17 +699,7 @@ impl TypeAnnotation {
 			let position = start.with_length(name.len());
 			let name = name.to_owned();
 
-			let name = if reader.is_operator(".") {
-				let mut namespace = vec![name];
-				while reader.is_operator_advance(".") {
-					let name = reader.parse_identifier("type name", false)?;
-					namespace.push(name.to_owned());
-				}
-				let _position = position.union(reader.get_end());
-				TypeName::FromNamespace(namespace)
-			} else {
-				TypeName::Name(name)
-			};
+			let name = TypeName::from_raw(name);
 
 			// Generics arguments:
 			if reader.is_operator_advance("<") {
@@ -748,7 +745,8 @@ impl TypeAnnotation {
 					TypeAnnotation::CommonName(name, span) => {
 						Ok((IsItem::Reference(name.name().to_owned()), span))
 					}
-					TypeAnnotation::Name(TypeName::Name(name), span) => {
+					TypeAnnotation::Name(name, span) if !name.is_namespace_reference() => {
+						let name = name.parts().next().unwrap().to_owned();
 						Ok((IsItem::Reference(name), span))
 					}
 					TypeAnnotation::This(span) => Ok((IsItem::This, span)),
@@ -846,7 +844,7 @@ impl TypeAnnotation {
 			Ok(Self::FunctionLiteral {
 				position,
 				type_parameters: None,
-				parameters: TypeAnnotationFunctionParameters {
+				parameters: Box::new(TypeAnnotationFunctionParameters {
 					parameters: vec![TypeAnnotationFunctionParameter {
 						position,
 						name: None,
@@ -856,7 +854,7 @@ impl TypeAnnotation {
 					}],
 					rest_parameter: None,
 					position: parameters_position,
-				},
+				}),
 				return_type: Box::new(return_type),
 			})
 		} else if reader.is_operator("?") {

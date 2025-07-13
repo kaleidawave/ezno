@@ -1,10 +1,14 @@
 pub mod classes;
 pub mod control_flow;
 pub mod import_export;
+pub mod using;
 pub mod variables;
-pub mod with_statement;
+pub mod with;
 
-pub use import_export::{export, import};
+pub use import_export::{
+	export::{self, Exportable},
+	import,
+};
 
 pub use super::types::{
 	declare_variable::DeclareVariableDeclaration,
@@ -40,7 +44,8 @@ pub use variables::{
 	VarVariableStatement, VariableDeclaration, VariableDeclarationItem, VariableDeclarationKeyword,
 };
 
-pub use with_statement::WithStatement;
+pub use using::UsingDeclaration;
+pub use with::WithStatement;
 
 pub type StatementFunctionBase = crate::functions::GeneralFunctionBase<StatementPosition>;
 pub type StatementFunction = crate::FunctionBase<StatementFunctionBase>;
@@ -66,19 +71,22 @@ pub type ClassDeclarationStatement = ClassDeclaration<StatementPosition>;
 #[try_into_references(&, &mut)]
 #[visit_self]
 pub enum StatementOrDeclaration {
-	Variable(VariableDeclaration),
-	Function(Box<Decorated<StatementFunction>>),
-	Class(Box<Decorated<ClassDeclarationStatement>>),
-	Enum(Decorated<EnumDeclaration>),
-	Interface(Decorated<InterfaceDeclaration>),
-	TypeAlias(TypeAlias),
-	// Special TS only
+	Variable(Box<Exportable<VariableDeclaration>>),
+	Function(Box<Decorated<Exportable<StatementFunction>>>),
+	Class(Box<Decorated<Exportable<ClassDeclarationStatement>>>),
+	Enum(Decorated<Exportable<EnumDeclaration>>),
+	Interface(Decorated<Exportable<InterfaceDeclaration>>),
+	TypeAlias(Decorated<Exportable<TypeAlias>>),
+	/// Special TypeScript only
 	DeclareVariable(DeclareVariableDeclaration),
 	#[cfg(feature = "full-typescript")]
-	Namespace(crate::types::namespace::Namespace),
+	Namespace(Exportable<crate::types::namespace::Namespace>),
 	// Top level only
 	Import(ImportDeclaration),
 	Export(Decorated<ExportDeclaration>),
+	// statement but also sort of declaration 🤷‍♂️
+	VarVariable(Exportable<VarVariableStatement>),
+	UsingDeclaration(UsingDeclaration),
 	// statements
 	Expression(MultipleExpression),
 	/// { ... } statement
@@ -107,7 +115,6 @@ pub enum StatementOrDeclaration {
 		name: String,
 		statement: Box<Statement>,
 	},
-	VarVariable(VarVariableStatement),
 	/// FUTURE under cfg?
 	WithStatement(WithStatement),
 	/// Lol
@@ -170,39 +177,115 @@ impl ASTNode for StatementOrDeclaration {
 			// Const can be either variable declaration or `const enum`
 			if reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
 				EnumDeclaration::from_reader(reader)
-					.map(|on| StatementOrDeclaration::Enum(Decorated::new(decorators, on)))
+					.map(Exportable::not_exported)
+					.map(|on| Decorated::new(decorators, on))
+					.map(StatementOrDeclaration::Enum)
 			} else {
-				VariableDeclaration::from_reader(reader).map(StatementOrDeclaration::Variable)
+				VariableDeclaration::from_reader(reader)
+					.map(Exportable::not_exported)
+					.map(Box::new)
+					.map(StatementOrDeclaration::Variable)
 			}
 		} else if reader.is_keyword("let") {
-			let declaration = VariableDeclaration::from_reader(reader)?;
-			Ok(StatementOrDeclaration::Variable(declaration))
+			VariableDeclaration::from_reader(reader)
+				.map(Exportable::not_exported)
+				.map(Box::new)
+				.map(StatementOrDeclaration::Variable)
 		} else if reader.is_keyword("enum") {
 			EnumDeclaration::from_reader(reader)
-				.map(|on| StatementOrDeclaration::Enum(Decorated::new(decorators, on)))
+				.map(Exportable::not_exported)
+				.map(|on| Decorated::new(decorators, on))
+				.map(StatementOrDeclaration::Enum)
 		} else if reader.is_keyword("class") {
-			// state.append_keyword_at_pos(start.0, TSXKeyword::Class);
 			ClassDeclaration::from_reader(reader)
-				.map(|on| StatementOrDeclaration::Class(Box::new(Decorated::new(decorators, on))))
+				.map(Exportable::not_exported)
+				.map(|on| Decorated::new(decorators, on))
+				.map(Box::new)
+				.map(StatementOrDeclaration::Class)
+		} else if reader.is_keyword("interface") {
+			let interface = InterfaceDeclaration::from_reader(reader)?;
+			crate::lexer::utilities::assert_type_annotations(reader, interface.get_position())?;
+			let exported = Exportable::not_exported(interface);
+			let decorated = Decorated::new(decorators, exported);
+			Ok(StatementOrDeclaration::Interface(decorated))
+		} else if reader.is_keyword("type")
+			&& reader.get_current()[4..].trim_start().starts_with(char::is_alphabetic)
+		{
+			// options.type_annotations => {
+			let alias = TypeAlias::from_reader(reader)?;
+			crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
+			if !decorators.is_empty() {
+				todo!();
+			}
+			let alias = Exportable::not_exported(alias);
+			let decorated = Decorated::new(decorators, alias);
+			Ok(StatementOrDeclaration::TypeAlias(decorated))
+		} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
+			let function = StatementFunction::from_reader(reader)?;
+			let exported = Exportable::not_exported(function);
+			let decorated = Decorated::new(decorators, exported);
+			Ok(StatementOrDeclaration::Function(Box::new(decorated)))
+		} else if reader.is_keyword("export") {
+			let export_len: u32 = 6;
+			let after = reader.get_current()[export_len as usize..].trim_start();
+			if after.starts_with("const") {
+				reader.advance(export_len);
+				// Const can be either variable declaration or `const enum`
+				if reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
+					EnumDeclaration::from_reader(reader)
+						.map(Exportable::exported)
+						.map(|on| StatementOrDeclaration::Enum(Decorated::new(decorators, on)))
+				} else {
+					VariableDeclaration::from_reader(reader)
+						.map(Exportable::exported)
+						.map(Box::new)
+						.map(StatementOrDeclaration::Variable)
+				}
+			} else if after.starts_with("let") {
+				reader.advance(export_len);
+				VariableDeclaration::from_reader(reader)
+					.map(Exportable::exported)
+					.map(Box::new)
+					.map(StatementOrDeclaration::Variable)
+			} else if after.starts_with("enum") {
+				reader.advance(export_len);
+				EnumDeclaration::from_reader(reader)
+					.map(Exportable::exported)
+					.map(|on| StatementOrDeclaration::Enum(Decorated::new(decorators, on)))
+			} else if after.starts_with("class") {
+				reader.advance(export_len);
+				// state.append_keyword_at_pos(start.0, TSXKeyword::Class);
+				ClassDeclaration::from_reader(reader)
+					.map(Exportable::exported)
+					.map(|on| Decorated::new(decorators, on))
+					.map(Box::new)
+					.map(StatementOrDeclaration::Class)
+			} else if after.starts_with("interface") {
+				reader.advance(export_len);
+				let interface = InterfaceDeclaration::from_reader(reader)?;
+				crate::lexer::utilities::assert_type_annotations(reader, interface.get_position())?;
+				let exported = Exportable::exported(interface);
+				let decorated = Decorated::new(decorators, exported);
+				Ok(StatementOrDeclaration::Interface(decorated))
+			} else if after.starts_with("type") {
+				reader.advance(export_len);
+				let alias = TypeAlias::from_reader(reader)?;
+				crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
+				let exported = Exportable::exported(alias);
+				let decorated = Decorated::new(decorators, exported);
+				Ok(StatementOrDeclaration::TypeAlias(decorated))
+			} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
+				reader.advance(export_len);
+				let function = StatementFunction::from_reader(reader).map(Exportable::exported)?;
+				Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
+			} else {
+				ExportDeclaration::from_reader(reader)
+					.map(|on| StatementOrDeclaration::Export(Decorated::new(decorators, on)))
+			}
 		} else if reader.is_keyword("import")
 			&& !reader.get_current()[6..].trim_start().starts_with(['.', '('])
 		{
 			ImportDeclaration::from_reader(reader).map(Into::into)
-		} else if reader.is_keyword("export") {
-			ExportDeclaration::from_reader(reader)
-				.map(|on| StatementOrDeclaration::Export(Decorated::new(decorators, on)))
-		} else if reader.is_keyword("interface") {
-			let interface = InterfaceDeclaration::from_reader(reader)?;
-			crate::lexer::utilities::assert_type_annotations(reader, interface.get_position())?;
-			Ok(StatementOrDeclaration::Interface(Decorated::new(decorators, interface)))
-		} else if reader.is_keyword("type") {
-			// options.type_annotations => {
-			let alias = TypeAlias::from_reader(reader)?;
-			crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
-			Ok(alias.into())
-		} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
-			let function = StatementFunction::from_reader(reader)?;
-			Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
 		} else if reader.is_keyword("declare") {
 			let start = reader.get_start();
 			reader.advance("declare".len() as u32);
@@ -216,23 +299,30 @@ impl ASTNode for StatementOrDeclaration {
 				let mut class = ClassDeclaration::<StatementPosition>::from_reader(reader)?;
 				class.name.is_declare = true;
 				class.position.start = start.0;
-				Ok(StatementOrDeclaration::Class(Box::new(Decorated::new(decorators, class))))
+				let class = Exportable::not_exported(class);
+				let decorated = Decorated::new(decorators, class);
+				Ok(StatementOrDeclaration::Class(Box::new(decorated)))
 			} else if reader.is_keyword("function") || reader.is_keyword("async") {
 				let mut function = StatementFunction::from_reader(reader)?;
 				function.name.is_declare = true;
 				function.position.start = start.0;
-				Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
+				let function = Exportable::not_exported(function);
+				let decorated = Decorated::new(decorators, function);
+				Ok(StatementOrDeclaration::Function(Box::new(decorated)))
 			} else if reader.is_keyword("type") {
 				let mut alias = TypeAlias::from_reader(reader)?;
 				alias.name.is_declare = true;
 				alias.position.start = start.0;
-				Ok(StatementOrDeclaration::TypeAlias(alias))
+				let alias = Exportable::not_exported(alias);
+				let decorated = Decorated::new(decorators, alias);
+				Ok(StatementOrDeclaration::TypeAlias(decorated))
 			} else {
 				#[cfg(feature = "extras")]
 				if reader.is_keyword("namespace") {
 					let mut namespace = crate::types::namespace::Namespace::from_reader(reader)?;
 					namespace.is_declare = true;
 					namespace.position.start = start.0;
+					let namespace = Exportable::not_exported(namespace);
 					return Ok(StatementOrDeclaration::Namespace(namespace));
 				}
 
@@ -241,6 +331,11 @@ impl ASTNode for StatementOrDeclaration {
 					&["let", "const", "var", "class", "type", "async", "function", "namespace"],
 				))
 			}
+		} else if reader.is_keyword("using")
+			|| (reader.is_keyword("await")
+				&& reader.get_current()[5..].trim_start().starts_with("using "))
+		{
+			UsingDeclaration::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("if") {
 			IfStatement::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("for") {
@@ -254,7 +349,9 @@ impl ASTNode for StatementOrDeclaration {
 		} else if reader.is_keyword("try") {
 			TryCatchStatement::from_reader(reader).map(Box::new).map(Into::into)
 		} else if reader.is_keyword("var") {
-			VarVariableStatement::from_reader(reader).map(StatementOrDeclaration::VarVariable)
+			VarVariableStatement::from_reader(reader)
+				.map(Exportable::not_exported)
+				.map(StatementOrDeclaration::VarVariable)
 		} else if reader.is_keyword("with") {
 			WithStatement::from_reader(reader).map(StatementOrDeclaration::WithStatement)
 		} else if reader.starts_with('{') {
@@ -338,20 +435,13 @@ impl ASTNode for StatementOrDeclaration {
 
 			#[cfg(feature = "full-typescript")]
 			if reader.is_keyword("namespace") {
-				return crate::types::namespace::Namespace::from_reader(reader).map(Into::into);
+				return crate::types::namespace::Namespace::from_reader(reader)
+					.map(Exportable::not_exported)
+					.map(Into::into);
 			}
 
-			// "let",
-			// 		"const",
-			// 		"function",
-			// 		"class",
-			// 		"enum",
-			// 		"type",
-			// 		"declare",
-			// 		"import",
-			// 		"export",
-			// 		"async",
-			// 		"generator",
+			// "let" | "const" | "function" | "class" | "enum" | "type" | "declare" |
+			// "import" | "export" | "async" | "generator"
 
 			let expression = MultipleExpression::from_reader(reader)?;
 			Ok(StatementOrDeclaration::Expression(expression))
@@ -373,6 +463,9 @@ impl ASTNode for StatementOrDeclaration {
 			StatementOrDeclaration::Function(f) => f.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
+			StatementOrDeclaration::UsingDeclaration(ud) => {
+				ud.to_string_from_buffer(buf, options, local)
+			}
 			StatementOrDeclaration::Enum(r#enum) => {
 				r#enum.to_string_from_buffer(buf, options, local);
 			}
@@ -500,29 +593,9 @@ impl StatementOrDeclaration {
 			| StatementOrDeclaration::Variable(..)
 			| StatementOrDeclaration::DeclareVariable(..)
 			| StatementOrDeclaration::Import(..)
+			| StatementOrDeclaration::Export(..)
 			| StatementOrDeclaration::TypeAlias(..) => true,
 			StatementOrDeclaration::Expression(_expr) => true,
-			StatementOrDeclaration::Export(Decorated {
-				on: import_export::export::ExportDeclaration::Default { .. },
-				..
-			}) => true,
-			StatementOrDeclaration::Export(Decorated {
-				on: import_export::export::ExportDeclaration::Item { exported, .. },
-				..
-			}) => matches!(
-				&**exported,
-				import_export::export::Exportable::ImportAll { .. }
-					| import_export::export::Exportable::ImportParts { .. }
-					| import_export::export::Exportable::Parts { .. }
-			),
-			// StatementOrDeclaration::Expression(expr) => match &expr.0 {
-			// 	// TODO temp fix
-			// 	crate::Expression::Comment { .. } => false,
-			// 	expr => {
-			// 		dbg!(&expr);
-			// 		true
-			// 	}
-			// }
 			StatementOrDeclaration::Imported { moved, .. } => moved.requires_semi_colon(),
 			_ => false,
 		}
@@ -532,7 +605,7 @@ impl StatementOrDeclaration {
 	pub fn is_declaration(&self) -> bool {
 		match self {
 			StatementOrDeclaration::Variable(_)
-			| StatementOrDeclaration::Function(_)
+			// TODO strict mode | StatementOrDeclaration::Function(_)
 			| StatementOrDeclaration::Class(_)
 			| StatementOrDeclaration::Enum(_)
 			| StatementOrDeclaration::Interface(_)
@@ -557,7 +630,10 @@ impl ASTNode for Statement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let statement_or_declaration = StatementOrDeclaration::from_reader(reader)?;
 		if statement_or_declaration.is_declaration() {
-			Err(ParseError::new(ParseErrors::ExpectedStatement, statement_or_declaration.get_position()))
+			Err(ParseError::new(
+				ParseErrors::ExpectedStatement,
+				statement_or_declaration.get_position(),
+			))
 		} else {
 			Ok(Self(statement_or_declaration))
 		}

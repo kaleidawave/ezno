@@ -17,7 +17,7 @@ use crate::{
 use parser::{
 	expressions::MultipleExpression,
 	statements_and_declarations::control_flow::for_statement::ForLoopCondition,
-	statements_and_declarations::export::{ExportDeclaration, Exportable},
+	statements_and_declarations::export::ExportDeclaration,
 	statements_and_declarations::variables::{VariableDeclaration, VariableDeclarationKeyword},
 	statements_and_declarations::StatementOrDeclaration,
 	ASTNode, BlockOrSingleStatement,
@@ -41,96 +41,39 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 	let position = statement.get_position().with_source(environment.get_source());
 	match statement {
 		StatementOrDeclaration::Variable(declaration) => {
-			synthesise_variable_declaration(declaration, environment, checking_data, false, false);
+			synthesise_variable_declaration(
+				&declaration.item,
+				environment,
+				checking_data,
+				false,
+				false,
+			);
 		}
 		StatementOrDeclaration::Class(class) => {
 			use super::StatementOrExpressionVariable;
+			let class = &class.on.item;
 
 			let existing_id = checking_data
 				.local_type_mappings
 				.types_to_types
-				.get_exact(class.on.name.identifier.get_position())
+				.get_exact(class.name.identifier.get_position())
 				.copied();
 
 			// Adding variable is done inside
 			let constructor = synthesise_class_declaration(
-				&class.on,
+				class,
 				existing_id,
 				TypeId::ANY_TYPE,
 				environment,
 				checking_data,
 			);
 
-			if let Some(variable) = class.on.name.get_variable_id(environment.get_source()) {
+			if let Some(variable) = class.name.get_variable_id(environment.get_source()) {
 				environment.info.variable_current_value.insert(variable, constructor);
 			}
 		}
 		StatementOrDeclaration::Export(exported) => {
 			match &exported.on {
-				ExportDeclaration::Item { exported, position: _ } => {
-					match &**exported {
-						// Skipped as this is done earlier
-						Exportable::Class(class) => {
-							let existing_id = checking_data
-								.local_type_mappings
-								.types_to_types
-								.get_exact(class.name.identifier.get_position())
-								.copied();
-
-							// TODO mark as exported
-							let _ = synthesise_class_declaration(
-								class,
-								existing_id,
-								TypeId::ANY_TYPE,
-								environment,
-								checking_data,
-							);
-						}
-						Exportable::Variable(variable) => {
-							synthesise_variable_declaration(
-								variable,
-								environment,
-								checking_data,
-								true,
-								false,
-							);
-						}
-						Exportable::Parts(parts) => {
-							for part in parts {
-								let pair = super::hoisting::part_to_name_pair(part);
-								if let Some(pair) = pair {
-									let position =
-										pair.position.with_source(environment.get_source());
-									let value = environment.get_variable_handle_error(
-										pair.value,
-										position,
-										checking_data,
-									);
-									if let crate::Scope::Module { ref mut exported, .. } =
-										environment.context_type.scope
-									{
-										if let Ok(value) = value {
-											exported.named.insert(
-												pair.r#as.to_owned(),
-												(value.0.get_id(), value.0.get_mutability()),
-											);
-										}
-									}
-								}
-							}
-						}
-						Exportable::VarStatement(_) => {
-							todo!()
-						}
-						Exportable::ImportAll { .. }
-						| Exportable::ImportParts { .. }
-						| Exportable::Function(_)
-						| Exportable::Enum(_)
-						| Exportable::Interface(_)
-						| Exportable::Namespace(_)
-						| Exportable::TypeAlias(_) => {}
-					}
-				}
 				ExportDeclaration::Default { expression, position } => {
 					// TODO can be inferred sometimes
 					let result = synthesise_expression(
@@ -165,9 +108,11 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 						},
 					);
 				}
+				_ => {}
 			}
 		}
-		StatementOrDeclaration::Enum(r#enum) => {
+		StatementOrDeclaration::Enum(item) => {
+			let r#enum = &item.on.item;
 			use crate::types::{
 				properties::{PropertyKey, PropertyValue, Publicity},
 				Constant,
@@ -181,7 +126,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 			);
 
 			// TODO remove enumerate, add add function and more
-			for (idx, member) in r#enum.on.members.iter().enumerate() {
+			for (idx, member) in r#enum.members.iter().enumerate() {
 				let parser::ast::EnumMember { name, value, position } = member;
 				match value {
 					parser::ast::EnumMemberValue::ClassMembers(_) => {
@@ -416,7 +361,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 			);
 		}
 		StatementOrDeclaration::VarVariable(stmt) => {
-			for declaration in &stmt.declarations {
+			for declaration in &stmt.item.declarations {
 				synthesise_variable_declaration_item(
 					declaration,
 					environment,

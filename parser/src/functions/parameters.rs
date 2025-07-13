@@ -97,7 +97,7 @@ pub trait LeadingParameter: Send + Sync + Sized + Debug + PartialEq + Clone + 's
 #[derive(Debug, Clone, PartialEqExtras, Visitable)]
 #[partial_eq_ignore_types(Span)]
 pub struct ThisParameter {
-	pub constraint: TypeAnnotation,
+	pub constraint: Box<TypeAnnotation>,
 	pub position: Span,
 }
 
@@ -106,7 +106,7 @@ pub struct ThisParameter {
 #[derive(Debug, Clone, PartialEqExtras, Visitable)]
 #[partial_eq_ignore_types(Span)]
 pub struct SuperParameter {
-	pub constraint: TypeAnnotation,
+	pub constraint: Box<TypeAnnotation>,
 	pub position: Span,
 }
 
@@ -253,13 +253,13 @@ where
 				reader.expect(':')?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
-				this_type = Some(ThisParameter { constraint, position });
+				this_type = Some(ThisParameter { constraint: Box::new(constraint), position });
 			} else if parameters.is_empty() && reader.is_keyword_advance("super") {
 				reader.expect(':')?;
 				// reader.expect(TSXToken::Colon)?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
-				super_type = Some(SuperParameter { constraint, position });
+				super_type = Some(SuperParameter { constraint: Box::new(constraint), position });
 			} else {
 				let visibility = V::from_reader(reader);
 

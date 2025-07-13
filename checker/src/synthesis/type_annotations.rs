@@ -65,14 +65,10 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::Name(name, position) => {
 			let inner_type_id = synthesise_type_name(name, *position, environment, checking_data);
 			if checking_data.types.get_type_by_id(inner_type_id).get_parameters().is_some() {
-				// TODO check defaults...
-				let name = match name {
-					TypeName::Name(name) => name.to_owned(),
-					TypeName::FromNamespace(..) => "TODO join .".to_owned(),
-				};
+				let name = name.raw();
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::TypeNeedsTypeArguments(
-						&name,
+						name,
 						position.with_source(environment.get_source()),
 					),
 				);
@@ -814,31 +810,29 @@ pub fn synthesise_type_name<T: crate::ReadFromFS>(
 	environment: &Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
-	match name {
-		TypeName::Name(name) => {
-			if let Some(ty) = environment.get_type_from_name(name) {
-				// Warn if it requires parameters. e.g. Array
-				ty
-			} else {
-				let possibles = {
-					let mut possibles = crate::get_closest(environment.get_all_named_types(), name)
-						.unwrap_or(vec![]);
-					possibles.sort_unstable();
-					possibles
-				};
-				checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
-					name,
-					possibles,
-					position.with_source(environment.get_source()),
-				));
-				TypeId::ERROR_TYPE
-			}
-		}
-		TypeName::FromNamespace(..) => {
-			checking_data.raise_unimplemented_error(
-				"namespace item",
+	if name.is_namespace_reference() {
+		checking_data.raise_unimplemented_error(
+			"namespace item",
+			position.with_source(environment.get_source()),
+		);
+		TypeId::ERROR_TYPE
+	} else {
+		let name = name.parts().next().unwrap();
+		if let Some(ty) = environment.get_type_from_name(name) {
+			// Warn if it requires parameters. e.g. Array
+			ty
+		} else {
+			let possibles = {
+				let mut possibles =
+					crate::get_closest(environment.get_all_named_types(), name).unwrap_or(vec![]);
+				possibles.sort_unstable();
+				possibles
+			};
+			checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
+				name,
+				possibles,
 				position.with_source(environment.get_source()),
-			);
+			));
 			TypeId::ERROR_TYPE
 		}
 	}

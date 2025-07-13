@@ -69,7 +69,7 @@ pub enum ParseErrors<'a> {
 	InvalidDeclareItem(&'static str),
 	DestructuringRequiresValue,
 	ConstDeclarationRequiresValue,
-	CannotAccessObjectLiteralDirectly,
+	// TODO not sure CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
 	InvalidNumberLiteral,
 	ReservedIdentifier,
@@ -179,9 +179,9 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::DestructuringRequiresValue => {
 				write!(f, "RHS of destructured declaration requires expression")
 			}
-			ParseErrors::CannotAccessObjectLiteralDirectly => {
-				write!(f, "Cannot get property on object literal directly")
-			}
+			// ParseErrors::CannotAccessObjectLiteralDirectly => {
+			// 	write!(f, "Cannot get property on object literal directly")
+			// }
 			ParseErrors::TrailingCommaNotAllowedHere => {
 				write!(f, "Trailing comma not allowed here")
 			}
