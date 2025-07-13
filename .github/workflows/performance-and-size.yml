@@ -69,12 +69,14 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       # TODO extract
-      - name: Download shell-language
+      - name: Download shell-language and spectra
         run: |
           mkdir bin
           gh release download -R kaleidawave/experiments assets -p shell-language -D bin
+          gh release download -R kaleidawave/experiments assets -p spectra -D bin
           ls -R .
           chmod +x ./bin/shell-language
+          chmod +x ./bin/spectra
           echo "$(pwd)/bin" >> "$GITHUB_PATH"
 
       - uses: brndnmtthws/rust-action-cargo-binstall@v1
@@ -97,10 +99,8 @@ jobs:
       - name: Build latest version of demo.tsx
         # if: ${{ steps.download-demo-tsx.outcome == 'failure' }}
         run: |
-          cargo run -p ezno-checker-specification \
-            --example amalgamate ./checker/specification/specification.md \
-            --comment-headers \
-            --out demo.tsx
+          spectra concatenate-cases checker/specification/specification.md total.ts
+          cargo run -p ezno-parser --example combine_blocks total.ts --out demo.tsx
 
       # get other binaries and last
 
