@@ -2,7 +2,6 @@ use std::iter;
 
 use parser::{
 	statements_and_declarations::{
-		export::Exportable,
 		import::ImportedItems,
 		import_export::{ImportExportName, ImportExportPart, ImportOrExport},
 		variables::{VariableDeclaration, VariableDeclarationKeyword},
@@ -27,11 +26,7 @@ use crate::{
 };
 
 use super::{
-	definitions::{
-		as_class, as_enum, as_function, as_interface, as_type_alias, as_variable_declaration,
-		get_internal_function_effect_from_decorators,
-	},
-	variables::register_variable,
+	definitions::get_internal_function_effect_from_decorators, variables::register_variable,
 	EznoParser,
 };
 
@@ -42,7 +37,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 ) {
 	// First stage: imports (both types and names) and types
 	for item in items {
-		if let Some((class, _decorators)) = as_class(item) {
+		if let parser::StatementOrDeclaration::Class(item) = item {
+			let class = &item.on.item;
 			let result = environment.declare_class::<EznoParser>(
 				class.name.as_option_str().unwrap_or_default(),
 				class.type_parameters.as_deref(),
@@ -56,7 +52,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					.types_to_types
 					.push(class.name.identifier.get_position(), ty);
 
-				if let StatementOrDeclaration::Export(_) = item {
+				if item.on.is_exported {
 					if let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
 					{
@@ -73,7 +69,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					},
 				);
 			}
-		} else if let Some((r#enum, _)) = as_enum(item) {
+		} else if let parser::StatementOrDeclaration::Enum(item) = item {
+			let r#enum = &item.on.item;
 			if checking_data.options.extra_syntax {
 				checking_data.diagnostics_container.add_warning(
 					crate::diagnostics::TypeCheckWarning::ItemMustBeUsedWithFlag {
@@ -90,10 +87,18 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				r#enum.get_position(),
 				&mut checking_data.types,
 			);
+
 			if let Ok(ty) = result {
 				checking_data.local_type_mappings.types_to_types.push(r#enum.get_position(), ty);
-
 				checking_data.types.update_alias(ty, TypeId::NUMBER_TYPE);
+
+				if item.on.is_exported {
+					if let crate::Scope::Module { ref mut exported, .. } =
+						environment.context_type.scope
+					{
+						exported.named_types.insert(r#enum.name.to_owned(), ty);
+					}
+				}
 			} else {
 				let position = r#enum.get_position().with_source(environment.get_source());
 				checking_data.diagnostics_container.add_error(
@@ -103,7 +108,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					},
 				);
 			}
-		} else if let Some((interface, _)) = as_interface(item) {
+		} else if let StatementOrDeclaration::Interface(item) = item {
+			let interface = &item.on.item;
 			let result = environment.declare_interface::<EznoParser>(
 				interface.name.as_option_str().unwrap_or_default(),
 				interface.type_parameters.as_deref(),
@@ -126,7 +132,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			{
 				checking_data.local_type_mappings.types_to_types.push(interface.get_position(), ty);
 
-				if let StatementOrDeclaration::Export(_) = item {
+				if item.on.is_exported {
 					if let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
 					{
@@ -144,7 +150,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					},
 				);
 			}
-		} else if let Some((alias, _)) = as_type_alias(item) {
+		} else if let StatementOrDeclaration::TypeAlias(item) = item {
+			let alias = &item.on.item;
 			let result = environment.declare_alias::<EznoParser>(
 				alias.name.as_option_str().unwrap_or_default(),
 				alias.parameters.as_deref(),
@@ -155,7 +162,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			if let Ok(ty) = result {
 				checking_data.local_type_mappings.types_to_types.push(alias.get_position(), ty);
 
-				if let StatementOrDeclaration::Export(_) = item {
+				if item.on.is_exported {
 					if let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
 					{
@@ -177,7 +184,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			match item {
 				StatementOrDeclaration::Namespace(ns) => checking_data.raise_unimplemented_error(
 					"namespace",
-					ns.position.with_source(environment.get_source()),
+					ns.item.position.with_source(environment.get_source()),
 				),
 				StatementOrDeclaration::Import(import) => {
 					let items = match &import.items {
@@ -219,52 +226,53 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						import.is_type_annotation_import_only,
 					);
 				}
-				StatementOrDeclaration::Export(Decorated {
-					on: ExportDeclaration::Item { exported, position },
-					..
-				}) => {
-					if let Exportable::ImportAll { r#as, from } = &**exported {
-						let kind = match r#as {
-							Some(VariableIdentifier::Standard(name, position)) => {
-								ImportKind::All { under: name, position: *position }
-							}
-							Some(VariableIdentifier::Marker(_, _)) => {
+				StatementOrDeclaration::Export(item) => {
+					let Decorated { on: exported, .. } = &**item;
+					match exported {
+						ExportDeclaration::ImportToExportAll { r#as, from, position } => {
+							let kind = match r#as {
+								Some(VariableIdentifier::Standard(name, position)) => {
+									ImportKind::All { under: name, position: *position }
+								}
+								Some(VariableIdentifier::Marker(_, _)) => {
+									// TODO
+									continue;
+								}
+								None => ImportKind::Everything,
+							};
+
+							import_items::<iter::Empty<_>, _, _>(
+								environment,
+								from.get_path().unwrap(),
+								*position,
+								None,
+								kind,
+								checking_data,
+								true,
 								// TODO
-								continue;
-							}
-							None => ImportKind::Everything,
-						};
+								false,
+							);
+						}
+						ExportDeclaration::ImportToExportParts {
+							parts,
+							from,
+							type_definitions_only,
+							position,
+						} => {
+							let parts = parts.iter().filter_map(part_to_name_pair);
 
-						import_items::<iter::Empty<_>, _, _>(
-							environment,
-							from.get_path().unwrap(),
-							*position,
-							None,
-							kind,
-							checking_data,
-							true,
-							// TODO
-							false,
-						);
-					} else if let Exportable::ImportParts {
-						parts,
-						from,
-						type_definitions_only,
-						..
-					} = &**exported
-					{
-						let parts = parts.iter().filter_map(part_to_name_pair);
-
-						import_items(
-							environment,
-							from.get_path().unwrap(),
-							*position,
-							None,
-							crate::features::modules::ImportKind::Parts(parts),
-							checking_data,
-							true,
-							*type_definitions_only,
-						);
+							import_items(
+								environment,
+								from.get_path().unwrap(),
+								*position,
+								None,
+								crate::features::modules::ImportKind::Parts(parts),
+								checking_data,
+								true,
+								*type_definitions_only,
+							);
+						}
+						_ => {}
 					}
 				}
 				_ => {}
@@ -275,7 +283,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	// Second stage: variables and function type hoisting
 	let mut second_items = items.iter().peekable();
 	while let Some(item) = second_items.next() {
-		if let Some((class, _decorators)) = as_class(item) {
+		if let parser::StatementOrDeclaration::Class(item) = item {
+			let class = &item.on.item;
 			let name_position =
 				class.name.identifier.get_position().with_source(environment.get_source());
 
@@ -307,7 +316,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
-		} else if let Some((function, decorators)) = as_function(item) {
+		} else if let parser::StatementOrDeclaration::Function(item) = item {
+			let function = &item.on.item;
 			if let Some(VariableIdentifier::Standard(name, name_position)) =
 				function.name.as_option_variable_identifier()
 			{
@@ -321,13 +331,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// Read declarations until
 					// TODO map_while?
 					while let Some(overload_declaration) = second_items.next_if(|t| {
-						matches!(t, StatementOrDeclaration::Function(decorated) if decorated.on.name.as_option_str().is_some_and(|n| n == name) && !decorated.on.has_body())
+						matches!(t, StatementOrDeclaration::Function(decorated) if decorated.on.item.name.as_option_str().is_some_and(|n| n == name) && !decorated.on.item.has_body())
 					}) {
 						let parser::StatementOrDeclaration::Function(decorated) = &overload_declaration
 						else {
 							unreachable!()
 						};
-						let function = &decorated.on;
+						let function = &decorated.on.item;
 						let shape = super::functions::synthesise_shape(
 							function,
 							environment,
@@ -341,14 +351,14 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							next,
 							StatementOrDeclaration::Function(decorated)
 							if
-								decorated.on.name.as_option_str().is_some_and(|n| n == name)
-								&& decorated.on.has_body()
+								decorated.on.item.name.as_option_str().is_some_and(|n| n == name)
+								&& decorated.on.item.has_body()
 						)
 						.then_some(next)
 					});
 
 					if let Some(StatementOrDeclaration::Function(decorated)) = upcoming {
-						let function = &decorated.on;
+						let function = &decorated.on.item;
 						let actual = super::functions::synthesise_shape(
 							function,
 							environment,
@@ -374,8 +384,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					(Vec::new(), actual)
 				};
 
-				let internal_effect =
-					get_internal_function_effect_from_decorators(decorators, name, environment);
+				let internal_effect = get_internal_function_effect_from_decorators(
+					&item.decorators,
+					name,
+					environment,
+				);
 				let value = super::functions::build_overloaded_function(
 					crate::FunctionId(environment.get_source(), function.position.start),
 					crate::types::functions::FunctionBehavior::Function {
@@ -422,10 +435,12 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					checking_data.options.record_all_assignments_and_reads,
 				);
 			}
-		} else if let Some((interface, _)) = as_interface(item) {
+		} else if let StatementOrDeclaration::Interface(item) = item {
 			use crate::types::{PolyNature, Type};
 			use crate::ASTImplementation;
 			use crate::Scope;
+
+			let interface = &item.on.item;
 
 			let ty = *checking_data
 				.local_type_mappings
@@ -524,7 +539,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					);
 				}
 			}
-		} else if let Some((alias, _)) = as_type_alias(item) {
+		} else if let StatementOrDeclaration::TypeAlias(item) = item {
+			let alias = &item.on.item;
+
 			let ty = checking_data
 				.local_type_mappings
 				.types_to_types
@@ -538,7 +555,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				alias.get_position(),
 				checking_data,
 			);
-		} else if let Some((r#enum, _)) = as_enum(item) {
+		} else if let parser::StatementOrDeclaration::Enum(item) = item {
+			let r#enum = &item.on.item;
+
 			let argument = VariableRegisterArguments {
 				constant: true,
 				space: None,
@@ -554,12 +573,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				&mut checking_data.local_type_mappings,
 				checking_data.options.record_all_assignments_and_reads,
 			);
-		} else if let Some((declaration, _)) = as_variable_declaration(item) {
+		} else if let parser::StatementOrDeclaration::Variable(item) = item {
+			let declaration = &item.item;
 			hoist_variable_declaration(declaration, environment, checking_data);
 		} else {
 			match item {
 				StatementOrDeclaration::VarVariable(stmt) => {
-					for declaration in &stmt.declarations {
+					for declaration in &stmt.item.declarations {
 						let constraint = get_annotation_from_declaration(
 							declaration,
 							environment,
@@ -582,18 +602,20 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				}
 				StatementOrDeclaration::Namespace(ns) => checking_data.raise_unimplemented_error(
 					"namespace",
-					ns.position.with_source(environment.get_source()),
+					ns.item.position.with_source(environment.get_source()),
 				),
-				StatementOrDeclaration::Export(Decorated {
-					on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
-					..
-				}) => {
+				StatementOrDeclaration::Export(item) => {
+					if let Decorated {
+						on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
+						..
+					} = &**item {
 					// TODO under definition file
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::FunctionWithoutBodyNotAllowedHere {
 							position: position.with_source(environment.get_source()),
 						},
 					);
+				}
 				}
 				StatementOrDeclaration::DeclareVariable(DeclareVariableDeclaration {
 					keyword: _,
@@ -640,7 +662,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	// Third stage: functions
 	let third_stage_items = items.iter().peekable();
 	for item in third_stage_items {
-		if let Some((function, decorators)) = as_function(item) {
+		if let parser::StatementOrDeclaration::Function(item) = item {
+			let function = &item.on.item;
 			if let Some(VariableIdentifier::Standard(name, name_position)) =
 				function.name.as_option_variable_identifier()
 			{
@@ -679,7 +702,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// };
 
 					let internal_marker = get_internal_function_effect_from_decorators(
-						decorators,
+						&item.decorators,
 						function.name.as_option_str().unwrap(),
 						environment,
 					);
@@ -741,7 +764,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					.0
 					.insert(variable_id, value);
 
-				if let StatementOrDeclaration::Export(_) = item {
+				if item.on.is_exported {
 					if let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
 					{

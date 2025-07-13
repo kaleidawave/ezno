@@ -5,7 +5,7 @@ use crate::{
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum JSXRoot {
 	Element(JSXElement),
@@ -13,7 +13,7 @@ pub enum JSXRoot {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct JSXElement {
 	/// Name of the element (TODO or reference to element)
@@ -25,7 +25,7 @@ pub struct JSXElement {
 
 pub type JSXChildren = Vec<JSXNode>;
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXElementChildren {
 	Children(JSXChildren),
@@ -242,7 +242,7 @@ impl ASTNode for JSXElement {
 }
 
 /// TODO spread attributes and boolean attributes
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXAttribute {
 	Static(String, String, Span),
@@ -324,7 +324,7 @@ impl ASTNode for JSXAttribute {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct JSXFragment {
 	pub children: JSXChildren,
@@ -430,7 +430,7 @@ fn jsx_children_to_string<T: source_map::ToString>(
 }
 
 // TODO can `JSXFragment` appear here?
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXNode {
 	Element(JSXElement),

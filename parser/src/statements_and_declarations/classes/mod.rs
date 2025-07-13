@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub name: T,
@@ -23,9 +23,7 @@ pub struct ClassDeclaration<T: ExpressionOrStatementPosition> {
 	pub position: Span,
 }
 
-impl<U: ExpressionOrStatementPosition + Debug + PartialEq + Clone + 'static> ASTNode
-	for ClassDeclaration<U>
-{
+impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for ClassDeclaration<U> {
 	fn get_position(&self) -> Span {
 		self.position
 	}

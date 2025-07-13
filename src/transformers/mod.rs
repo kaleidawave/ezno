@@ -14,7 +14,7 @@ impl parser::visiting::VisitorMut<StatementOrDeclaration, ()> for ConstToLet {
 		_chain: &parser::visiting::Chain,
 	) {
 		if let StatementOrDeclaration::Variable(variable_declaration) = item {
-			variable_declaration.kind = VariableDeclarationKeyword::Let;
+			variable_declaration.item.kind = VariableDeclarationKeyword::Let;
 		}
 	}
 }

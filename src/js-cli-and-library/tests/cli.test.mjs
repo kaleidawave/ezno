@@ -26,7 +26,21 @@ test("ast-explorer", { timeout: 10000 }, async (t) => {
         write(child, "close()")
         await wait();
 
-        const expected = `Entering ast-explorer\n> {\n  Ok: {\n    hashbang_comment: undefined,\n    items: [\n      {\n        Statement: {\n          Expression: {\n            Single: {\n              StringLiteral: [ 'Hello World', 'Single', { start: 0, end: 13 } ]\n            }\n          }\n        }\n      }\n    ],\n    span: { start: 0, end: 13 }\n  }\n}\n> `;
+        const expected = `Entering ast-explorer
+> {
+  Ok: {
+    hashbang_comment: undefined,
+    items: [
+      {
+        Expression: {
+          StringLiteral: [ 'Hello World', 'Single', { start: 0, end: 13 } ]
+        }
+      }
+    ],
+    span: { start: 0, end: 13 }
+  }
+}
+> `;
 
         // console.log(stripAnsi(out.join("")).replaceAll("\n", "\\n"));
 

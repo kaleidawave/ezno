@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct IsExpression {
 	pub matcher: Box<MultipleExpression>,

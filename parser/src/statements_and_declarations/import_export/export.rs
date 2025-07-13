@@ -1,30 +1,80 @@
 use crate::{
-	derive_ASTNode, type_annotations::TypeAnnotationFunctionParameters,
-	types::enum_declaration::EnumDeclaration, ASTNode, Expression, ParseResult, Span,
-	StatementPosition, TypeAnnotation, VariableIdentifier,
+	derive_ASTNode, type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
+	ParseResult, Span, TypeAnnotation, VariableIdentifier,
 };
 
-use super::{
-	super::{
-		variables::VariableDeclaration, ClassDeclaration, InterfaceDeclaration, StatementFunction,
-		TypeAlias,
-	},
-	ImportExportPart, ImportLocation,
-};
+use super::{ImportExportPart, ImportLocation};
 
 use get_field_by_type::GetFieldByType;
 use visitable_derive::Visitable;
 
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, Visitable)]
+pub struct Exportable<T> {
+	pub is_exported: bool,
+	pub item: T,
+}
+
+impl<T> Exportable<T> {
+	pub fn not_exported(item: T) -> Self {
+		Self { is_exported: false, item }
+	}
+
+	pub fn exported(item: T) -> Self {
+		Self { is_exported: true, item }
+	}
+}
+
+impl<T: GetFieldByType<Span>> GetFieldByType<Span> for Exportable<T> {
+	fn get(&self) -> &Span {
+		self.item.get()
+	}
+}
+
+impl<A: ASTNode> ASTNode for Exportable<A> {
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let is_exported = reader.is_keyword_advance("export");
+		let item = A::from_reader(reader)?;
+		Ok(Self { is_exported, item })
+	}
+
+	// TODO
+	fn get_position(&self) -> Span {
+		self.item.get_position()
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		if self.is_exported {
+			buf.push_str("export ");
+		}
+		self.item.to_string_from_buffer(buf, options, local);
+	}
+}
+
 /// [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ExportDeclaration {
-	/// `export *Exportable*`
-	Item { exported: Box<Exportable>, position: Span },
+	/// `export { ... }`
+	Parts(Vec<ImportExportPart<ExportDeclaration>>, Span),
+	/// `export * as x from "..."`
+	ImportToExportAll { r#as: Option<VariableIdentifier>, from: ImportLocation, position: Span },
+	/// `export { ... } from "..."`
+	ImportToExportParts {
+		parts: Vec<ImportExportPart<super::import::ImportDeclaration>>,
+		from: ImportLocation,
+		type_definitions_only: bool,
+		position: Span,
+	},
 	/// `export default ...`
 	Default { expression: Box<Expression>, position: Span },
-	/// In TypeScript you can `export default name` in type definition modules
+	/// In TypeScript you can `export default function (): string` in type definition modules
 	TSDefaultFunctionDeclaration {
 		/// Technically not allowed in TypeScript
 		is_async: bool,
@@ -33,30 +83,6 @@ pub enum ExportDeclaration {
 		parameters: TypeAnnotationFunctionParameters,
 		return_type: Option<TypeAnnotation>,
 		position: Span,
-	},
-}
-
-#[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable)]
-pub enum Exportable {
-	Class(ClassDeclaration<StatementPosition>),
-	Function(StatementFunction),
-	Variable(VariableDeclaration),
-	Interface(InterfaceDeclaration),
-	TypeAlias(TypeAlias),
-	Enum(EnumDeclaration),
-	VarStatement(crate::statements_and_declarations::variables::VarVariableStatement),
-	#[cfg(feature = "full-typescript")]
-	Namespace(crate::types::namespace::Namespace),
-	Parts(Vec<ImportExportPart<ExportDeclaration>>),
-	ImportAll {
-		r#as: Option<VariableIdentifier>,
-		from: ImportLocation,
-	},
-	ImportParts {
-		parts: Vec<ImportExportPart<super::import::ImportDeclaration>>,
-		from: ImportLocation,
-		type_definitions_only: bool,
 	},
 }
 
@@ -70,11 +96,11 @@ impl ASTNode for ExportDeclaration {
 		reader.skip();
 
 		if reader.is_keyword_advance("default") {
-			if reader.get_options().type_definition_module
-				&& crate::lexer::utilities::is_function_header(reader.get_current())
-			{
-				// Always have == .d.ts file here
-				// Unfortuantly have to do quite a bit of parsing here
+			let edge_case = reader.get_options().type_definition_module
+				&& crate::lexer::utilities::is_function_header(reader.get_current());
+			// Always have == .d.ts file here
+			// Unfortuantly have to do quite a bit of parsing here
+			if edge_case {
 				let is_async = reader.is_operator_advance("async");
 				let _ = reader.expect_keyword("function");
 
@@ -102,6 +128,7 @@ impl ASTNode for ExportDeclaration {
 				})
 			} else {
 				let expression = Expression::from_reader(reader)?;
+				// TODO check expression here
 				let position = start.union(expression.get_position());
 				Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
 			}
@@ -117,11 +144,9 @@ impl ASTNode for ExportDeclaration {
 			// TODO temp
 			let from = ImportLocation::from_reader(reader)?;
 			let end = reader.get_end();
+			let position = start.union(end);
 
-			Ok(ExportDeclaration::Item {
-				exported: Box::new(Exportable::ImportAll { r#as, from }),
-				position: start.union(end),
-			})
+			Ok(ExportDeclaration::ImportToExportAll { r#as, from, position })
 		} else if reader.is_operator("{") {
 			if reader.after_brackets().starts_with("from") {
 				reader.advance(1);
@@ -131,121 +156,22 @@ impl ASTNode for ExportDeclaration {
 				reader.expect_keyword("from")?;
 
 				let from = ImportLocation::from_reader(reader)?;
-				let end = reader.get_end();
-				Ok(Self::Item {
-					exported: Box::new(Exportable::ImportParts {
-						parts,
-						from,
-						type_definitions_only: false,
-					}),
-					position: start.union(end),
+				let position = start.union(reader.get_end());
+				Ok(ExportDeclaration::ImportToExportParts {
+					parts,
+					from,
+					type_definitions_only: false,
+					position,
 				})
 			} else {
 				reader.advance(1);
 				let (parts, _) =
 					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
-				let end = reader.get_end();
-				Ok(Self::Item {
-					exported: Box::new(Exportable::Parts(parts)),
-					position: start.union(end),
-				})
+				let position = start.union(reader.get_end());
+				Ok(ExportDeclaration::Parts(parts, position))
 			}
-		} else if reader.is_keyword("class") {
-			let class_declaration = ClassDeclaration::from_reader(reader)?;
-			let position = start.union(class_declaration.get_position());
-			Ok(ExportDeclaration::Item {
-				exported: Box::new(Exportable::Class(class_declaration)),
-				position,
-			})
-		} else if let Some(keyword) = reader.is_one_of_keywords(&["const", "let"]) {
-			if keyword == "const"
-				&& reader.get_current()["const".len()..].trim_start().starts_with("enum ")
-			{
-				let enum_declaration = EnumDeclaration::from_reader(reader)?;
-				let position = start.union(enum_declaration.get_position());
-				Ok(ExportDeclaration::Item {
-					exported: Box::new(Exportable::Enum(enum_declaration)),
-					position,
-				})
-			} else {
-				let variable_declaration = VariableDeclaration::from_reader(reader)?;
-				let position = start.union(variable_declaration.get_position());
-				Ok(ExportDeclaration::Item {
-					exported: Box::new(Exportable::Variable(variable_declaration)),
-					position,
-				})
-			}
-		} else if reader.is_keyword("function") {
-			let function_declaration = StatementFunction::from_reader(reader)?;
-			let position = start.union(function_declaration.get_position());
-			Ok(ExportDeclaration::Item {
-				exported: Box::new(Exportable::Function(function_declaration)),
-				position,
-			})
-		} else if reader.is_keyword("var") {
-			let var_stmt =
-				crate::statements_and_declarations::variables::VarVariableStatement::from_reader(
-					reader,
-				)?;
-			let position = start.union(var_stmt.get_position());
-			Ok(ExportDeclaration::Item {
-				exported: Box::new(Exportable::VarStatement(var_stmt)),
-				position,
-			})
-		} else if reader.is_keyword("interface") {
-			let interface_declaration = InterfaceDeclaration::from_reader(reader)?;
-			let position = start.union(interface_declaration.get_position());
-			Ok(ExportDeclaration::Item {
-				exported: Box::new(Exportable::Interface(interface_declaration)),
-				position,
-			})
-		} else if reader.is_keyword("type") {
-			if reader.get_current()["type".len()..].trim_start().starts_with('{') {
-				reader.advance("type".len() as u32);
-				let _ = reader.expect_operator("{");
-				let (parts, _) =
-					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
-
-				let _ = reader.expect_keyword("from")?;
-				let from = ImportLocation::from_reader(reader)?;
-				let end = reader.get_end();
-				let exported = Box::new(Exportable::ImportParts {
-					parts,
-					from,
-					// Important
-					type_definitions_only: true,
-				});
-				Ok(Self::Item { exported, position: start.union(end) })
-			} else {
-				let type_alias = TypeAlias::from_reader(reader)?;
-				let position = start.union(type_alias.get_position());
-				Ok(Self::Item { exported: Box::new(Exportable::TypeAlias(type_alias)), position })
-			}
-		} else if reader.is_keyword("enum") {
-			let enum_declaration = EnumDeclaration::from_reader(reader)?;
-			let position = start.union(enum_declaration.get_position());
-			// .map(|on| Declaration::Enum(Decorated::new(decorators, on)))
-			Ok(ExportDeclaration::Item {
-				exported: Box::new(Exportable::Enum(enum_declaration)),
-				position,
-			})
 		} else {
-			#[cfg(feature = "full-typescript")]
-			if reader.is_keyword("namespace") {
-				let namespace = crate::types::namespace::Namespace::from_reader(reader)?;
-				let position = start.union(namespace.get_position());
-
-				return Ok(Self::Item {
-					exported: Box::new(Exportable::Namespace(namespace)),
-					position,
-				});
-			}
-
-			// TODO vary list on certain parameters
-			Err(crate::lexer::utilities::expected_one_of_items(
-				reader,
-				&["let", "const", "function", "class", "enum", "type", "interface", "{"],
-			))
+			Err(crate::lexer::utilities::expected_one_of_items(reader, &["{", "*", "default"]))
 		}
 	}
 
@@ -255,64 +181,36 @@ impl ASTNode for ExportDeclaration {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
+		buf.push_str("export ");
 		match self {
-			ExportDeclaration::Item { exported, .. } => {
-				buf.push_str("export ");
-				match &**exported {
-					Exportable::Class(class_declaration) => {
-						class_declaration.to_string_from_buffer(buf, options, local);
-					}
-					Exportable::Function(function_declaration) => {
-						function_declaration.to_string_from_buffer(buf, options, local);
-					}
-					Exportable::Interface(interface_declaration) => {
-						interface_declaration.to_string_from_buffer(buf, options, local);
-					}
-					Exportable::Variable(variable_dec_stmt) => {
-						variable_dec_stmt.to_string_from_buffer(buf, options, local);
-					}
-					Exportable::TypeAlias(type_alias) => {
-						type_alias.to_string_from_buffer(buf, options, local);
-					}
-					Exportable::Enum(enum_declaration) => {
-						enum_declaration.to_string_from_buffer(buf, options, local);
-					}
-					Exportable::VarStatement(var_stmt) => {
-						var_stmt.to_string_from_buffer(buf, options, local);
-					}
-					#[cfg(feature = "full-typescript")]
-					Exportable::Namespace(namespace) => {
-						namespace.to_string_from_buffer(buf, options, local);
-					}
-					Exportable::Parts(parts) => {
-						super::import_export_parts_to_string_from_buffer(
-							parts, buf, options, local,
-						);
-					}
-					Exportable::ImportAll { r#as, from } => {
-						buf.push_str("* ");
-						if let Some(r#as) = r#as {
-							buf.push_str("as ");
-							r#as.to_string_from_buffer(buf, options, local);
-							buf.push(' ');
-						}
-						buf.push_str("from \"");
-						from.to_string_from_buffer(buf);
-						buf.push('"');
-					}
-					Exportable::ImportParts { parts, from, type_definitions_only } => {
-						if *type_definitions_only {
-							buf.push_str("type ");
-						}
-						super::import_export_parts_to_string_from_buffer(
-							parts, buf, options, local,
-						);
-						options.push_gap_optionally(buf);
-						buf.push_str("from \"");
-						from.to_string_from_buffer(buf);
-						buf.push('"');
-					}
+			ExportDeclaration::Parts(parts, _) => {
+				super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
+			}
+			ExportDeclaration::ImportToExportAll { r#as, from, position: _ } => {
+				buf.push_str("* ");
+				if let Some(r#as) = r#as {
+					buf.push_str("as ");
+					r#as.to_string_from_buffer(buf, options, local);
+					buf.push(' ');
 				}
+				buf.push_str("from \"");
+				from.to_string_from_buffer(buf);
+				buf.push('"');
+			}
+			ExportDeclaration::ImportToExportParts {
+				parts,
+				from,
+				type_definitions_only,
+				position: _,
+			} => {
+				if *type_definitions_only {
+					buf.push_str("type ");
+				}
+				super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
+				options.push_gap_optionally(buf);
+				buf.push_str("from \"");
+				from.to_string_from_buffer(buf);
+				buf.push('"');
 			}
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("export default ");

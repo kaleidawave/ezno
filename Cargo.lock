@@ -170,15 +170,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derive-partial-eq-extras"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8de8afba3dd2062a2b599b198b30118f902c29bea9c8f82ea071023122079bdf"
-dependencies = [
- "syn-helpers",
-]
-
-[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -314,19 +305,18 @@ dependencies = [
  "derive-debug-extras",
  "derive-enum-from-into",
  "derive-finite-automaton",
- "derive-partial-eq-extras",
  "enum-variants-strings",
  "ezno-parser-visitable-derive",
  "get-field-by-type",
  "iterator-endiate",
  "macro_rules_attribute",
- "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
  "serde",
  "source-map",
  "temporary-annex",
  "tsify 0.5.5",
+ "unicode-ident",
  "wasm-bindgen",
 ]
 

@@ -92,7 +92,7 @@ impl VisitorMut<StatementOrDeclaration, CheckingOutputWithoutDiagnostics> for St
 				}
 			}
 			parser::StatementOrDeclaration::Class(cls) => {
-				shake_class(&mut cls.on, data, chain.get_module());
+				shake_class(&mut cls.on.item, data, chain.get_module());
 			}
 			parser::StatementOrDeclaration::Import(_) => {
 				// TODO imported items

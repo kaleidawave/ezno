@@ -12,14 +12,6 @@ use crate::{
 #[get_field_by_type_target(Span)]
 pub struct Block(pub Vec<StatementOrDeclaration>, pub Span);
 
-impl Eq for Block {}
-
-impl PartialEq for Block {
-	fn eq(&self, other: &Self) -> bool {
-		self.0 == other.0
-	}
-}
-
 pub struct BlockLike<'a> {
 	pub items: &'a Vec<StatementOrDeclaration>,
 }
@@ -88,7 +80,7 @@ impl Block {
 }
 
 /// For ifs and other statements bodies
-#[derive(Debug, Clone, PartialEq, EnumFrom)]
+#[derive(Debug, Clone, EnumFrom)]
 #[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
@@ -220,10 +212,10 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 
 		if !options.include_type_annotations {
 			match item {
-				StatementOrDeclaration::Function(item) if item.on.name.is_declare => {
+				StatementOrDeclaration::Function(item) if item.on.item.name.is_declare => {
 					continue;
 				}
-				StatementOrDeclaration::Class(item) if item.on.name.is_declare => {
+				StatementOrDeclaration::Class(item) if item.on.item.name.is_declare => {
 					continue;
 				}
 				_ => {}

@@ -38,8 +38,8 @@ derive-finite-automaton = "0.3"
 derive-debug-extras = { version = "0.3", features = [
   "auto-debug-single-tuple-inline",
 ] }
-derive-partial-eq-extras = "0.2"
 derive-enum-from-into = "0.2"
+unicode-ident = "1.0.18"
 
 temporary-annex = "0.1.0"
 iterator-endiate = "0.2"
@@ -66,4 +66,3 @@ wasm-bindgen = "0.2"
 [dev-dependencies]
 codespan-reporting = "0.11.1"
 pretty_assertions = "1.3.0"
-match_deref = "0.1.1"

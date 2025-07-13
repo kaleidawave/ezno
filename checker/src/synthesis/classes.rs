@@ -853,9 +853,21 @@ fn next_key_matches(
 ) -> bool {
 	if let ClassMember::Method(is_static, method) = member {
 		initial_is_static == *is_static
-			&& method.name.get_ast_ref() == initial_name
+			&& property_key_matches(method.name.get_ast_ref(), initial_name)
 			&& !method.has_body()
 	} else {
+		false
+	}
+}
+
+fn property_key_matches(
+	lhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
+	rhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
+) -> bool {
+	if let (Some(lhs), Some(rhs)) = (lhs.as_str(), rhs.as_str()) {
+		lhs == rhs
+	} else {
+		// FUTURE might be missing cases here
 		false
 	}
 }

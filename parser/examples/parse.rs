@@ -95,7 +95,7 @@ fn parse_path(
 	const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
 
 	let source = std::fs::read_to_string(path)?;
-	let source_id = fs.new_source_id(path.into(), source.clone());
+	let source_id = fs.new_source_id(path.into(), source.to_owned());
 
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
@@ -106,6 +106,7 @@ fn parse_path(
 	let parse_options = ParseOptions { jsx, type_annotations, ..*parse_options };
 
 	let on = source.clone();
+
 	// Run in thread as stack is large and can oveflow
 	let result = std::thread::Builder::new()
 		.stack_size(EIGHT_MEGA_BYTES)
@@ -165,7 +166,6 @@ fn parse_path(
 					)?;
 				}
 			}
-			Ok(())
 		}
 		Err(ParseError { reason, position }) => {
 			let writer = StandardStream::stderr(ColorChoice::Always);
@@ -175,20 +175,8 @@ fn parse_path(
 				.with_labels(vec![Label::primary(source_id, position)
 					.with_message(format!("ParseError: {reason}"))]);
 			term::emit(&mut writer.lock(), &config, &fs.into_code_span_store(), &diagnostic)?;
-			// let mut line_column = parse_err
-			// 	.position
-			// 	.with_source(source_id)
-			// 	.into_line_column_span::<source_map::encodings::Utf8>(fs);
-			// {
-			// 	// Editor are one indexed
-			// 	line_column.line_start += 1;
-			// 	line_column.line_end += 1;
-			// 	line_column.column_start += 1;
-			// 	line_column.column_end += 1;
-			// }
-			// eprintln!("error on {line_column:?}");
-
-			Err(Box::<dyn std::error::Error>::from(ParseError { reason, position }))
+			// Err(Box::<dyn std::error::Error>::from(ParseError { reason, position }))
 		}
 	}
+	Ok(())
 }

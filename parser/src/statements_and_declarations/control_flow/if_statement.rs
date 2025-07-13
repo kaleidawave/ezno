@@ -8,7 +8,7 @@ use visitable_derive::Visitable;
 
 /// A [if...else statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/if...else)
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct IfStatement {
 	pub condition: Box<MultipleExpression>,
@@ -19,7 +19,7 @@ pub struct IfStatement {
 }
 
 /// `... else if (...) { ... }`
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ConditionalElseStatement {
 	pub condition: Box<MultipleExpression>,
@@ -28,7 +28,7 @@ pub struct ConditionalElseStatement {
 }
 
 /// `... else { ... }`
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct UnconditionalElseStatement {
 	pub inner: BlockOrSingleStatement,

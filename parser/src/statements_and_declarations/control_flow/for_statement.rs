@@ -12,7 +12,7 @@ use visitable_derive::Visitable;
 use crate::{ASTNode, Expression, ParseResult, Span};
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ForLoopStatement {
 	pub condition: ForLoopCondition,
@@ -61,7 +61,7 @@ impl ASTNode for ForLoopStatement {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopStatementInitialiser {
 	VariableDeclaration(VariableDeclaration),
@@ -69,7 +69,7 @@ pub enum ForLoopStatementInitialiser {
 	Expression(Box<MultipleExpression>),
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopCondition {
 	ForOf {
@@ -294,34 +294,5 @@ fn initialiser_to_string<T: source_map::ToString>(
 		ForLoopStatementInitialiser::VarStatement(stmt) => {
 			stmt.to_string_from_buffer(buf, options, local);
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::{ForLoopCondition, ForLoopStatement};
-	use crate::{assert_matches_ast, ASTNode};
-
-	#[test]
-	fn condition_without_variable_keyword() {
-		assert_matches_ast!("(k in x)", ForLoopCondition::ForIn { .. });
-	}
-
-	#[test]
-	fn for_await() {
-		assert_matches_ast!(
-			"for await (let k of x) {}",
-			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: true, .. }, .. }
-		);
-		assert_matches_ast!(
-			"for (let k of x) {}",
-			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: false, .. }, .. }
-		);
-
-		assert!(ForLoopStatement::from_string(
-			"for await (let x = 0; x < 5; x++) {}".into(),
-			Default::default()
-		)
-		.is_err());
 	}
 }

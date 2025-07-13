@@ -101,9 +101,7 @@ impl LocalToStringInformation {
 
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
 /// serializing to string from options.
-///
-/// TODO remove partial eq
-pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + 'static {
+pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method `from_reader`
 	fn from_string(script: String, options: ParseOptions) -> ParseResult<Self> {
 		Self::from_string_with_options(script, options, None).map(|(ast, _)| ast)
@@ -249,9 +247,7 @@ impl KeywordPositions {
 
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
-pub trait ExpressionOrStatementPosition:
-	Clone + std::fmt::Debug + Sync + Send + PartialEq + 'static
-{
+pub trait ExpressionOrStatementPosition: Clone + std::fmt::Debug + Sync + Send + 'static {
 	type FunctionBody: ASTNode;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
@@ -274,7 +270,7 @@ pub trait ExpressionOrStatementPosition:
 	fn is_declare(&self) -> bool;
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct StatementPosition {
 	pub identifier: VariableIdentifier,
@@ -310,7 +306,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
@@ -507,52 +503,4 @@ pub mod ast {
 	pub use source_map::{BaseSpan, SourceId};
 
 	pub use self::assignments::{LHSOfAssignment, VariableOrPropertyAccess};
-}
-
-#[cfg(test)]
-#[doc(hidden)]
-pub(crate) mod test_utils {
-	#[macro_export]
-	#[allow(clippy::crate_in_macro_def)]
-	macro_rules! assert_matches_ast {
-		($source:literal with $options:expr, $ast_pattern:pat) => {{
-			let result = crate::ASTNode::from_string($source.to_owned(), $options);
-			let node = result.unwrap();
-			// AST matchers are partial expressions
-			let matches = ::match_deref::match_deref! {
-				match &node {
-					$ast_pattern => true,
-					_ => false,
-				}
-			};
-
-			if !matches {
-				panic!("{:#?} did not match {}", node, stringify!($ast_pattern));
-			}
-		}};
-
-		($source:literal, $ast_pattern:pat) => {{
-			let result = crate::ASTNode::from_string($source.to_owned(), Default::default());
-			let node = result.unwrap();
-			// AST matchers are partial expressions
-			let matches = ::match_deref::match_deref! {
-				match &node {
-					$ast_pattern => true,
-					_ => false,
-				}
-			};
-
-			if !matches {
-				panic!("{:#?} did not match {}", node, stringify!($ast_pattern));
-			}
-		}};
-	}
-
-	#[macro_export]
-	#[allow(clippy::crate_in_macro_def)]
-	macro_rules! span {
-		($start:pat, $end:pat) => {
-			crate::Span { start: $start, end: $end, .. }
-		};
-	}
 }

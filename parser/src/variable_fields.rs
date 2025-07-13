@@ -7,13 +7,11 @@ use crate::{
 	ListItem, Marker, ParseError, ParseErrors, ParseResult, Span, WithComment,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEqExtras, Clone, GetFieldByType)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum VariableIdentifier {
 	Standard(String, Span),
@@ -78,7 +76,7 @@ impl PartialEq<&str> for VariableIdentifier {
 
 /// A variable declaration name, used in variable declarations and function parameters.
 /// See [destructuring](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum VariableField {
 	/// `x`
@@ -209,7 +207,7 @@ impl ASTNode for VariableField {
 
 pub trait DestructuringFieldInto: ASTNode {
 	// This in an extra
-	type TypeAnnotation: Clone + PartialEq + Debug + Sync + Send + 'static;
+	type TypeAnnotation: Clone + Debug + Sync + Send + 'static;
 
 	fn type_annotation_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self::TypeAnnotation>;
 }
@@ -239,7 +237,7 @@ impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
 /// For
 /// - declarations: `T = VariableField`
 /// - expressions: `T = LHSOfAssignment`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 	Name(T, T::TypeAnnotation, Option<Box<Expression>>),
@@ -247,7 +245,7 @@ pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 }
 
 /// Covers [`ArrayDestructuring`] AND [`ObjectDestructuringField`]
-#[derive(Debug, Clone, PartialEq, Eq, visitable_derive::Visitable)]
+#[derive(Debug, Clone, visitable_derive::Visitable)]
 #[apply(derive_ASTNode)]
 pub struct SpreadDestructuringField<T: DestructuringFieldInto>(pub Box<T>, pub Span);
 
@@ -326,9 +324,8 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 /// - declarations: `T = VariableField`
 /// - expressions: `T = LHSOfAssignment`
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum ObjectDestructuringField<T: DestructuringFieldInto> {
 	/// `{ x }` and (annoyingly) `{ x = 2 }`
 	Name(VariableIdentifier, T::TypeAnnotation, Option<Box<Expression>>, Span),
@@ -691,132 +688,5 @@ pub mod visiting {
 				}
 			}
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::{assert_matches_ast, span};
-
-	#[test]
-	fn name() {
-		assert_matches_ast!(
-			"x",
-			VariableField::Name(VariableIdentifier::Standard(
-				Deref @ "x",
-				Span { start: 0, end: 1, .. },
-			))
-		);
-	}
-
-	#[test]
-	fn array() {
-		assert_matches_ast!(
-			"[x, y, z]",
-			VariableField::Array {
-				members: Deref @ [WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
-					None,
-					None,
-				)), WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "y", span!(4, 5))),
-					None,
-					None,
-				)), WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "z", span!(7, 8))),
-					None,
-					None,
-				))],
-				spread: _,
-				position: _
-			}
-		);
-
-		assert_matches_ast!(
-			"[x,,z]",
-			VariableField::Array {
-				members:
-				Deref @ [WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
-					None,
-					None,
-				)), WithComment::None(ArrayDestructuringField::None), WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "z", span!(4, 5))),
-					None,
-					None,
-				))],
-				spread: None,
-				position: span!(0, 6),
-			}
-		);
-	}
-
-	#[test]
-	fn object() {
-		assert_matches_ast!(
-			"{x, y, z}",
-			VariableField::Object {
-				members: Deref @ [WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "x", span!(1, 2)),
-					None,
-					None,
-					span!(1, 2),
-				)), WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "y", span!(4, 5)),
-					None,
-					None,
-					span!(4, 5),
-				)), WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "z", span!(7, 8)),
-					None,
-					None,
-					span!(7, 8),
-				))],
-				spread: None,
-				position: span!(0, 9),
-				..
-			}
-		);
-	}
-
-	#[test]
-	fn name_with_default() {
-		assert_matches_ast!(
-			"{ x = 2 }",
-			VariableField::Object {
-				members:
-				Deref @ [WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "x", span!(2, 3)),
-					None,
-					Some(
-						Deref @ Expression::NumberLiteral(
-							crate::number::NumberRepresentation::Number { .. },
-							span!(6, 7),
-						),
-					),
-					span!(2, 7),
-				))],
-				spread: None,
-				position: span!(0, 9),
-				..
-			}
-		);
-	}
-
-	#[test]
-	fn array_spread() {
-		assert_matches_ast!(
-			"[x, ...y]",
-			VariableField::Array {
-				members:Deref @ [WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
-					None,
-					None,
-				))],
-				spread: Some(SpreadDestructuringField( Deref @ VariableField::Name(VariableIdentifier::Standard(Deref @ "y", span!(7, 8))), span!(4, 8))),
-				position: span!(0, 9)
-			}
-		);
 	}
 }

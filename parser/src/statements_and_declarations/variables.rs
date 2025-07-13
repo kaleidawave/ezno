@@ -1,4 +1,3 @@
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
@@ -44,9 +43,9 @@ impl VariableKeyword {
 
 /// Represents a name =
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
+
 pub struct VariableDeclarationItem {
 	pub name: WithComment<VariableField>,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -109,7 +108,7 @@ impl ASTNode for VariableDeclarationItem {
 }
 
 /// Not `var` because that is a statement 🤦‍♂️
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Visitable)]
+#[derive(Debug, Clone, Copy, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum VariableDeclarationKeyword {
 	Const,
@@ -137,8 +136,7 @@ impl VariableDeclarationKeyword {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct VariableDeclaration {
 	pub kind: VariableDeclarationKeyword,
@@ -250,7 +248,7 @@ pub(crate) fn declarations_to_string<T: source_map::ToString>(
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct VarVariableStatement {
 	pub declarations: Vec<VariableDeclarationItem>,

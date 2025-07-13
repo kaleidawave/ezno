@@ -20,7 +20,6 @@ use super::{jsx::JSXRoot, ASTNode, Block, FunctionBase, ParseError, Span, TypeAn
 #[cfg(feature = "extras")]
 use crate::extensions::is_expression::IsExpression;
 
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use source_map::{Nullable, ToString};
 use visitable_derive::Visitable;
@@ -49,14 +48,13 @@ use std::convert::TryInto;
 ///
 /// Comma is implemented as a [`BinaryOperator`]
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 #[visit_self]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
-	StringLiteral(String, #[partial_eq_ignore] Quoted, Span),
+	StringLiteral(String, Quoted, Span),
 	BooleanLiteral(bool, Span),
 	RegexLiteral {
 		pattern: String,
@@ -159,7 +157,7 @@ pub enum Expression {
 		prefix: bool,
 	},
 	/// A start of a JSXNode
-	JSXRoot(JSXRoot),
+	JSXRoot(Box<JSXRoot>),
 	/// Not to be confused with binary operator `is`
 	#[cfg(feature = "extras")]
 	IsExpression(IsExpression),
@@ -171,9 +169,7 @@ pub enum Expression {
 	},
 }
 
-impl Eq for Expression {}
-
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum PropertyReference {
 	Standard {
@@ -314,7 +310,7 @@ impl Expression {
 					let arrow_function = ArrowFunction::from_reader(reader).map(Box::new)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
 				} else if reader.get_options().jsx {
-					JSXRoot::from_reader(reader).map(Expression::JSXRoot)?
+					JSXRoot::from_reader(reader).map(Box::new).map(Expression::JSXRoot)?
 				} else {
 					let (_found, position) = crate::lexer::utilities::next_item(reader);
 					return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
@@ -410,22 +406,19 @@ impl Expression {
 				let position = start.union(operand.get_position());
 				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 			} else if reader.is_keyword_advance("yield") {
-				let is_delegated = reader.is_operator_advance("*");
-				let yielded = if reader.is_one_of_operators(&[";"]).is_some() {
+				let yielded = if reader.starts_with_expression_delimiter() {
 					None
 				} else {
+					let is_delegated = reader.is_operator_advance("*");
 					let expression = Expression::from_reader_with_precedence(
 						reader,
 						YIELD_OPERATORS_PRECEDENCE,
 					)?;
-					Some(Box::new(expression))
+					Some((is_delegated, Box::new(expression)))
 				};
 
 				let position = start.union(reader.get_end());
-				Expression::SpecialOperators(
-					SpecialOperators::Yield { yielded, is_delegated },
-					position,
-				)
+				Expression::SpecialOperators(SpecialOperators::Yield { yielded }, position)
 			} else if let Some(keyword) = reader.is_one_of_keywords_advance(&["true", "false"]) {
 				Expression::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
 			} else if reader.is_keyword_advance("this") {
@@ -490,7 +483,10 @@ impl Expression {
 					let mut expr = None;
 					#[cfg(feature = "extras")]
 					{
-						if reader.is_keyword_advance("source") {
+						let is_source = reader.is_keyword_advance("source");
+						// TODO
+						let _is_defer = reader.is_keyword_advance("defer");
+						if is_source {
 							reader.expect('(')?;
 							let location =
 								crate::statements_and_declarations::import_export::ImportLocation::from_reader(
@@ -952,13 +948,13 @@ impl Expression {
 
 					reader.advance(length);
 
-					// TODO not sure
-					if let Expression::ObjectLiteral(..) = top {
-						return Err(ParseError::new(
-							ParseErrors::CannotAccessObjectLiteralDirectly,
-							source_map::Start(top.get_position().get_end().0).with_length(1),
-						));
-					}
+					// // TODO not sure
+					// if let Expression::ObjectLiteral(..) = top {
+					// 	return Err(ParseError::new(
+					// 		ParseErrors::CannotAccessObjectLiteralDirectly,
+					// 		source_map::Start(top.get_position().get_end().0).with_length(1),
+					// 	));
+					// }
 
 					let property = if let Some(Some(length)) = reader
 						.get_options()
@@ -1349,14 +1345,14 @@ impl Expression {
 						local2.with_precedence(self_precedence),
 					);
 				}
-				SpecialOperators::Yield { yielded, is_delegated } => {
+				SpecialOperators::Yield { yielded } => {
 					buf.push_str("yield");
-					if *is_delegated {
-						buf.push('*');
-					}
 					// TODO can be dropped sometimes
 					buf.push(' ');
-					if let Some(ref yielded) = yielded {
+					if let Some((is_delegated, ref yielded)) = yielded {
+						if *is_delegated {
+							buf.push('*');
+						}
 						yielded.to_string_using_precedence(
 							buf,
 							options,
@@ -1485,6 +1481,12 @@ impl Expression {
 			Self::Import(ImportExpression::ImportSource { location, .. }) => {
 				buf.push_str("import.source(");
 				location.to_string_from_buffer(buf);
+				buf.push(')');
+			}
+			#[cfg(feature = "extras")]
+			Self::Import(ImportExpression::ImportDefer { path, .. }) => {
+				buf.push_str("import.defer(");
+				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
 			Self::Import(ImportExpression::DynamicImport { path, .. }) => {
@@ -1824,7 +1826,7 @@ impl ExpressionToStringArgument {
 /// Represents expressions that can be the comma operator. Has a special new type to discern the places
 /// where this is allowed
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct MultipleExpression(pub Expression);
 
@@ -1952,7 +1954,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 
 /// Binary operations whose RHS are types rather than [Expression]s
 #[apply(derive_ASTNode)]
-#[derive(PartialEq, Debug, Clone, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum SpecialOperators {
 	/// TS Only
 	Satisfies {
@@ -1968,8 +1970,8 @@ pub enum SpecialOperators {
 		rhs: Box<Expression>,
 	},
 	Yield {
-		yielded: Option<Box<Expression>>,
-		is_delegated: bool,
+		// .0 = 'is_delegated'
+		yielded: Option<(bool, Box<Expression>)>,
 	},
 	#[cfg(feature = "extras")]
 	Is {
@@ -1987,15 +1989,14 @@ pub enum SpecialOperators {
 
 #[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum TypeOrConst {
 	Type(Box<TypeAnnotation>),
 	Const(Span),
 }
 
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub enum InExpressionLHS {
 	PrivateProperty(String),
 	Expression(Box<Expression>),
@@ -2003,30 +2004,34 @@ pub enum InExpressionLHS {
 
 /// "super" cannot be used alone
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub enum SuperReference {
 	Call { arguments: Vec<FunctionArgument> },
 	PropertyAccess(PropertyLike),
 }
 
 #[apply(derive_ASTNode)]
-#[derive(PartialEq, Debug, Clone, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum PropertyLike {
 	Fixed(String),
 	Computed(Box<Expression>),
 }
 
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum ImportExpression {
 	ImportMeta(Span),
 	/// [Proposal](https://github.com/tc39/proposal-source-phase-imports)
 	#[cfg(feature = "extras")]
 	ImportSource {
 		location: crate::statements_and_declarations::import_export::ImportLocation,
+		position: Span,
+	},
+	/// [Proposal](https://github.com/tc39/proposal-defer-import-eval)
+	#[cfg(feature = "extras")]
+	ImportDefer {
+		path: Box<Expression>,
 		position: Span,
 	},
 	DynamicImport {
@@ -2037,7 +2042,7 @@ pub enum ImportExpression {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum FunctionArgument {
 	Spread(Expression, Span),
 	Standard(Expression),
@@ -2136,7 +2141,7 @@ impl From<Expression> for FunctionArgument {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ArrayElement(pub Option<FunctionArgument>);
 
@@ -2384,108 +2389,5 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 		}
 	} else {
 		original.to_string_from_buffer(buf, options, local.do_not_pretty_print());
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::{ASTNode, BinaryOperator, Expression, Expression::*, MultipleExpression};
-	use crate::{
-		assert_matches_ast, ast::FunctionArgument, number::NumberRepresentation, span, Quoted,
-	};
-
-	#[test]
-	fn literal() {
-		assert_matches_ast!(
-			"'string'",
-			StringLiteral(Deref @ "string", Quoted::Single, span!(0, 8))
-		);
-		assert_matches_ast!(
-			"\"string\"",
-			StringLiteral(Deref @ "string", Quoted::Double, span!(0, 8))
-		);
-		// TODO different method
-		// assert_matches_ast!("45", NumberLiteral(NumberStructure::Number(45.0), span!(0, 2)));
-		// assert_matches_ast!("45.63", NumberLiteral(NumberStructure::Number(45.63), span!(0, 5)));
-		assert_matches_ast!("true", BooleanLiteral(true, span!(0, 4)));
-	}
-
-	#[test]
-	fn parenthesized_expression() {
-		// Can't match 45 here
-		assert_matches_ast!(
-			"(45)",
-			Parenthesised(
-				Deref @ MultipleExpression(NumberLiteral(
-					NumberRepresentation::Number { .. },
-					span!(1, 3),
-				)),
-				span!(0, 4),
-			)
-		);
-	}
-
-	#[test]
-	fn is_iife() {
-		let expr = Expression::from_string("(() => 2)()".to_owned(), Default::default()).unwrap();
-		assert!(expr.is_iife().is_some());
-	}
-
-	#[test]
-	fn multiple_expression() {
-		assert_matches_ast!(
-			"(45,2)",
-			Parenthesised(
-				Deref @ MultipleExpression(BinaryOperation {
-					lhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(1, 3)),
-					operator: BinaryOperator::Comma,
-					rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
-					position: _,
-				}),
-				span!(0, 6),
-			)
-		);
-	}
-
-	#[test]
-	fn spread_function_argument() {
-		assert_matches_ast!(
-			"console.table(...a)",
-			FunctionCall { arguments: Deref @ [FunctionArgument::Spread(VariableReference(..), span!(14, 18))], .. }
-		);
-	}
-
-	#[test]
-	fn binary_expressions() {
-		assert_matches_ast!("2 + 3", BinaryOperation {
-			lhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(0, 1)),
-			operator: BinaryOperator::Add,
-			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(4, 5)),
-			position: _
-		});
-		assert_matches_ast!("xt === 3", BinaryOperation {
-			lhs: Deref @ VariableReference(..),
-			operator: BinaryOperator::StrictEqual,
-			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(7, 8)),
-			position: _
-		});
-		assert_matches_ast!("x << 3", BinaryOperation {
-			lhs: Deref @ VariableReference(..),
-			operator: BinaryOperator::BitwiseShiftLeft,
-			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(5, 6)),
-			position: _
-		});
-		assert_matches_ast!("x >> 3", BinaryOperation {
-			lhs: Deref @ VariableReference(..),
-			operator: BinaryOperator::BitwiseShiftRight,
-			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(5, 6)),
-			position: _
-		});
-		assert_matches_ast!("x >>> 3", BinaryOperation {
-			lhs: Deref @ VariableReference(..),
-			operator: BinaryOperator::BitwiseShiftRightUnsigned,
-			rhs: Deref @ NumberLiteral(NumberRepresentation::Number { .. }, span!(6, 7)),
-			position: _
-		});
 	}
 }

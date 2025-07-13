@@ -18,7 +18,7 @@ use visitable_derive::Visitable;
 pub type IsStatic = bool;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum ClassMember {
 	Constructor(Box<ClassConstructor>),
 	Method(IsStatic, Box<ClassFunction>),
@@ -35,15 +35,15 @@ pub enum ClassMember {
 	Comment(String, bool, Span),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ClassConstructorBase;
 pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ClassProperty {
 	pub is_readonly: bool,

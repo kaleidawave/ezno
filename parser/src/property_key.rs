@@ -10,7 +10,7 @@ use temporary_annex::Annex;
 
 use crate::{number::NumberRepresentation, ASTNode, Expression, ParseResult};
 
-pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {
+pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;
 
 	fn is_private(&self) -> bool;
@@ -19,7 +19,7 @@ pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync 
 	fn new_public() -> Self;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct AlwaysPublic;
 
@@ -79,7 +79,7 @@ impl PropertyKeyKind for PublicOrPrivate {
 
 /// A key for a member in a class or object literal
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Identifier(String, Span, T),
@@ -94,6 +94,13 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 		match self {
 			PropertyKey::Identifier(_, _, p) => U::is_private(p),
 			_ => false,
+		}
+	}
+
+	pub fn as_str(&self) -> Option<&str> {
+		match self {
+			Self::Identifier(item, _, _) | Self::StringLiteral(item, _, _) => Some(item),
+			_ => None,
 		}
 	}
 }

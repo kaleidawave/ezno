@@ -7,7 +7,7 @@ use crate::{
 	ASTNode, Block, Expression, FunctionBase, ParseResult, Span, VariableField, VariableIdentifier,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
@@ -168,7 +168,7 @@ impl ArrowFunction {
 }
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),

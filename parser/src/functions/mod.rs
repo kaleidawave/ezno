@@ -7,7 +7,6 @@ use crate::{
 	TypeParameter, VisitOptions, Visitable,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Nullable, Span, ToString};
 
 pub mod parameters;
@@ -31,12 +30,12 @@ pub mod bases {
 pub type HeadingAndPosition<T> = <T as FunctionBased>::Header;
 
 /// Specialization information for [`FunctionBase`]
-pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
+pub trait FunctionBased: Debug + Clone + Send + Sync {
 	/// Includes a keyword and/or modifiers
-	type Header: Debug + Clone + PartialEq + Send + Sync;
+	type Header: Debug + Clone + Send + Sync;
 
 	/// A name of the function
-	type Name: Debug + Clone + PartialEq + Send + Sync;
+	type Name: Debug + Clone + Send + Sync;
 
 	/// For `this` constraint
 	#[cfg(not(feature = "serde-serialize"))]
@@ -133,9 +132,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 }
 
 /// Base for all function based structures with bodies (no interface, type reference etc)
-///
-/// Note: the [`PartialEq`] implementation is based on syntactical representation rather than [`FunctionId`] equality
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -158,8 +155,6 @@ const TYPES: &str = r"
 		position: Span
 	}
 ";
-
-impl<T: FunctionBased> Eq for FunctionBase<T> {}
 
 impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	fn get_position(&self) -> Span {
@@ -290,7 +285,7 @@ where
 }
 
 /// Base for all functions with the `function` keyword
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>);
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
@@ -377,7 +372,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 }
 
 #[cfg(feature = "extras")]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionLocationModifier {
 	Server,
@@ -385,7 +380,7 @@ pub enum FunctionLocationModifier {
 	Test,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
@@ -518,7 +513,7 @@ impl FunctionHeader {
 }
 
 /// This structure removes possible invalid combinations with async
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 #[apply(derive_ASTNode)]
 pub enum MethodHeader {
 	Get,
@@ -586,7 +581,7 @@ impl MethodHeader {
 	}
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 #[apply(derive_ASTNode)]
 pub enum GeneratorSpecifier {
 	Star(Span),
@@ -611,7 +606,7 @@ impl GeneratorSpecifier {
 /// None if overloaded (declaration only)
 #[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, visitable_derive::Visitable)]
+#[derive(Debug, Clone, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
 #[cfg(not(feature = "full-typescript"))]

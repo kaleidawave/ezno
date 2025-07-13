@@ -69,7 +69,7 @@ pub enum ParseErrors<'a> {
 	InvalidDeclareItem(&'static str),
 	DestructuringRequiresValue,
 	ConstDeclarationRequiresValue,
-	CannotAccessObjectLiteralDirectly,
+	// TODO not sure CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
 	InvalidNumberLiteral,
 	ReservedIdentifier,
@@ -85,6 +85,7 @@ pub enum ParseErrors<'a> {
 	ExpectedRule,
 	ExpectedJSXAttribute,
 	InvalidRegexFlag,
+	ExpectedStatement,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
@@ -178,9 +179,9 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::DestructuringRequiresValue => {
 				write!(f, "RHS of destructured declaration requires expression")
 			}
-			ParseErrors::CannotAccessObjectLiteralDirectly => {
-				write!(f, "Cannot get property on object literal directly")
-			}
+			// ParseErrors::CannotAccessObjectLiteralDirectly => {
+			// 	write!(f, "Cannot get property on object literal directly")
+			// }
 			ParseErrors::TrailingCommaNotAllowedHere => {
 				write!(f, "Trailing comma not allowed here")
 			}
@@ -214,6 +215,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::InvalidRegexFlag => {
 				write!(f, "Regexp flags must be 'd', 'g', 'i', 'm', 's', 'u' or 'y'")
+			}
+			ParseErrors::ExpectedStatement => {
+				write!(f, "Only statements are valid here")
 			}
 			ParseErrors::ExpectedDeclaration => {
 				write!(f, "Expected identifier after variable declaration keyword")
