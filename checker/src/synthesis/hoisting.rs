@@ -226,7 +226,8 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						import.is_type_annotation_import_only,
 					);
 				}
-				StatementOrDeclaration::Export(Decorated { on: exported, .. }) => {
+				StatementOrDeclaration::Export(item) => {
+					let Decorated { on: exported, .. } = &**item;
 					match exported {
 						ExportDeclaration::ImportToExportAll { r#as, from, position } => {
 							let kind = match r#as {
@@ -603,16 +604,18 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					"namespace",
 					ns.item.position.with_source(environment.get_source()),
 				),
-				StatementOrDeclaration::Export(Decorated {
-					on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
-					..
-				}) => {
+				StatementOrDeclaration::Export(item) => {
+					if let Decorated {
+						on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
+						..
+					} = &**item {
 					// TODO under definition file
 					checking_data.diagnostics_container.add_error(
 						TypeCheckError::FunctionWithoutBodyNotAllowedHere {
 							position: position.with_source(environment.get_source()),
 						},
 					);
+				}
 				}
 				StatementOrDeclaration::DeclareVariable(DeclareVariableDeclaration {
 					keyword: _,

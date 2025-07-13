@@ -157,7 +157,7 @@ pub enum Expression {
 		prefix: bool,
 	},
 	/// A start of a JSXNode
-	JSXRoot(JSXRoot),
+	JSXRoot(Box<JSXRoot>),
 	/// Not to be confused with binary operator `is`
 	#[cfg(feature = "extras")]
 	IsExpression(IsExpression),
@@ -310,7 +310,7 @@ impl Expression {
 					let arrow_function = ArrowFunction::from_reader(reader).map(Box::new)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
 				} else if reader.get_options().jsx {
-					JSXRoot::from_reader(reader).map(Expression::JSXRoot)?
+					JSXRoot::from_reader(reader).map(Box::new).map(Expression::JSXRoot)?
 				} else {
 					let (_found, position) = crate::lexer::utilities::next_item(reader);
 					return Err(ParseError::new(ParseErrors::ExpectedExpression, position));

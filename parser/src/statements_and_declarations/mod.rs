@@ -72,16 +72,16 @@ pub enum StatementOrDeclaration {
 	Variable(Box<Exportable<VariableDeclaration>>),
 	Function(Box<Decorated<Exportable<StatementFunction>>>),
 	Class(Box<Decorated<Exportable<ClassDeclarationStatement>>>),
-	Enum(Decorated<Exportable<EnumDeclaration>>),
-	Interface(Decorated<Exportable<InterfaceDeclaration>>),
-	TypeAlias(Decorated<Exportable<TypeAlias>>),
+	Enum(Box<Decorated<Exportable<EnumDeclaration>>>),
+	Interface(Box<Decorated<Exportable<InterfaceDeclaration>>>),
+	TypeAlias(Box<Decorated<Exportable<TypeAlias>>>),
 	/// Special TypeScript only
 	DeclareVariable(DeclareVariableDeclaration),
 	#[cfg(feature = "full-typescript")]
 	Namespace(Exportable<crate::types::namespace::Namespace>),
 	// Top level only
-	Import(ImportDeclaration),
-	Export(Decorated<ExportDeclaration>),
+	Import(Box<ImportDeclaration>),
+	Export(Box<Decorated<ExportDeclaration>>),
 	// statement but also sort of declaration 🤷‍♂️
 	VarVariable(Exportable<VarVariableStatement>),
 	UsingDeclaration(UsingDeclaration),
@@ -91,8 +91,8 @@ pub enum StatementOrDeclaration {
 	Block(Block),
 	Debugger(Span),
 	// Loops and "condition-aries"
-	If(IfStatement),
-	ForLoop(ForLoopStatement),
+	If(Box<IfStatement>),
+	ForLoop(Box<ForLoopStatement>),
 	Switch(SwitchStatement),
 	WhileLoop(WhileStatement),
 	DoWhileLoop(DoWhileStatement),
@@ -169,20 +169,15 @@ impl ASTNode for StatementOrDeclaration {
 
 		// TODO can use finite automaton here
 
-		if reader.is_keyword("const") {
+		let is_const = reader.is_keyword("const");
+		if is_const && reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
 			// Const can be either variable declaration or `const enum`
-			if reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
-				EnumDeclaration::from_reader(reader)
-					.map(Exportable::not_exported)
-					.map(|on| Decorated::new(decorators, on))
-					.map(StatementOrDeclaration::Enum)
-			} else {
-				VariableDeclaration::from_reader(reader)
-					.map(Exportable::not_exported)
-					.map(Box::new)
-					.map(StatementOrDeclaration::Variable)
-			}
-		} else if reader.is_keyword("let") {
+			EnumDeclaration::from_reader(reader)
+				.map(Exportable::not_exported)
+				.map(|on| Decorated::new(decorators, on))
+				.map(Box::new)
+				.map(StatementOrDeclaration::Enum)
+		} else if is_const || reader.is_keyword("let") {
 			VariableDeclaration::from_reader(reader)
 				.map(Exportable::not_exported)
 				.map(Box::new)
@@ -191,6 +186,7 @@ impl ASTNode for StatementOrDeclaration {
 			EnumDeclaration::from_reader(reader)
 				.map(Exportable::not_exported)
 				.map(|on| Decorated::new(decorators, on))
+				.map(Box::new)
 				.map(StatementOrDeclaration::Enum)
 		} else if reader.is_keyword("class") {
 			ClassDeclaration::from_reader(reader)
@@ -203,7 +199,8 @@ impl ASTNode for StatementOrDeclaration {
 			crate::lexer::utilities::assert_type_annotations(reader, interface.get_position())?;
 			let exported = Exportable::not_exported(interface);
 			let decorated = Decorated::new(decorators, exported);
-			Ok(StatementOrDeclaration::Interface(decorated))
+			let item = Box::new(decorated);
+			Ok(StatementOrDeclaration::Interface(item))
 		} else if reader.is_keyword("type")
 			&& reader.get_current()[4..].trim_start().starts_with(char::is_alphabetic)
 		{
@@ -215,12 +212,14 @@ impl ASTNode for StatementOrDeclaration {
 			}
 			let alias = Exportable::not_exported(alias);
 			let decorated = Decorated::new(decorators, alias);
-			Ok(StatementOrDeclaration::TypeAlias(decorated))
+			let item = Box::new(decorated);
+			Ok(StatementOrDeclaration::TypeAlias(item))
 		} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
 			let function = StatementFunction::from_reader(reader)?;
 			let exported = Exportable::not_exported(function);
 			let decorated = Decorated::new(decorators, exported);
-			Ok(StatementOrDeclaration::Function(Box::new(decorated)))
+			let item = Box::new(decorated);
+			Ok(StatementOrDeclaration::Function(item))
 		} else if reader.is_keyword("export") {
 			let export_len: u32 = 6;
 			let after = reader.get_current()[export_len as usize..].trim_start();
@@ -228,9 +227,11 @@ impl ASTNode for StatementOrDeclaration {
 				reader.advance(export_len);
 				// Const can be either variable declaration or `const enum`
 				if reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
-					EnumDeclaration::from_reader(reader)
-						.map(Exportable::exported)
-						.map(|on| StatementOrDeclaration::Enum(Decorated::new(decorators, on)))
+					let item = EnumDeclaration::from_reader(reader)?;
+					let exported = Exportable::exported(item);
+					let decorated = Decorated::new(decorators, exported);
+					let item = Box::new(decorated);
+					Ok(StatementOrDeclaration::Enum(item))
 				} else {
 					VariableDeclaration::from_reader(reader)
 						.map(Exportable::exported)
@@ -247,7 +248,9 @@ impl ASTNode for StatementOrDeclaration {
 				reader.advance(export_len);
 				EnumDeclaration::from_reader(reader)
 					.map(Exportable::exported)
-					.map(|on| StatementOrDeclaration::Enum(Decorated::new(decorators, on)))
+					.map(|on| Decorated::new(decorators, on))
+					.map(Box::new)
+					.map(StatementOrDeclaration::Enum)
 			} else if after.starts_with("class") {
 				reader.advance(export_len);
 				// state.append_keyword_at_pos(start.0, TSXKeyword::Class);
@@ -262,26 +265,29 @@ impl ASTNode for StatementOrDeclaration {
 				crate::lexer::utilities::assert_type_annotations(reader, interface.get_position())?;
 				let exported = Exportable::exported(interface);
 				let decorated = Decorated::new(decorators, exported);
-				Ok(StatementOrDeclaration::Interface(decorated))
+				let item = Box::new(decorated);
+				Ok(StatementOrDeclaration::Interface(item))
 			} else if after.starts_with("type") {
 				reader.advance(export_len);
 				let alias = TypeAlias::from_reader(reader)?;
 				crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
 				let exported = Exportable::exported(alias);
 				let decorated = Decorated::new(decorators, exported);
-				Ok(StatementOrDeclaration::TypeAlias(decorated))
+				let item = Box::new(decorated);
+				Ok(StatementOrDeclaration::TypeAlias(item))
 			} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
 				reader.advance(export_len);
 				let function = StatementFunction::from_reader(reader).map(Exportable::exported)?;
 				Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
 			} else {
-				ExportDeclaration::from_reader(reader)
-					.map(|on| StatementOrDeclaration::Export(Decorated::new(decorators, on)))
+				ExportDeclaration::from_reader(reader).map(|on| {
+					StatementOrDeclaration::Export(Box::new(Decorated::new(decorators, on)))
+				})
 			}
 		} else if reader.is_keyword("import")
 			&& !reader.get_current()[6..].trim_start().starts_with(['.', '('])
 		{
-			ImportDeclaration::from_reader(reader).map(Into::into)
+			ImportDeclaration::from_reader(reader).map(Box::new).map(Into::into)
 		} else if reader.is_keyword("declare") {
 			let start = reader.get_start();
 			reader.advance("declare".len() as u32);
@@ -311,7 +317,8 @@ impl ASTNode for StatementOrDeclaration {
 				alias.position.start = start.0;
 				let alias = Exportable::not_exported(alias);
 				let decorated = Decorated::new(decorators, alias);
-				Ok(StatementOrDeclaration::TypeAlias(decorated))
+				let item = Box::new(decorated);
+				Ok(StatementOrDeclaration::TypeAlias(item))
 			} else {
 				#[cfg(feature = "extras")]
 				if reader.is_keyword("namespace") {
@@ -333,9 +340,9 @@ impl ASTNode for StatementOrDeclaration {
 		{
 			UsingDeclaration::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("if") {
-			IfStatement::from_reader(reader).map(Into::into)
+			IfStatement::from_reader(reader).map(Box::new).map(Into::into)
 		} else if reader.is_keyword("for") {
-			ForLoopStatement::from_reader(reader).map(Into::into)
+			ForLoopStatement::from_reader(reader).map(Box::new).map(Into::into)
 		} else if reader.is_keyword("switch") {
 			SwitchStatement::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("while") {
@@ -426,6 +433,7 @@ impl ASTNode for StatementOrDeclaration {
 			#[cfg(feature = "extras")]
 			if reader.is_keyword("from") {
 				return ImportDeclaration::from_reader_reversed(reader)
+					.map(Box::new)
 					.map(StatementOrDeclaration::Import);
 			}
 
