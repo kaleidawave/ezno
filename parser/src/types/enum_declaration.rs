@@ -5,7 +5,7 @@ use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct EnumDeclaration {
 	pub is_constant: bool,
@@ -80,7 +80,7 @@ impl ASTNode for EnumDeclaration {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum EnumMemberValue {
 	ClassMembers(Vec<crate::Decorated<ClassMember>>),
@@ -88,7 +88,7 @@ pub enum EnumMemberValue {
 	None,
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct EnumMember {
 	pub name: String,

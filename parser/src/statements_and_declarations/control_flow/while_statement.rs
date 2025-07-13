@@ -4,7 +4,7 @@ use visitable_derive::Visitable;
 use crate::{ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode};
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct WhileStatement {
 	pub condition: Box<MultipleExpression>,
@@ -43,7 +43,7 @@ impl ASTNode for WhileStatement {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct DoWhileStatement {
 	pub inner: BlockOrSingleStatement,

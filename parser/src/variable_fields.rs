@@ -7,13 +7,11 @@ use crate::{
 	ListItem, Marker, ParseError, ParseErrors, ParseResult, Span, WithComment,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEqExtras, Clone, GetFieldByType)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum VariableIdentifier {
 	Standard(String, Span),
@@ -78,7 +76,7 @@ impl PartialEq<&str> for VariableIdentifier {
 
 /// A variable declaration name, used in variable declarations and function parameters.
 /// See [destructuring](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum VariableField {
 	/// `x`
@@ -209,7 +207,7 @@ impl ASTNode for VariableField {
 
 pub trait DestructuringFieldInto: ASTNode {
 	// This in an extra
-	type TypeAnnotation: Clone + PartialEq + Debug + Sync + Send + 'static;
+	type TypeAnnotation: Clone + Debug + Sync + Send + 'static;
 
 	fn type_annotation_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self::TypeAnnotation>;
 }
@@ -239,7 +237,7 @@ impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
 /// For
 /// - declarations: `T = VariableField`
 /// - expressions: `T = LHSOfAssignment`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 	Name(T, T::TypeAnnotation, Option<Box<Expression>>),
@@ -247,7 +245,7 @@ pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 }
 
 /// Covers [`ArrayDestructuring`] AND [`ObjectDestructuringField`]
-#[derive(Debug, Clone, PartialEq, Eq, visitable_derive::Visitable)]
+#[derive(Debug, Clone, visitable_derive::Visitable)]
 #[apply(derive_ASTNode)]
 pub struct SpreadDestructuringField<T: DestructuringFieldInto>(pub Box<T>, pub Span);
 
@@ -326,9 +324,8 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 /// - declarations: `T = VariableField`
 /// - expressions: `T = LHSOfAssignment`
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum ObjectDestructuringField<T: DestructuringFieldInto> {
 	/// `{ x }` and (annoyingly) `{ x = 2 }`
 	Name(VariableIdentifier, T::TypeAnnotation, Option<Box<Expression>>, Span),

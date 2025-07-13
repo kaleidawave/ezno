@@ -10,7 +10,7 @@ use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct InterfaceDeclaration {
 	pub is_is_declare: bool,
@@ -126,7 +126,7 @@ impl ASTNode for InterfaceDeclaration {
 
 /// For some reason mapped types can have a negated a readonly keyword
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum MappedReadonlyKind {
 	Negated,
 	Always,
@@ -135,7 +135,7 @@ pub enum MappedReadonlyKind {
 
 /// This is also used for [`TypeAnnotation::ObjectLiteral`]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, GetFieldByType)]
+#[derive(Debug, Clone, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum InterfaceMember {
 	Method {

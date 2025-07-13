@@ -5,13 +5,12 @@ use crate::{
 	VariableField, WithComment,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct Parameter<V> {
 	#[visit_skip_field]
@@ -22,7 +21,7 @@ pub struct Parameter<V> {
 	pub position: Span,
 }
 
-pub trait ParameterVisibility: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
+pub trait ParameterVisibility: Send + Sync + Sized + Debug + Clone + 'static {
 	fn from_reader(reader: &mut crate::Lexer) -> Self;
 }
 
@@ -49,7 +48,7 @@ impl ParameterVisibility for Option<crate::types::Visibility> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ParameterData {
 	Optional,
@@ -65,7 +64,7 @@ pub type SpreadParameterName = VariableField;
 pub type SpreadParameterName = crate::VariableIdentifier;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub struct SpreadParameter {
 	pub name: SpreadParameterName,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -73,8 +72,7 @@ pub struct SpreadParameter {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub struct FunctionParameters<L, V> {
 	#[visit_skip_field]
 	pub leading: L,
@@ -83,7 +81,7 @@ pub struct FunctionParameters<L, V> {
 	pub position: Span,
 }
 
-pub trait LeadingParameter: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
+pub trait LeadingParameter: Send + Sync + Sized + Debug + Clone + 'static {
 	fn try_make(
 		this_annotation: Option<ThisParameter>,
 		super_annotation: Option<SuperParameter>,
@@ -94,8 +92,7 @@ pub trait LeadingParameter: Send + Sync + Sized + Debug + PartialEq + Clone + 's
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub struct ThisParameter {
 	pub constraint: Box<TypeAnnotation>,
 	pub position: Span,
@@ -103,8 +100,7 @@ pub struct ThisParameter {
 
 /// TODO WIP!
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub struct SuperParameter {
 	pub constraint: Box<TypeAnnotation>,
 	pub position: Span,

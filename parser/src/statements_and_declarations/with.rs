@@ -2,7 +2,7 @@ use crate::{derive_ASTNode, Span};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct WithStatement {
 	pub expression: Box<crate::MultipleExpression>,

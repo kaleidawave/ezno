@@ -6,16 +6,14 @@ use crate::{
 	Decorator, ListItem, Marker, ParseError, ParseErrors, ParseResult, Quoted, Span, VariableField,
 	WithComment,
 };
-use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 
 use super::{interface::InterfaceMember, type_declarations::TypeParameter};
 
 /// A reference to a type
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum TypeAnnotation {
 	/// Common types that don't have to allocate a string for
 	CommonName(CommonTypes, Span),
@@ -116,7 +114,7 @@ impl ListItem for TypeAnnotation {
 	type LAST = ();
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct AnnotationWithBinder {
 	pub name: Option<String>,
@@ -156,7 +154,7 @@ impl ASTNode for AnnotationWithBinder {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct BinderWithAnnotation {
 	pub name: crate::PropertyKey<crate::property_key::AlwaysPublic>,
@@ -194,7 +192,7 @@ impl ASTNode for BinderWithAnnotation {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum TupleElementKind {
 	Standard,
@@ -203,7 +201,7 @@ pub enum TupleElementKind {
 }
 
 /// Reduces string allocation and type lookup overhead. This always point to the same type regardless of context (because no type is allowed to be named these)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum CommonTypes {
 	String,
@@ -232,7 +230,7 @@ impl CommonTypes {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypeName(pub(crate) String);
 
 impl TypeName {
@@ -269,7 +267,7 @@ impl TypeName {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum IsItem {
 	Reference(String),
 	This,
@@ -879,7 +877,7 @@ impl TypeAnnotation {
 }
 
 /// Mirrors [`crate::FunctionParameters`]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TypeAnnotationFunctionParameters {
 	pub parameters: Vec<TypeAnnotationFunctionParameter>,
@@ -1003,7 +1001,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TypeAnnotationFunctionParameter {
 	pub decorators: Vec<Decorator>,
@@ -1014,7 +1012,7 @@ pub struct TypeAnnotationFunctionParameter {
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TypeAnnotationSpreadFunctionParameter {
 	pub decorators: Vec<Decorator>,
@@ -1023,7 +1021,7 @@ pub struct TypeAnnotationSpreadFunctionParameter {
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TupleLiteralElement(pub TupleElementKind, pub AnnotationWithBinder, pub Span);
 

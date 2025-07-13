@@ -4,7 +4,7 @@ use visitable_derive::Visitable;
 use crate::{ast::MultipleExpression, derive_ASTNode, ASTNode, Expression, StatementOrDeclaration};
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct SwitchStatement {
 	pub case: Box<MultipleExpression>,
@@ -12,7 +12,7 @@ pub struct SwitchStatement {
 	pub position: Span,
 }
 
-#[derive(Debug, PartialEq, Clone, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),

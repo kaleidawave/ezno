@@ -6,7 +6,6 @@ use crate::{
 	},
 	derive_ASTNode, ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
 };
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
@@ -15,9 +14,8 @@ use visitable_derive::Visitable;
 use super::MultipleExpression;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum VariableOrPropertyAccess {
 	Variable(String, Span),
 	PropertyAccess {
@@ -193,8 +191,7 @@ impl VariableOrPropertyAccess {
 ///
 /// Includes [Destructuring assignment](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 pub enum LHSOfAssignment {
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
 	ArrayDestructuring {

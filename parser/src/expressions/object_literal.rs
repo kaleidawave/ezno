@@ -6,12 +6,11 @@ use crate::{
 	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, WithComment,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use std::fmt::Debug;
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ObjectLiteral {
 	pub members: Vec<ObjectLiteralMember>,
@@ -19,8 +18,7 @@ pub struct ObjectLiteral {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
-#[partial_eq_ignore_types(Span, VariableId)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ObjectLiteralMember {
 	Spread(Expression, Span),
@@ -70,7 +68,7 @@ impl crate::Visitable for ObjectLiteralMember {
 	}
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ObjectLiteralMethodBase;
 pub type ObjectLiteralMethod = FunctionBase<ObjectLiteralMethodBase>;
 
@@ -143,8 +141,6 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		}
 	}
 }
-
-impl Eq for ObjectLiteralMember {}
 
 impl ASTNode for ObjectLiteral {
 	fn get_position(&self) -> Span {

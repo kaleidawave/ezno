@@ -4,7 +4,7 @@ use visitable_derive::Visitable;
 
 /// [See](https://github.com/tc39/proposal-explicit-resource-management?tab=readme-ov-file#syntax)
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct UsingDeclaration {
 	pub is_await: bool,

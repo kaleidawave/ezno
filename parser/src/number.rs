@@ -227,20 +227,6 @@ impl std::fmt::Display for NumberRepresentation {
 	}
 }
 
-// TODO not great
-impl PartialEq for NumberRepresentation {
-	fn eq(&self, other: &Self) -> bool {
-		if let (Ok(a), Ok(b)) = (f64::try_from(self.clone()), f64::try_from(other.clone())) {
-			a == b
-		} else {
-			// TODO ...
-			false
-		}
-	}
-}
-
-impl Eq for NumberRepresentation {}
-
 impl std::ops::Neg for NumberRepresentation {
 	type Output = Self;
 

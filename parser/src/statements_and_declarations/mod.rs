@@ -23,7 +23,6 @@ use crate::{
 	Marker, ParseError, ParseErrors, StatementPosition,
 };
 use derive_enum_from_into::{EnumFrom, EnumTryInto};
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use std::fmt::Debug;
 use visitable_derive::Visitable;
@@ -65,9 +64,8 @@ pub type ClassDeclarationStatement = ClassDeclaration<StatementPosition>;
 
 /// A statement or declaration. See [Statement] which is a subset of items
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, PartialEqExtras, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, EnumFrom, EnumTryInto, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 #[try_into_references(&, &mut)]
 #[visit_self]
 pub enum StatementOrDeclaration {
@@ -134,16 +132,14 @@ pub enum StatementOrDeclaration {
 
 /// Return with an optional expression
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ReturnStatement(pub Option<MultipleExpression>, pub Span);
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Visitable, PartialEqExtras, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ThrowStatement(pub Box<MultipleExpression>, pub Span);
-
-impl Eq for StatementOrDeclaration {}
 
 impl ASTNode for StatementOrDeclaration {
 	fn get_position(&self) -> Span {
@@ -619,7 +615,7 @@ impl StatementOrDeclaration {
 }
 
 #[apply(derive_ASTNode!)]
-#[derive(Clone, PartialEq, Debug, Visitable)]
+#[derive(Clone, Debug, Visitable)]
 pub struct Statement(pub StatementOrDeclaration);
 
 impl ASTNode for Statement {

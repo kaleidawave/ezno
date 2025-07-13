@@ -38,7 +38,6 @@ derive-finite-automaton = "0.3"
 derive-debug-extras = { version = "0.3", features = [
   "auto-debug-single-tuple-inline",
 ] }
-derive-partial-eq-extras = "0.2"
 derive-enum-from-into = "0.2"
 unicode-ident = "1.0.18"
 

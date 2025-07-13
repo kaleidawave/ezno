@@ -9,7 +9,7 @@ use get_field_by_type::GetFieldByType;
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub struct Exportable<T> {
 	pub is_exported: bool,
 	pub item: T,
@@ -58,7 +58,7 @@ impl<A: ASTNode> ASTNode for Exportable<A> {
 
 /// [See](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/export)
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum ExportDeclaration {
 	/// `export { ... }`

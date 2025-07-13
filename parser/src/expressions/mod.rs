@@ -20,7 +20,6 @@ use super::{jsx::JSXRoot, ASTNode, Block, FunctionBase, ParseError, Span, TypeAn
 #[cfg(feature = "extras")]
 use crate::extensions::is_expression::IsExpression;
 
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use source_map::{Nullable, ToString};
 use visitable_derive::Visitable;
@@ -49,14 +48,13 @@ use std::convert::TryInto;
 ///
 /// Comma is implemented as a [`BinaryOperator`]
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 #[visit_self]
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
-	StringLiteral(String, #[partial_eq_ignore] Quoted, Span),
+	StringLiteral(String, Quoted, Span),
 	BooleanLiteral(bool, Span),
 	RegexLiteral {
 		pattern: String,
@@ -171,9 +169,7 @@ pub enum Expression {
 	},
 }
 
-impl Eq for Expression {}
-
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum PropertyReference {
 	Standard {
@@ -1830,7 +1826,7 @@ impl ExpressionToStringArgument {
 /// Represents expressions that can be the comma operator. Has a special new type to discern the places
 /// where this is allowed
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct MultipleExpression(pub Expression);
 
@@ -1958,7 +1954,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 
 /// Binary operations whose RHS are types rather than [Expression]s
 #[apply(derive_ASTNode)]
-#[derive(PartialEq, Debug, Clone, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum SpecialOperators {
 	/// TS Only
 	Satisfies {
@@ -1993,15 +1989,14 @@ pub enum SpecialOperators {
 
 #[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum TypeOrConst {
 	Type(Box<TypeAnnotation>),
 	Const(Span),
 }
 
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub enum InExpressionLHS {
 	PrivateProperty(String),
 	Expression(Box<Expression>),
@@ -2009,24 +2004,22 @@ pub enum InExpressionLHS {
 
 /// "super" cannot be used alone
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub enum SuperReference {
 	Call { arguments: Vec<FunctionArgument> },
 	PropertyAccess(PropertyLike),
 }
 
 #[apply(derive_ASTNode)]
-#[derive(PartialEq, Debug, Clone, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum PropertyLike {
 	Fixed(String),
 	Computed(Box<Expression>),
 }
 
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum ImportExpression {
 	ImportMeta(Span),
 	/// [Proposal](https://github.com/tc39/proposal-source-phase-imports)
@@ -2049,7 +2042,7 @@ pub enum ImportExpression {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum FunctionArgument {
 	Spread(Expression, Span),
 	Standard(Expression),
@@ -2148,7 +2141,7 @@ impl From<Expression> for FunctionArgument {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ArrayElement(pub Option<FunctionArgument>);
 

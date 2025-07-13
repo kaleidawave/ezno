@@ -14,12 +14,6 @@ pub struct Module {
 	pub span: Span,
 }
 
-impl PartialEq for Module {
-	fn eq(&self, other: &Self) -> bool {
-		self.items == other.items
-	}
-}
-
 impl ASTNode for Module {
 	fn get_position(&self) -> Span {
 		self.span
