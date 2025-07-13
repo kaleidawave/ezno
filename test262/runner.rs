@@ -16,9 +16,10 @@ fn main() {
 	let mut parsing = std::time::Duration::default();
 
 	let _ = create_dir("out");
-	let connection = sqlite::open("out/database.db").unwrap();
+	let connection = sqlite::open("out/results.db").unwrap();
 
-	let query = "CREATE TABLE IF NOT EXISTS results (
+	let query = "
+CREATE TABLE IF NOT EXISTS results (
     path        TEXT PRIMARY KEY,
     info        TEXT,
     description TEXT,
@@ -29,7 +30,7 @@ fn main() {
     code        TEXT,
     pass        INTEGER NOT NULL,
     parser_out  TEXT
-);";
+);".trim_start();
 	connection.execute(query).unwrap();
 
 	let query = "INSERT INTO results VALUES (
@@ -79,36 +80,40 @@ fn main() {
 			{
 				let now = std::time::Instant::now();
 				let result = simple_yaml_parser::parse(metadata, |key, value| {
-					use simple_yaml_parser::YAMLKey::Slice;
+					use simple_yaml_parser::{YAMLKey::Slice, RootYAMLValue};
 
-					// TODO description. negative.type, flags, locale
-					if let (
-						&[Slice("negative"), Slice("phase")],
-						simple_yaml_parser::RootYAMLValue::String("parse"),
-					) = (key, &value)
-					{
+					if let &[Slice("negative"), Slice("phase")] = key && let RootYAMLValue::String("parse") = value {
 						should_not_parse = true;
 					}
 
+					// TODO negative.type, locale
 					if add_to_db {
-						if let [Slice("info")] = key {
-							info = value.raw_string_value();
-						} else if let [Slice("description")] = key {
-							description = value.raw_string_value();
-						} else if let [Slice("es5id")] = key {
-							es5id = value.raw_string_value();
-						} else if let [Slice("features"), _] = key {
-							let f = features.get_or_insert_default();
-							if !f.is_empty() {
-								f.push(',');
+						match key {
+							
+							&[Slice("info")] => {
+								info = value.raw_string_value();
 							}
-							f.push_str(value.raw_string_value().unwrap_or_default());
-						} else if let [Slice("flags"), _] = key {
-							let f = flags.get_or_insert_default();
-							if !f.is_empty() {
-								f.push(',');
+							&[Slice("description")] => {
+								description = value.raw_string_value();
 							}
-							f.push_str(value.raw_string_value().unwrap_or_default());
+							&[Slice("es5id")] => {
+								es5id = value.raw_string_value();
+							}
+							&[Slice("features"), _] => {
+								let f = features.get_or_insert_default();
+								if !f.is_empty() {
+									f.push(',');
+								}
+								f.push_str(value.raw_string_value().unwrap_or_default());
+							}
+							&[Slice("flags"), _] => {
+								let f = flags.get_or_insert_default();
+								if !f.is_empty() {
+									f.push(',');
+								}
+								f.push_str(value.raw_string_value().unwrap_or_default());
+							}
+							_ => {}
 						}
 					}
 				});
@@ -180,31 +185,19 @@ fn main() {
 	);
 
 	{
-		let query = "SELECT cast(SUM(pass) AS FLOAT) / COUNT(*) 
-		FROM results;";
-		eprintln!("Results '{query}'");
-		connection
-			.iterate(query, |pairs| {
-				for &(name, value) in pairs.iter() {
-					eprintln!("Out {} = {}", name, value.unwrap());
-				}
-				true
-			})
-			.unwrap();
-	}
-	{
 		let query =
 			"SELECT parser_out, COUNT(*) 
 			FROM results 
-			GROUP BY parser_out 
+			GROUP BY parser_out
+			WHERE pass = 0
 			ORDER BY COUNT(*) DESC";
 
-		eprintln!("Breakdown of fails '{query}'");
+		eprintln!("Breakdown of fails:");
 		connection
 			.iterate(query, |pairs| {
-				for &(name, value) in pairs.iter() {
-					eprintln!("Out {} = {}", name, value.unwrap());
-				}
+				let reason = pairs[0].1.unwrap();
+				let count = pairs[1].1.unwrap();
+				eprintln!("{count} recieved {reason:?}");
 				true
 			})
 			.unwrap();
