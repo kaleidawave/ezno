@@ -464,7 +464,7 @@ impl ASTNode for StatementOrDeclaration {
 			StatementOrDeclaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::UsingDeclaration(ud) => {
-				ud.to_string_from_buffer(buf, options, local)
+				ud.to_string_from_buffer(buf, options, local);
 			}
 			StatementOrDeclaration::Enum(r#enum) => {
 				r#enum.to_string_from_buffer(buf, options, local);

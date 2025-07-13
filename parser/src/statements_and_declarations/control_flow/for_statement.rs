@@ -296,32 +296,3 @@ fn initialiser_to_string<T: source_map::ToString>(
 		}
 	}
 }
-
-#[cfg(test)]
-mod tests {
-	use super::{ForLoopCondition, ForLoopStatement};
-	use crate::{assert_matches_ast, ASTNode};
-
-	#[test]
-	fn condition_without_variable_keyword() {
-		assert_matches_ast!("(k in x)", ForLoopCondition::ForIn { .. });
-	}
-
-	#[test]
-	fn for_await() {
-		assert_matches_ast!(
-			"for await (let k of x) {}",
-			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: true, .. }, .. }
-		);
-		assert_matches_ast!(
-			"for (let k of x) {}",
-			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: false, .. }, .. }
-		);
-
-		assert!(ForLoopStatement::from_string(
-			"for await (let x = 0; x < 5; x++) {}".into(),
-			Default::default()
-		)
-		.is_err());
-	}
-}

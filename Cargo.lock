@@ -320,7 +320,6 @@ dependencies = [
  "get-field-by-type",
  "iterator-endiate",
  "macro_rules_attribute",
- "match_deref",
  "pretty_assertions",
  "self-rust-tokenize",
  "serde",
