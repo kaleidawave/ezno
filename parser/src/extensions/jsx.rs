@@ -23,6 +23,7 @@ pub struct JSXElement {
 	pub position: Span,
 }
 
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type JSXChildren = Vec<JSXNode>;
 
 #[derive(Debug, Clone, Visitable)]

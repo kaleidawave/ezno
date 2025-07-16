@@ -60,6 +60,7 @@ const TYPES_STATEMENT_FUNCTION: &str = r"
 	}
 ";
 
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type ClassDeclarationStatement = ClassDeclaration<StatementPosition>;
 
 /// A statement or declaration. See [Statement] which is a subset of items
