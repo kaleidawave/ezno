@@ -40,7 +40,6 @@ pub struct EznoParser;
 impl crate::ASTImplementation for EznoParser {
 	type ParseOptions = parser::ParseOptions;
 	type ParseError = (parser::ParseError, SourceId);
-	type ParserRequirements = ();
 
 	type Module<'_a> = parser::Module;
 	type OwnedModule = parser::Module;
@@ -61,7 +60,6 @@ impl crate::ASTImplementation for EznoParser {
 		source_id: SourceId,
 		string: String,
 		options: Self::ParseOptions,
-		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
 		<parser::Module as parser::ASTNode>::from_string(string, options)
 			.map_err(|err| (err, source_id))
@@ -71,7 +69,6 @@ impl crate::ASTImplementation for EznoParser {
 		// TODO remove
 		source_id: SourceId,
 		string: String,
-		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
 		let options = ParseOptions { type_definition_module: true, ..Default::default() };
 

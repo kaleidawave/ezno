@@ -608,14 +608,15 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					if let Decorated {
 						on: ExportDeclaration::TSDefaultFunctionDeclaration { position, .. },
 						..
-					} = &**item {
-					// TODO under definition file
-					checking_data.diagnostics_container.add_error(
-						TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-							position: position.with_source(environment.get_source()),
-						},
-					);
-				}
+					} = &**item
+					{
+						// TODO under definition file
+						checking_data.diagnostics_container.add_error(
+							TypeCheckError::FunctionWithoutBodyNotAllowedHere {
+								position: position.with_source(environment.get_source()),
+							},
+						);
+					}
 				}
 				StatementOrDeclaration::DeclareVariable(DeclareVariableDeclaration {
 					keyword: _,
