@@ -67,8 +67,11 @@ jobs:
           GQL_SQ='user(login: "kaleidawave") { sponsors: sponsorshipsAsMaintainer(first: 100, activeOnly: false, includePrivate: false) { nodes { sponsor: sponsorEntity { ... on User { login, name } ... on Organization { login, name }  } } } }'
           SPONSORS=$(gh api graphql -f query="{ $GQL_SQ }" -q "$SQP")
 
-          CQP='map(.author.name // .author.login) | unique | join(",")'
-          CONTRIBUTORS=$(gh pr list --state merged --json author | jq "$CQP" --raw-output)
+          Q='map(.author.name // .author.login) | unique | join(",")'
+          CONTRIBUTORS=$(
+            gh pr list --search "is:merged -author:kaleidawave" \
+            -L 100 --json "author" -q $Q
+          )
             
           echo "SPONSORS=$SPONSORS" >> "$GITHUB_OUTPUT"
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> "$GITHUB_OUTPUT"
@@ -85,12 +88,15 @@ jobs:
           echo "GITHUB_RUN_DATE=$(date --date='TZ="Europe/London"' +"%Y-%m-%d")" >> "$GITHUB_OUTPUT"
         shell: bash
 
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
       - name: Crates publish
         uses: kaleidawave/crates-release-gh-action@main
         id: release
         with:
           version: ${{ steps.set-arguments.outputs.publish-json-args }}
-          crates-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          crates-token: ${{ steps.auth.outputs.token }}
         env:
           SPONSORS: ${{ steps.get-sponsors-and-contributors.outputs.SPONSORS }}
           CONTRIBUTORS: ${{ steps.get-sponsors-and-contributors.outputs.CONTRIBUTORS }}
