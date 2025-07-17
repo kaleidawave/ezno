@@ -96,7 +96,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					if let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
 					{
-						exported.named_types.insert(r#enum.name.to_owned(), ty);
+						exported.named_types.insert(r#enum.name.clone(), ty);
 					}
 				}
 			} else {

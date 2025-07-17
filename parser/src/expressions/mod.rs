@@ -1849,6 +1849,15 @@ impl MultipleExpression {
 	pub fn get_inner(&self) -> &Expression {
 		&self.0
 	}
+
+	pub fn into_expression(self) -> Expression {
+		if let Expression::BinaryOperation { operator: BinaryOperator::Comma, .. } = self.0 {
+			let position = self.get_position();
+			Expression::Parenthesised(Box::new(self), position)
+		} else {
+			self.0
+		}
+	}
 }
 
 impl ASTNode for MultipleExpression {

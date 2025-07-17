@@ -57,7 +57,6 @@ fn main() {
 		type_definition_files,
 		&resolver,
 		options,
-		(),
 		None,
 	);
 

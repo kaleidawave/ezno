@@ -23,8 +23,9 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	// Left over classes
 	for item in &definition.items {
 		if let parser::StatementOrDeclaration::Class(item) = item {
-			let class = &item.on.item;
 			use super::StatementOrExpressionVariable;
+
+			let class = &item.on.item;
 
 			let class_type = *checking_data
 				.local_type_mappings

@@ -1,12 +1,16 @@
 use std::{collections::HashSet, io::Write, mem, path::PathBuf};
 
 use parser::{
-	ast::{self, InterfaceDeclaration, TypeAlias},
+	ast,
 	expressions::operators,
 	functions,
 	source_map::{Nullable, SourceId, Span},
-	visiting::{VisitOptions, Visitors},
-	ASTNode, Decorated, Expression, Module, StatementOrDeclaration, StatementPosition,
+	type_annotations::{
+		CommonTypes, TypeAnnotation, TypeAnnotationFunctionParameter,
+		TypeAnnotationFunctionParameters,
+	},
+	visiting::{self, VisitOptions, Visitors},
+	ASTNode, Expression, ExpressionPosition, Module, StatementOrDeclaration, ToStringOptions,
 	VariableField, VariableIdentifier, WithComment,
 };
 
@@ -150,24 +154,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			// TODO quick fix to also register interface and type alias names to prevent conflicts
 			for item in &module.items {
 				match item {
-					StatementOrDeclaration::TypeAlias(TypeAlias {
-						name:
-							StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
-						..
-					})
-					| StatementOrDeclaration::Interface(Decorated {
-						on:
-							InterfaceDeclaration {
-								name:
-									StatementPosition {
-										identifier: VariableIdentifier::Standard(s, _),
-										..
-									},
-								..
-							},
-						..
-					}) => {
-						names.insert(s.clone());
+					StatementOrDeclaration::TypeAlias(alias) => {
+						if let VariableIdentifier::Standard(s, _) = &alias.on.item.name.identifier {
+							names.insert(s.clone());
+						}
+					}
+					StatementOrDeclaration::Interface(interface) => {
+						if let VariableIdentifier::Standard(s, _) =
+							&interface.on.item.name.identifier
+						{
+							names.insert(s.clone());
+						}
 					}
 					StatementOrDeclaration::DeclareVariable(declare_variable) => {
 						for declaration in &declare_variable.declarations {
@@ -177,12 +174,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							));
 						}
 					}
-					StatementOrDeclaration::Function(decorated) if decorated.on.name.is_declare => {
-						let function = &decorated.on;
-						use parser::type_annotations::{
-							TypeAnnotation, TypeAnnotationFunctionParameter,
-							TypeAnnotationFunctionParameters,
-						};
+					StatementOrDeclaration::Function(decorated)
+						if decorated.on.item.name.is_declare =>
+					{
+						let function = &decorated.on.item;
 						let position = Span::NULL;
 						let parameters = function
 							.parameters
@@ -205,18 +200,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 						let return_type =
 							Box::new(function.return_type.clone().unwrap_or_else(|| {
-								TypeAnnotation::CommonName(
-									parser::type_annotations::CommonTypes::Any,
-									position,
-								)
+								TypeAnnotation::CommonName(CommonTypes::Any, position)
 							}));
 						let ty = TypeAnnotation::FunctionLiteral {
 							type_parameters: function.type_parameters.clone(),
-							parameters: TypeAnnotationFunctionParameters {
+							parameters: Box::new(TypeAnnotationFunctionParameters {
 								parameters,
 								rest_parameter: None,
 								position,
-							},
+							}),
 							return_type,
 							position,
 						};
@@ -233,12 +225,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
 				for item in module.items {
 					match item {
-						StatementOrDeclaration::TypeAlias(TypeAlias { .. })
-						| StatementOrDeclaration::Interface(Decorated { .. }) => {
+						StatementOrDeclaration::TypeAlias(_)
+						| StatementOrDeclaration::Interface(_) => {
 							top_level.push(item);
 						}
 						StatementOrDeclaration::Function(decorated)
-							if decorated.on.name.is_declare => {}
+							if decorated.on.item.name.is_declare => {}
 						StatementOrDeclaration::DeclareVariable(..) => {}
 						item => {
 							inside.push(item);
@@ -260,8 +252,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					.collect();
 
 				let function = Expression::ExpressionFunction(Box::new(ast::ExpressionFunction {
-					header: parser::functions::FunctionHeader::empty(),
-					name: parser::ExpressionPosition(Some(VariableIdentifier::Standard(
+					header: functions::FunctionHeader::empty(),
+					name: ExpressionPosition(Some(VariableIdentifier::Standard(
 						"declare_variables".to_owned(),
 						position,
 					))),
@@ -292,7 +284,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 				let module = Module { hashbang_comment: None, items: top_level, span: position };
 
-				code = module.to_string(&parser::ToStringOptions::typescript());
+				code = module.to_string(&ToStringOptions::typescript());
 			}
 
 			// If available block add to that, otherwise create a new one
@@ -355,15 +347,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 struct NameFinder;
 
-impl<'a>
-	parser::visiting::Visitor<parser::visiting::ImmutableVariableOrProperty<'a>, HashSet<String>>
+impl<'a> visiting::Visitor<visiting::ImmutableVariableOrProperty<'a>, HashSet<String>>
 	for NameFinder
 {
 	fn visit(
 		&mut self,
-		item: &parser::visiting::ImmutableVariableOrProperty<'a>,
+		item: &visiting::ImmutableVariableOrProperty<'a>,
 		data: &mut HashSet<String>,
-		_chain: &parser::visiting::Chain,
+		_chain: &visiting::Chain,
 	) {
 		if let Some(name) = item.get_variable_name() {
 			data.insert(name.to_owned());
