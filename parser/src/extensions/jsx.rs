@@ -114,7 +114,7 @@ impl ASTNode for JSXElement {
 							// TODO _quoted
 							let (content, _quoted) = reader.parse_string_literal()?;
 							let position = start.with_length(content.len() + 2);
-							JSXAttribute::Static(key, content.to_owned(), position)
+							JSXAttribute::Static(key, content.into_owned(), position)
 						} else {
 							let (_found, position) = crate::lexer::utilities::next_item(reader);
 							return Err(ParseError::new(
@@ -277,7 +277,7 @@ impl ASTNode for JSXAttribute {
 			} else if reader.starts_with_string_delimeter() {
 				let (content, _quoted) = reader.parse_string_literal()?;
 				let position = start.with_length(content.len() + 2);
-				Ok(JSXAttribute::Static(key, content.to_owned(), position))
+				Ok(JSXAttribute::Static(key, content.into_owned(), position))
 			} else {
 				let (_found, position) = crate::lexer::utilities::next_item(reader);
 				Err(ParseError::new(ParseErrors::ExpectedJSXAttribute, position))
@@ -392,7 +392,8 @@ fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNod
 	// TODO count new lines etc
 	loop {
 		reader.skip();
-		for _ in 0..reader.last_was_from_new_line_consume() {
+		// for _ in 0..reader.last_was_from_new_line_consume() {
+		for _ in 0..reader.last_was_from_new_line() {
 			children.push(JSXNode::LineBreak);
 		}
 		if reader.starts_with_slice("</") {

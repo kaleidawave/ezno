@@ -602,7 +602,7 @@ impl TypeAnnotation {
 			let name = if reader.get_options().extra_type_annotations
 				&& reader.starts_with_string_delimeter()
 			{
-				Some(reader.parse_string_literal()?.0.to_owned())
+				Some(reader.parse_string_literal()?.0.into_owned())
 			} else {
 				None
 			};
@@ -620,7 +620,7 @@ impl TypeAnnotation {
 		} else if reader.starts_with('"') || reader.starts_with('\'') {
 			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
-			Self::StringLiteral(content.to_owned(), quoted, position)
+			Self::StringLiteral(content.into_owned(), quoted, position)
 		} else if reader.starts_with('@') {
 			let decorator = Decorator::from_reader(reader)?;
 			// TODO ...
