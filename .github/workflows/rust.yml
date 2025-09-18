@@ -14,7 +14,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, "*"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -127,6 +127,19 @@ jobs:
 
       - name: Run CLI and base tests
         run: cargo test
+  
+  # TODO merge into tests
+  test262:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash run.sh
+        working-directory: test262
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test262-results
+          path: test262/out
+          retention-days: 28
 
   extras:
     runs-on: ubuntu-latest
