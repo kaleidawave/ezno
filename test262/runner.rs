@@ -188,19 +188,18 @@ CREATE TABLE IF NOT EXISTS results (
 		let query =
 			"SELECT parser_out, COUNT(*) 
 			FROM results 
-			GROUP BY parser_out
 			WHERE pass = 0
+			GROUP BY parser_out
 			ORDER BY COUNT(*) DESC";
 
 		eprintln!("Breakdown of fails:");
-		connection
+		let _ = connection
 			.iterate(query, |pairs| {
 				let reason = pairs[0].1.unwrap();
 				let count = pairs[1].1.unwrap();
 				eprintln!("{count} recieved {reason:?}");
 				true
-			})
-			.unwrap();
+			});
 	}
 }
 
