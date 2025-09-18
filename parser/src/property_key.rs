@@ -126,7 +126,7 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		if reader.starts_with('"') || reader.starts_with('\'') {
 			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
-			Ok(Self::StringLiteral(content.to_owned(), quoted, position))
+			Ok(Self::StringLiteral(content.into_owned(), quoted, position))
 		} else if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);

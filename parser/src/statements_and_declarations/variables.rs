@@ -45,7 +45,6 @@ impl VariableKeyword {
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-
 pub struct VariableDeclarationItem {
 	pub name: WithComment<VariableField>,
 	pub type_annotation: Option<TypeAnnotation>,

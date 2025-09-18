@@ -60,6 +60,7 @@ const TYPES_STATEMENT_FUNCTION: &str = r"
 	}
 ";
 
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type ClassDeclarationStatement = ClassDeclaration<StatementPosition>;
 
 /// A statement or declaration. See [Statement] which is a subset of items
@@ -412,10 +413,10 @@ impl ASTNode for StatementOrDeclaration {
 				Ok(StatementOrDeclaration::Empty(position))
 			}
 		} else if reader.is_operator_advance("/*") {
-			let content = reader.parse_comment_literal(true)?;
+			let content = reader.parse_comment_literal(true)?.to_owned();
 			let position = start.with_length(4 + content.len());
-			if reader.get_options().comments.should_add_comment(content) {
-				Ok(StatementOrDeclaration::MultiLineComment(content.to_owned(), position))
+			if reader.get_options().comments.should_add_comment(&content) {
+				Ok(StatementOrDeclaration::MultiLineComment(content, position))
 			} else {
 				Ok(StatementOrDeclaration::Empty(position))
 			}

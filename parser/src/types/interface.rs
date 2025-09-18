@@ -308,7 +308,7 @@ impl ASTNode for InterfaceMember {
 				if reader.starts_with_string_delimeter() {
 					let (content, quoted) = reader.parse_string_literal()?;
 					let position = start.with_length(content.len() + 2);
-					PropertyKey::StringLiteral(content.to_owned(), quoted, position)
+					PropertyKey::StringLiteral(content.into_owned(), quoted, position)
 				} else if reader.starts_with_number() {
 					let (value, length) = reader.parse_number_literal()?;
 					let position = start.with_length(length as usize);

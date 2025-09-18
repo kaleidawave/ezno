@@ -112,11 +112,12 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 			}
 		}
 		StatementOrDeclaration::Enum(item) => {
-			let r#enum = &item.on.item;
 			use crate::types::{
 				properties::{PropertyKey, PropertyValue, Publicity},
 				Constant,
 			};
+
+			let r#enum = &item.on.item;
 
 			let mut basis = crate::features::objects::ObjectBuilder::new(
 				None,

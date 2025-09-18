@@ -1,6 +1,6 @@
-use std::{collections::HashSet, io::Write, mem, path::PathBuf};
+use std::{collections::HashSet, io::Write}; //, mem, path::PathBuf};
 
-use parser::{
+use ezno_parser::{
 	ast,
 	expressions::operators,
 	functions,
@@ -16,7 +16,7 @@ use parser::{
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let args = std::env::args().skip(1).collect::<Vec<_>>();
-	let path = args.first().ok_or("expected path to markdown file")?;
+	let path = args.first().ok_or("expected path to `---` split file")?;
 
 	let replace_satisfies_with_as = args.iter().any(|item| item == "--satisfies-with-as");
 	let add_headers_as_comments = args.iter().any(|item| item == "--comment-headers");
@@ -49,84 +49,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let filters: &[&str] = &["import", "export"];
 
-	#[allow(clippy::case_sensitive_file_extension_comparisons)]
-	let blocks = if path.ends_with(".md") {
-		let mut blocks = Vec::new();
-		let mut last_header = String::default();
-		let mut last_code = String::new();
-		let mut list_count = 0;
-
-		let _ = simple_markdown_parser::parse(&source, |item| {
-			if let simple_markdown_parser::MarkdownElement::Heading { level: 4, text } = item {
-				if !last_code.is_empty() {
-					let header = mem::take(&mut last_header);
-					let code = mem::take(&mut last_code);
-					blocks.push((header, code));
-				}
-				text.0.to_owned().clone_into(&mut last_header);
-			} else if let simple_markdown_parser::MarkdownElement::CodeBlock { language, code } =
-				item
-			{
-				let skip = filters.iter().any(|filter| code.contains(filter))
-					|| (!jsx_and_extra && language.ends_with("x"));
-				if !skip {
-					code.clone_into(&mut last_code);
-				}
-			} else if let simple_markdown_parser::MarkdownElement::Paragraph(item) = item {
-				if !include_flagged_examples && item.0.starts_with("With") {
-					mem::take(&mut last_code);
-				}
-			} else if let simple_markdown_parser::MarkdownElement::ListItem { text, .. } = item {
-				if !last_code.is_empty() {
-					list_count += 1;
-					if just_diagnostics {
-						println!("{inner}", inner = text.0);
-					}
-				}
-			}
-		});
-		if !last_code.is_empty() {
-			let header = mem::take(&mut last_header);
-			let code = mem::take(&mut last_code);
-			blocks.push((header, code));
-		}
-		eprintln!("Found {} blocks, with {} diagnostics", blocks.len(), list_count);
-		blocks
-	} else {
-		todo!("parse module, split by statement braced")
-	};
+	// let mut blocks: Vec<(&str, &str)> = source
+	let mut blocks: Vec<String> = source
+		.split("---")
+		.map(str::trim)
+		.filter(|item| !item.is_empty() && !filters.iter().any(|banned| item.contains(banned)))
+		.map(str::to_owned)
+		// .map(|item| {
+		// let (header, code) = item.split_once("---").unwrap();
+		// (header.trim(), code.trim())
+		// })
+		.collect();
 
 	if just_diagnostics {
 		return Ok(());
 	}
 
-	if let Some((under, extension)) = into_files_directory_and_extension {
-		let under = PathBuf::from(under);
-		for (header, code) in blocks {
-			let mut name = heading_to_rust_identifier(&header);
-			name.push('.');
-			name.push_str(&extension);
-			let mut file = std::fs::File::create(under.join(name))?;
-			// Fix for FLow
-			let code =
-				if replace_satisfies_with_as { code.replace(" satisfies ", " as ") } else { code };
+	if false {
+		// 	if let Some((under, extension)) = into_files_directory_and_extension {
+		// 	let under = PathBuf::from(under);
+		// 	for (header, code) in blocks {
+		// 		let mut name = heading_to_rust_identifier(&header);
+		// 		name.push('.');
+		// 		name.push_str(&extension);
+		// 		let mut file = std::fs::File::create(under.join(name))?;
+		// 		// Fix for FLow
+		// 		let code =
+		// 			if replace_satisfies_with_as { code.replace(" satisfies ", " as ") } else { code };
 
-			if let Some(repeat) = repeat {
-				for _ in 0..repeat {
-					writeln!(file, "() => {{\n{code}\n}};")?;
-				}
-			} else {
-				for line in code.lines() {
-					writeln!(file, "{}", line.strip_prefix('\t').unwrap_or(line))?;
-				}
-			}
-		}
+		// 		if let Some(repeat) = repeat {
+		// 			for _ in 0..repeat {
+		// 				writeln!(file, "() => {{\n{code}\n}};")?;
+		// 			}
+		// 		} else {
+		// 			for line in code.lines() {
+		// 				writeln!(file, "{}", line.strip_prefix('\t').unwrap_or(line))?;
+		// 			}
+		// 		}
+		// 	}
+		// }
 	} else {
 		// Else bundle into one, bound in arrow functions to prevent namespace collision
 		let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
-		for (header, mut code) in blocks {
-			// TODO clone
-			let module = match Module::from_string(code.clone(), Default::default()) {
+		// for (header, code) in blocks {
+		for code in blocks {
+			// TODO to_owned
+			let module = match Module::from_string(code.to_owned(), Default::default()) {
 				Ok(module) => module,
 				Err(err) => {
 					return Err(From::from(format!("Parse error on {code}\nRecieved:{err:?}")));
@@ -221,7 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 			}
 
-			if !declare_lets.is_empty() {
+			let code: std::borrow::Cow<'_, str> = if !declare_lets.is_empty() {
 				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
 				for item in module.items {
 					match item {
@@ -284,18 +252,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 				let module = Module { hashbang_comment: None, items: top_level, span: position };
 
-				code = module.to_string(&ToStringOptions::typescript());
-			}
+				std::borrow::Cow::Owned(module.to_string(&ToStringOptions::typescript()))
+			} else {
+				std::borrow::Cow::Borrowed(&code)
+			};
 
 			// If available block add to that, otherwise create a new one
 			if let Some((items, block)) =
 				final_blocks.iter_mut().find(|(uses, _)| uses.is_disjoint(&names))
 			{
 				items.extend(names.into_iter());
-				if add_headers_as_comments {
-					block.push_str("\n\t// ");
-					block.push_str(&header);
-				}
+				// if add_headers_as_comments {
+				// 	block.push_str("\n\t// ");
+				// 	block.push_str(&header);
+				// }
 				for line in code.lines() {
 					block.push_str("\n\t");
 					block.push_str(line);
@@ -307,10 +277,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				block.push('\n');
 			} else {
 				let mut block = String::new();
-				if add_headers_as_comments {
-					block.push_str("\t// ");
-					block.push_str(&header);
-				}
+				// if add_headers_as_comments {
+				// 	block.push_str("\t// ");
+				// 	block.push_str(&header);
+				// }
 				for line in code.lines() {
 					block.push_str("\n\t");
 					block.push_str(line);
@@ -320,9 +290,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 
-		// eprintln!("Generated {:?} blocks", final_blocks.len());
-
 		eprintln!("Bundled into {} functions", final_blocks.len());
+
 		if let Some(repeat) = repeat {
 			eprintln!("Repeating {repeat} times");
 		}
@@ -330,15 +299,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		if let Some(out) = out_file {
 			let mut file = std::fs::File::create(out)?;
 			for _ in 0..repeat.unwrap_or(1) {
-				for (_items, code) in &final_blocks {
-					writeln!(file, "() => {{\n{code}}};\n")?;
+				for (_items, block) in &final_blocks {
+					writeln!(file, "() => {{{block}}};")?;
 				}
 			}
 		} else {
 			let mut out = std::io::stdout();
 			for (_items, block) in final_blocks {
 				// eprintln!("block includes: {items:?}\n{block}\n---");
-				writeln!(out, "() => {{\n{block}}};\n")?;
+				writeln!(out, "() => {{{block}}};")?;
 			}
 		}
 	}
@@ -360,11 +329,4 @@ impl<'a> visiting::Visitor<visiting::ImmutableVariableOrProperty<'a>, HashSet<St
 			data.insert(name.to_owned());
 		}
 	}
-}
-
-fn heading_to_rust_identifier(heading: &str) -> String {
-	heading
-		.replace([' ', '-', '/', '&', '.', '+'], "_")
-		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")
-		.to_lowercase()
 }

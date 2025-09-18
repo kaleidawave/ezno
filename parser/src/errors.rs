@@ -71,7 +71,7 @@ pub enum ParseErrors<'a> {
 	ConstDeclarationRequiresValue,
 	// TODO not sure CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
-	InvalidNumberLiteral,
+	InvalidNumberLiteralLiteral,
 	ReservedIdentifier,
 	AwaitRequiresForOf,
 	CannotUseLeadingParameterHere,
@@ -89,7 +89,7 @@ pub enum ParseErrors<'a> {
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
-	NoNewLinesInString,
+	InvalidStringLiteral,
 	InvalidRegularExpression,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
@@ -100,6 +100,7 @@ pub enum ParseErrors<'a> {
 	TaggedTemplateCannotBeUsedWithOptionalChain,
 	ExpectedExpression,
 	DuplicateParameterName,
+	InvalidNumberLiteral,
 }
 
 impl Display for ParseErrors<'_> {
@@ -125,8 +126,11 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ExpectedKeyword { expected, found } => {
 				write!(f, "Expected {expected:?}, found {found:?}")
 			}
-			ParseErrors::NoNewLinesInString => {
+			ParseErrors::InvalidStringLiteral => {
 				write!(f, "Cannot use new lines in string")
+			}
+			ParseErrors::InvalidNumberLiteral => {
+				write!(f, "Invalid number")
 			}
 			ParseErrors::ExpectedJSXAttribute => {
 				write!(f, "Invalid JSX attribute")
@@ -188,7 +192,7 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ConstDeclarationRequiresValue => {
 				write!(f, "const declaration requires value")
 			}
-			ParseErrors::InvalidNumberLiteral => {
+			ParseErrors::InvalidNumberLiteralLiteral => {
 				write!(f, "Invalid number literal")
 			}
 			ParseErrors::ReservedIdentifier => {

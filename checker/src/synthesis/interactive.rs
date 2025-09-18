@@ -22,8 +22,7 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 		type_definition_files: Vec<PathBuf>,
 	) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 		let mut root = RootContext::new_with_primitive_references();
-		let mut checking_data =
-			CheckingData::new(Default::default(), resolver, Default::default(), ());
+		let mut checking_data = CheckingData::new(Default::default(), resolver, Default::default());
 
 		add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 

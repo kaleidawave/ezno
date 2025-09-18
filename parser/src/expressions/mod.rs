@@ -204,19 +204,6 @@ impl ASTNode for Expression {
 	}
 }
 
-// TODO
-// static SPECIAL_OPERATORS: &[&str] = {
-// 	if cfg!(feature = "full-typescript") && cfg!(feature = "extras") {
-// 		&["as", "is", "satisfies"]
-// 	} else if cfg!(feature = "full-typescript") {
-// 		&["as", "satisfies"]
-// 	} else if cfg!(feature = "extras") {
-// 		&["is"]
-// 	} else {
-// 		&[]
-// 	}
-// };
-
 impl Expression {
 	pub fn from_reader_with_precedence(
 		reader: &mut crate::Lexer,
@@ -245,7 +232,7 @@ impl Expression {
 			if reader.starts_with_string_delimeter() {
 				let (content, quoted) = reader.parse_string_literal()?;
 				let position = start.with_length(content.len() + 2);
-				Expression::StringLiteral(content.to_owned(), quoted, position)
+				Expression::StringLiteral(content.into_owned(), quoted, position)
 			} else if reader.starts_with_number() {
 				let (value, length) = reader.parse_number_literal()?;
 				let position = start.with_length(length as usize);
@@ -948,14 +935,6 @@ impl Expression {
 
 					reader.advance(length);
 
-					// // TODO not sure
-					// if let Expression::ObjectLiteral(..) = top {
-					// 	return Err(ParseError::new(
-					// 		ParseErrors::CannotAccessObjectLiteralDirectly,
-					// 		source_map::Start(top.get_position().get_end().0).with_length(1),
-					// 	));
-					// }
-
 					let property = if let Some(Some(length)) = reader
 						.get_options()
 						.partial_syntax
@@ -966,7 +945,8 @@ impl Expression {
 						let marker = reader.new_partial_point_marker(position);
 						PropertyReference::Marker(marker)
 					} else {
-						reader.skip_including_comments();
+						reader.skip();
+						// reader.skip_including_comments();
 						let is_private = reader.is_operator_advance("#");
 						let property = reader.parse_identifier("property name", false)?.to_owned();
 						PropertyReference::Standard { property, is_private }
@@ -1848,6 +1828,15 @@ impl MultipleExpression {
 	#[must_use]
 	pub fn get_inner(&self) -> &Expression {
 		&self.0
+	}
+
+	pub fn into_expression(self) -> Expression {
+		if let Expression::BinaryOperation { operator: BinaryOperator::Comma, .. } = self.0 {
+			let position = self.get_position();
+			Expression::Parenthesised(Box::new(self), position)
+		} else {
+			self.0
+		}
 	}
 }
 

@@ -31,7 +31,7 @@ pub enum VariableOrPropertyAccess {
 	},
 	PropertyOnSuper(PropertyLike, Span),
 	#[cfg(feature = "full-typescript")]
-	NonNullAssertion(Box<Self>, Span),
+	NonNullAssertion(Box<VariableOrPropertyAccess>, Span),
 }
 
 impl ASTNode for VariableOrPropertyAccess {

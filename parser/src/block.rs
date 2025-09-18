@@ -153,7 +153,8 @@ pub(crate) fn statements_and_declarations_from_reader(
 		}
 
 		if reader.get_options().retain_blank_lines && !items.is_empty() {
-			let new_lines = reader.last_was_from_new_line_consume();
+			let new_lines = reader.last_was_from_new_line();
+			// let new_lines = reader.last_was_from_new_line_consume();
 			for _ in 1..new_lines {
 				// TODO span
 				let start = reader.get_start().0;

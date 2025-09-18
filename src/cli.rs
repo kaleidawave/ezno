@@ -202,15 +202,19 @@ fn run_checker<T: crate::ReadFromFS>(
 	#[cfg(not(target_family = "wasm"))]
 	if timings {
 		let reporting = current.unwrap().elapsed();
-		eprintln!("---\n");
-		eprintln!("Diagnostics:\t{}", diagnostics_count);
-		eprintln!("Types:      \t{}", types.count_of_types());
-		eprintln!("Lines:      \t{}", chronometer.lines);
-		eprintln!("Cache read: \t{:?}", chronometer.cached);
-		eprintln!("FS read:    \t{:?}", chronometer.fs);
-		eprintln!("Parsed in:  \t{:?}", chronometer.parse);
-		eprintln!("Checked in: \t{:?}", chronometer.check);
-		eprintln!("Reporting:  \t{:?}", reporting);
+		let checker::Chronometer { lines, cached, fs, parse, check, narrowing } = chronometer;
+		let type_count = types.count_of_types();
+
+		eprintln!("---");
+		eprintln!("Diagnostics: {diagnostics_count}",);
+		eprintln!("Types:       {type_count}");
+		eprintln!("Lines:       {lines}");
+		eprintln!("Cache read:  {cached:?}");
+		eprintln!("FS read:     {fs:?}");
+		eprintln!("Parsed in:   {parse:?}");
+		eprintln!("Checked in:  {check:?}");
+		eprintln!("Narrowing:   {narrowing:?}");
+		eprintln!("Reporting:   {reporting:?}");
 	}
 
 	result

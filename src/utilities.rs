@@ -178,7 +178,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 		Ok(tls_stream)
 	}
 
-	let (version_name, assert_url) = {
+	let (version_name, asset_url) = {
 		let mut stream = make_request("api.github.com", "/repos/kaleidawave/ezno/releases/latest")?;
 
 		let mut response = String::new();
@@ -240,8 +240,8 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	};
 
 	let actual_asset_url = {
-		let url = assert_url.strip_prefix("https://github.com").ok_or_else(|| {
-			format!("Assert url {assert_url:?} does not start with 'https://github.com'")
+		let url = asset_url.strip_prefix("https://github.com").ok_or_else(|| {
+			format!("Asset url {asset_url:?} does not start with 'https://github.com'")
 		})?;
 		let response = make_request("github.com", url)?;
 		let mut reader = BufReader::new(response);
@@ -275,7 +275,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	let url = actual_asset_url
 		.strip_prefix("https://objects.githubusercontent.com")
 		.ok_or_else(|| {
-			format!("Assert url {assert_url:?} does not start with 'https://objects.githubusercontent.com'")
+			format!("Asset url {asset_url:?} does not start with 'https://objects.githubusercontent.com'")
 		})?
 		.trim_end();
 

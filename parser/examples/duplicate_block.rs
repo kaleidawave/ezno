@@ -20,14 +20,15 @@ fn get_top_level_identifiers(m: &Module) -> (HashSet<String>, HashSet<String>) {
 	for item in &m.items {
 		match item {
 			StatementOrDeclaration::Variable(variable) => {
-				for declaration in &variable.declarations {
+				for declaration in &variable.item.declarations {
 					if let VariableField::Name(identifier) = declaration.name.get_ast_ref() {
 						variables.insert(identifier.as_option_str().unwrap().to_owned());
 					}
 				}
 			}
 			StatementOrDeclaration::Function(function) => {
-				variables.insert(function.on.name.identifier.as_option_str().unwrap().to_owned());
+				variables
+					.insert(function.on.item.name.identifier.as_option_str().unwrap().to_owned());
 			}
 			_ => {}
 		}

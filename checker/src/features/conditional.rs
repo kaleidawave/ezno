@@ -44,6 +44,7 @@ where
 		let mut truthy_environment = environment
 			.new_lexical_environment(Scope::Conditional { antecedent: condition, is_switch: None });
 
+		let now = checking_data.options.measure_time.then(std::time::Instant::now);
 		let values = super::narrowing::narrow_based_on_expression_into_vec(
 			condition,
 			false,
@@ -51,6 +52,7 @@ where
 			&mut checking_data.types,
 			&options,
 		);
+		crate::utilities::add_timing!(checking_data.chronometer, narrowing, now);
 
 		crate::utilities::notify!("Narrowed value {:?} in true branch", values);
 		truthy_environment.info.narrowed_values = values;
@@ -80,6 +82,7 @@ where
 			is_switch: None,
 		});
 
+		let now = checking_data.options.measure_time.then(std::time::Instant::now);
 		let values = super::narrowing::narrow_based_on_expression_into_vec(
 			condition,
 			true,
@@ -87,6 +90,7 @@ where
 			&mut checking_data.types,
 			&options,
 		);
+		crate::utilities::add_timing!(checking_data.chronometer, narrowing, now);
 
 		crate::utilities::notify!("Narrowed value {:?} in false branch", values);
 		falsy_environment.info.narrowed_values = values;

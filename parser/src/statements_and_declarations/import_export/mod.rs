@@ -178,7 +178,7 @@ impl ImportExportName {
 		if reader.starts_with_string_delimeter() {
 			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
-			Ok((ImportExportName::Quoted(content.to_owned(), quoted), position))
+			Ok((ImportExportName::Quoted(content.into_owned(), quoted), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
 			Ok((ImportExportName::Reference("default".into()), start.with_length("default".len())))
@@ -257,7 +257,7 @@ impl ImportLocation {
 
 		let _start = reader.get_start();
 		let (content, quoted) = reader.parse_string_literal()?;
-		Ok(ImportLocation::Quoted(content.to_owned(), quoted))
+		Ok(ImportLocation::Quoted(content.into_owned(), quoted))
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {

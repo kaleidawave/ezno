@@ -76,6 +76,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						checking_data,
 					);
 
+					let now = checking_data.options.measure_time.then(std::time::Instant::now);
 					let values = super::narrowing::narrow_based_on_expression_into_vec(
 						condition,
 						false,
@@ -83,6 +84,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 						&mut checking_data.types,
 						&options,
 					);
+					crate::utilities::add_timing!(checking_data.chronometer, narrowing, now);
 
 					crate::utilities::notify!("{:?}", values);
 
@@ -255,6 +257,10 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 										TypeId::TRUE
 									};
 
+									let now = checking_data
+										.options
+										.measure_time
+										.then(std::time::Instant::now);
 									let values =
 										super::narrowing::narrow_based_on_expression_into_vec(
 											condition,
@@ -263,6 +269,11 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 											&mut checking_data.types,
 											&options,
 										);
+									crate::utilities::add_timing!(
+										checking_data.chronometer,
+										narrowing,
+										now
+									);
 
 									crate::utilities::notify!(
 										"Narrowed values in loop {:?}",
@@ -308,6 +319,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 
 						// TODO copy value of variables between things, or however it works
 
+						let now = checking_data.options.measure_time.then(std::time::Instant::now);
 						let values = super::narrowing::narrow_based_on_expression_into_vec(
 							condition,
 							false,
@@ -315,6 +327,7 @@ pub fn synthesise_iteration<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 							&mut checking_data.types,
 							&options,
 						);
+						crate::utilities::add_timing!(checking_data.chronometer, narrowing, now);
 
 						environment.info.narrowed_values = values;
 

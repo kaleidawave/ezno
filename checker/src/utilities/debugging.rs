@@ -67,3 +67,14 @@ macro_rules! notify {
 
 #[doc(hidden)]
 pub(crate) use notify;
+
+macro_rules! add_timing {
+	($chronometer:expr, $field:ident, $now:expr) => {
+		if let Some(now) = $now {
+			$chronometer.$field += now.elapsed();
+		}
+	};
+}
+
+#[doc(hidden)]
+pub(crate) use add_timing;

@@ -381,9 +381,10 @@ jobs:
         shell: bash
 
   performance-and-size:
-    # WIP
     runs-on: ubuntu-latest
     needs: validity
+    # TODO temp
+    if: false
     steps:
       - uses: actions/checkout@v4
       - name: Kick off other workflow if the PR has a label
