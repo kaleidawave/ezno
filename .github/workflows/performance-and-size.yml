@@ -4,11 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  #   inputs:
-  #     paths: 
-  #       default: "[]"
-  #       type: string
-  #       description: Some binaries to build and compare with
+    inputs:
+      paths: 
+        default: "[]"
+        type: string
+        description: Some binaries to build and compare with
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,11 +20,7 @@ jobs:
 
     strategy:
       matrix: 
-        # ref: ${{ fromJson(inputs.paths) }} 
-        ref: [
-          "35dbeb145150906ba91ec8582ebb38650f1c7d34",
-          "506be8be8b6f1de2423ecab6413b31e3cb0ce58c"
-        ]
+        ref: ${{ fromJson(inputs.paths) }} 
       fail-fast: true
 
     steps:
@@ -68,20 +64,10 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # TODO extract
-      - name: Download shell-language and spectra
-        run: |
-          mkdir bin
-          gh release download -R kaleidawave/experiments assets -p shell-language -D bin
-          gh release download -R kaleidawave/experiments assets -p spectra -D bin
-          ls -R .
-          chmod +x ./bin/shell-language
-          chmod +x ./bin/spectra
-          echo "$(pwd)/bin" >> "$GITHUB_PATH"
-
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      - uses: kaleidawave/release-downloader@improvements
         with:
-          packages: hyperfine
+          # TODO benchmark tool
+          items: kaleidawave/experiments@assets[shell-language|spectra],sharkdp/hyperfine@latest
 
       - name: Install valgrind
         id: install-valgrind
@@ -132,7 +118,7 @@ jobs:
           let binaries = files "binaries/**/*" then replace "\n" ","
           echo "Found $binaries"
 
-          let output = run hyperfine -i -L binary $binaries './{binary} check demo.tsx'
+          let output = run hyperfine --shell=none -i -L binary $binaries './{binary} check demo.tsx'
 
           append $to "### Checking `demo.tsx`\n"
           append $to "```shell\n$output\n```"
@@ -177,7 +163,7 @@ jobs:
           set binaries = replace $binaries "\n" ","
 
           append $to "#### check large.tsx"
-          let output = run hyperfine -i -L binary $binaries './{binary} check large.tsx'
+          let output = run hyperfine --shell=none -i -L binary $binaries './{binary} check large.tsx'
           append $to "```shell\n$output\n```\n"
 
           for files "binaries/**/*" each
@@ -189,7 +175,7 @@ jobs:
 
           append $to "</details>\n"
           
-          # echo run hyperfine -i -L binary $binaries './{binary} check large.tsx' --export-markdown out.md
+          # echo run hyperfine --shell=none -i -L binary $binaries './{binary} check large.tsx' --export-markdown out.md
           # read out.md then append $to $piped
 
       - name: Valgrind and Callgrind statistics
@@ -237,7 +223,7 @@ jobs:
       #       echo "::group::Comparison"
       #       ${{ steps.compilers.outputs.BINARY }} ast-explorer full $FILENAME --check
 
-      #       # hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
+      #       # hyperfine --shell=none -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
       #       #   '{compiler} ast-explorer full $FILENAME --check'
             
       #       echo "::endgroup::"

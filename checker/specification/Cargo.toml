@@ -11,16 +11,18 @@ default = ["base"]
 base = []
 staging = []
 to_implement = []
-all = ["base", "staging", "to_implement"]
+all = [
+	"base",
+	"staging",
+	"to_implement"
+]
 
 [[test]]
 name = "specification_test"
 path = "test.rs"
 
 [dependencies]
-checker = { path = "..", version = "*", package = "ezno-checker", features = [
-  "ezno-parser",
-] }
+checker = { path = "..", version = "*", package = "ezno-checker", features = ["ezno-parser"] }
 parser = { path = "../../parser", version = "*", package = "ezno-parser" }
 pretty_assertions = "1.3.0"
 

@@ -14,6 +14,7 @@ libfuzzer-sys = "0.4"
 path = ".."
 
 # Prevent this from interfering with workspaces
+
 [workspace]
 members = ["."]
 

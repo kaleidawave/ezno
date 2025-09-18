@@ -55,15 +55,12 @@ jobs:
       - name: Check Rust formatting with rustfmt
         run: cargo fmt --all --check
 
-      # TODO replace with own tool
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        if: false
+      - uses: kaleidawave/release-downloader@improvements
         with:
-          packages: taplo-cli
+          items: kaleidawave/simple-toml-parser@canary[format]
 
-      - name: Check TOML formatting with taplo
-        if: false
-        run: taplo fmt --check **/*/Cargo.toml
+      - name: Check 'Cargo.toml' formatting
+        run: format Cargo.toml --check
 
   tests:
     needs: validity
@@ -357,10 +354,7 @@ jobs:
           rg '(TODO|todo\!|#\[ignore\]|dbg\!)'
 
   publish-ability:
-    # TODO only need to do for `.toml` file changes
     runs-on: ubuntu-latest
-    # `publish --dry-run` reports too many false positives and doesn't catch actual errors. So disabling for now
-    if: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -372,16 +366,14 @@ jobs:
             manifests:
               - '**/*.toml'
 
+      - uses: kaleidawave/release-downloader@improvements
+        if: steps.changes.outputs.manifests == 'true'
+        with:
+          items: kaleidawave/crates-release-gh-action@assets[crates-release]
+          
       - name: Check that it will publish to crates.io
         if: steps.changes.outputs.manifests == 'true'
-        run: |
-          cargo metadata --offline --format-version 1 --no-deps | jq -r ".workspace_members[]" | while read -r _n _v pathInfo ; do
-            if ! grep -q "publish = false" "${pathInfo:13:-1}/Cargo.toml"; then
-              cd ${pathInfo:13:-1}
-              cargo publish --no-verify --dry-run
-            fi
-          done
-        shell: bash
+        run: crates-release verify
 
   performance-and-size:
     # WIP
