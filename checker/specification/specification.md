@@ -2417,6 +2417,8 @@ declare let x: NotNotANumber;
 #### Inequality checks
 
 ```ts
+advanced_numbers
+---
 function func1(a: GreaterThan<4>) {
 	(a > 3) satisfies true;
 	(a < 3) satisfies false;
@@ -2432,8 +2434,6 @@ function func2(a: number) {
 	}
 }
 ```
-
-With advanced_numbers
 
 - This equality is always false as GreaterThan<4> and 3 have no overlap
 - Expected string, found boolean
@@ -2514,13 +2514,13 @@ getNumberBetweenFive() === 7;
 > Can only do it not NaN
 
 ```ts
+advanced_numbers
+---
 function func(a: string, b: number) {
 	(a === a) satisfies string;
 	(b === b) satisfies null;
 }
 ```
-
-With advanced_numbers
 
 - Expected string, found true
 - Expected null, found boolean
@@ -2528,26 +2528,26 @@ With advanced_numbers
 #### Ranges for internal types
 
 ```ts
+advanced_numbers
+---
 function func(a: number) {
 	(Math.sin(a) > -2) satisfies true;
 	(Math.sin(a) > -1) satisfies string;
 }
 ```
 
-With advanced_numbers
-
 - Expected string, found boolean
 
 #### Ranges after operators
 
 ```ts
+advanced_numbers
+---
 function func(a: number) {
 	(Math.sin(a) * 5) satisfies null;
 	((Math.sin(a) + 10)) * 2 satisfies string;
 }
 ```
-
-With advanced_numbers
 
 - Expected null, found GreaterThan<-5> & LessThan<5> | -5 | 5
 - Expected string, found GreaterThan<18> & LessThan<22> | 18 | 22
@@ -2557,6 +2557,8 @@ With advanced_numbers
 > TODO need to redo range to use interesection of less than and greater than
 
 ```ts
+advanced_numbers
+---
 function func1(a: number, b: number) {
   if (a % 8 === 0 && 31 < b && b < 37) {
     const x = a === b;
@@ -2570,25 +2572,25 @@ function func1(a: number, b: number) {
 }
 ```
 
-With advanced_numbers
-
 - This equality is always false as MultipleOf<10> and GreaterThan<31> & LessThan<37> have no overlap
 
 #### Modulo range
 
 ```ts
+advanced_numbers
+---
 function func(x: number) {
   return x % 5 === 6;
 }
 ```
-
-With advanced_numbers
 
 - This equality is always false as ExclusiveRange<-5, 5> and 6 have no overlap
 
 #### Transistivity
 
 ```ts
+advanced_numbers
+---
 function func(a: number, b: number, c: number) {
   if (a < b && b < c)  {
     const cond = (a < c) satisfies 5;
@@ -2596,13 +2598,13 @@ function func(a: number, b: number, c: number) {
 }
 ```
 
-With advanced_numbers
-
 - Expected 5, found true
 
 #### Operators across conditions
 
 ```ts
+advanced_numbers
+---
 function func(param: boolean) {
     const value = param ? 1 : 2;
     return value + 1;
@@ -2610,8 +2612,6 @@ function func(param: boolean) {
 
 func satisfies string;
 ```
-
-With advanced_numbers
 
 - Expected string, found (param: boolean) => 2 | 3
 
@@ -4613,12 +4613,12 @@ function func(a: boolean) {
 > Can't do modulo because of post mutation
 
 ```ts
+advanced_numbers
+---
 for (let i = 0; i < 3; i++) {
   const x = i === 50;
 }
 ```
-
-With advanced_numbers
 
 - This equality is always false as LessThan<3> and 50 have no overlap
 
@@ -4865,6 +4865,8 @@ r satisfies string;
 also *imports work with and without extensions*
 
 ```ts
+multiple
+---
 import { PI } from "./constants.ts";
 import { PI as otherPI, "non identifier" as a } from "./other";
 
@@ -4888,6 +4890,8 @@ export { private as "non identifier" }
 #### Imports are constant
 
 ```ts
+multiple
+---
 import { PI } from "./constants";
 PI += 2;
 
@@ -4900,6 +4904,8 @@ export let PI = 4;
 #### Import default
 
 ```ts
+multiple
+---
 import PI from "./pi";
 PI satisfies string;
 
@@ -4912,6 +4918,8 @@ export default 4;
 #### Import type
 
 ```ts
+multiple
+---
 import { MyNumber } from "./types";
 2 satisfies MyNumber;
 
@@ -4924,6 +4932,8 @@ export type MyNumber = string;
 #### Import type and variable
 
 ```ts
+multiple
+---
 import { MyNumber } from "./types";
 2 satisfies MyNumber;
 MyNumber satisfies boolean;
@@ -4939,6 +4949,8 @@ export const MyNumber = 6;
 #### Export let
 
 ```ts
+multiple
+---
 import { counter, incrementCounter } from "./mutable";
 
 counter satisfies string;
@@ -4960,6 +4972,8 @@ export function incrementCounter() {
 #### Import star
 
 ```ts
+multiple
+---
 import * as the from "./many";
 
 the satisfies string;
@@ -4973,6 +4987,8 @@ export const a = 2, b = 3, c = 4;
 #### Import from non existent file
 
 ```ts
+multiple
+---
 import { a } from "./two";
 
 console.log(a.prop);
@@ -4986,6 +5002,8 @@ export const a = 2;
 #### Import where export does not exist
 
 ```ts
+multiple
+---
 import b, { a } from "./export";
 
 console.log(a.prop);
@@ -5000,6 +5018,8 @@ export const c = 2;
 #### Import conflicts with existing name
 
 ```ts
+multiple
+---
 import { x } from "./export1";
 import x, { z } from "./export2";
 
@@ -5018,6 +5038,8 @@ export const z = 2;
 #### Import from invalid file
 
 ```ts
+multiple
+---
 import { a } from "./export";
 
 console.log(a.prop);
@@ -5031,6 +5053,8 @@ export default const;
 #### Only synthesis module once
 
 ```ts
+multiple
+---
 import { a } from "./export1";
 import { b } from "./export2";
 
@@ -5054,6 +5078,8 @@ export const the = ((4 satisfies 1),3);
 #### Use export in scope
 
 ```ts
+multiple
+---
 export const x = 2;
 x satisfies 3;
 ```
@@ -5063,6 +5089,8 @@ x satisfies 3;
 #### Imports don't leak non exports
 
 ```ts
+multiple
+---
 import { x } from "./exports"
 console.log(y)
 
@@ -5078,6 +5106,8 @@ const y = "122LH"
 > Don't take this as permission to do this
 
 ```ts
+multiple
+---
 import { x } from "./export";
 import "./side_effect";
 
@@ -5102,6 +5132,8 @@ export const x = { a: 2 };
 > Yay doesn't require type definition to be shipped!!
 
 ```ts
+multiple
+---
 import { mean_gravity } from "earth";
 
 mean_gravity satisfies 2;

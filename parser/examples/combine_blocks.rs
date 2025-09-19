@@ -45,12 +45,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let source = std::fs::read_to_string(path)?;
 
-	let filters: &[&str] = &["import", "export"];
-
+	// --- contain optional things
 	let blocks: Vec<&str> = source
-		.split("---")
+		.split("~~~")
 		.map(str::trim)
-		.filter(|item| !item.is_empty() && !filters.iter().any(|banned| item.contains(banned)))
+		.filter(|item| !item.is_empty() && !item.contains("\n---"))
 		.collect();
 
 	if just_diagnostics {

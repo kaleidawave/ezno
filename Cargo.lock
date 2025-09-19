@@ -254,7 +254,7 @@ dependencies = [
  "pretty_assertions",
  "self-replace",
  "serde",
- "serde-wasm-bindgen 0.6.5",
+ "serde-wasm-bindgen",
  "serde_json",
  "simple-json-parser",
  "tsify",
@@ -294,16 +294,6 @@ dependencies = [
  "temporary-annex",
  "tsify",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "ezno-checker-specification"
-version = "0.0.0"
-dependencies = [
- "ezno-checker",
- "ezno-parser",
- "pretty_assertions",
- "simple-markdown-parser",
 ]
 
 [[package]]
@@ -914,28 +904,6 @@ dependencies = [
 
 [[package]]
 name = "serde-wasm-bindgen"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3b4c031cd0d9014307d82b8abf653c0290fbdaeb4c02d00c63cf52f728628bf"
-dependencies = [
- "js-sys",
- "serde",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "serde-wasm-bindgen"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3b143e2833c57ab9ad3ea280d21fd34e285a42837aeb0ee301f4f41890fa00e"
-dependencies = [
- "js-sys",
- "serde",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "serde-wasm-bindgen"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
@@ -990,20 +958,6 @@ name = "simple-json-parser"
 version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "401316a5107f070bf2d7e15de68e1412d585226540647d306f296d9a1e1acef9"
-
-[[package]]
-name = "simple-markdown-parser"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba27333f5476b16a7d78585cc0b939209ec5a04b56752e8fbd75ca340f536d89"
-dependencies = [
- "console_error_panic_hook",
- "js-sys",
- "serde",
- "serde-wasm-bindgen 0.4.5",
- "tsify",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "source-map"
@@ -1095,7 +1049,6 @@ checksum = "d6b26cf145f2f3b9ff84e182c448eaf05468e247f148cf3d2a7d67d78ff023a0"
 dependencies = [
  "gloo-utils",
  "serde",
- "serde-wasm-bindgen 0.5.0",
  "serde_json",
  "tsify-macros",
  "wasm-bindgen",

@@ -67,7 +67,7 @@ jobs:
       - uses: kaleidawave/release-downloader@improvements
         with:
           # TODO benchmark tool
-          items: kaleidawave/experiments@assets[shell-language|spectra],sharkdp/hyperfine@latest
+          items: kaleidawave/experiments@assets[shell-language|spectra|sde],sharkdp/hyperfine@latest
 
       - name: Install valgrind
         id: install-valgrind
@@ -85,7 +85,7 @@ jobs:
       - name: Build latest version of demo.tsx
         # if: ${{ steps.download-demo-tsx.outcome == 'failure' }}
         run: |
-          spectra concatenate-cases checker/specification/specification.md total.ts
+          spectra list-tests checker/specification/specification.md --cases-with-splitter '~~~' > total.ts 
           cargo run -p ezno-parser --example combine_blocks total.ts --out demo.tsx
 
       # get other binaries and last
@@ -195,6 +195,27 @@ jobs:
             let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name then format_number
 
             append $to "- `$file`: `$allocated` bytes allocated and `$instructions` instructions\n"
+
+      # SDE
+      - name: Setup SDE binaries
+        uses: petarpetrovt/setup-sde@v3.0
+        with:
+          environmentVariableName: SDE_PATH # default value is `SDE_PATH`
+          sdeVersion: 9.58.0 # possible values: 9.58.0 (default), 9.33.0
+
+      - name: path-fix
+        run: echo "$SDE_PATH" >> $GITHUB_PATH
+
+      - name: sde
+        shell: shell-language {0}
+        continue-on-error: true
+        run: |
+          let to = env GITHUB_STEP_SUMMARY
+          append $to "#### Instructions and memory usage for `check demo.tsx`"
+
+          for files "binaries/**/*" each
+            let output = run sde-output-parser run $file check ./demo.tsx
+            append $to "#### `$file`:\n\n```shell\n$output\n```"
 
       # final steps
 

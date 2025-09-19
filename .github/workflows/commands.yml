@@ -40,21 +40,19 @@ jobs:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      # TODO replace with own tool
-      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
-      #   with:
-      #     packages: top-type-sizes
-      
-      # - name: Run type sizes
-      #   run: |
-      #     RUSTFLAGS=-Zprint-type-sizes cargo +nightly build -j 1 > type-sizes-input.txt
-      #     top-type-sizes --remove-wrappers < type-sizes-input.txt > type-sizes.txt
+      - uses: kaleidawave/release-downloader@improvements
+        with: 
+          items: kaleidawave/experiments@assets[rust-type-sizes]
 
-      # - uses: actions/upload-artifact@v4
-      #   with:
-      #     name: type-sizes
-      #     path: type-sizes.txt
-      #     retention-days: 7
+      - name: Run type sizes
+        run: rust-type-sizes > type-sizes.txt
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: type-sizes
+          path: type-sizes.txt
+          retention-days: 7
 
   generate-binary:
     runs-on: ubuntu-latest
@@ -84,38 +82,6 @@ jobs:
           path: target/release/ezno
           retention-days: 30
 
-  # generate-demo:
-  #   runs-on: ubuntu-latest
-  #   if: ${{ inputs.task == 'generate-binary' }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         ref: ${{ inputs.ref }}
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: actions/cache@v4
-  #       with:
-  #         path: ${{ env.CACHE_PATHS }}
-  #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
-  #     - name: Generate specification
-  #       run: |
-  #         # Generate a file which contains everything that the checker currently implements
-  #         # It is intentional that this will be on main branch if it is comparing, because we 
-  #         # do not want to include new tests
-
-  #         cargo run -p ezno-checker-specification \
-  #          --example amalgamate ./checker/specification/specification.md \
-  #          --comment-headers \
-  #          --out demo.tsx
-  #       env:
-  #         CARGO_PROFILE_RELEASE_DEBUG: true
-
-  #     - uses: actions/upload-artifact@v4
-  #       with:
-  #         name: specification-${{ github.ref_name }}
-  #         path: demo.tsx
-  #         retention-days: 30
-          
   fix-up-commit:
     runs-on: ubuntu-latest
     if: ${{ inputs.task == 'fix-up-commit' }}
@@ -145,3 +111,47 @@ jobs:
           git add .
           git commit -m "Run 'clippy --fix' & 'cargo fmt'"
           git push
+
+  list-commits-since-release:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'commits-since-release' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kaleidawave/release-downloader@improvements
+        with: 
+          items: kaleidawave/experiments@assets[commits]
+
+      - name: Print commits since last release
+        shell: bash
+        run: commits
+
+  list-sponsors-and-committers:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'sponsors&committers' }}
+    steps:
+      - uses: kaleidawave/release-downloader@improvements
+        with: 
+          items: kaleidawave/experiments@assets[group|now]
+
+      - name: Print sponsors & committers
+        shell: bash
+        run: |
+          SQP='.data.user.sponsors.nodes | map(.sponsor.name // .sponsor.login) | join(",")'
+          GQL_SQ='user(login: "kaleidawave") { sponsors: sponsorshipsAsMaintainer(first: 100, activeOnly: false, includePrivate: false) { nodes { sponsor: sponsorEntity { ... on User { login, name } ... on Organization { login, name }  } } } }'
+
+          SPONSORS=$(gh api graphql -f query="{ $GQL_SQ }" -q "$SQP")
+
+          CONTRIBUTORS=$(
+              gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
+          )
+
+          now
+
+          echo "SPONSORS=$SPONSORS"
+          echo "CONTRIBUTORS=$CONTRIBUTORS"
+
+          echo "SPONSORS:"
+          cat '$SPONSORS' > group --prefix "  "
+          
+          echo "CONTRIBUTORS:"
+          cat '$CONTRIBUTORS' > group --prefix "  "

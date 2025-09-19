@@ -54,3 +54,6 @@ package = "ezno-parser"
 
 [dev-dependencies]
 match_deref = "0.1.1"
+
+[package.metadata.commands]
+spectra_dev = "wip-spectra test specification/specification.md 'cargo run --example runner -- --interactive --rpc' --lists-as-expected"

@@ -100,30 +100,10 @@ jobs:
           done
         working-directory: parser
 
-      - name: Run checker specification
-        if: (steps.changes.outputs.checker == 'true' && github.event_name != 'pull_request') || github.ref_name == 'main'
-        run: cargo test -p ezno-checker-specification
-      
-      - name: Run checker specification (w/ staging)
-        if: steps.changes.outputs.checker == 'true' && github.event_name == 'pull_request'
-        run: cargo test -F staging -p ezno-checker-specification
-        env:
-          EZNO_DEBUG: 1
-      
-      - name: Run checker specification (just to implement)
-        continue-on-error: true
-        if: steps.changes.outputs.checker == 'true' && github.event_name == 'pull_request'
-        run: |
-          # Aim of this test is to catch anything that may have been fixed in this next commit or any bad regressions (stack overflows)
-          cargo test --no-default-features -F to_implement -p ezno-checker-specification
-        env:
-          EZNO_DEBUG: 1
-
-      - name: Run checker tests
+      - name: Run checker tests (including specification)
         if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
-        run: |
-          # Test checker with the parser features
-          cargo test -F ezno-parser -p ezno-checker
+        # Test checker with the parser features
+        run: cargo test -F ezno-parser -p ezno-checker
 
       - name: Run CLI and base tests
         run: cargo test
@@ -338,20 +318,20 @@ jobs:
       - name: Lint code with clippy
         run: cargo clippy
 
-  work_in_progress:
-    needs: validity
-    runs-on: ubuntu-latest
-    if: github.ref_name != 'main' && !github.event.pull_request.draft
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
-        with:
-          packages: ripgrep
-      - name: Check for TODO comments
-        # TODO can we label these somehow?
-        run: | 
-          rg '(TODO|todo\!|#\[ignore\]|dbg\!)'
+  # work_in_progress:
+  #   needs: validity
+  #   runs-on: ubuntu-latest
+  #   if: github.ref_name != 'main' && !github.event.pull_request.draft
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: brndnmtthws/rust-action-cargo-binstall@v1
+  #       with:
+  #         packages: ripgrep
+  #     - name: Check for TODO comments
+  #       # TODO can we label these somehow?
+  #       run: | 
+  #         rg '(TODO|todo\!|#\[ignore\]|dbg\!)'
 
   publish-ability:
     runs-on: ubuntu-latest

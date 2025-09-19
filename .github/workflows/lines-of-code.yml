@@ -9,30 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download scc
-        run: |
-          mkdir scc
-          cd scc
-          gh release download v3.1.0 -R boyter/scc -p '*Linux_x86_64.tar.gz' -O scc.tar.gz
-          tar -xf scc.tar.gz
-          chmod +x scc
-          pwd >> $GITHUB_PATH
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: kaleidawave/release-downloader@improvements
+        with:
+          # TODO benchmark tool
+          items: kaleidawave/experiments@assets[lines-of-code]
           
       - name: Run update script
         run: |
           function record {
-            crate_path=$1
-            name=$2
+            name=$1
+            lines_of_code=$(lines-of-code $2)
         
-            if [ -d "$crate_path/src" ] ; then
-                lines_of_code=$(scc -c --no-cocomo -f json -i rs "$crate_path/src" | jq '.[] | .Code')
-            else
-                lines_of_code=$(scc -c --no-cocomo -f json -i rs "$crate_path" | jq '.[] | .Code')
-            fi
-        
-            echo "\`$name\` has $lines_of_code lines of code" >> $GITHUB_STEP_SUMMARY
+            echo "\`$name\`: $lines_of_code" >> $GITHUB_STEP_SUMMARY
 
             curl \
               --header "Content-Type: application/json" \
@@ -41,6 +29,6 @@ jobs:
               https://project-information-kaleidawave.val.run/update-project
           }
           
-          record "parser" "ezno-parser"
-          record "checker" "ezno-checker"
-          record "src" "ezno"
+          record "ezno-parser" "checker/**/*.rs"
+          record "ezno-checker" "checker/**/*.rs"
+          record "ezno" "src/**/*.rs"
