@@ -139,9 +139,9 @@ dependencies = [
 
 [[package]]
 name = "derive-enum-from-into"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42e5ddace13a8459cb452b19e01f59f16d3e2049c8b808f338a13eeadc326e33"
+checksum = "16b088c85979c47f495b650e89a64cf991d646298a1950f74848dba7dd73da3e"
 dependencies = [
  "proc-macro2",
  "quote",
