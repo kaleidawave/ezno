@@ -74,6 +74,11 @@ jobs:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install spectra
+        uses: kaleidawave/release-downloader@improvements
+        with:
+          items: kaleidwave/experiments[spectra]
+
       - uses: dorny/paths-filter@v3
         id: changes
         with:
@@ -104,12 +109,6 @@ jobs:
         if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
         run: cargo test -p ezno-checker
 
-      - name: Install spectra
-        uses: kaleidawave/release-downloader@improvements
-        if: steps.changes.outputs.manifests == 'true'
-        with:
-          items: kaleidwave/experiments[spectra]
-
       - name: Run checker tests
         if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
         run: spectra test specification/specification.md 'cargo run --example runner -- --interactive --rpc' --lists-as-expected
@@ -130,6 +129,14 @@ jobs:
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 23
      
       - uses: dorny/paths-filter@v3
         id: changes
@@ -141,15 +148,6 @@ jobs:
               - 'parser/**'
             checker:
               - 'checker/**'
-
-      - uses: denoland/setup-deno@v1
-        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
-        with:
-          deno-version: v1.x
-      - uses: actions/setup-node@v4
-        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
-        with:
-          node-version: 23
       
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'

@@ -49,10 +49,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          # TODO temp
-          ref: general-fixes
+      - id: checkout
+        uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -74,22 +72,18 @@ jobs:
         continue-on-error: true
         run: sudo apt-get install valgrind
 
-      # - name: Get latest version of demo.tsx
-      #   uses: actions/download-artifact@v4
-      #   continue-on-error: true
-      #   id: download-demo-tsx
-      #   with:
-      #     name: specification-${{ github.ref_name }}
-
       # TODO is there a way to cache this?
       - name: Build latest version of demo.tsx
-        # if: ${{ steps.download-demo-tsx.outcome == 'failure' }}
         run: |
-          spectra list checker/specification/specification.md --cases-with-splitter '~~~' > total.ts 
-          cargo run -p ezno-parser --example combine_blocks total.ts --out demo.tsx
+          curl https://gist.githubusercontent.com/kaleidawave/81066f322ed574b3373e27770137013f/raw/b04dcc0bc60e6331008bdd578b98224cc07d5d42/all.tsx > demo.tsx
 
           # TODO temp
           cat demo.tsx
+
+          # in the future
+          # spectra list checker/specification/specification.md --cases-with-splitter '~~~' > total.ts 
+          # cargo update derive-enum-from-into
+          # cargo run -p ezno-parser --example combine_blocks total.ts --out demo.tsx
 
       # get other binaries and last
 
@@ -224,31 +218,13 @@ jobs:
 
       - name: Move binary
         shell: shell-language {0}
-        run: copy target/release/ezno binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
+        run: copy target/release/ezno binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
 
       - name: Upload current binary
         uses: actions/upload-artifact@v4
         with:
           # TODO TEMP branch
-          name: binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
-          path: binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ 'general-fixes' }}-last
+          name: binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
+          path: binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
           overwrite: true
           retention-days: 30
-
-      # - name: Run parsing & stringing (minfied) benchmarks
-      #   shell: bash
-      #   continue-on-error: true
-      #   run: |
-      #     CORPUS_URL="https://gist.githubusercontent.com/kaleidawave/6708f604bc403021b56cb54ea50cac62/raw/javascript_files.txt"
-
-      #     curl -s "$CORPUS_URL" | while IFS= read -r URL; do
-      #       FILENAME="${URL##*/}"
-      #       curl -s "$URL" > $FILENAME
-      #       echo "::group::Comparison"
-      #       ${{ steps.compilers.outputs.BINARY }} ast-explorer full $FILENAME --check
-
-      #       # hyperfine --shell=none -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
-      #       #   '{compiler} ast-explorer full $FILENAME --check'
-            
-      #       echo "::endgroup::"
-      #     done
