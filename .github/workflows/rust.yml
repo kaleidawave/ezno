@@ -100,10 +100,20 @@ jobs:
           done
         working-directory: parser
 
-      - name: Run checker tests (including specification)
+      - name: Run checker tests
         if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
-        # Test checker with the parser features
-        run: cargo test -F ezno-parser -p ezno-checker
+        run: cargo test -p ezno-checker
+
+      - name: Install spectra
+        uses: kaleidawave/release-downloader@improvements
+        if: steps.changes.outputs.manifests == 'true'
+        with:
+          items: kaleidwave/experiments[spectra]
+
+      - name: Run checker tests
+        if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
+        run: spectra test specification/specification.md 'cargo run --example runner -- --interactive --rpc' --lists-as-expected
+        working-directory: checker
 
       - name: Run CLI and base tests
         run: cargo test
@@ -204,7 +214,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -217,52 +227,47 @@ jobs:
             parser:
               - 'parser/**'
 
-      - name: Install latest nightly and set it as default
-        if: steps.changes.outputs.parser == 'true'
-        run: |
-          rustup install nightly
-          rustup default nightly
-
-      # Current `cargo-fuzz` is broken: https://github.com/kaleidawave/ezno/pull/158#issuecomment-2171431210
-      # However `cargo install --git ...` does work below
-      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
-      #   if: steps.changes.outputs.parser == 'true'
-      #   with:
-      #     packages: cargo-fuzz
-
       - name: Install cargo-fuzz
-        if: steps.changes.outputs.parser == 'true'
-        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
+        uses: kaleidawave/release-downloader@improvements
+        if: steps.changes.outputs.manifests == 'true'
+        with:
+          items: rust-fuzz/cargo-fuzz@0.13.1
       
       - name: Run fuzzing
         env:
           SHORT_CIRCUIT: true
         if: steps.changes.outputs.parser == 'true'
         run: |
-          if ${{ env.SHORT_CIRCUIT }}; then
-            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
-          else
-            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
+          CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+
+          # if ${{ env.SHORT_CIRCUIT }}; then
+          # else
+          #   CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
             
-            if test -d fuzz/artifacts; then 
-              find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
-            fi
-          fi
+          #   if test -d fuzz/artifacts; then 
+          #     find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
+          #   fi
+          # fi
         working-directory: parser/fuzz
 
   fuzzing_checker:
     if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
     needs: validity
+
     runs-on: ubuntu-latest
+
     timeout-minutes: 15
+
+    # TODO
     continue-on-error: true
+
     strategy:
       matrix:
         fuzz-target: [check_project_naive]
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - uses: actions/cache@v4
         with:
           path: ${{ env.CACHE_PATHS }}
@@ -275,33 +280,17 @@ jobs:
             checker:
               - 'checker/**'
 
-      - name: Install latest nightly and set it as default
-        if: steps.changes.outputs.checker == 'true'
-        run: |
-          rustup install nightly
-          rustup default nightly
-
       - name: Install cargo-fuzz
-        if: steps.changes.outputs.checker == 'true'
-        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
+        uses: kaleidawave/release-downloader@improvements
+        if: steps.changes.outputs.manifests == 'true'
+        with:
+          items: rust-fuzz/cargo-fuzz@0.13.1
 
       - name: Run fuzzing
         env:
           SHORT_CIRCUIT: true
         if: steps.changes.outputs.checker == 'true'
-        run: |
-          if ${{ env.SHORT_CIRCUIT }}; then
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
-          else
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
-            
-            # if test -d fuzz/artifacts; then 
-            #   find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
-            # fi
-          fi
-
-          ls .
-          ls target
+        run: cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
         working-directory: checker/fuzz
   
   clippy:

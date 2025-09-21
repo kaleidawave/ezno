@@ -67,7 +67,7 @@ jobs:
       - uses: kaleidawave/release-downloader@improvements
         with:
           # TODO benchmark tool
-          items: kaleidawave/experiments@assets[shell-language|spectra|sde],sharkdp/hyperfine@latest
+          items: kaleidawave/experiments@assets[shell-language|spectra|sde],sharkdp/hyperfine@v1.19.0
 
       - name: Install valgrind
         id: install-valgrind
@@ -85,8 +85,11 @@ jobs:
       - name: Build latest version of demo.tsx
         # if: ${{ steps.download-demo-tsx.outcome == 'failure' }}
         run: |
-          spectra list-tests checker/specification/specification.md --cases-with-splitter '~~~' > total.ts 
+          spectra list checker/specification/specification.md --cases-with-splitter '~~~' > total.ts 
           cargo run -p ezno-parser --example combine_blocks total.ts --out demo.tsx
+
+          # TODO temp
+          cat demo.tsx
 
       # get other binaries and last
 
