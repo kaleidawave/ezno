@@ -124,7 +124,7 @@ pub trait ContextType: Sized {
 
 	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
-	fn as_syntax(&self) -> Option<&Syntax>;
+	fn as_syntax(&self) -> Option<&Syntax<'_>>;
 
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 }
@@ -516,7 +516,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn as_general_context(&self) -> GeneralContext {
+	pub fn as_general_context(&self) -> GeneralContext<'_> {
 		T::as_general_context(self)
 	}
 
@@ -738,7 +738,7 @@ impl<T: ContextType> Context<T> {
 	/// Returns a iterator of parents. Starting with the current one
 	///
 	/// TODO should be private
-	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext> + '_ {
+	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext<'_>> + '_ {
 		iter::successors(Some(self.as_general_context()), |env| {
 			if let GeneralContext::Syntax(syn) = env {
 				Some(syn.get_parent())

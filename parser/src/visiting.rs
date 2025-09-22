@@ -322,7 +322,7 @@ mod structures {
 	impl Annexable for Chain {
 		type NewItem = ChainVariable;
 
-		fn push_annex(&mut self, item: Self::NewItem) -> Annex<Self>
+		fn push_annex(&mut self, item: Self::NewItem) -> Annex<'_, Self>
 		where
 			Self: Sized,
 		{

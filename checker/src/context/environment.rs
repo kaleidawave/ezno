@@ -88,7 +88,7 @@ impl ContextType for Syntax<'_> {
 		Some(&self.parent)
 	}
 
-	fn as_syntax(&self) -> Option<&Syntax> {
+	fn as_syntax(&self) -> Option<&Syntax<'_>> {
 		Some(self)
 	}
 
@@ -170,7 +170,7 @@ pub type Label = Option<String>;
 
 #[derive(Clone, Copy)]
 pub enum Returnable<'a, A: crate::ASTImplementation> {
-	Statement(Option<&'a A::Expression<'a>>, Span),
+	Statement(Option<&'a A::MultipleExpression<'a>>, Span),
 	ArrowFunctionBody(&'a A::Expression<'a>),
 }
 
@@ -789,7 +789,7 @@ impl Environment<'_> {
 		self.context_type.requests.extend(requests);
 	}
 
-	pub(crate) fn get_parent(&self) -> GeneralContext {
+	pub(crate) fn get_parent(&self) -> GeneralContext<'_> {
 		match self.context_type.parent {
 			GeneralContext::Syntax(syn) => GeneralContext::Syntax(syn),
 			GeneralContext::Root(rt) => GeneralContext::Root(rt),
@@ -1127,7 +1127,7 @@ impl Environment<'_> {
 
 		let (returned, returned_position) = match expression {
 			Returnable::Statement(Some(expression), returned_position) => (
-				A::synthesise_expression(expression, expected_type, self, checking_data),
+				A::synthesise_multiple_expression(expression, expected_type, self, checking_data),
 				returned_position.with_source(self.get_source()),
 			),
 			Returnable::Statement(None, returned_position) => {
@@ -1368,7 +1368,7 @@ impl Environment<'_> {
 					ty: existing,
 					in_same_context: false,
 				});
-			}
+			};
 		}
 
 		let parameters = parameters.map(|parameters| {

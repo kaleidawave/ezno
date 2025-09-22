@@ -27,7 +27,7 @@ impl ContextType for Root {
 		None
 	}
 
-	fn as_syntax(&self) -> Option<&super::Syntax> {
+	fn as_syntax(&self) -> Option<&super::Syntax<'_>> {
 		None
 	}
 
