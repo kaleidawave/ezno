@@ -216,13 +216,13 @@ jobs:
 
       - name: Move binary
         shell: shell-language {0}
-        run: copy target/release/ezno binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
+        run: copy target/release/ezno to-upload/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
 
       - name: Upload current binary
         uses: actions/upload-artifact@v4
         with:
           # TODO TEMP branch
           name: binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
-          path: binaries/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
+          path: to-upload/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
           overwrite: true
           retention-days: 30
