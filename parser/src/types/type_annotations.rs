@@ -3,8 +3,7 @@ use std::ops::Neg;
 use crate::{
 	ast::VariableOrPropertyAccess, bracketed_items_from_reader, bracketed_items_to_string,
 	derive_ASTNode, extensions::decorators::Decorated, number::NumberRepresentation, ASTNode,
-	Decorator, ListItem, Marker, ParseError, ParseErrors, ParseResult, Quoted, Span, VariableField,
-	WithComment,
+	Decorator, ListItem, Marker, ParseError, ParseResult, Quoted, Span, VariableField, WithComment,
 };
 use iterator_endiate::EndiateIteratorExt;
 
@@ -670,28 +669,11 @@ impl TypeAnnotation {
 			Self::TupleLiteral(members, position)
 		} else if reader.is_operator_advance("`") {
 			let start = reader.get_start();
-			let mut parts = Vec::new();
-			let result;
-			loop {
-				let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
-					let (_found, position) = crate::lexer::utilities::next_item(reader);
-					ParseError::new(ParseErrors::UnexpectedEnd, position)
-				})?;
-				reader.advance(found.len() as u32);
-				if let "${" = found {
-					let expression = AnnotationWithBinder::from_reader(reader)?;
-					reader.expect('}')?;
-					parts.push((content.to_owned(), expression));
-				} else {
-					result = Self::TemplateLiteral {
-						parts,
-						final_part: content.to_owned(),
-						position: start.union(reader.get_end()),
-					};
-					break;
-				}
-			}
-			result
+			let (parts, final_part) = crate::expressions::template_literal::parse_template_literal::<
+				AnnotationWithBinder,
+			>(reader, start)?;
+			let position = start.union(reader.get_end());
+			Self::TemplateLiteral { parts, final_part, position }
 		} else {
 			let name = reader.parse_identifier("type name", false)?;
 			let position = start.with_length(name.len());

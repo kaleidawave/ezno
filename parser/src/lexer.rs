@@ -518,7 +518,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	// For JSX attributes and content. Also returns which one of `possibles` matched
-	pub fn parse_until_one_of(
+	pub fn parse_until_one_of_advance(
 		&mut self,
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
@@ -532,7 +532,7 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
-	/// Similar to `parse_until_one_of`. Does not add the matched lenght to head
+	/// Similar to `parse_until_one_of_advance`. Does not add the matched lenght to head
 	pub fn parse_until_one_of_no_advance(
 		&mut self,
 		possibles: &[&'static str],
@@ -564,10 +564,10 @@ impl<'a> Lexer<'a> {
 	) -> Result<(std::borrow::Cow<'a, str>, crate::Quoted), ParseError> {
 		let current = self.get_current();
 		// FUTURE impl pattern for delimeter
-		let delimeter = if current.starts_with('"') {
-			'"'
+		let (delimeter, quoted) = if current.starts_with('"') {
+			('"', crate::Quoted::Double)
 		} else if current.starts_with('\'') {
-			'\''
+			('\'', crate::Quoted::Single)
 		} else {
 			let found = &current[..crate::lexer::utilities::next_empty_occurance(current)];
 			return Err(ParseError::new(
@@ -576,38 +576,42 @@ impl<'a> Lexer<'a> {
 			));
 		};
 
-		let chars: &[char] = &[delimeter, '\\', '\u{000A}', '\u{000D}', '\u{2028}', '\u{2029}'];
+		let chars: [char; _] = [delimeter, '\\', '\u{000A}', '\u{000D}', '\u{2028}', '\u{2029}'];
 
-		let mut string = std::borrow::Cow::Borrowed("");
+		let mut buf = std::borrow::Cow::Borrowed("");
+		let current = &current[1..];
+		let mut delimeters = current.match_indices(chars);
 
-		// todo!("Incorporate string thingy");
+		let mut last = 0;
+		while let Some((idx, matched)) = delimeters.next() {
+			buf += &current[last..idx];
 
-		let mut start = 1;
-		while let Some(idx) = current[start..].find(chars) {
-			let idx = start + idx;
-			let after = &current[idx..];
-			if after.starts_with(delimeter) {
-				let quoted = match delimeter {
-					'"' => crate::Quoted::Double,
-					'\'' => crate::Quoted::Single,
-					_chr => unreachable!(),
-				};
-				self.advance(idx as u32 + 1);
-				return Ok((std::borrow::Cow::Borrowed(&current[1..idx]), quoted));
-			} else if after.starts_with("\\") {
-				let line_sequence = after[1..]
-					.find(|chr: char| !utilities::is_line_sequence(chr))
-					.unwrap_or_default();
-				if line_sequence > 0 {
-					start = idx + 1 + line_sequence;
-				} else {
-					// TODO could check is valid escape sequence
-					start = idx + 2;
+			if matched == "\"" {
+				self.advance(idx as u32 + 2);
+				return Ok((buf, quoted));
+			} else if matched == "'" {
+				self.advance(idx as u32 + 2);
+				return Ok((buf, quoted));
+			} else if matched == "\\" {
+				let chr = current[idx + 1..].chars().next();
+				let result = utilities::escape_character(chr, idx, &mut last, &mut buf);
+				match result {
+					Ok(skip_next) => {
+						if skip_next {
+							let _ = delimeters.next();
+						}
+					}
+					Err(()) => {
+						return Err(ParseError::new(
+							ParseErrors::InvalidStringLiteral,
+							self.get_start().with_length(self.get_current().len()),
+						));
+					}
 				}
 			} else {
 				return Err(ParseError::new(
 					ParseErrors::InvalidStringLiteral,
-					self.get_start().with_length(idx),
+					self.get_start().with_length(self.get_current().len()),
 				));
 			}
 		}
@@ -1149,6 +1153,77 @@ impl<'a> Lexer<'a> {
 }
 
 pub(crate) mod utilities {
+	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences
+	/// `Ok(true) = skip_next`
+	pub fn escape_character(
+		chr: Option<char>,
+		idx: usize,
+		last: &mut usize,
+		buf: &mut std::borrow::Cow<'_, str>,
+	) -> Result<bool, ()> {
+		match chr {
+			Some('\\') => {
+				*buf += "\\";
+				*last = idx + 2;
+				Ok(true)
+			}
+			Some(chr @ ('\'' | '\"' | '`')) => {
+				buf.to_mut().push(chr);
+				*last = idx + 2;
+				Ok(true)
+			}
+			Some('t') => {
+				*buf += "\t";
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some('n') => {
+				*buf += "\n";
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some('r') => {
+				*buf += "\r";
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some('0') => {
+				*buf += "\0";
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some('v') => {
+				*buf += "\u{000B}";
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some('b') => {
+				*buf += "\u{0008}";
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some('f') => {
+				*buf += "\u{000C}";
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some('u') => {
+				todo!()
+			}
+			//
+			Some('\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}') => {
+				*last = idx + 2;
+				Ok(false)
+			}
+			Some(chr) => {
+				eprintln!("unexpected item {chr:?}");
+				*last = idx + 1;
+				Ok(false)
+			}
+			None => Err(()),
+		}
+	}
+
 	pub fn is_valid_identifier(chr: char) -> bool {
 		// TODO `\\` for unicode identifiers
 		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
@@ -1282,9 +1357,5 @@ pub(crate) mod utilities {
 
 		// Else nothing exists
 		Some(0)
-	}
-
-	pub fn is_line_sequence(chr: char) -> bool {
-		matches!(chr, '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}')
 	}
 }

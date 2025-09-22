@@ -84,13 +84,14 @@ pub enum ParseErrors<'a> {
 	},
 	ExpectedRule,
 	ExpectedJSXAttribute,
-	InvalidRegexFlag,
 	ExpectedStatement,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
 	InvalidStringLiteral,
+	InvalidRegexFlag,
 	InvalidRegularExpression,
+	InvalidNumberLiteral,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
 	UnexpectedEnd,
@@ -100,7 +101,6 @@ pub enum ParseErrors<'a> {
 	TaggedTemplateCannotBeUsedWithOptionalChain,
 	ExpectedExpression,
 	DuplicateParameterName,
-	InvalidNumberLiteral,
 }
 
 impl Display for ParseErrors<'_> {

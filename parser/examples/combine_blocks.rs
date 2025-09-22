@@ -1,65 +1,91 @@
-use std::{collections::HashSet, io::Write}; //, mem, path::PathBuf};
+use std::collections::HashSet;
+use std::io::{IsTerminal, Read, Write};
 
+use ezno_parser::source_map::{Nullable, SourceId, Span};
+use ezno_parser::visiting::{self, VisitOptions, Visitors};
 use ezno_parser::{
-	ast,
-	expressions::operators,
-	functions,
-	source_map::{Nullable, SourceId, Span},
-	type_annotations::{
-		CommonTypes, TypeAnnotation, TypeAnnotationFunctionParameter,
-		TypeAnnotationFunctionParameters,
-	},
-	visiting::{self, VisitOptions, Visitors},
-	ASTNode, Expression, ExpressionPosition, Module, StatementOrDeclaration, ToStringOptions,
-	VariableField, VariableIdentifier, WithComment,
+	ast, expressions::operators, functions, ASTNode, Expression, ExpressionPosition, Module,
+	StatementOrDeclaration, StatementPosition, ToStringOptions, VariableField, VariableIdentifier,
+	WithComment,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let args = std::env::args().skip(1).collect::<Vec<_>>();
-	let path = args.first().ok_or("expected path to `---` split file")?;
+	let mut args = std::env::args().skip(1);
 
-	let replace_satisfies_with_as = args.iter().any(|item| item == "--satisfies-with-as");
-	let add_headers_as_comments = args.iter().any(|item| item == "--comment-headers");
-	let include_flagged_examples = args.iter().any(|item| item == "--include-extras");
-	let just_diagnostics = args.iter().any(|item| item == "--just-diagnostics");
+	let mut stdin = std::io::stdin();
+	let source = if stdin.is_terminal() {
+		let path = args.next().ok_or("expected path to `~~~` split file")?;
+		std::fs::read_to_string(path)?
+	} else {
+		let mut value = String::new();
+		let _ = stdin.read_to_string(&mut value)?;
+		value.trim().to_owned()
+	};
 
-	let jsx_and_extra = args.iter().any(|item| item == "--jsx-and-extra-syntax");
-	// let declare_to_function = args.iter().any(|item| item == "--declare-to-function");
+	// let mut replace_satisfies_with_as = false;
+	// let mut add_headers_as_comments = false;
+	// let mut include_flagged_examples = false;
+	// let mut jsx_and_extra = false;
 
-	let into_files_directory_and_extension = args.windows(3).find_map(|item| {
-		matches!(item[0].as_str(), "--into-files").then_some((item[1].clone(), item[2].clone()))
-	});
+	let mut just_diagnostics = false;
+	let mut into_files_directory_and_extension = None;
+	let mut out_file = None;
+	let mut repeat = None;
 
-	let out_file = args
-		.windows(2)
-		.find_map(|item| matches!(item[0].as_str(), "--out").then_some(item[1].clone()));
-
-	let repeat = args.windows(2).find_map(|item| {
-		if let "--repeat" = item[0].as_str() {
-			match item[1].parse::<u16>() {
-				Ok(value) => Some(value),
-				Err(err) => panic!("--repeat cannot be {item}, {err:?}", item = item[1]),
+	while let Some(arg) = args.next() {
+		match arg.as_str() {
+			// "--satisfies-with-as" => {
+			// replace_satisfies_with_as = true;
+			// }
+			// "--comment-headers" => {
+			// add_headers_as_comments = true;
+			// }
+			// "--include-extras" => {
+			// include_flagged_examples = true;
+			// }
+			// "--jsx-and-extra-syntax" => {
+			// jsx_and_extra = true;
+			// }
+			"--just-diagnostics" => {
+				just_diagnostics = true;
 			}
-		} else {
-			None
+			"--into-files" => {
+				let directory = args.next().expect("expected directory");
+				let extension = args.next().expect("expected extension");
+				into_files_directory_and_extension = Some((directory, extension));
+			}
+			"--out" => {
+				out_file = Some(args.next().expect("expected outfile"));
+			}
+			"--repeat" => {
+				let count = args
+					.next()
+					.expect("expected repeat parameter")
+					.parse::<u16>()
+					.expect("repeat number invalid");
+				repeat = Some(count);
+			}
+			argument => {
+				eprintln!("unknown {argument:?}");
+			}
 		}
-	});
-
-	let source = std::fs::read_to_string(path)?;
+	}
 
 	// --- contain optional things
+	let options_divider = "\n---";
+
 	let blocks: Vec<&str> = source
 		.split("~~~")
 		.map(str::trim)
-		.filter(|item| !item.is_empty() && !item.contains("\n---"))
+		.filter(|item| !item.is_empty() && !item.contains(options_divider))
 		.collect();
 
 	if just_diagnostics {
 		return Ok(());
 	}
 
-	if false {
-		// 	if let Some((under, extension)) = into_files_directory_and_extension {
+	if let Some((under, extension)) = into_files_directory_and_extension {
+		todo!("into_files_directory_and_extension: {under} with {extension}");
 		// 	let under = PathBuf::from(under);
 		// 	for (header, code) in blocks {
 		// 		let mut name = heading_to_rust_identifier(&header);
@@ -113,31 +139,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 			// TODO quick fix to also register interface and type alias names to prevent conflicts
 			for item in &module.items {
-				let StatementOrDeclaration::Declaration(item) = item else {
-					continue;
-				};
-
 				match item {
-					Declaration::TypeAlias(TypeAlias {
-						name:
-							StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
-						..
-					})
-					| Declaration::Interface(Decorated {
-						on:
-							InterfaceDeclaration {
-								name:
-									StatementPosition {
-										identifier: VariableIdentifier::Standard(s, _),
-										..
-									},
-								..
-							},
-						..
-					}) => {
-						names.insert(s.clone());
+					StatementOrDeclaration::TypeAlias(type_alias) => {
+						if let StatementPosition {
+							identifier: VariableIdentifier::Standard(ref name, _),
+							..
+						} = type_alias.on.item.name
+						{
+							names.insert(name.clone());
+						}
 					}
-					Declaration::DeclareVariable(declare_variable) => {
+					StatementOrDeclaration::Interface(interface) => {
+						if let StatementPosition {
+							identifier: VariableIdentifier::Standard(ref name, _),
+							..
+						} = interface.on.item.name
+						{
+							names.insert(name.clone());
+						}
+					}
+					StatementOrDeclaration::DeclareVariable(declare_variable) => {
 						for declaration in &declare_variable.declarations {
 							declare_lets.push((
 								declaration.name.get_ast_ref().clone(),
@@ -145,8 +166,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							));
 						}
 					}
-					Declaration::Function(decorated) if decorated.on.name.is_declare => {
-						use type_annotations::{
+					StatementOrDeclaration::Function(decorated)
+						if decorated.on.item.name.is_declare =>
+					{
+						use ezno_parser::type_annotations::{
 							CommonTypes, TypeAnnotation, TypeAnnotationFunctionParameter,
 							TypeAnnotationFunctionParameters,
 						};
@@ -154,6 +177,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						let function = &decorated.on;
 						let position = Span::NULL;
 						let parameters = function
+							.item
 							.parameters
 							.parameters
 							.iter()
@@ -173,21 +197,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							.collect::<Vec<_>>();
 
 						let return_type =
-							Box::new(function.return_type.clone().unwrap_or_else(|| {
+							Box::new(function.item.return_type.clone().unwrap_or_else(|| {
 								TypeAnnotation::CommonName(CommonTypes::Any, position)
 							}));
 						let ty = TypeAnnotation::FunctionLiteral {
-							type_parameters: function.type_parameters.clone(),
-							parameters: TypeAnnotationFunctionParameters {
+							type_parameters: function.item.type_parameters.clone(),
+							parameters: Box::new(TypeAnnotationFunctionParameters {
 								parameters,
 								rest_parameter: None,
 								position,
-							},
+							}),
 							return_type,
 							position,
 						};
 						declare_lets.push((
-							VariableField::Name(function.name.identifier.clone()),
+							VariableField::Name(function.item.name.identifier.clone()),
 							Some(ty),
 						));
 					}
@@ -195,21 +219,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 			}
 
-			let code = if !declare_lets.is_empty() {
+			let code: std::borrow::Cow<'_, str> = if !declare_lets.is_empty() {
 				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
 				for item in module.items {
 					match item {
-						StatementOrDeclaration::Declaration(Declaration::TypeAlias(
-							TypeAlias { .. },
-						))
-						| StatementOrDeclaration::Declaration(Declaration::Interface(
-							Decorated { .. },
-						)) => {
+						StatementOrDeclaration::TypeAlias(_)
+						| StatementOrDeclaration::Interface(_) => {
 							top_level.push(item);
 						}
-						StatementOrDeclaration::Declaration(Declaration::Function(decorated))
-							if decorated.on.name.is_declare => {}
-						StatementOrDeclaration::Declaration(Declaration::DeclareVariable(..)) => {}
+						StatementOrDeclaration::Function(decorated)
+							if decorated.on.item.name.is_declare => {}
+						StatementOrDeclaration::DeclareVariable(..) => {}
 						item => {
 							inside.push(item);
 						}
@@ -229,7 +249,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					})
 					.collect();
 
-				let function = Expression::ExpressionFunction(ast::ExpressionFunction {
+				let function = Expression::ExpressionFunction(Box::new(ast::ExpressionFunction {
 					header: functions::FunctionHeader::VirginFunctionHeader {
 						is_async: false,
 						location: None,
@@ -250,11 +270,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					type_parameters: None,
 					position,
 					body: ast::Block(inside, position),
-				});
+				}));
 
 				// void is temp fix
 				top_level.push(
-					Statement::Expression(
+					StatementOrDeclaration::Expression(
 						Expression::UnaryOperation {
 							operator: operators::UnaryOperator::Void,
 							operand: Box::new(function),
@@ -346,11 +366,4 @@ impl<'a> visiting::Visitor<visiting::ImmutableVariableOrProperty<'a>, HashSet<St
 			data.insert(name.to_owned());
 		}
 	}
-}
-
-fn heading_to_rust_identifier(heading: &str) -> String {
-	heading
-		.replace([' ', '-', '/', '&', '.', '+'], "_")
-		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")
-		.to_lowercase()
 }

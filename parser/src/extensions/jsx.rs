@@ -80,7 +80,7 @@ impl ASTNode for JSXElement {
 			} else {
 				let start = reader.get_start();
 				// Using this because parse_identifier breaks on things that we want to include here
-				let result = reader.parse_until_one_of(&["=", ">", " ", "\n"]);
+				let result = reader.parse_until_one_of_advance(&["=", ">", " ", "\n"]);
 				let (key, delimiter) = match result {
 					Ok((key, delimiter)) => (key.to_owned(), delimiter),
 					Err(()) => {
@@ -102,7 +102,7 @@ impl ASTNode for JSXElement {
 						));
 					}
 				}
-				reader.advance(delimiter.len() as u32);
+
 				match delimiter {
 					"=" => {
 						let start = reader.get_start();
@@ -193,8 +193,9 @@ impl ASTNode for JSXElement {
 				position: start.union(end),
 			})
 		} else {
-			todo!()
-			// Err(parse_lexing_error())
+			let (found, position) = crate::lexer::utilities::next_item(reader);
+			let err = ParseErrors::ExpectedOneOfItems { expected: &["</"], found };
+			Err(ParseError::new(err, position))
 		}
 	}
 
@@ -478,7 +479,7 @@ impl ASTNode for JSXNode {
 			let element = JSXElement::from_reader(reader)?;
 			Ok(JSXNode::Element(element))
 		} else {
-			let (content, _) = reader.parse_until_one_of(&["<", "{"]).map_err(|()| {
+			let (content, _) = reader.parse_until_one_of_no_advance(&["<", "{"]).map_err(|()| {
 				let (_found, position) = crate::lexer::utilities::next_item(reader);
 				ParseError::new(crate::ParseErrors::UnexpectedEnd, position)
 			})?;

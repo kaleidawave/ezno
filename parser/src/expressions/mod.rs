@@ -1,3 +1,9 @@
+pub mod arrow_function;
+pub mod assignments;
+pub mod object_literal;
+pub mod operators;
+pub mod template_literal;
+
 use crate::{
 	are_nodes_over_length, bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
 	functions, number::NumberRepresentation, statements_and_declarations::ClassDeclaration,
@@ -24,13 +30,7 @@ use get_field_by_type::GetFieldByType;
 use source_map::{Nullable, ToString};
 use visitable_derive::Visitable;
 
-pub mod arrow_function;
-pub mod assignments;
-pub mod object_literal;
-pub mod operators;
-pub mod template_literal;
 pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
-
 pub use template_literal::TemplateLiteral;
 
 use operators::{
