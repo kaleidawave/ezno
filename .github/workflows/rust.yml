@@ -2,19 +2,20 @@ name: Rust
 
 # Contains checks:
 # - That the code compiles
-# - That the code complies with formatting
-# - Lints (using clippy) to find errors
-# - That crates that are published are publish-able (works most of the time)
+# - That the code and markdown complies with formatting
+# - Lints (using clippy) to find *issues*
+# - That crates that are published are publish-able
 # - Testing 
-#   - Standard Rust integration and unit tests
-#   - Fuzz tests (parser and checker)
-#   - WASM edition works tests
+#   - Standard Rust integration, unit tests and specification tests
+#   - (if main, not draft PR or 'fuzz-me' label) Fuzz tests (parser and checker)
+#   - That the WASM edition works and types are ok
+# - (if main or 'compiler-performance') spins off the performance-and-size tests
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: ['*']
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,8 +25,6 @@ env:
     ~/.cargo/registry/cache/
     ~/.cargo/git/db/
     target/
-    checker/fuzz/target
-    parser/fuzz/target
 
 jobs:
   validity:
@@ -55,12 +54,12 @@ jobs:
       - name: Check Rust formatting with rustfmt
         run: cargo fmt --all --check
 
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      - uses: kaleidawave/release-downloader@improvements
         with:
-          packages: taplo-cli
+          items: kaleidawave/simple-toml-parser@canary[format]
 
-      - name: Check TOML formatting with taplo
-        run: taplo fmt --check **/*/Cargo.toml
+      - name: Check 'Cargo.toml' formatting
+        run: format Cargo.toml --check
 
   tests:
     needs: validity
@@ -73,6 +72,11 @@ jobs:
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install spectra
+        uses: kaleidawave/release-downloader@improvements
+        with:
+          items: kaleidawave/experiments@assets[spectra]
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -100,30 +104,14 @@ jobs:
           done
         working-directory: parser
 
-      - name: Run checker specification
-        if: (steps.changes.outputs.checker == 'true' && github.event_name != 'pull_request') || github.ref_name == 'main'
-        run: cargo test -p ezno-checker-specification
-      
-      - name: Run checker specification (w/ staging)
-        if: steps.changes.outputs.checker == 'true' && github.event_name == 'pull_request'
-        run: cargo test -F staging -p ezno-checker-specification
-        env:
-          EZNO_DEBUG: 1
-      
-      - name: Run checker specification (just to implement)
-        continue-on-error: true
-        if: steps.changes.outputs.checker == 'true' && github.event_name == 'pull_request'
-        run: |
-          # Aim of this test is to catch anything that may have been fixed in this next commit or any bad regressions (stack overflows)
-          cargo test --no-default-features -F to_implement -p ezno-checker-specification
-        env:
-          EZNO_DEBUG: 1
+      - name: Run checker tests
+        if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
+        run: cargo test -p ezno-checker
 
       - name: Run checker tests
         if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
-        run: |
-          # Test checker with the parser features
-          cargo test -F ezno-parser -p ezno-checker
+        run: spectra test specification/specification.md 'cargo run --example runner -- --interactive --rpc' --lists-as-expected
+        working-directory: checker
 
       - name: Run CLI and base tests
         run: cargo test
@@ -140,6 +128,14 @@ jobs:
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 23
      
       - uses: dorny/paths-filter@v3
         id: changes
@@ -151,37 +147,27 @@ jobs:
               - 'parser/**'
             checker:
               - 'checker/**'
-
-      - uses: denoland/setup-deno@v1
-        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
-        with:
-          deno-version: v1.x
-      - uses: actions/setup-node@v4
-        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
-        with:
-          node-version: 23
       
       - name: Check parser without extras
         if: steps.changes.outputs.parser == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: 
-          cargo check -p ezno-parser --no-default-features
+        run: cargo check -p ezno-parser --no-default-features
 
       - name: Check parser generator
         if: steps.changes.outputs.parser == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: 
-          cargo test -p ezno-ast-generator
+        run: cargo test -p ezno-ast-generator
 
       - name: Check checker without default features
         if: steps.changes.outputs.checker == 'true'
         # TODO want `continue-on-error: true` but doesn't report error
-        run: 
-          cargo check -p ezno-checker --no-default-features
+        run: cargo check -p ezno-checker --no-default-features
 
       - name: Build and test WASM
-        if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
+        if: github.ref_name == 'main' || !github.event.pull_request.draft
         timeout-minutes: 5
+        working-directory: src/js-cli-and-library
+        shell: bash
         run: |
           # TODO `cargo check --target wasm32-unknown-unknown --lib` might be good enough
 
@@ -196,23 +182,18 @@ jobs:
 
           npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
           echo "debug checked with TSC"
+
+          # TEMP check
           cargo run -p ezno-parser --example parse ./build/ezno_lib.d.ts --type-definition-module
-          
-          # TODO temp as the types generated can be a bit unpredicatible
-          if ${{ contains(fromJSON('["main", "ast-typegen-direct"]'), github.ref_name ) }}; then
-            npm run build-release
-            npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
-          fi
-        working-directory: src/js-cli-and-library
-        shell: bash
 
       # WIP
       - uses: actions/upload-artifact@v4
         if: steps.changes.outputs.src == 'true' || github.ref_name == 'main'
         with:
           name: wasm-build
+          overwrite: true
           path: src/js-cli-and-library/dist
-          retention-days: 3
+          retention-days: 90
 
   fuzzing_parser:
     if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
@@ -226,11 +207,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - uses: actions/cache@v4
         with:
+          # TODO fuzz specific key & paths
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Install cargo-fuzz
+        uses: kaleidawave/release-downloader@improvements
+        with:
+          items: rust-fuzz/cargo-fuzz@0.13.1
           
       - uses: dorny/paths-filter@v3
         id: changes
@@ -238,57 +225,51 @@ jobs:
           filters: |
             parser:
               - 'parser/**'
-
-      - name: Install latest nightly and set it as default
-        if: steps.changes.outputs.parser == 'true'
-        run: |
-          rustup install nightly
-          rustup default nightly
-
-      # Current `cargo-fuzz` is broken: https://github.com/kaleidawave/ezno/pull/158#issuecomment-2171431210
-      # However `cargo install --git ...` does work below
-      # - uses: brndnmtthws/rust-action-cargo-binstall@v1
-      #   if: steps.changes.outputs.parser == 'true'
-      #   with:
-      #     packages: cargo-fuzz
-
-      - name: Install cargo-fuzz
-        if: steps.changes.outputs.parser == 'true'
-        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
       
       - name: Run fuzzing
-        env:
-          SHORT_CIRCUIT: true
+        # env:
+        #   SHORT_CIRCUIT: true
         if: steps.changes.outputs.parser == 'true'
         run: |
-          if ${{ env.SHORT_CIRCUIT }}; then
-            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
-          else
-            CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
+          CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+
+          # if ${{ env.SHORT_CIRCUIT }}; then
+          # else
+          #   CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
             
-            if test -d fuzz/artifacts; then 
-              find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
-            fi
-          fi
+          #   if test -d fuzz/artifacts; then 
+          #     find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
+          #   fi
+          # fi
         working-directory: parser/fuzz
 
   fuzzing_checker:
     if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
     needs: validity
+
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # TODO
     continue-on-error: true
+
     strategy:
       matrix:
         fuzz-target: [check_project_naive]
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - uses: actions/cache@v4
         with:
+          # TODO fuzz specific key & paths
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-fuzz
+        uses: kaleidawave/release-downloader@improvements
+        with:
+          items: rust-fuzz/cargo-fuzz@0.13.1
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -297,33 +278,9 @@ jobs:
             checker:
               - 'checker/**'
 
-      - name: Install latest nightly and set it as default
-        if: steps.changes.outputs.checker == 'true'
-        run: |
-          rustup install nightly
-          rustup default nightly
-
-      - name: Install cargo-fuzz
-        if: steps.changes.outputs.checker == 'true'
-        run: cargo install --git https://github.com/rust-fuzz/cargo-fuzz.git
-
       - name: Run fuzzing
-        env:
-          SHORT_CIRCUIT: true
         if: steps.changes.outputs.checker == 'true'
-        run: |
-          if ${{ env.SHORT_CIRCUIT }}; then
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
-          else
-            cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=300 -fork=1 -ignore_crashes=1
-            
-            # if test -d fuzz/artifacts; then 
-            #   find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
-            # fi
-          fi
-
-          ls .
-          ls target
+        run: cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
         working-directory: checker/fuzz
   
   clippy:
@@ -337,14 +294,12 @@ jobs:
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Lint code with clippy
         run: cargo clippy
 
   publish-ability:
-    # TODO only need to do for `.toml` file changes
     runs-on: ubuntu-latest
-    # `publish --dry-run` reports too many false positives and doesn't catch actual errors. So disabling for now
-    if: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -356,25 +311,21 @@ jobs:
             manifests:
               - '**/*.toml'
 
+      - uses: kaleidawave/release-downloader@improvements
+        if: steps.changes.outputs.manifests == 'true'
+        with:
+          items: kaleidawave/crates-release-gh-action@assets[crates-release]
+          
       - name: Check that it will publish to crates.io
         if: steps.changes.outputs.manifests == 'true'
-        run: |
-          cargo metadata --offline --format-version 1 --no-deps | jq -r ".workspace_members[]" | while read -r _n _v pathInfo ; do
-            if ! grep -q "publish = false" "${pathInfo:13:-1}/Cargo.toml"; then
-              cd ${pathInfo:13:-1}
-              cargo publish --no-verify --dry-run
-            fi
-          done
-        shell: bash
+        run: crates-release verify
 
   performance-and-size:
-    # WIP
     runs-on: ubuntu-latest
     needs: validity
     steps:
-      - uses: actions/checkout@v4
-      - name: Kick off other workflow if the PR has a label
-        if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
-        run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}"
+      - name: Kick off other workflow if main or a PR with 'compiler-performance' label
+        if: github.ref_name == 'main' || contains(github.event.pull_request.labels.*.name, 'compiler-performance')
+        run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}" -R kaleidawave/ezno
         env:
           GH_TOKEN: ${{ github.token }}

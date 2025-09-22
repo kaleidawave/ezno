@@ -17,9 +17,7 @@ proc-macro = true
 quote = "1"
 proc-macro2 = "1"
 self-rust-tokenize = "0.3"
-ezno-parser = { path = "..", version = "0.1.7", features = [
-  "self-rust-tokenize",
-] }
+ezno-parser = { path = "..", version = "0.1.7", features = ["self-rust-tokenize"] }
 
 [dev-dependencies]
 pretty_assertions = "1.3"

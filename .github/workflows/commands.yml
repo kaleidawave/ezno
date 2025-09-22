@@ -1,0 +1,157 @@
+name: Run certain tasks on repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        type: string
+        required: true
+        description: What task to run
+      runs-on:
+        type: string
+        default: ubuntu-latest
+        description: The machine to run it on
+      ref:
+        type: string
+        default: HEAD
+        description: The reference to run the task on
+      information:
+        type: string
+        default: ""
+        description: Some data associated with the action
+
+env:
+  CACHE_PATHS: |
+    ~/.cargo/bin/
+    ~/.cargo/registry/index/
+    ~/.cargo/registry/cache/
+    ~/.cargo/git/db/
+    target/
+
+jobs:
+  type-sizes:
+    runs-on: ${{ inputs.runs-on }}
+    if: ${{ inputs.task == 'type-sizes' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: kaleidawave/release-downloader@improvements
+        with: 
+          items: kaleidawave/experiments@assets[rust-type-sizes]
+
+      - name: Run type sizes
+        run: rust-type-sizes > type-sizes.txt
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: type-sizes
+          path: type-sizes.txt
+          retention-days: 7
+
+  generate-binary:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'generate-binary' }}
+    steps:
+      - uses: actions/checkout@v4
+        id: checkout
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: TEMP
+        run: git status
+        shell: bash
+
+      - name: Build binary
+        run: cargo run --release
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ runner.os }}${{ runner.arch }}-${{ steps.checkout.outputs.ref }}${{ inputs.information }}
+          path: target/release/ezno
+          retention-days: 30
+
+  fix-up-commit:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'fix-up-commit' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_PATHS }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run automated fixes
+        run: |
+          # Run clippy on projects
+          cargo clippy --fix --manifest-path ./parser/Cargo.toml --allow-dirty
+          cargo clippy --fix --manifest-path ./checker/Cargo.toml --allow-dirty
+          cargo clippy --fix --allow-dirty
+
+          # Format
+          cargo fmt
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .
+          git commit -m "Run 'clippy --fix' & 'cargo fmt'"
+          git push
+
+  list-commits-since-release:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'commits-since-release' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kaleidawave/release-downloader@improvements
+        with: 
+          items: kaleidawave/experiments@assets[commits]
+
+      - name: Print commits since last release
+        shell: bash
+        run: commits
+
+  list-sponsors-and-committers:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.task == 'sponsors&committers' }}
+    steps:
+      - uses: kaleidawave/release-downloader@improvements
+        with: 
+          items: kaleidawave/experiments@assets[group|now]
+
+      - name: Print sponsors & committers
+        shell: bash
+        run: |
+          SQP='.data.user.sponsors.nodes | map(.sponsor.name // .sponsor.login) | join(",")'
+          GQL_SQ='user(login: "kaleidawave") { sponsors: sponsorshipsAsMaintainer(first: 100, activeOnly: false, includePrivate: false) { nodes { sponsor: sponsorEntity { ... on User { login, name } ... on Organization { login, name }  } } } }'
+
+          SPONSORS=$(gh api graphql -f query="{ $GQL_SQ }" -q "$SQP")
+
+          CONTRIBUTORS=$(
+              gh pr list --state merged --json author | jq 'map(.author.name // .author.login) | unique | join(",")' --raw-output
+          )
+
+          now
+
+          echo "SPONSORS=$SPONSORS"
+          echo "CONTRIBUTORS=$CONTRIBUTORS"
+
+          echo "SPONSORS:"
+          cat '$SPONSORS' > group --prefix "  "
+          
+          echo "CONTRIBUTORS:"
+          cat '$CONTRIBUTORS' > group --prefix "  "

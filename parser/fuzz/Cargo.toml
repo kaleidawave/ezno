@@ -13,12 +13,8 @@ reqwest = { version = "0.11.14", features = ["blocking"] }
 [dependencies]
 ahash = "0.8.8"
 arbitrary = "1"
-boa_ast = { git = "https://github.com/boa-dev/boa.git", features = [
-  "arbitrary",
-] }
-boa_interner = { git = "https://github.com/boa-dev/boa.git", features = [
-  "arbitrary",
-] }
+boa_ast = { git = "https://github.com/boa-dev/boa.git", features = ["arbitrary"] }
+boa_interner = { git = "https://github.com/boa-dev/boa.git", features = ["arbitrary"] }
 libfuzzer-sys = "0.4"
 pretty_assertions = "1.3.0"
 proc-macro2 = "1.0.66"
@@ -27,6 +23,7 @@ proc-macro2 = "1.0.66"
 path = ".."
 
 # Prevent this from interfering with workspaces
+
 [workspace]
 members = ["."]
 
