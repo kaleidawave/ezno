@@ -112,7 +112,7 @@ impl<'a> Lexer<'a> {
 			&& current[length..]
 				.chars()
 				.next()
-				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 	}
 
 	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
@@ -123,7 +123,7 @@ impl<'a> Lexer<'a> {
 			&& current[length..]
 				.chars()
 				.next()
-				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 		{
 			self.state.last_new_lines = 0;
 			self.head += length as u32;
@@ -142,7 +142,7 @@ impl<'a> Lexer<'a> {
 				&& current[item.len()..]
 					.chars()
 					.next()
-					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 			{
 				return Some(item);
 			}
@@ -160,7 +160,7 @@ impl<'a> Lexer<'a> {
 				&& current[item.len()..]
 					.chars()
 					.next()
-					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 			{
 				self.head += item.len() as u32;
 				return Some(item);
@@ -586,15 +586,13 @@ impl<'a> Lexer<'a> {
 		while let Some((idx, matched)) = delimeters.next() {
 			buf += &current[last..idx];
 
-			if matched == "\"" {
-				self.advance(idx as u32 + 2);
-				return Ok((buf, quoted));
-			} else if matched == "'" {
+			if let "\"" | "'" = matched {
 				self.advance(idx as u32 + 2);
 				return Ok((buf, quoted));
 			} else if matched == "\\" {
 				let chr = current[idx + 1..].chars().next();
-				let result = utilities::escape_character(chr, idx, &mut last, &mut buf);
+				let result =
+					utilities::escape_character(chr, &current[idx + 2..], idx, &mut last, &mut buf);
 				match result {
 					Ok(skip_next) => {
 						if skip_next {
@@ -1153,10 +1151,28 @@ impl<'a> Lexer<'a> {
 }
 
 pub(crate) mod utilities {
-	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences
+	fn parse_hex(on: &str) -> u32 {
+		let mut value = 0u32;
+		for byte in on.bytes() {
+			value <<= 4; // log2(16) = 4
+			let code = match byte {
+				b'0'..=b'9' => u32::from(byte - b'0'),
+				b'a'..=b'f' => u32::from(byte - b'a') + 10,
+				b'A'..=b'F' => u32::from(byte - b'A') + 10,
+				byte => {
+					panic!("bad char {byte:?}!");
+				}
+			};
+			value |= code;
+		}
+		value
+	}
+
+	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences>
 	/// `Ok(true) = skip_next`
 	pub fn escape_character(
 		chr: Option<char>,
+		after: &str,
 		idx: usize,
 		last: &mut usize,
 		buf: &mut std::borrow::Cow<'_, str>,
@@ -1207,13 +1223,42 @@ pub(crate) mod utilities {
 				*last = idx + 2;
 				Ok(false)
 			}
-			Some('u') => {
-				todo!()
-			}
 			//
 			Some('\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}') => {
 				*last = idx + 2;
 				Ok(false)
+			}
+			Some('x') => {
+				if let Some(after) = after.get(..2) {
+					let code = parse_hex(after);
+					if let Some(chr) = char::from_u32(code) {
+						buf.to_mut().push(chr);
+					} else {
+						return Err(());
+					}
+					*last = idx + 2 + after.len();
+					Ok(false)
+				} else {
+					Err(())
+				}
+			}
+			Some('u') => {
+				if let Some(after) = after.strip_prefix('{') {
+					if let Some((after, _)) = after.split_once('}') {
+						let code = parse_hex(after);
+						if let Some(chr) = char::from_u32(code) {
+							buf.to_mut().push(chr);
+						} else {
+							panic!("bad code {after}");
+						}
+						*last = idx + 4 + after.len();
+						Ok(false)
+					} else {
+						Err(())
+					}
+				} else {
+					Err(())
+				}
 			}
 			Some(chr) => {
 				eprintln!("unexpected item {chr:?}");

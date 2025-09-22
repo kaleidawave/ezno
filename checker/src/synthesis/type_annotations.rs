@@ -18,7 +18,6 @@ use crate::{
 	CheckingData, Map,
 };
 use parser::{
-	strings,
 	type_annotations::{CommonTypes, TupleElementKind, TupleLiteralElement, TypeName},
 	ASTNode, TypeAnnotation,
 };
@@ -51,8 +50,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			CommonTypes::Never => TypeId::NEVER_TYPE,
 		},
 		TypeAnnotation::StringLiteral(value, ..) => {
-			let value = strings::unescape_string_content(value).into_owned();
-			checking_data.types.new_constant_type(Constant::String(value))
+			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
 			let constant =
@@ -638,9 +636,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			// the evaluate_mathematical_operator expects literal or poly values (not just types)
 			let mut acc = TypeId::EMPTY_STRING;
 			for (static_part, dynamic_part) in parts {
-				let lhs = checking_data.types.new_constant_type(Constant::String(
-					strings::unescape_string_content(static_part).into_owned(),
-				));
+				let lhs =
+					checking_data.types.new_constant_type(Constant::String(static_part.clone()));
 				acc = if let TypeId::EMPTY_STRING = acc {
 					lhs
 				} else {
@@ -677,9 +674,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			if final_part.is_empty() {
 				acc
 			} else {
-				let lhs = checking_data.types.new_constant_type(Constant::String(
-					strings::unescape_string_content(final_part).into_owned(),
-				));
+				let lhs =
+					checking_data.types.new_constant_type(Constant::String(final_part.clone()));
 				if let TypeId::EMPTY_STRING = acc {
 					lhs
 				} else {

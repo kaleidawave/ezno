@@ -297,7 +297,7 @@ impl ASTNode for StatementOrDeclaration {
 				let mut declare = DeclareVariableDeclaration::from_reader_without_declare(reader)?;
 				// TODO pass these down
 				declare.decorators = decorators;
-				return Ok(StatementOrDeclaration::DeclareVariable(declare));
+				Ok(StatementOrDeclaration::DeclareVariable(declare))
 			} else if reader.is_keyword("class") {
 				let mut class = ClassDeclaration::<StatementPosition>::from_reader(reader)?;
 				class.name.is_declare = true;
@@ -607,6 +607,7 @@ impl StatementOrDeclaration {
 	}
 
 	#[allow(clippy::match_same_arms)]
+	#[must_use]
 	pub fn is_declaration(&self) -> bool {
 		match self {
 			StatementOrDeclaration::Variable(_)

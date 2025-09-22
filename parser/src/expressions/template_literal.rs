@@ -102,8 +102,13 @@ pub fn parse_template_literal<T: ASTNode>(
 					break;
 				} else if matched == "\\" {
 					let chr = current[idx + 1..].chars().next();
-					let result =
-						crate::lexer::utilities::escape_character(chr, idx, &mut last, &mut buf);
+					let result = crate::lexer::utilities::escape_character(
+						chr,
+						&current[idx + 2..],
+						idx,
+						&mut last,
+						&mut buf,
+					);
 					match result {
 						Ok(skip_next) => {
 							if skip_next {

@@ -336,8 +336,6 @@ jobs:
   performance-and-size:
     runs-on: ubuntu-latest
     needs: validity
-    # TODO temp
-    if: false
     steps:
       - name: Kick off other workflow if main or a PR with 'compiler-performance' label
         if: github.ref_name == 'main' || contains(github.event.pull_request.labels.*.name, 'compiler-performance')

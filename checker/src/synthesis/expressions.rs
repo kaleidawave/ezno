@@ -12,7 +12,7 @@ use parser::{
 		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	strings, ASTNode, Expression, ExpressionOrStatementPosition,
+	ASTNode, Expression, ExpressionOrStatementPosition,
 };
 use source_map::{Nullable, SpanWithSource};
 
@@ -84,8 +84,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 ) -> TypeId {
 	let instance: Instance = match expression {
 		Expression::StringLiteral(value, ..) => {
-			let value = strings::unescape_string_content(value).into_owned();
-			return checking_data.types.new_constant_type(Constant::String(value));
+			return checking_data.types.new_constant_type(Constant::String(value.clone()));
 		}
 		Expression::RegexLiteral { pattern, flags, position } => {
 			let regexp = checking_data.types.new_regexp(pattern, flags, position);
@@ -223,8 +222,8 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 
 			Instance::RValue(synthesise_template_literal_expression::<_, EznoParser>(
 				tag,
-				parts.iter().map(|(l, r)| (strings::unescape_string_content(l), &r.0)),
-				strings::unescape_string_content(final_part),
+				parts.iter().map(|(l, r)| (Cow::Borrowed(l.as_str()), &r.0)),
+				Cow::Borrowed(final_part.as_str()),
 				position.with_source(environment.get_source()),
 				environment,
 				checking_data,

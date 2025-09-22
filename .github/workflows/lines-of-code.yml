@@ -20,15 +20,15 @@ jobs:
             name=$1
             lines_of_code=$(lines-of-code $2)
         
-            echo "\`$name\`: $lines_of_code" >> $GITHUB_STEP_SUMMARY
+            echo "\`$name\`: `$lines_of_code`" >> $GITHUB_STEP_SUMMARY
 
             curl \
               --header "Content-Type: application/json" \
               --header "X-POST-ACCESS-KEY: ${{ secrets.PROJECTS_POST_ACCESS_KEY }}" \
               --data "{\"project\":\"$name\",\"language\":\"rust\",\"loc\":$lines_of_code}" \
-              https://project-information-kaleidawave.val.run/update-project
+              https://kaleidawave--1dcc8e5438ae11f08e309e149126039e.web.val.run/
           }
           
-          record "ezno-parser" "checker/**/*.rs"
+          record "ezno-parser" "parser/**/*.rs"
           record "ezno-checker" "checker/**/*.rs"
           record "ezno" "src/**/*.rs"

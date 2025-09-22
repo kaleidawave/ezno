@@ -470,10 +470,14 @@ pub mod visiting {
 					}
 				}
 				VariableField::Array { members, spread: _, .. } => {
-					members.iter().for_each(|f| f.visit(visitors, data, options, chain));
+					for f in members {
+						f.visit(visitors, data, options, chain);
+					}
 				}
 				VariableField::Object { members, spread: _, .. } => {
-					members.iter().for_each(|f| f.visit(visitors, data, options, chain));
+					for f in members {
+						f.visit(visitors, data, options, chain);
+					}
 				}
 			}
 		}
@@ -496,10 +500,14 @@ pub mod visiting {
 					}
 				}
 				VariableField::Array { members, spread: _, .. } => {
-					members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
+					for f in members {
+						f.visit_mut(visitors, data, options, chain);
+					}
 				}
 				VariableField::Object { members, spread: _, .. } => {
-					members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
+					for f in members {
+						f.visit_mut(visitors, data, options, chain);
+					}
 				}
 			}
 		}

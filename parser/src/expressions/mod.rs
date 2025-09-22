@@ -106,7 +106,7 @@ pub enum Expression {
 	VariableReference(String, Span),
 	ThisReference(Span),
 	SuperExpression(SuperReference, Span),
-	/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target
+	/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target>
 	NewTarget(Span),
 	Import(ImportExpression),
 	PropertyAccess {
@@ -156,7 +156,7 @@ pub enum Expression {
 		is_multiline: bool,
 		prefix: bool,
 	},
-	/// A start of a JSXNode
+	/// A start of a `JSXNode`
 	JSXRoot(Box<JSXRoot>),
 	/// Not to be confused with binary operator `is`
 	#[cfg(feature = "extras")]
@@ -1830,6 +1830,7 @@ impl MultipleExpression {
 		&self.0
 	}
 
+	#[must_use]
 	pub fn into_expression(self) -> Expression {
 		if let Expression::BinaryOperation { operator: BinaryOperator::Comma, .. } = self.0 {
 			let position = self.get_position();

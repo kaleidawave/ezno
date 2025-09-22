@@ -118,7 +118,9 @@ mod ast {
 			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
-			self.iter().for_each(|item| item.visit(v, d, s, c));
+			for item in self {
+				item.visit(v, d, s, c);
+			}
 		}
 
 		fn visit_mut<TData>(
@@ -128,7 +130,9 @@ mod ast {
 			s: &VisitOptions,
 			c: &mut Annex<Chain>,
 		) {
-			self.iter_mut().for_each(|item| item.visit_mut(v, d, s, c));
+			for item in self.iter_mut() {
+				item.visit_mut(v, d, s, c);
+			}
 		}
 	}
 

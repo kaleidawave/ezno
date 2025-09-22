@@ -31,7 +31,7 @@ pub enum TypeAnnotation {
 	/// Boolean literal e.g. `true`
 	BooleanLiteral(bool, Span),
 	/// Array literal e.g. `string[]`. This is syntactic sugar for `Array` with type arguments. **This is not the same
-	/// as a [TypeAnnotation::TupleLiteral]**
+	/// as a [`TypeAnnotation::TupleLiteral`]**
 	ArrayLiteral(Box<TypeAnnotation>, Span),
 	/// Function literal e.g. `(x: string) => string`
 	FunctionLiteral {
@@ -63,7 +63,7 @@ pub enum TypeAnnotation {
 	Abstract(Box<TypeAnnotation>, Span),
 	/// Declares type as being union type of all property types e.g. `T[K]`
 	Index(Box<TypeAnnotation>, Box<TypeAnnotation>, Span),
-	/// KeyOf
+	/// `KeyOf`
 	KeyOf(Box<TypeAnnotation>, Span),
 	TypeOf(Box<VariableOrPropertyAccess>, Span),
 	Infer {
@@ -103,7 +103,7 @@ pub enum TypeAnnotation {
 	/// Allowed in certain positions
 	This(Span),
 	#[cfg(feature = "extras")]
-	/// *almost* Shorthand for ClassName & { ... }
+	/// *almost* Shorthand for `ClassName` & { ... }
 	NameWithProperties(TypeName, Vec<BinderWithAnnotation>, Span),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(Marker<TypeAnnotation>, Span),
@@ -243,7 +243,7 @@ impl TypeName {
 		}
 		TypeName(buf)
 	}
-
+	#[must_use]
 	pub fn is_namespace_reference(&self) -> bool {
 		self.0.contains('.')
 	}
@@ -251,11 +251,12 @@ impl TypeName {
 	pub fn parts(&self) -> impl Iterator<Item = &str> + '_ {
 		self.0.split('.')
 	}
-
+	#[must_use]
 	pub fn raw(&self) -> &str {
 		&self.0
 	}
 
+	#[must_use]
 	pub fn from_raw(on: String) -> Self {
 		Self(on)
 	}

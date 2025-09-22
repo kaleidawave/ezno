@@ -390,7 +390,7 @@ pub enum FunctionHeader {
 		is_generator: bool,
 		position: Span,
 	},
-	/// Always is_generator
+	/// Always `is_generator`
 	#[cfg(feature = "extras")]
 	ChadFunctionHeader {
 		is_async: bool,

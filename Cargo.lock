@@ -104,17 +104,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codespan-reporting"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
-dependencies = [
- "serde",
- "termcolor",
- "unicode-width",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -243,7 +232,7 @@ version = "0.0.23"
 dependencies = [
  "argh",
  "base64",
- "codespan-reporting 0.12.0",
+ "codespan-reporting",
  "console_error_panic_hook",
  "enum-variants-strings",
  "ezno-checker",
@@ -303,7 +292,7 @@ dependencies = [
 name = "ezno-parser"
 version = "0.1.7"
 dependencies = [
- "codespan-reporting 0.11.1",
+ "codespan-reporting",
  "derive-debug-extras",
  "derive-enum-from-into",
  "derive-finite-automaton",
@@ -984,7 +973,7 @@ version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0ceb78c22f3230575820b8fc921eedab317383bd3f3648d221f80549e6e4d16"
 dependencies = [
- "codespan-reporting 0.11.1",
+ "codespan-reporting",
  "self-rust-tokenize",
  "serde",
  "tsify 0.4.5",

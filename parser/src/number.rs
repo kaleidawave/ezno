@@ -145,7 +145,7 @@ impl FromStr for NumberRepresentation {
 							_ => return Err(s.to_owned()),
 						}
 					}
-					return Ok(Self::Hex { sign, value });
+					Ok(Self::Hex { sign, value })
 				}
 				Some('B' | 'b') => {
 					let mut value = 0u64;

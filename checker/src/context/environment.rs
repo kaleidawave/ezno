@@ -170,7 +170,7 @@ pub type Label = Option<String>;
 
 #[derive(Clone, Copy)]
 pub enum Returnable<'a, A: crate::ASTImplementation> {
-	Statement(Option<&'a A::MultipleExpression<'a>>, Span),
+	Statement(Option<&'a A::Expression<'a>>, Span),
 	ArrowFunctionBody(&'a A::Expression<'a>),
 }
 
@@ -1127,7 +1127,7 @@ impl Environment<'_> {
 
 		let (returned, returned_position) = match expression {
 			Returnable::Statement(Some(expression), returned_position) => (
-				A::synthesise_multiple_expression(expression, expected_type, self, checking_data),
+				A::synthesise_expression(expression, expected_type, self, checking_data),
 				returned_position.with_source(self.get_source()),
 			),
 			Returnable::Statement(None, returned_position) => {
@@ -1308,10 +1308,15 @@ impl Environment<'_> {
 						break;
 					}
 					Scope::Iteration { ref label } => {
-						if looking_for_label.is_none() {
-							return Some(falling_through_structures);
-						} else if let Some(label) = label {
-							if label == looking_for_label.unwrap() {
+						match looking_for_label {
+							Some(looking_for_label) => {
+								if let Some(label) = label {
+									if label == looking_for_label {
+										return Some(falling_through_structures);
+									}
+								}
+							}
+							None => {
 								return Some(falling_through_structures);
 							}
 						}
@@ -1368,7 +1373,7 @@ impl Environment<'_> {
 					ty: existing,
 					in_same_context: false,
 				});
-			};
+			}
 		}
 
 		let parameters = parameters.map(|parameters| {
