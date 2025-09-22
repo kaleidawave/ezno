@@ -8,7 +8,13 @@ homepage = "https://kaleidawave.github.io/posts/introducing-ezno"
 authors = ["Ben <kaleidawave@gmail.com>"]
 edition = "2021"
 categories = ["compilers"]
-keywords = ["javascript", "typechecker", "checker", "typescript", "types"]
+keywords = [
+	"javascript",
+	"typechecker",
+	"checker",
+	"typescript",
+	"types"
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -21,25 +27,17 @@ ezno-parser = ["dep:parser"]
 serde-serialize = ["dep:serde"]
 
 [dependencies]
-source-map = { version = "0.15", features = [
-  "serde-serialize",
-  "self-rust-tokenize",
-] }
-
+source-map = { version = "0.15", features = ["serde-serialize", "self-rust-tokenize"] }
 binary-serialize-derive = { path = "./binary-serialize-derive", version = "0.0.3" }
-
 temporary-annex = "0.1"
 derive-enum-from-into = "0.2"
-derive-debug-extras = { version = "0.3", features = [
-  "auto-debug-single-tuple-inline",
-] }
+derive-debug-extras = { version = "0.3", features = ["auto-debug-single-tuple-inline"] }
 enum-variants-strings = "0.3"
 iterator-endiate = "0.2"
 path-absolutize = { version = "3.0", features = ["use_unix_paths_on_wasm"] }
 either = "1.6"
 levenshtein = "1"
 regress = { version = "0.10", features = ["utf16"] }
-
 serde = { version = "1.0", features = ["derive"], optional = true }
 simple-json-parser = "0.0"
 
@@ -56,3 +54,6 @@ package = "ezno-parser"
 
 [dev-dependencies]
 match_deref = "0.1.1"
+
+[package.metadata.commands]
+spectra_dev = "wip-spectra test specification/specification.md 'cargo run --example runner -- --interactive --rpc' --lists-as-expected"

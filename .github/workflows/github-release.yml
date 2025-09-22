@@ -25,6 +25,8 @@ jobs:
       LATEST_EZNO_VERSION_DASH: ${{ steps.get-version.outputs.LATEST_EZNO_VERSION_DASH }}
       SPONSORS: ${{ steps.get-sponsors-and-contributors.outputs.SPONSORS }}
       CONTRIBUTORS: ${{ steps.get-sponsors-and-contributors.outputs.CONTRIBUTORS }}
+      GITHUB_RUN_ID: ${{ steps.get-run-id-and-date.outputs.GITHUB_RUN_ID }}
+      GITHUB_RUN_DATE: ${{ steps.get-run-id-and-date.outputs.GITHUB_RUN_DATE }}
 
     steps:
       - uses: actions/checkout@v4
@@ -51,13 +53,15 @@ jobs:
             echo "LATEST_EZNO_VERSION=${TAG}" >> "$GITHUB_OUTPUT"
             echo "LATEST_EZNO_VERSION_DASH=${TAG//./-}" >> "$GITHUB_OUTPUT"
           fi
+        shell: bash
 
       - name: Get sponsors and contributors
         id: get-sponsors-and-contributors
         run: |
-          SQP='.data.user.sponsorshipsAsMaintainer.edges | map(.node.sponsor.name // .node.sponsor.login) | join(",")'
-          GQL_SQ='{ user(login: "kaleidawave") { sponsorshipsAsMaintainer(first: 100, activeOnly: false) { edges { node { sponsor { name, login } } } } } }'
-          SPONSORS=$(gh api graphql -f query="$GQL_SQ" -q "$SQP")
+          # TODO pagination for both
+          SQP='.data.user.sponsors.nodes | map(.sponsor.name // .sponsor.login) | join(",")'
+          GQL_SQ='user(login: "kaleidawave") { sponsors: sponsorshipsAsMaintainer(first: 100, activeOnly: false, includePrivate: false) { nodes { sponsor: sponsorEntity { ... on User { login, name } ... on Organization { login, name }  } } } }'
+          SPONSORS=$(gh api graphql -f query="{ $GQL_SQ }" -q "$SQP")
 
           CQP='map(.author.name // .author.login) | unique | join(",")'
           CONTRIBUTORS=$(gh pr list --state merged --json author | jq "$CQP" --raw-output)
@@ -65,10 +69,16 @@ jobs:
           echo "SPONSORS=$SPONSORS" >> "$GITHUB_OUTPUT"
           echo "CONTRIBUTORS=$CONTRIBUTORS" >> "$GITHUB_OUTPUT"
           echo "::notice::CONTRIBUTORS=$CONTRIBUTORS and SPONSORS=$SPONSORS"
-
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Get run id and date
+        id: get-run-id-and-date
+        run: |
+          echo "GITHUB_RUN_ID=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+          echo "GITHUB_RUN_DATE=$(date --date='TZ="Europe/London"' +"%Y-%m-%d")" >> "$GITHUB_OUTPUT"
+        shell: bash
 
   build:
     needs: [get-build-info]
@@ -88,7 +98,6 @@ jobs:
     env:
       LEVEL: release
 
-    # Important that everything here works in all the above OSes!
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -102,11 +111,14 @@ jobs:
         env:
           SPONSORS: ${{ needs.get-build-info.outputs.SPONSORS }}
           CONTRIBUTORS: ${{ needs.get-build-info.outputs.CONTRIBUTORS }}
+          GITHUB_RUN_ID: ${{ needs.get-build-info.outputs.GITHUB_RUN_ID }}
+          GITHUB_RUN_DATE: ${{ needs.get-build-info.outputs.GITHUB_RUN_DATE }}
 
       - name: Rename and move ${{ env.LEVEL }} assets
         run: |
           mkdir artifacts
           mv "target/${{ env.LEVEL }}/ezno${{ matrix.executable-extension }}" "artifacts/ezno-${{ needs.get-build-info.outputs.LATEST_EZNO_VERSION_DASH }}-${{ matrix.platform-name }}${{ matrix.executable-extension }}"
+        shell: bash
 
       - uses: actions/upload-artifact@v4
         with:

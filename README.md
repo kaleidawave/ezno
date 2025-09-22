@@ -6,6 +6,7 @@ A fast and correct TypeScript type checker and compiler with additional experime
 <!-- ![project lines of code](https://project-information-kaleidawave.val.run/project/ezno/badge) -->
 
 What Ezno is:
+
 - A type checker for JavaScript usable through a CLI ([with a LSP also in the works](https://github.com/kaleidawave/ezno/issues/22))
 - Checks programs with guaranteed type safety (no runtime [`TypeError`s](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError)) (**as long as definitions are sound**)
 - Types aimed at soundness and tracing for better static analysis
@@ -17,6 +18,7 @@ What Ezno is:
 - A challenge to the status quo of type checking, optimisations and compilation through deeper static analysis beyond syntax analysis!
 
 What Ezno is not
+
 - **eNZo, the Z is in front of the N** (pronounce as 'Fresno' without the 'fr') 😀
 - Be on parity with TSC or 1:1, it has some different behaviors **but** should work in existing projects using TSC. [You can see a full comparison of emitted errors and warnings compared with TSC here](https://kaleidawave.github.io/ezno/comparison)
 - Faster as a means to serve large codebases. Cut out bloat and complex code first!
@@ -24,6 +26,7 @@ What Ezno is not
 - A binary executable compiler. It takes in JavaScript (or a TypeScript or Ezno superset) and does similar processes to traditional compilers, but at the end emits JavaScript. However, in the future, it *could* generate a lower level format using its event (side-effect) representation.
 
 Read more about Ezno (in chronological order)
+
 - [Introducing Ezno](https://kaleidawave.github.io/posts/introducing-ezno/)
 - [Ezno in '23](https://kaleidawave.github.io/posts/ezno-23/)
 - [A preview of the checker](https://kaleidawave.github.io/posts/a-preview-of-the-checker/)

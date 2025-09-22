@@ -1,19 +1,54 @@
 name: Performance and size
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      paths: 
+        default: "[]"
+        type: string
+        description: Some binaries to build and compare with
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  run-benchmarks:
+  TEMP:
     runs-on: ubuntu-latest
+    if: false
+
+    strategy:
+      matrix: 
+        ref: ${{ fromJson(inputs.paths) }} 
+      fail-fast: true
 
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+      id: checkout
+      with:
+        ref: ${{ matrix.ref }}
+    - uses: dtolnay/rust-toolchain@stable
+    
+    - name: Build binary
+      run: cargo build --release
+      shell: bash
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: binary-${{ runner.os }}${{ runner.arch }}-TEMP-${{ matrix.ref }}
+        path: target/release/ezno
+        retention-days: 30
+
+  run-benchmarks:
+    runs-on: ubuntu-latest
+    needs: TEMP
+    if: ${{ always() }}
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - id: checkout
+        uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v4
         with:
@@ -25,202 +60,165 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: brndnmtthws/rust-action-cargo-binstall@v1
+      - uses: kaleidawave/release-downloader@improvements
         with:
-          packages: hyperfine ripgrep
-      
+          # TODO benchmark tool
+          items: kaleidawave/experiments@assets[shell-language|spectra|sde],sharkdp/hyperfine@v1.19.0
+
       - name: Install valgrind
+        id: install-valgrind
+        continue-on-error: true
         run: sudo apt-get install valgrind
 
-      - name: Get last run
-        id: get-last-run
+      # TODO is there a way to cache this?
+      - name: Build latest version of demo.tsx
         run: |
-          # First result should come up within 10 runs from main
-          id=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            '/repos/kaleidawave/ezno/actions/runs?branch=main&per_page=10' \
-            --jq '[.workflow_runs[] | select(.path == ".github/workflows/examples.yml")][0].id')
-          echo "run_id=$id" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          curl https://gist.githubusercontent.com/kaleidawave/81066f322ed574b3373e27770137013f/raw/b04dcc0bc60e6331008bdd578b98224cc07d5d42/all.tsx > demo.tsx
 
-      - name: Build Ezno
-        run: cargo build --release
-        env:
-          CARGO_PROFILE_RELEASE_DEBUG: true
+          # TODO temp
+          cat demo.tsx
 
-      - name: Get base ezno
-        if: github.ref_name != 'main'
-        uses: actions/download-artifact@v4
+          # in the future
+          # spectra list checker/specification/specification.md --cases-with-splitter '~~~' > total.ts 
+          # cargo update derive-enum-from-into
+          # cargo run -p ezno-parser --example combine_blocks total.ts --out demo.tsx
+
+      # get other binaries and last
+
+      - name: Create 'binaries' folder
         continue-on-error: true
-        with:
-          name: latest-checker
-          path: previous-ezno
-          run-id: ${{ steps.get-last-run.outputs.run_id }}
+        run: mkdir -p binaries
 
-      - name: Set compilers
-        id: compilers
-        shell: bash
+      - name: Get binaries to compare against
+        id: download-binaries
+        continue-on-error: true
+        run: gh run download -p "binary-*" -D binaries
+
+      - name: Build latest version of binary
+        shell: shell-language {0}
         run: |
-          if [ -d "previous-ezno" ]; then
-            echo "::notice::Comparing against previous"
-            echo "BINARIES=./target/release/ezno,./previous-ezno/ezno" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Running singularly"
-            echo "BINARIES=./target/release/ezno" >> "$GITHUB_OUTPUT"
-          fi
+          echo run cargo build --release
+          copy target/release/ezno binaries/latest/ezno
 
-      - name: Run checker performance
-        shell: bash
+      # start of performance
+
+      - name: Compare checker performance
+        shell: shell-language {0}
         run: |
-          # Generate a file which contains everything that Ezno currently implements  
-          cargo run -p ezno-parser \
-           --example code_blocks_to_script ./checker/specification/specification.md \
-           --comment-headers \
-           --out ./demo.tsx
-
-          echo "### Checking
-          \`\`\`shell
-          $(hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check demo.tsx')
-          \`\`\`" >> $GITHUB_STEP_SUMMARY
-
-          echo "<details>
-          <summary>Input</summary>
-
-          > Code generated from specification.md. this is not meant to accurately represent a program but instead give an idea for how it scales across all the type checking features
-          \`\`\`tsx
-          $(cat ./demo.tsx)
-          \`\`\`
-          </details>
-          " >> $GITHUB_STEP_SUMMARY
-
-          echo "::info::Wrote code to summary"
+          # Ensure binaries are executable
+          ee binaries
           
-          command_output=$(./target/release/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
-          
-          diagnostics=""; statistics=""; found_splitter=false;
-          while IFS= read -r line; do
-              if [[ "$line" == "---"* ]]; then found_splitter=true;
-              elif [[ "$found_splitter"  == false ]]; then diagnostics+="$line"$'\n';
-              else statistics+="$line"$'\n'; fi
-          done <<< "$command_output"
+          let to = env GITHUB_STEP_SUMMARY
 
-          echo "<details>
-          <summary>Diagnostics</summary>
+          let binaries = files "binaries/**/*" then replace "\n" ","
+          echo "Found $binaries"
 
-          \`\`\`
-          $diagnostics
-          \`\`\`
-          </details>
-          " >> $GITHUB_STEP_SUMMARY
+          let output = run hyperfine -N -i -L binary $binaries './{binary} check demo.tsx'
 
-          if [ -d "previous-ezno" ]; then
-            OUT=$(./previous-ezno/ezno check demo.tsx --timings --max-diagnostics all 2>&1 || true)
-            $base_statistics=$(echo $OUT | rg "Diagnostics:" -A 100)
-            echo "
-            <details>
-            <summary>Statistics</summary>
-            
-            \`\`\`
-            $statistics
-            \`\`\`
-            against base
-            \`\`\`
-            $base_statistics
-            \`\`\`
-            against base
-            </details>
-            " >> $GITHUB_STEP_SUMMARY
-          else
-            echo "<details>
-            <summary>Statistics</summary>
+          append $to "### Checking `demo.tsx`\n"
+          append $to "```shell\n$output\n```"
 
-            \`\`\`
-            $statistics
-            \`\`\`
-            </details>" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Run checker performance w/staging
-        shell: bash
-        if: github.ref_name != 'main'
+      - name: Print input
+        if: false
+        shell: shell-language {0}
         run: |
-          echo "::group::Running with staging"
+          let to = env GITHUB_STEP_SUMMARY
+          let content = read ./demo.tsx
+
+          append $to "<details><summary>Input</summary>\n"
+          append $to "```tsx\n$content\n```\n</details>"
           
-          cat ./checker/specification/specification.md ./checker/specification/staging.md > with-staging.md
-          cargo run -p ezno-parser --example code_blocks_to_script with-staging.md --comment-headers --out ./with-staging.tsx
+      - name: Print diagnostics and statistics
+        id: performance
+        continue-on-error: true
+        shell: shell-language {0}
+        run: |
+          let to = env GITHUB_STEP_SUMMARY
+          append $to "#### check demo.tsx"
+          for files "binaries/**/*" each
+            let out = run "./$file" check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
-          ./target/release/ezno check with-staging.tsx --timings || true
-          ./target/release/ezno check with-staging.tsx --timings || true
+            let diagnostics = rbefore $out "---" then trim
+            let statistics = rafter $out "---" then trim
 
-          echo "::endgroup::"
-            
+            # append $to "<details><summary>Diagnostics</summary>\n"
+            # append $to "```\n$diagnostics\n```\n</details>\n"
+
+            append $to "\n<details><summary>Statistics for $file check demo.tsx</summary>\n"
+            append $to "```\n$statistics\n```\n</details>\n"
+
       - name: Run checker performance on large file
-        shell: bash
+        shell: shell-language {0}
         run: |
-          echo "::group::Running large"
+          let to = env GITHUB_STEP_SUMMARY
+          let large = read "./demo.tsx" then repeat 10
+          write "./large.tsx" $large
 
-          cat ./checker/specification/specification.md > main.md
-          cargo run -p ezno-parser --example code_blocks_to_script main.md --comment-headers --out ./code.tsx
+          let binaries = files "binaries/**/*"
+          set binaries = replace $binaries "\n" ","
 
-          for i in {1..10}; do
-            cat ./code.tsx >> large.tsx
-          done
+          append $to "#### check large.tsx"
+          let output = run hyperfine -N -i -L binary $binaries './{binary} check large.tsx'
+          append $to "```shell\n$output\n```\n"
 
-          ./target/release/ezno check large.tsx --timings --max-diagnostics 0 || true
+          for files "binaries/**/*" each
+            let out = run "./$file" check large.tsx --timings --merge-stdout-and-stderr
+            append $to "<details><summary>Statistics for $file check large.tsx</summary>\n"
+          
+            let statistics = rafter $out "---" then trim
+            append $to "```\n$statistics\n```\n"
 
-          hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} '{compiler} check large.tsx'
-          echo "::endgroup::"
+          append $to "</details>\n"
 
-      - name: Valgrind and callgrind
-        shell: bash
+      - name: Valgrind and Callgrind statistics
+        shell: shell-language {0}
+        if: ${{ steps.install-valgrind.outcome == 'success' }}
         continue-on-error: true
         run: |
-          IFS=',' read -ra ITEMS <<< ${{ steps.compilers.outputs.BINARIES }}
+          let to = env GITHUB_STEP_SUMMARY
+          append $to "#### Instructions and memory usage for `check demo.tsx`"
 
-          export RUST_BACKTRACE=1
+          for files "binaries/**/*" each
+            let output = run valgrind $file check ./demo.tsx --merge-stdout-and-stderr
+            let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
+            let allocated = replace $allocated "," "" then format_number
 
-          for compiler in ${ITEMS[@]}; do
-            echo "::group::Running $compiler"
-            
-            echo "::group::Callgrind"
-            {
-              valgrind --tool=callgrind --callgrind-out-file=./cpu-out $compiler check demo.tsx --max-diagnostics 0
-            } || true
-            ls
-            echo "::notice::CPU usage:$(rg "summary: (.*)" -or '$1' -N --color never ./cpu_out)"
-            echo "::endgroup::"
-            
-            echo "::group::Valgrind"
-            {
-              valgrind --log-file=memory-out $compiler check demo.tsx --max-diagnostics 0
-            } || true
-            echo "::notice::Memory usage:$(rg "([0-9,]*) bytes allocated" -or '$1' -N --color never memory-out)"
-            echo "::endgroup::"
+            let output = run valgrind --tool=callgrind $file check ./demo.tsx --merge-stdout-and-stderr
+            let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name then format_number
 
-            echo "::endgroup::"
-          done
+            append $to "- `$file`: `$allocated` bytes allocated and `$instructions` instructions\n"
 
-      - name: Run parsing & stringing (minfied) benchmarks
-        shell: bash
+      # SDE
+      - name: Setup SDE binaries
+        uses: petarpetrovt/setup-sde@v3.0
+        with:
+          environmentVariableName: SDE_PATH # default value is `SDE_PATH`
+          sdeVersion: 9.58.0 # possible values: 9.58.0 (default), 9.33.0
+
+      - name: path-fix
+        run: echo "$SDE_PATH" >> $GITHUB_PATH
+
+      - name: sde
+        shell: shell-language {0}
         continue-on-error: true
         run: |
-          CORPUS_URL="https://gist.githubusercontent.com/kaleidawave/6708f604bc403021b56cb54ea50cac62/raw/javascript_files.txt"
+          let to = env GITHUB_STEP_SUMMARY
+          append $to "#### SDE for `check demo.tsx`"
 
-          curl -s "$CORPUS_URL" | while IFS= read -r URL; do
-            FILENAME="${URL##*/}"
-            curl -s "$URL" > $FILENAME
-            echo "::group::Comparison"
-            hyperfine -i -L compiler ${{ steps.compilers.outputs.BINARIES }} \
-              '{compiler} ast-explorer full $FILENAME --check'
-            echo "::endgroup::"
-          done
+          for files "binaries/**/*" each
+            let output = run sde-output-parser run --sort total --program "$file check ./demo.tsx"
+            append $to "#### `$file`:\n\n```shell\n$output\n```"
 
-      - name: Upload checker
-        if: ${{ github.ref_name == 'main' }}
+      # final steps
+
+      - name: Move binary
+        shell: shell-language {0}
+        run: copy target/release/ezno to-upload/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
+
+      - name: Upload current binary
         uses: actions/upload-artifact@v4
         with:
-          name: latest-checker
-          path: target/release/ezno
-          retention-days: 90
+          name: binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
+          path: to-upload/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
+          overwrite: true
+          retention-days: 30

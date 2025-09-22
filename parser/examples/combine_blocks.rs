@@ -47,18 +47,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let source = std::fs::read_to_string(path)?;
 
-	let filters: &[&str] = &["import", "export"];
-
-	// let mut blocks: Vec<(&str, &str)> = source
-	let mut blocks: Vec<String> = source
-		.split("---")
+	// --- contain optional things
+	let blocks: Vec<&str> = source
+		.split("~~~")
 		.map(str::trim)
-		.filter(|item| !item.is_empty() && !filters.iter().any(|banned| item.contains(banned)))
-		.map(str::to_owned)
-		// .map(|item| {
-		// let (header, code) = item.split_once("---").unwrap();
-		// (header.trim(), code.trim())
-		// })
+		.filter(|item| !item.is_empty() && !item.contains("\n---"))
 		.collect();
 
 	if just_diagnostics {
@@ -91,9 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	} else {
 		// Else bundle into one, bound in arrow functions to prevent namespace collision
 		let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
-		// for (header, code) in blocks {
 		for code in blocks {
-			// TODO to_owned
+			// TODO clone
 			let module = match Module::from_string(code.to_owned(), Default::default()) {
 				Ok(module) => module,
 				Err(err) => {
@@ -121,20 +113,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 			// TODO quick fix to also register interface and type alias names to prevent conflicts
 			for item in &module.items {
+				let StatementOrDeclaration::Declaration(item) = item else {
+					continue;
+				};
+
 				match item {
-					StatementOrDeclaration::TypeAlias(alias) => {
-						if let VariableIdentifier::Standard(s, _) = &alias.on.item.name.identifier {
-							names.insert(s.clone());
-						}
+					Declaration::TypeAlias(TypeAlias {
+						name:
+							StatementPosition { identifier: VariableIdentifier::Standard(s, _), .. },
+						..
+					})
+					| Declaration::Interface(Decorated {
+						on:
+							InterfaceDeclaration {
+								name:
+									StatementPosition {
+										identifier: VariableIdentifier::Standard(s, _),
+										..
+									},
+								..
+							},
+						..
+					}) => {
+						names.insert(s.clone());
 					}
-					StatementOrDeclaration::Interface(interface) => {
-						if let VariableIdentifier::Standard(s, _) =
-							&interface.on.item.name.identifier
-						{
-							names.insert(s.clone());
-						}
-					}
-					StatementOrDeclaration::DeclareVariable(declare_variable) => {
+					Declaration::DeclareVariable(declare_variable) => {
 						for declaration in &declare_variable.declarations {
 							declare_lets.push((
 								declaration.name.get_ast_ref().clone(),
@@ -142,10 +145,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							));
 						}
 					}
-					StatementOrDeclaration::Function(decorated)
-						if decorated.on.item.name.is_declare =>
-					{
-						let function = &decorated.on.item;
+					Declaration::Function(decorated) if decorated.on.name.is_declare => {
+						use type_annotations::{
+							CommonTypes, TypeAnnotation, TypeAnnotationFunctionParameter,
+							TypeAnnotationFunctionParameters,
+						};
+
+						let function = &decorated.on;
 						let position = Span::NULL;
 						let parameters = function
 							.parameters
@@ -172,11 +178,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 							}));
 						let ty = TypeAnnotation::FunctionLiteral {
 							type_parameters: function.type_parameters.clone(),
-							parameters: Box::new(TypeAnnotationFunctionParameters {
+							parameters: TypeAnnotationFunctionParameters {
 								parameters,
 								rest_parameter: None,
 								position,
-							}),
+							},
 							return_type,
 							position,
 						};
@@ -189,17 +195,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 			}
 
-			let code: std::borrow::Cow<'_, str> = if !declare_lets.is_empty() {
+			let code = if !declare_lets.is_empty() {
 				let (mut top_level, mut inside) = (Vec::new(), Vec::new());
 				for item in module.items {
 					match item {
-						StatementOrDeclaration::TypeAlias(_)
-						| StatementOrDeclaration::Interface(_) => {
+						StatementOrDeclaration::Declaration(Declaration::TypeAlias(
+							TypeAlias { .. },
+						))
+						| StatementOrDeclaration::Declaration(Declaration::Interface(
+							Decorated { .. },
+						)) => {
 							top_level.push(item);
 						}
-						StatementOrDeclaration::Function(decorated)
-							if decorated.on.item.name.is_declare => {}
-						StatementOrDeclaration::DeclareVariable(..) => {}
+						StatementOrDeclaration::Declaration(Declaration::Function(decorated))
+							if decorated.on.name.is_declare => {}
+						StatementOrDeclaration::Declaration(Declaration::DeclareVariable(..)) => {}
 						item => {
 							inside.push(item);
 						}
@@ -219,8 +229,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					})
 					.collect();
 
-				let function = Expression::ExpressionFunction(Box::new(ast::ExpressionFunction {
-					header: functions::FunctionHeader::empty(),
+				let function = Expression::ExpressionFunction(ast::ExpressionFunction {
+					header: functions::FunctionHeader::VirginFunctionHeader {
+						is_async: false,
+						location: None,
+						is_generator: false,
+						position,
+					},
 					name: ExpressionPosition(Some(VariableIdentifier::Standard(
 						"declare_variables".to_owned(),
 						position,
@@ -235,11 +250,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					type_parameters: None,
 					position,
 					body: ast::Block(inside, position),
-				}));
+				});
 
 				// void is temp fix
 				top_level.push(
-					StatementOrDeclaration::Expression(
+					Statement::Expression(
 						Expression::UnaryOperation {
 							operator: operators::UnaryOperator::Void,
 							operand: Box::new(function),
@@ -252,9 +267,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 				let module = Module { hashbang_comment: None, items: top_level, span: position };
 
-				std::borrow::Cow::Owned(module.to_string(&ToStringOptions::typescript()))
+				let code = module.to_string(&ToStringOptions::typescript());
+				std::borrow::Cow::Owned(code)
 			} else {
-				std::borrow::Cow::Borrowed(&code)
+				std::borrow::Cow::Borrowed(code)
 			};
 
 			// If available block add to that, otherwise create a new one
@@ -290,8 +306,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}
 		}
 
-		eprintln!("Bundled into {} functions", final_blocks.len());
+		// eprintln!("Generated {:?} blocks", final_blocks.len());
 
+		eprintln!("Bundled into {} functions", final_blocks.len());
 		if let Some(repeat) = repeat {
 			eprintln!("Repeating {repeat} times");
 		}
@@ -329,4 +346,11 @@ impl<'a> visiting::Visitor<visiting::ImmutableVariableOrProperty<'a>, HashSet<St
 			data.insert(name.to_owned());
 		}
 	}
+}
+
+fn heading_to_rust_identifier(heading: &str) -> String {
+	heading
+		.replace([' ', '-', '/', '&', '.', '+'], "_")
+		.replace(['*', '\'', '`', '"', '!', '(', ')', ','], "")
+		.to_lowercase()
 }
