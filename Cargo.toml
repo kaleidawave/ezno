@@ -44,7 +44,7 @@ path = "src/main.rs"
 argh = "0.1"
 base64 = "0.22"
 # TODO requires https://github.com/kaleidawave/source-map/pull/7
-codespan-reporting = "0.11"
+codespan-reporting = "0.12"
 enum-variants-strings = "0.3"
 
 # For `StrComparison` for string comparison
