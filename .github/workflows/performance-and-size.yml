@@ -169,9 +169,6 @@ jobs:
             append $to "```\n$statistics\n```\n"
 
           append $to "</details>\n"
-          
-          # echo run hyperfine -N -i -L binary $binaries './{binary} check large.tsx' --export-markdown out.md
-          # read out.md then append $to $piped
 
       - name: Valgrind and Callgrind statistics
         shell: shell-language {0}
@@ -221,7 +218,6 @@ jobs:
       - name: Upload current binary
         uses: actions/upload-artifact@v4
         with:
-          # TODO TEMP branch
           name: binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
           path: to-upload/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
           overwrite: true

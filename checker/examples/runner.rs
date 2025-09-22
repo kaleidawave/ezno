@@ -37,6 +37,7 @@ fn run_interactive() {
         if line == "end" {
             let source = String::from_utf8_lossy(&buf);
             {
+                let mut multiple = false;
                 let mut type_check_options = TypeCheckOptions::default();
                 let source: &str = if let Some((options, source)) = source.split_once("\n---") {
                     // TODO more
@@ -45,6 +46,9 @@ fn run_interactive() {
                         match part {
                             "advanced_numbers" => {
                                 type_check_options.advanced_numbers = true;
+                            }
+                            "multiple" => {
+                                multiple = true;
                             }
                             flag => {
                                 panic!("unknown flag {flag:?}");
@@ -63,7 +67,7 @@ fn run_interactive() {
                 };
                 let type_definition_files = vec![definition_file_name.clone()];
 
-                let code: Vec<(String, String)> = if source.contains("// in") {
+                let code: Vec<(String, String)> = if multiple {
                     let mut current = "main.tsx".to_owned();
                     let mut code = Vec::new();
                     let mut buf = String::new();
