@@ -77,7 +77,7 @@ jobs:
       - name: Install spectra
         uses: kaleidawave/release-downloader@improvements
         with:
-          items: kaleidwave/experiments[spectra]
+          items: kaleidawave/experiments[spectra]
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -217,6 +217,11 @@ jobs:
         with:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Install cargo-fuzz
+        uses: kaleidawave/release-downloader@improvements
+        with:
+          items: rust-fuzz/cargo-fuzz@0.13.1
           
       - uses: dorny/paths-filter@v3
         id: changes
@@ -224,12 +229,6 @@ jobs:
           filters: |
             parser:
               - 'parser/**'
-
-      - name: Install cargo-fuzz
-        uses: kaleidawave/release-downloader@improvements
-        if: steps.changes.outputs.manifests == 'true'
-        with:
-          items: rust-fuzz/cargo-fuzz@0.13.1
       
       - name: Run fuzzing
         env:
@@ -271,18 +270,17 @@ jobs:
           path: ${{ env.CACHE_PATHS }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install cargo-fuzz
+        uses: kaleidawave/release-downloader@improvements
+        with:
+          items: rust-fuzz/cargo-fuzz@0.13.1
+
       - uses: dorny/paths-filter@v3
         id: changes
         with:
           filters: |
             checker:
               - 'checker/**'
-
-      - name: Install cargo-fuzz
-        uses: kaleidawave/release-downloader@improvements
-        if: steps.changes.outputs.manifests == 'true'
-        with:
-          items: rust-fuzz/cargo-fuzz@0.13.1
 
       - name: Run fuzzing
         env:
@@ -343,17 +341,11 @@ jobs:
         run: crates-release verify
 
   performance-and-size:
-    # WIP
     runs-on: ubuntu-latest
     needs: validity
     steps:
-      - uses: actions/checkout@v4
-
-      - run: echo "${{github.ref_name}} with ${{ github.event.pull_request.labels.*.name }} ${{ contains(github.event.pull_request.labels.*.name, 'compiler-performance') }}"
-
       - name: Kick off other workflow if the PR has a label
-        if: true
-        # if: github.ref_name != 'main' && contains(github.event.pull_request.labels.*.name, 'compiler-performance')
+        if: github.ref_name == 'main' || contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}"
         env:
           GH_TOKEN: ${{ github.token }}

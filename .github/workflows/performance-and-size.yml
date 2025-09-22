@@ -1,8 +1,6 @@
 name: Performance and size
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       paths: 
@@ -115,7 +113,7 @@ jobs:
           let binaries = files "binaries/**/*" then replace "\n" ","
           echo "Found $binaries"
 
-          let output = run hyperfine --shell=none -i -L binary $binaries './{binary} check demo.tsx'
+          let output = run hyperfine -N -i -L binary $binaries './{binary} check demo.tsx'
 
           append $to "### Checking `demo.tsx`\n"
           append $to "```shell\n$output\n```"
@@ -160,7 +158,7 @@ jobs:
           set binaries = replace $binaries "\n" ","
 
           append $to "#### check large.tsx"
-          let output = run hyperfine --shell=none -i -L binary $binaries './{binary} check large.tsx'
+          let output = run hyperfine -N -i -L binary $binaries './{binary} check large.tsx'
           append $to "```shell\n$output\n```\n"
 
           for files "binaries/**/*" each
@@ -172,7 +170,7 @@ jobs:
 
           append $to "</details>\n"
           
-          # echo run hyperfine --shell=none -i -L binary $binaries './{binary} check large.tsx' --export-markdown out.md
+          # echo run hyperfine -N -i -L binary $binaries './{binary} check large.tsx' --export-markdown out.md
           # read out.md then append $to $piped
 
       - name: Valgrind and Callgrind statistics
@@ -208,10 +206,10 @@ jobs:
         continue-on-error: true
         run: |
           let to = env GITHUB_STEP_SUMMARY
-          append $to "#### Instructions and memory usage for `check demo.tsx`"
+          append $to "#### SDE for `check demo.tsx`"
 
           for files "binaries/**/*" each
-            let output = run sde-output-parser run $file check ./demo.tsx
+            let output = run sde-output-parser run --sort total --program "$file check ./demo.tsx"
             append $to "#### `$file`:\n\n```shell\n$output\n```"
 
       # final steps
