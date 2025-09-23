@@ -223,7 +223,7 @@ impl ASTNode for StatementOrDeclaration {
 			Ok(StatementOrDeclaration::Function(item))
 		} else if reader.is_keyword("export") {
 			let export_len: u32 = 6;
-			let after = reader.get_current()[export_len as usize..].trim_start();
+			let after: &str = reader.get_current()[export_len as usize..].trim_start();
 			if after.starts_with("const") {
 				reader.advance(export_len);
 				// Const can be either variable declaration or `const enum`
@@ -245,6 +245,10 @@ impl ASTNode for StatementOrDeclaration {
 					.map(Exportable::exported)
 					.map(Box::new)
 					.map(StatementOrDeclaration::Variable)
+			} else if crate::lexer::utilities::is_function_header(after) {
+				reader.advance(export_len);
+				let function = StatementFunction::from_reader(reader).map(Exportable::exported)?;
+				Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
 			} else if after.starts_with("enum") {
 				reader.advance(export_len);
 				EnumDeclaration::from_reader(reader)
@@ -268,18 +272,33 @@ impl ASTNode for StatementOrDeclaration {
 				let decorated = Decorated::new(decorators, exported);
 				let item = Box::new(decorated);
 				Ok(StatementOrDeclaration::Interface(item))
-			} else if after.starts_with("type") {
-				reader.advance(export_len);
-				let alias = TypeAlias::from_reader(reader)?;
-				crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
-				let exported = Exportable::exported(alias);
-				let decorated = Decorated::new(decorators, exported);
-				let item = Box::new(decorated);
-				Ok(StatementOrDeclaration::TypeAlias(item))
-			} else if crate::lexer::utilities::is_function_header(reader.get_current()) {
-				reader.advance(export_len);
-				let function = StatementFunction::from_reader(reader).map(Exportable::exported)?;
-				Ok(StatementOrDeclaration::Function(Box::new(Decorated::new(decorators, function))))
+			} else if let Some(after) = after.strip_prefix("type") {
+				let after = after.trim_start();
+				let type_import = if after.starts_with('{') {
+					true
+				} else {
+					let after =
+						if let Some(idx) = after.find(|chr: char| !chr.is_ascii_alphanumeric()) {
+							after[idx..].trim_start()
+						} else {
+							// Return empty slice
+							Default::default()
+						};
+					!after.starts_with(&['=', '<'])
+				};
+				if type_import {
+					ExportDeclaration::from_reader(reader).map(|on| {
+						StatementOrDeclaration::Export(Box::new(Decorated::new(decorators, on)))
+					})
+				} else {
+					reader.advance(export_len);
+					let alias = TypeAlias::from_reader(reader)?;
+					crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;
+					let exported = Exportable::exported(alias);
+					let decorated = Decorated::new(decorators, exported);
+					let item = Box::new(decorated);
+					Ok(StatementOrDeclaration::TypeAlias(item))
+				}
 			} else {
 				ExportDeclaration::from_reader(reader).map(|on| {
 					StatementOrDeclaration::Export(Box::new(Decorated::new(decorators, on)))

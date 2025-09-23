@@ -183,6 +183,12 @@ impl crate::ASTImplementation for EznoParser {
 					checking_data.options.infer_sensible_constraints_in_for_loops,
 				);
 			}
+			ForLoopStatementInitialiser::UsingDeclaration(stmt) => {
+				checking_data.raise_unimplemented_error(
+					"using in for statement initiliser",
+					stmt.get_position().with_source(environment.get_source()),
+				);
+			}
 			ForLoopStatementInitialiser::VarStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
 					"var in for statement initiliser",

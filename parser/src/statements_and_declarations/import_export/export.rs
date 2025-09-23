@@ -94,7 +94,6 @@ impl ASTNode for ExportDeclaration {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("export")?;
 		reader.skip();
-
 		if reader.is_keyword_advance("default") {
 			let edge_case = reader.get_options().type_definition_module
 				&& crate::lexer::utilities::is_function_header(reader.get_current());
@@ -147,7 +146,8 @@ impl ASTNode for ExportDeclaration {
 			let position = start.union(end);
 
 			Ok(ExportDeclaration::ImportToExportAll { r#as, from, position })
-		} else if reader.is_operator("{") {
+		} else if reader.is_operator("{") || reader.is_keyword("type") {
+			let type_definitions_only = reader.is_keyword_advance("type");
 			if reader.after_brackets().starts_with("from") {
 				reader.advance(1);
 
@@ -160,10 +160,11 @@ impl ASTNode for ExportDeclaration {
 				Ok(ExportDeclaration::ImportToExportParts {
 					parts,
 					from,
-					type_definitions_only: false,
+					type_definitions_only,
 					position,
 				})
 			} else {
+				// FUTURE warn about type_definitions_only
 				reader.advance(1);
 				let (parts, _) =
 					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
@@ -171,7 +172,10 @@ impl ASTNode for ExportDeclaration {
 				Ok(ExportDeclaration::Parts(parts, position))
 			}
 		} else {
-			Err(crate::lexer::utilities::expected_one_of_items(reader, &["{", "*", "default"]))
+			Err(crate::lexer::utilities::expected_one_of_items(
+				reader,
+				&["{", "*", "default", "type"],
+			))
 		}
 	}
 
@@ -213,7 +217,7 @@ impl ASTNode for ExportDeclaration {
 				buf.push('"');
 			}
 			ExportDeclaration::Default { expression, position: _ } => {
-				buf.push_str("export default ");
+				buf.push_str("default ");
 				expression.to_string_from_buffer(buf, options, local);
 			}
 			ExportDeclaration::TSDefaultFunctionDeclaration {
@@ -224,7 +228,7 @@ impl ASTNode for ExportDeclaration {
 				position: _,
 			} => {
 				if options.include_type_annotations {
-					buf.push_str("export default ");
+					buf.push_str("default ");
 					if *is_async {
 						buf.push_str("async ");
 					}

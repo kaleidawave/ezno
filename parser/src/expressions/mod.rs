@@ -276,7 +276,8 @@ impl Expression {
 				ObjectLiteral::from_reader(reader).map(Expression::ObjectLiteral)?
 			} else if reader.starts_with('(') {
 				// TODO reuse `_return_annotation`
-				let (is_arrow_function, _return_annotation) = reader.is_arrow_function();
+				let (is_arrow_function, _return_annotation) =
+					crate::lexer::utilities::is_arrow_function(reader);
 				if is_arrow_function
 					&& !AssociativityDirection::LeftToRight
 						.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
@@ -2328,7 +2329,6 @@ pub(crate) fn chain_to_string_from_buffer<T: source_map::ToString>(
 	if split_between_lines && !chain.is_empty() {
 		let mut items = chain.into_iter().rev();
 		items.next().unwrap().to_string_from_buffer(buf, options, local);
-		dbg!();
 
 		for item in items {
 			// Just measure the link in change (not the parent)

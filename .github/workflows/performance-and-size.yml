@@ -128,7 +128,7 @@ jobs:
           append $to "<details><summary>Input</summary>\n"
           append $to "```tsx\n$content\n```\n</details>"
           
-      - name: Print diagnostics and statistics
+      - name: Run checker performance on file
         id: performance
         continue-on-error: true
         shell: shell-language {0}
@@ -138,16 +138,16 @@ jobs:
           for files "binaries/**/*" each
             let out = run "./$file" check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
-            let diagnostics = rbefore $out "---" then trim
+            # let diagnostics = rbefore $out "---" then trim
             let statistics = rafter $out "---" then trim
 
             # append $to "<details><summary>Diagnostics</summary>\n"
             # append $to "```\n$diagnostics\n```\n</details>\n"
 
-            append $to "\n<details><summary>Statistics for $file check demo.tsx</summary>\n"
+            append $to "<details><summary>Statistics for $file check demo.tsx</summary>\n"
             append $to "```\n$statistics\n```\n</details>\n"
 
-      - name: Run checker performance on large file
+      - name: Run checker performance on file 10
         shell: shell-language {0}
         run: |
           let to = env GITHUB_STEP_SUMMARY
@@ -167,8 +167,7 @@ jobs:
           
             let statistics = rafter $out "---" then trim
             append $to "```\n$statistics\n```\n"
-
-          append $to "</details>\n"
+            append $to "</details>\n"
 
       - name: Valgrind and Callgrind statistics
         shell: shell-language {0}

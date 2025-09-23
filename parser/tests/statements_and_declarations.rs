@@ -137,12 +137,9 @@ fn exports() {
 // Exporting declarations
 export let name1, name2;
 export const name1 = 1, name2 = 2;
-export function functionName() {  
-}
-export class ClassName { 
-}
-export function* generatorFunctionName() {  
-}
+export function functionName() { }
+export class ClassName { }
+export function* generatorFunctionName() { }
 export const { name1, name2: bar } = o;
 export const [ name1, name2 ] = array;
 

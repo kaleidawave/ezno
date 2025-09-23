@@ -61,10 +61,20 @@ impl ASTNode for ForLoopStatement {
 	}
 }
 
+#[derive(Debug, Clone)]
+#[apply(derive_ASTNode)]
+pub enum VariableKeywordOrUsing {
+	Const,
+	Let,
+	Var,
+	Using,
+}
+
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopStatementInitialiser {
 	VariableDeclaration(VariableDeclaration),
+	UsingDeclaration(super::super::using::UsingDeclaration),
 	VarStatement(VarVariableStatement),
 	Expression(Box<MultipleExpression>),
 }
@@ -73,7 +83,7 @@ pub enum ForLoopStatementInitialiser {
 #[apply(derive_ASTNode)]
 pub enum ForLoopCondition {
 	ForOf {
-		keyword: Option<VariableKeyword>,
+		keyword: Option<VariableKeywordOrUsing>,
 		variable: WithComment<VariableField>,
 		of: Box<Expression>,
 		is_await: bool,
@@ -133,11 +143,13 @@ impl ASTNode for ForLoopCondition {
 			Self::ForIn { variable, keyword, r#in, position }
 		} else if after_stuff.starts_with("of") {
 			let keyword = if reader.is_keyword_advance("const") {
-				Some(VariableKeyword::Const)
+				Some(VariableKeywordOrUsing::Const)
 			} else if reader.is_keyword_advance("let") {
-				Some(VariableKeyword::Let)
+				Some(VariableKeywordOrUsing::Let)
 			} else if reader.is_keyword_advance("var") {
-				Some(VariableKeyword::Var)
+				Some(VariableKeywordOrUsing::Var)
+			} else if reader.is_keyword_advance("using") {
+				Some(VariableKeywordOrUsing::Using)
 			} else {
 				None
 			};
@@ -158,6 +170,9 @@ impl ASTNode for ForLoopCondition {
 			} else if reader.is_keyword("var") {
 				let stmt = VarVariableStatement::from_reader(reader)?;
 				Some(ForLoopStatementInitialiser::VarStatement(stmt))
+			} else if reader.is_keyword("using") {
+				let stmt = super::super::using::UsingDeclaration::from_reader(reader)?;
+				Some(ForLoopStatementInitialiser::UsingDeclaration(stmt))
 			} else if reader.is_operator(";") {
 				None
 			} else {
@@ -195,7 +210,13 @@ impl ASTNode for ForLoopCondition {
 		match self {
 			Self::ForOf { keyword, variable, of, position: _, is_await: _ } => {
 				if let Some(keyword) = keyword {
-					buf.push_str(keyword.as_str());
+					let keyword = match keyword {
+						VariableKeywordOrUsing::Const => "const",
+						VariableKeywordOrUsing::Let => "let",
+						VariableKeywordOrUsing::Var => "var",
+						VariableKeywordOrUsing::Using => "using",
+					};
+					buf.push_str(keyword);
 				}
 				variable.to_string_from_buffer(buf, options, local);
 				// TODO whitespace here if variable is array of object destructuring
@@ -286,6 +307,9 @@ fn initialiser_to_string<T: source_map::ToString>(
 ) {
 	match initialiser {
 		ForLoopStatementInitialiser::VariableDeclaration(stmt) => {
+			stmt.to_string_from_buffer(buf, options, local);
+		}
+		ForLoopStatementInitialiser::UsingDeclaration(stmt) => {
 			stmt.to_string_from_buffer(buf, options, local);
 		}
 		ForLoopStatementInitialiser::Expression(expr) => {

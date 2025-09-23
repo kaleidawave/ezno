@@ -127,10 +127,10 @@ impl Display for ParseErrors<'_> {
 				write!(f, "Expected {expected:?}, found {found:?}")
 			}
 			ParseErrors::InvalidStringLiteral => {
-				write!(f, "Cannot use new lines in string")
+				write!(f, "Invalid string literal")
 			}
 			ParseErrors::InvalidNumberLiteral => {
-				write!(f, "Invalid number")
+				write!(f, "Invalid number literal")
 			}
 			ParseErrors::ExpectedJSXAttribute => {
 				write!(f, "Invalid JSX attribute")

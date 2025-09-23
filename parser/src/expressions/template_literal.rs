@@ -101,26 +101,45 @@ pub fn parse_template_literal<T: ASTNode>(
 					last_part = buf;
 					break;
 				} else if matched == "\\" {
-					let chr = current[idx + 1..].chars().next();
-					let result = crate::lexer::utilities::escape_character(
-						chr,
-						&current[idx + 2..],
-						idx,
-						&mut last,
-						&mut buf,
-					);
-					match result {
-						Ok(skip_next) => {
-							if skip_next {
-								let _ = delimeters.next();
+					let immediate = &current[idx + 1..];
+					let chr = immediate.chars().next();
+					if let Some(chr) = chr {
+						let after = &immediate[chr.len_utf8()..];
+						let result = crate::strings::escape_character(chr, after, buf.to_mut());
+						match result {
+							Ok(offset) => {
+								// Skip others
+								last = idx + 1 + offset;
+
+								if let '$' | '`' = chr {
+									let _ = delimeters.next();
+								} else if let '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' =
+									chr
+								{
+									for chr in immediate.chars() {
+										if let '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' =
+											chr
+										{
+											let _ = delimeters.next();
+											last += 1;
+										} else {
+											break;
+										}
+									}
+								}
+							}
+							Err(()) => {
+								return Err(ParseError::new(
+									ParseErrors::InvalidStringLiteral,
+									reader.get_start().with_length(reader.get_current().len()),
+								));
 							}
 						}
-						Err(()) => {
-							return Err(ParseError::new(
-								ParseErrors::InvalidStringLiteral,
-								reader.get_start().with_length(reader.get_current().len()),
-							));
-						}
+					} else {
+						return Err(ParseError::new(
+							ParseErrors::InvalidStringLiteral,
+							reader.get_start().with_length(reader.get_current().len()),
+						));
 					}
 				} else {
 					return Err(ParseError::new(

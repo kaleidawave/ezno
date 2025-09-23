@@ -1020,7 +1020,7 @@ pub(crate) fn get_value_of_variable(
 	types: &TypeStore,
 ) -> Option<TypeId> {
 	for fact in info.get_chain_of_info() {
-		let res = if let Some(closures) = closures {
+		let current_value = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
 				// crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
 				fact.closure_current_values.get(&(closure, RootReference::Variable(on))).copied()
@@ -1029,12 +1029,16 @@ pub(crate) fn get_value_of_variable(
 			None
 		};
 
-		let res = res.or_else(|| fact.variable_current_value.get(&on).copied());
+		let current_value = current_value.or_else(|| fact.variable_current_value.get(&on).copied());
 
-		// TODO in remaining info, don't loop again
-		if let Some(res) = res {
-			let narrowed = info.get_narrowed_or_object(res, types);
-			return Some(narrowed.unwrap_or(res));
+		if let Some(current_value) = current_value {
+			// info = property on context
+			let narrowed = info.get_narrowed_or_object(current_value, types);
+			if let Some(narrowed) = narrowed {
+				return Some(narrowed);
+			} else {
+				return Some(current_value);
+			}
 		}
 	}
 	None

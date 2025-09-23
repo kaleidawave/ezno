@@ -253,9 +253,10 @@ mod ast {
 		crate::Quoted,
 		crate::statements_and_declarations::import_export::ImportExportName,
 		crate::statements_and_declarations::import_export::ImportLocation,
+		crate::statements_and_declarations::variables::VariableKeyword,
+		crate::statements_and_declarations::control_flow::for_statement::VariableKeywordOrUsing,
 		crate::functions::FunctionHeader,
 		crate::functions::MethodHeader,
-		crate::statements_and_declarations::variables::VariableKeyword,
 		source_map::SourceId
 	];
 }

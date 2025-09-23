@@ -46,7 +46,6 @@ struct AddElseClause;
 
 impl VisitorMut<StatementOrDeclaration, ()> for AddElseClause {
 	fn visit_mut(&mut self, item: &mut StatementOrDeclaration, _data: &mut (), _chain: &Chain) {
-		dbg!(&item);
 		if let StatementOrDeclaration::If(if_statement) = item {
 			if if_statement.trailing_else.is_none() {
 				let inner =

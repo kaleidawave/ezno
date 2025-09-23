@@ -4,7 +4,7 @@ members = [
 	"parser/visitable-derive",
 	"parser/generator",
 	"checker",
-	"checker/binary-serialize-derive",
+	"checker/binary-serialize-derive"
 	# "lsp/server",
 ]
 
@@ -43,6 +43,7 @@ path = "src/main.rs"
 
 argh = "0.1"
 base64 = "0.22"
+
 # TODO requires https://github.com/kaleidawave/source-map/pull/7
 codespan-reporting = "0.11"
 enum-variants-strings = "0.3"
@@ -108,7 +109,10 @@ result_unit_err = "allow"
 implicit_hasher = "allow"
 
 [package.metadata.commands]
+parse_print_check = "cargo run -p ezno-parser --example parse ./private/toparse/aaa.tsx"
 parse_print_ast = "cargo run -p ezno-parser --example parse ./private/toparse/aaa.tsx --ast"
+parse_print_ast_ft = "./target/debug/examples/parse.exe ./private/toparse/aaa.tsx"
+run_parser_tests = "cargo test -p ezno-parser --no-fail-fast --tests"
 
 # [profile.dev]
 # debug = false

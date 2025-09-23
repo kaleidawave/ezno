@@ -30,16 +30,25 @@ impl ASTNode for VariableIdentifier {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let identifier = reader.parse_identifier("variable identifier", true)?;
-		let position = start.with_length(identifier.len());
-		// TODO
-		if identifier == "let" {
-			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(3)))
-		} else if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
+		if reader.get_options().partial_syntax
+			&& (reader.starts_with('=') || reader.starts_with(','))
+		{
 			let span = start.with_length(0);
 			Ok(Self::Marker(reader.new_partial_point_marker(span), span))
 		} else {
-			Ok(Self::Standard(identifier.to_owned(), position))
+			let identifier = reader.parse_identifier("variable identifier", true)?;
+			let position = start.with_length(identifier.len());
+			// TODO
+			if identifier == "let" {
+				Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(3)))
+			} else if reader.get_options().interpolation_points
+				&& identifier == crate::marker::MARKER
+			{
+				let span = start.with_length(0);
+				Ok(Self::Marker(reader.new_partial_point_marker(span), span))
+			} else {
+				Ok(Self::Standard(identifier.to_owned(), position))
+			}
 		}
 	}
 
