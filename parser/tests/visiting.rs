@@ -1,20 +1,18 @@
 use ezno_parser::{
-	statements::UnconditionalElseStatement,
-	visiting::{BlockItemMut, Chain, VisitOptions, VisitorMut, VisitorsMut},
+	statements_and_declarations::UnconditionalElseStatement,
+	visiting::{Chain, VisitOptions, VisitorMut, VisitorsMut},
 	ASTNode, Expression, Module, Statement, StatementOrDeclaration, ToStringOptions,
 };
 use pretty_assertions::assert_eq;
 
 #[test]
 fn visiting() {
-	let input = r#"
-        const x = "hello world";
-        function y() {
-            if (condition) {
-                do_thing("hello world" + " test")
-            }
-        }
-        "#;
+	let input = r#"const x = "hello world";
+function y() {
+	if (condition) {
+		do_thing("hello world" + " test")
+	}
+}"#;
 
 	let mut module = Module::from_string(input.to_owned(), Default::default()).unwrap();
 
@@ -46,13 +44,9 @@ impl VisitorMut<Expression, ()> for MakeStringsUppercase {
 /// Add else cases to if statements without one. In the else statements, it logs "else!"
 struct AddElseClause;
 
-impl VisitorMut<BlockItemMut<'_>, ()> for AddElseClause {
-	fn visit_mut(&mut self, item: &mut BlockItemMut, _data: &mut (), _chain: &Chain) {
-		if let BlockItemMut::SingleStatement(Statement::If(if_statement))
-		| BlockItemMut::StatementOrDeclaration(StatementOrDeclaration::Statement(
-			Statement::If(if_statement),
-		)) = item
-		{
+impl VisitorMut<StatementOrDeclaration, ()> for AddElseClause {
+	fn visit_mut(&mut self, item: &mut StatementOrDeclaration, _data: &mut (), _chain: &Chain) {
+		if let StatementOrDeclaration::If(if_statement) = item {
 			if if_statement.trailing_else.is_none() {
 				let inner =
 					Statement::from_string("console.log(\"else!\")".to_owned(), Default::default())

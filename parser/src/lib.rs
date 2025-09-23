@@ -4,7 +4,6 @@
 
 mod block;
 mod comments;
-pub mod declarations;
 mod errors;
 pub mod expressions;
 mod extensions;
@@ -16,19 +15,18 @@ mod modules;
 pub mod number;
 pub mod options;
 pub mod property_key;
-pub mod statements;
+pub mod statements_and_declarations;
 pub mod strings;
 pub mod types;
 mod variable_fields;
 pub mod visiting;
 
-pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement, StatementOrDeclaration};
+pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement};
 pub use comments::WithComment;
-pub use declarations::Declaration;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
-pub use expressions::{Expression, PropertyReference};
+pub use expressions::{Expression, MultipleExpression, PropertyReference};
 pub use extensions::{
 	decorators::{Decorated, Decorator},
 	is_expression, jsx,
@@ -40,7 +38,7 @@ pub use modules::Module;
 pub use options::*;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
-pub use statements::Statement;
+pub use statements_and_declarations::{Statement, StatementOrDeclaration};
 pub use strings::Quoted;
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
@@ -103,9 +101,7 @@ impl LocalToStringInformation {
 
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
 /// serializing to string from options.
-///
-/// TODO remove partial eq
-pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + 'static {
+pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method `from_reader`
 	fn from_string(script: String, options: ParseOptions) -> ParseResult<Self> {
 		Self::from_string_with_options(script, options, None).map(|(ast, _)| ast)
@@ -117,7 +113,26 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		offset: Option<u32>,
 	) -> ParseResult<(Self, ParsingState)> {
 		let line_starts = source_map::LineStarts::new(script.as_str());
-		lex_and_parse_script(line_starts, options, &script, offset)
+		#[allow(clippy::cast_possible_truncation)]
+		let length_of_source = script.len() as u32;
+
+		let state = ParsingState {
+			line_starts,
+			length_of_source,
+			constant_imports: Default::default(),
+			keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
+			partial_points: Default::default(),
+		};
+		let mut reader = crate::Lexer::new(&script, offset, options);
+
+		let result = Self::from_reader(&mut reader).map(|ok| (ok, state))?;
+
+		if reader.is_finished() {
+			Ok(result)
+		} else {
+			let (found, position) = crate::lexer::utilities::next_item(&reader);
+			Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
+		}
 	}
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
@@ -139,28 +154,6 @@ pub trait ASTNode: Sized + Clone + PartialEq + std::fmt::Debug + Sync + Send + '
 		self.to_string_from_buffer(&mut buf, options, local);
 		buf.source
 	}
-}
-
-#[doc(hidden)]
-pub fn lex_and_parse_script<T: ASTNode>(
-	line_starts: source_map::LineStarts,
-	options: ParseOptions,
-	script: &str,
-	offset: Option<u32>,
-) -> ParseResult<(T, ParsingState)> {
-	#[allow(clippy::cast_possible_truncation)]
-	let length_of_source = script.len() as u32;
-
-	let state = ParsingState {
-		line_starts,
-		length_of_source,
-		constant_imports: Default::default(),
-		keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
-		partial_points: Default::default(),
-	};
-	let mut lexer = crate::Lexer::new(script, offset, options);
-
-	T::from_reader(&mut lexer).map(|ok| (ok, state))
 }
 
 #[derive(Debug)]
@@ -254,9 +247,7 @@ impl KeywordPositions {
 
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
-pub trait ExpressionOrStatementPosition:
-	Clone + std::fmt::Debug + Sync + Send + PartialEq + 'static
-{
+pub trait ExpressionOrStatementPosition: Clone + std::fmt::Debug + Sync + Send + 'static {
 	type FunctionBody: ASTNode;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
@@ -279,7 +270,7 @@ pub trait ExpressionOrStatementPosition:
 	fn is_declare(&self) -> bool;
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct StatementPosition {
 	pub identifier: VariableIdentifier,
@@ -315,7 +306,7 @@ impl ExpressionOrStatementPosition for StatementPosition {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct ExpressionPosition(pub Option<VariableIdentifier>);
 
@@ -454,39 +445,6 @@ pub(crate) fn bracketed_items_to_string<T: source_map::ToString, U: ASTNode>(
 	buf.push(right_bracket);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[apply(derive_ASTNode)]
-pub enum VariableKeyword {
-	Const,
-	Let,
-	Var,
-}
-
-impl VariableKeyword {
-	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		if reader.is_keyword_advance("const") {
-			Ok(Self::Const)
-		} else if reader.is_keyword_advance("let") {
-			Ok(Self::Let)
-		} else if reader.is_keyword_advance("var") {
-			Ok(Self::Var)
-		} else {
-			let error =
-				crate::lexer::utilities::expected_one_of_items(reader, &["const", "let", "var"]);
-			Err(error)
-		}
-	}
-
-	#[must_use]
-	pub fn as_str(&self) -> &str {
-		match self {
-			Self::Const => "const ",
-			Self::Let => "let ",
-			Self::Var => "var ",
-		}
-	}
-}
-
 /// TODO WIP!
 ///
 /// Conditionally computes the node length
@@ -528,8 +486,6 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
-		declarations::classes::*,
-		declarations::*,
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
@@ -537,7 +493,9 @@ pub mod ast {
 			Parameter, ParameterData, SpreadParameter,
 		},
 		number::NumberRepresentation,
-		statements::*,
+		statements_and_declarations::classes::*,
+		statements_and_declarations::*,
+		variable_fields::*,
 		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
 		StatementPosition, VariableField, VariableIdentifier, WithComment,
 	};
@@ -545,35 +503,4 @@ pub mod ast {
 	pub use source_map::{BaseSpan, SourceId};
 
 	pub use self::assignments::{LHSOfAssignment, VariableOrPropertyAccess};
-}
-
-#[cfg(test)]
-#[doc(hidden)]
-pub(crate) mod test_utils {
-	#[macro_export]
-	#[allow(clippy::crate_in_macro_def)]
-	macro_rules! assert_matches_ast {
-		($source:literal, $ast_pattern:pat) => {{
-			let node = crate::ASTNode::from_string($source.to_owned(), Default::default()).unwrap();
-			// AST matchers are partial expressions
-			let matches = ::match_deref::match_deref! {
-				match &node {
-					$ast_pattern => true,
-					_ => false,
-				}
-			};
-
-			if !matches {
-				panic!("{:#?} did not match {}", node, stringify!($ast_pattern));
-			}
-		}};
-	}
-
-	#[macro_export]
-	#[allow(clippy::crate_in_macro_def)]
-	macro_rules! span {
-		($start:pat, $end:pat) => {
-			crate::Span { start: $start, end: $end, .. }
-		};
-	}
 }

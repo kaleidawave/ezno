@@ -7,7 +7,7 @@ use visitable_derive::Visitable;
 
 use crate::{derive_ASTNode, Marker, ParseError, ParseErrors, Quoted};
 
-pub trait ImportOrExport: std::fmt::Debug + Clone + PartialEq + Sync + Send + 'static {
+pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
 	const PREFIX: bool;
 }
 
@@ -20,7 +20,7 @@ impl ImportOrExport for export::ExportDeclaration {
 }
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
-#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportExportPart<T: ImportOrExport> {
@@ -158,7 +158,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 }
 
 /// TODO `default` should have its own variant?
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
@@ -178,7 +178,7 @@ impl ImportExportName {
 		if reader.starts_with_string_delimeter() {
 			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
-			Ok((ImportExportName::Quoted(content.to_owned(), quoted), position))
+			Ok((ImportExportName::Quoted(content.into_owned(), quoted), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
 			Ok((ImportExportName::Reference("default".into()), start.with_length("default".len())))
@@ -217,7 +217,7 @@ impl ImportExportName {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum ImportLocation {
 	Quoted(String, Quoted),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
@@ -257,7 +257,7 @@ impl ImportLocation {
 
 		let _start = reader.get_start();
 		let (content, quoted) = reader.parse_string_literal()?;
-		Ok(ImportLocation::Quoted(content.to_owned(), quoted))
+		Ok(ImportLocation::Quoted(content.into_owned(), quoted))
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {

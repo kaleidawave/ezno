@@ -1,66 +1,110 @@
 use std::{path::Path, time::Instant};
 
-use ezno_parser::{ASTNode, Comments, Module, ParseOptions, ToStringOptions};
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::term::{
+	self,
+	termcolor::{ColorChoice, StandardStream},
+	Config,
+};
+use ezno_parser::{ASTNode, Comments, Module, ParseError, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
 
 type Files = source_map::MapFileStore<source_map::WithPathMap>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let mut args: std::collections::VecDeque<_> = std::env::args().skip(1).collect();
-	let path = args.pop_front().ok_or("expected path argument")?;
+	let mut arguments = std::env::args();
+	let _ = arguments.next();
 
-	let comments = if args.iter().any(|item| item == "--no-comments") {
-		Comments::None
-	} else if args.iter().any(|item| item == "--doc-comments") {
-		Comments::JustDocumentation
-	} else {
-		Comments::All
-	};
+	let first_argument = arguments.next();
 
-	let display_keywords = args.iter().any(|item| item == "--keywords");
-	let extras = args.iter().any(|item| item == "--extras");
-	let partial_syntax = args.iter().any(|item| item == "--partial");
-	let print_source_maps = args.iter().any(|item| item == "--source-map");
-	let timings = args.iter().any(|item| item == "--timings");
-	let type_definition_module = args.iter().any(|item| item == "--type-definition-module");
-	let type_annotations = !args.iter().any(|item| item == "--no-type-annotations");
-	let top_level_html = args.iter().any(|item| item == "--top-level-html");
-	let parse_imports = args.iter().any(|item| item == "--parse-imports");
+	if let Some("--interactive") = first_argument.as_deref() {
+		run_interactive();
+		return Ok(());
+	}
 
-	let print_ast = args.iter().any(|item| item == "--ast");
+	let path = first_argument.ok_or("expected path argument")?;
 
-	let to_string_output = args.iter().any(|item| item == "--to-string");
-	let pretty = args.iter().any(|item| item == "--pretty");
+	let mut parse_options = ParseOptions::default();
 
-	let parse_options = ParseOptions {
-		comments,
-		record_keyword_positions: display_keywords,
-		partial_syntax,
-		type_annotations,
-		type_definition_module,
-		retain_blank_lines: pretty,
-		custom_function_headers: extras,
-		destructuring_type_annotation: extras,
-		jsx: extras,
-		is_expressions: extras,
-		special_jsx_attributes: extras,
-		extra_operators: extras,
-		reversed_imports: extras,
-		top_level_html,
-		..ParseOptions::default()
-	};
+	let mut print_ast = false;
+	let mut print_output = false;
+	let mut print_source_maps = false;
+	let mut timings = false;
+	let mut parse_imports = false;
+	let mut pretty = false;
+
+	for argument in arguments {
+		match argument.as_str() {
+			"--no-comments" => {
+				parse_options.comments = Comments::None;
+			}
+			"--doc-comments" => {
+				parse_options.comments = Comments::JustDocumentation;
+			}
+			"--keywords" => {
+				parse_options.record_keyword_positions = true;
+			}
+			"--extras" => {
+				parse_options.custom_function_headers = true;
+				parse_options.destructuring_type_annotation = true;
+				parse_options.jsx = true;
+				parse_options.is_expressions = true;
+				parse_options.special_jsx_attributes = true;
+				parse_options.extra_operators = true;
+				parse_options.reversed_imports = true;
+			}
+			"--pretty" => {
+				parse_options.retain_blank_lines = true;
+				pretty = true;
+			}
+			"--partial" => {
+				parse_options.partial_syntax = true;
+			}
+			"--no-type-annotations" => {
+				parse_options.type_annotations = false;
+			}
+			"--type-definition-module" => {
+				parse_options.type_definition_module = true;
+			}
+			"--top-level-html" => {
+				parse_options.top_level_html = true;
+			}
+			"--source-map" => {
+				print_source_maps = true;
+			}
+			"--timings" => {
+				timings = true;
+			}
+			"--parse-imports" => {
+				parse_imports = true;
+			}
+			"--ast" => {
+				print_ast = true;
+			}
+			"--to-string" => {
+				print_output = true;
+			}
+			argument => {
+				eprintln!("unknown argument {argument:?}");
+			}
+		}
+	}
 
 	let mut fs = Files::default();
 
-	let to_string_options = to_string_output.then(|| ToStringOptions {
-		expect_markers: true,
-		include_type_annotations: type_annotations,
-		pretty,
-		comments: if pretty { Comments::All } else { Comments::None },
-		// 60 is temp
-		max_line_length: if pretty { 60 } else { u8::MAX },
-		..Default::default()
-	});
+	let to_string_options = if print_output || pretty {
+		Some(ToStringOptions {
+			expect_markers: true,
+			include_type_annotations: parse_options.type_annotations,
+			pretty,
+			comments: if pretty { Comments::All } else { Comments::None },
+			// 60 is temp
+			max_line_length: if pretty { 60 } else { u8::MAX },
+			..Default::default()
+		})
+	} else {
+		None
+	};
 
 	parse_path(
 		path.as_ref(),
@@ -70,7 +114,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		print_ast,
 		print_source_maps,
 		&to_string_options,
-		display_keywords,
 		&mut fs,
 	)
 }
@@ -83,13 +126,12 @@ fn parse_path(
 	print_ast: bool,
 	print_source_maps: bool,
 	to_string_options: &Option<ToStringOptions>,
-	display_keywords: bool,
 	fs: &mut Files,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
 
 	let source = std::fs::read_to_string(path)?;
-	let source_id = fs.new_source_id(path.into(), source.clone());
+	let source_id = fs.new_source_id(path.into(), source.to_owned());
 
 	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
 	let now = Instant::now();
@@ -100,6 +142,7 @@ fn parse_path(
 	let parse_options = ParseOptions { jsx, type_annotations, ..*parse_options };
 
 	let on = source.clone();
+
 	// Run in thread as stack is large and can oveflow
 	let result = std::thread::Builder::new()
 		.stack_size(EIGHT_MEGA_BYTES)
@@ -111,11 +154,11 @@ fn parse_path(
 	match result {
 		Ok((module, state)) => {
 			if timings {
-				eprintln!("parsed in: {:?}", now.elapsed());
-			}
-
-			if print_ast {
+				eprintln!("Parsed in: {:?}", now.elapsed());
+			} else if print_ast {
 				println!("{module:#?}");
+			} else {
+				eprintln!("Successfully parsed source");
 			}
 
 			if let Some(to_string_options) = to_string_options {
@@ -135,7 +178,7 @@ fn parse_path(
 				}
 			}
 
-			if display_keywords {
+			if parse_options.record_keyword_positions {
 				println!("{:?}", state.keyword_positions.as_ref());
 			}
 
@@ -154,28 +197,77 @@ fn parse_path(
 						print_ast,
 						print_source_maps,
 						to_string_options,
-						display_keywords,
 						fs,
 					)?;
 				}
 			}
-			Ok(())
 		}
-		Err(parse_err) => {
-			let mut line_column = parse_err
-				.position
-				.with_source(source_id)
-				.into_line_column_span::<source_map::encodings::Utf8>(fs);
-			{
-				// Editor are one indexed
-				line_column.line_start += 1;
-				line_column.line_end += 1;
-				line_column.column_start += 1;
-				line_column.column_end += 1;
-			}
-			eprintln!("error on {line_column:?}");
+		Err(ParseError { reason, position }) => {
+			let writer = StandardStream::stderr(ColorChoice::Always);
+			let config = Config::default();
 
-			Err(Box::<dyn std::error::Error>::from(parse_err))
+			let diagnostic = Diagnostic::error()
+				.with_labels(vec![Label::primary(source_id, position)
+					.with_message(format!("ParseError: {reason}"))]);
+			term::emit(&mut writer.lock(), &config, &fs.into_code_span_store(), &diagnostic)?;
+			// Err(Box::<dyn std::error::Error>::from(ParseError { reason, position }))
 		}
 	}
+	Ok(())
+}
+
+// For spectra testing
+fn run_interactive() {
+	use std::io::{self, BufRead};
+
+	let stdin = io::stdin();
+	let mut buf = Vec::new();
+
+	println!("start");
+
+	for line in stdin.lock().lines() {
+		let Ok(line) = line else { break };
+
+		if line == "close" {
+			if !buf.is_empty() {
+				eprintln!("no end to message {buf:?}");
+			}
+			break;
+		}
+
+		if line == "end" {
+			let output = String::from_utf8_lossy(&buf);
+
+			let parse_options = ParseOptions::all_features();
+			let module = Module::from_string_with_options(output.into_owned(), parse_options, None);
+
+			match module {
+				Ok((item, _)) => {
+					if let [item] = &item.items.as_slice() {
+						if let ezno_parser::StatementOrDeclaration::Expression(item) = item {
+							// Unwrap multiple expression
+							let item = item.get_inner();
+							println!("{item:#?}");
+						} else {
+							println!("{item:#?}");
+						}
+					} else {
+						println!("{item:#?}");
+					}
+				}
+				Err(error) => {
+					println!("error: {error:?}");
+				}
+			}
+
+			println!("end");
+			buf.clear();
+			continue;
+		}
+
+		buf.extend_from_slice(line.as_bytes());
+		buf.push(b'\n');
+	}
+
+	// println!("Finished!");
 }

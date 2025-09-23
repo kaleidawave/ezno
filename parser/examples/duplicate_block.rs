@@ -1,7 +1,6 @@
 use ezno_parser::{
-	declarations::VariableDeclaration,
 	visiting::{Chain, ImmutableVariableOrProperty, VisitOptions, Visitor, Visitors},
-	ASTNode, Declaration, Expression, Module, StatementOrDeclaration, VariableField,
+	ASTNode, Expression, Module, StatementOrDeclaration, VariableField,
 };
 use std::collections::HashSet;
 
@@ -20,28 +19,16 @@ fn get_top_level_identifiers(m: &Module) -> (HashSet<String>, HashSet<String>) {
 	let (mut variables, types): (HashSet<_>, HashSet<_>) = Default::default();
 	for item in &m.items {
 		match item {
-			StatementOrDeclaration::Declaration(Declaration::Variable(variable)) => {
-				match variable {
-					VariableDeclaration::ConstDeclaration { declarations, position: _ } => {
-						for declaration in declarations {
-							if let VariableField::Name(identifier) = declaration.name.get_ast_ref()
-							{
-								variables.insert(identifier.as_option_str().unwrap().to_owned());
-							}
-						}
-					}
-					VariableDeclaration::LetDeclaration { declarations, position: _ } => {
-						for declaration in declarations {
-							if let VariableField::Name(identifier) = declaration.name.get_ast_ref()
-							{
-								variables.insert(identifier.as_option_str().unwrap().to_owned());
-							}
-						}
+			StatementOrDeclaration::Variable(variable) => {
+				for declaration in &variable.item.declarations {
+					if let VariableField::Name(identifier) = declaration.name.get_ast_ref() {
+						variables.insert(identifier.as_option_str().unwrap().to_owned());
 					}
 				}
 			}
-			StatementOrDeclaration::Declaration(Declaration::Function(function)) => {
-				variables.insert(function.on.name.identifier.as_option_str().unwrap().to_owned());
+			StatementOrDeclaration::Function(function) => {
+				variables
+					.insert(function.on.item.name.identifier.as_option_str().unwrap().to_owned());
 			}
 			_ => {}
 		}

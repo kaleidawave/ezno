@@ -55,8 +55,7 @@ jobs:
         run: cargo fmt --all --check
 
       - uses: kaleidawave/release-downloader@improvements
-        with:
-          items: kaleidawave/simple-toml-parser@canary[format]
+        with: { 'items': 'kaleidawave/simple-toml-parser@canary[format]' }
 
       - name: Check 'Cargo.toml' formatting
         run: format Cargo.toml --check
@@ -75,8 +74,7 @@ jobs:
 
       - name: Install spectra
         uses: kaleidawave/release-downloader@improvements
-        with:
-          items: kaleidawave/experiments@assets[spectra]
+        with: { 'items': 'kaleidawave/experiments@assets[spectra]' }
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -89,8 +87,7 @@ jobs:
 
       - name: Run parser tests
         if: steps.changes.outputs.parser == 'true' || github.ref_name == 'main'
-        run: cargo test --no-fail-fast
-        working-directory: parser
+        run: cargo test -p ezno-parser --no-fail-fast
 
       - name: Run parser examples
         if: steps.changes.outputs.parser == 'true' || github.ref_name == 'main'
@@ -102,7 +99,6 @@ jobs:
               curl -s "$URL" > $FILENAME
               cargo run -p ezno-parser --example parse $FILENAME
           done
-        working-directory: parser
 
       - name: Run checker tests
         if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
@@ -110,11 +106,27 @@ jobs:
 
       - name: Run checker tests
         if: steps.changes.outputs.checker == 'true' || github.ref_name == 'main'
-        run: spectra test specification/specification.md 'cargo run --example runner -- --interactive --rpc' --lists-as-expected
-        working-directory: checker
+        run: |
+          COMMAND='cargo run -p ezno-checker --example runner -- --interactive --rpc'
+          spectra test specification/specification.md $COMMAND --lists-as-expected
 
       - name: Run CLI and base tests
         run: cargo test
+  
+  # TODO merge into tests
+  test262:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: bash run.sh
+        working-directory: test262
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test262-results
+          path: test262/out
+          retention-days: 28
 
   extras:
     runs-on: ubuntu-latest
@@ -130,12 +142,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
+        with: { 'deno-version': v1.x }
 
       - uses: actions/setup-node@v4
-        with:
-          node-version: 23
+        with: { 'node-version': 23 }
      
       - uses: dorny/paths-filter@v3
         id: changes
@@ -201,6 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
+
     strategy:
       matrix:
         fuzz-target: [module_roundtrip_naive, module_roundtrip_structured]
@@ -208,6 +219,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with: { 'targets': x86_64-unknown-linux-musl }
       - uses: actions/cache@v4
         with:
           # TODO fuzz specific key & paths
@@ -216,22 +228,20 @@ jobs:
       
       - name: Install cargo-fuzz
         uses: kaleidawave/release-downloader@improvements
-        with:
-          items: rust-fuzz/cargo-fuzz@0.13.1
+        with: { 'items': 'rust-fuzz/cargo-fuzz@0.13.1' }
           
       - uses: dorny/paths-filter@v3
         id: changes
-        with:
-          filters: |
-            parser:
-              - 'parser/**'
+        with: { 'filters': "parser: ['parser/**']" }
       
       - name: Run fuzzing
-        # env:
-        #   SHORT_CIRCUIT: true
+        env:
+          SHORT_CIRCUIT: true
+          # CARGO_TARGET_DIR: ../../target
         if: steps.changes.outputs.parser == 'true'
+        working-directory: parser/fuzz
         run: |
-          CARGO_TARGET_DIR=../../target cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
+          cargo fuzz run -s none ${{ matrix.fuzz-target }} -- -timeout=10 -use_value_profile=1 -max_total_time=120
 
           # if ${{ env.SHORT_CIRCUIT }}; then
           # else
@@ -241,7 +251,6 @@ jobs:
           #     find fuzz/artifacts -type f -print -exec xxd {} \; -exec cargo fuzz fmt -s none module_roundtrip_structured {} \;; false; 
           #   fi
           # fi
-        working-directory: parser/fuzz
 
   fuzzing_checker:
     if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
@@ -260,6 +269,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with: { 'targets': x86_64-unknown-linux-musl }
       - uses: actions/cache@v4
         with:
           # TODO fuzz specific key & paths
@@ -268,15 +278,11 @@ jobs:
 
       - name: Install cargo-fuzz
         uses: kaleidawave/release-downloader@improvements
-        with:
-          items: rust-fuzz/cargo-fuzz@0.13.1
+        with: { 'items': 'rust-fuzz/cargo-fuzz@0.13.1' }
 
       - uses: dorny/paths-filter@v3
         id: changes
-        with:
-          filters: |
-            checker:
-              - 'checker/**'
+        with: { 'filters': "checker: ['checker/**']" }
 
       - name: Run fuzzing
         if: steps.changes.outputs.checker == 'true'
@@ -306,10 +312,7 @@ jobs:
 
       - uses: dorny/paths-filter@v3
         id: changes
-        with:
-          filters: |
-            manifests:
-              - '**/*.toml'
+        with: { 'filters': "manifests: ['*.toml']" }
 
       - uses: kaleidawave/release-downloader@improvements
         if: steps.changes.outputs.manifests == 'true'
@@ -327,5 +330,4 @@ jobs:
       - name: Kick off other workflow if main or a PR with 'compiler-performance' label
         if: github.ref_name == 'main' || contains(github.event.pull_request.labels.*.name, 'compiler-performance')
         run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}" -R kaleidawave/ezno
-        env:
-          GH_TOKEN: ${{ github.token }}
+        env: { 'GH_TOKEN': '${{ github.token }}' }

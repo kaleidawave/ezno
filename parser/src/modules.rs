@@ -14,12 +14,6 @@ pub struct Module {
 	pub span: Span,
 }
 
-impl PartialEq for Module {
-	fn eq(&self, other: &Self) -> bool {
-		self.items == other.items
-	}
-}
-
 impl ASTNode for Module {
 	fn get_position(&self) -> Span {
 		self.span
@@ -130,9 +124,9 @@ impl Module {
 
 		let iter_mut = self.items.iter_mut();
 		if options.reverse_statements {
-			iter_mut.for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
-		} else {
 			iter_mut.rev().for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
+		} else {
+			iter_mut.for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
 		}
 	}
 }

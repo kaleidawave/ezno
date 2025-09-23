@@ -2,6 +2,33 @@ use source_map::Span;
 /// Contains lexing and parser errors
 use std::fmt::{self, Display};
 
+pub trait ParserErrorReason: Display {}
+
+impl ParserErrorReason for ParseErrors<'_> {}
+
+/// A error for not parsing
+#[derive(Debug)]
+pub struct ParseError {
+	pub reason: String,
+	pub position: Span,
+}
+
+impl ParseError {
+	#[allow(clippy::needless_pass_by_value)]
+	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
+		Self { reason: reason.to_string(), position }
+	}
+}
+
+impl std::error::Error for ParseError {}
+impl std::fmt::Display for ParseError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_fmt(format_args!("ParseError: {} @ byte indices {:?}", self.reason, self.position))
+	}
+}
+
+pub type ParseResult<T> = Result<T, ParseError>;
+
 /// TODO documentation + combine some of these
 #[allow(missing_docs)]
 pub enum ParseErrors<'a> {
@@ -41,9 +68,10 @@ pub enum ParseErrors<'a> {
 	ExpectedCatchOrFinally,
 	InvalidDeclareItem(&'static str),
 	DestructuringRequiresValue,
-	CannotAccessObjectLiteralDirectly,
+	ConstDeclarationRequiresValue,
+	// TODO not sure CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
-	InvalidNumberLiteral,
+	InvalidNumberLiteralLiteral,
 	ReservedIdentifier,
 	AwaitRequiresForOf,
 	CannotUseLeadingParameterHere,
@@ -51,16 +79,19 @@ pub enum ParseErrors<'a> {
 		location: &'static str,
 	},
 	ExpectedNumberLiteral,
-	NonStandardSyntaxUsedWithoutEnabled,
+	NonStandardSyntaxUsedWithoutEnabled {
+		syntax: &'static str,
+	},
 	ExpectedRule,
 	ExpectedJSXAttribute,
-	InvalidRegexFlag,
+	ExpectedStatement,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
-	NoNewLinesInString,
-	InvalidNumber,
+	InvalidStringLiteral,
+	InvalidRegexFlag,
 	InvalidRegularExpression,
+	InvalidNumberLiteral,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
 	UnexpectedEnd,
@@ -69,6 +100,7 @@ pub enum ParseErrors<'a> {
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
 	TaggedTemplateCannotBeUsedWithOptionalChain,
 	ExpectedExpression,
+	DuplicateParameterName,
 }
 
 impl Display for ParseErrors<'_> {
@@ -78,13 +110,13 @@ impl Display for ParseErrors<'_> {
 				f.write_str("Expected ")?;
 				utilities::format_list(f, expected)?;
 				if let Some(found) = found {
-					write!(f, " found {found}")
+					write!(f, ", found {found}")
 				} else {
-					write!(f, " found end of source")
+					write!(f, ", found end of source")
 				}
 			}
 			ParseErrors::ExpectedOperator { expected, found } => {
-				write!(f, "Expected {expected} found {found}")
+				write!(f, "Expected {expected}, found {found}")
 			}
 			ParseErrors::ExpectedOneOfItems { expected, found } => {
 				f.write_str("Expected ")?;
@@ -94,11 +126,11 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ExpectedKeyword { expected, found } => {
 				write!(f, "Expected {expected:?}, found {found:?}")
 			}
-			ParseErrors::NoNewLinesInString => {
-				write!(f, "Cannot use new lines in string")
+			ParseErrors::InvalidStringLiteral => {
+				write!(f, "Invalid string literal")
 			}
-			ParseErrors::InvalidNumber => {
-				write!(f, "Invalid number")
+			ParseErrors::InvalidNumberLiteral => {
+				write!(f, "Invalid number literal")
 			}
 			ParseErrors::ExpectedJSXAttribute => {
 				write!(f, "Invalid JSX attribute")
@@ -115,8 +147,8 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ClosingTagDoesNotMatch { tag_name: expected, closing_tag_name: found } => {
 				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")
 			}
-			ParseErrors::NonStandardSyntaxUsedWithoutEnabled => {
-				write!(f, "Cannot use this syntax without flag enabled")
+			ParseErrors::NonStandardSyntaxUsedWithoutEnabled { syntax } => {
+				write!(f, "Cannot use '{syntax}' syntax without flag enabled")
 			}
 			ParseErrors::ExpectedStringLiteral { found } => {
 				write!(f, "Expected string literal, found {found:?}")
@@ -151,13 +183,16 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::DestructuringRequiresValue => {
 				write!(f, "RHS of destructured declaration requires expression")
 			}
-			ParseErrors::CannotAccessObjectLiteralDirectly => {
-				write!(f, "Cannot get property on object literal directly")
-			}
+			// ParseErrors::CannotAccessObjectLiteralDirectly => {
+			// 	write!(f, "Cannot get property on object literal directly")
+			// }
 			ParseErrors::TrailingCommaNotAllowedHere => {
 				write!(f, "Trailing comma not allowed here")
 			}
-			ParseErrors::InvalidNumberLiteral => {
+			ParseErrors::ConstDeclarationRequiresValue => {
+				write!(f, "const declaration requires value")
+			}
+			ParseErrors::InvalidNumberLiteralLiteral => {
 				write!(f, "Invalid number literal")
 			}
 			ParseErrors::ReservedIdentifier => {
@@ -185,6 +220,9 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::InvalidRegexFlag => {
 				write!(f, "Regexp flags must be 'd', 'g', 'i', 'm', 's', 'u' or 'y'")
 			}
+			ParseErrors::ExpectedStatement => {
+				write!(f, "Only statements are valid here")
+			}
 			ParseErrors::ExpectedDeclaration => {
 				write!(f, "Expected identifier after variable declaration keyword")
 			}
@@ -199,6 +237,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::ExpectedExpression => {
 				write!(f, "Expected start of expression")
+			}
+			ParseErrors::DuplicateParameterName => {
+				write!(f, "Duplicate parameter name")
 			}
 		}
 	}
@@ -228,30 +269,3 @@ mod utilities {
 		}
 	}
 }
-
-pub trait ParserErrorReason: Display {}
-
-impl ParserErrorReason for ParseErrors<'_> {}
-
-/// A error for not parsing
-#[derive(Debug)]
-pub struct ParseError {
-	pub reason: String,
-	pub position: Span,
-}
-
-impl ParseError {
-	#[allow(clippy::needless_pass_by_value)]
-	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
-		Self { reason: reason.to_string(), position }
-	}
-}
-
-impl std::error::Error for ParseError {}
-impl std::fmt::Display for ParseError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_fmt(format_args!("ParseError: {} @ byte indices {:?}", self.reason, self.position))
-	}
-}
-
-pub type ParseResult<T> = Result<T, ParseError>;

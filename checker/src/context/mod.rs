@@ -124,7 +124,7 @@ pub trait ContextType: Sized {
 
 	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
-	fn as_syntax(&self) -> Option<&Syntax>;
+	fn as_syntax(&self) -> Option<&Syntax<'_>>;
 
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 }
@@ -147,6 +147,7 @@ pub struct Names {
 	pub(crate) named_types: HashMap<String, TypeId>,
 
 	/// For debugging only
+	#[allow(clippy::struct_field_names)]
 	pub(crate) variable_names: HashMap<VariableId, String>,
 }
 
@@ -154,6 +155,7 @@ pub struct Names {
 pub struct Context<T: ContextType> {
 	// pub(crate) context_id: ContextId,
 	pub context_id: ContextId,
+	#[allow(clippy::struct_field_names)]
 	pub(crate) context_type: T,
 
 	pub(crate) variables: HashMap<String, VariableOrImport>,
@@ -514,7 +516,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn as_general_context(&self) -> GeneralContext {
+	pub fn as_general_context(&self) -> GeneralContext<'_> {
 		T::as_general_context(self)
 	}
 
@@ -736,7 +738,7 @@ impl<T: ContextType> Context<T> {
 	/// Returns a iterator of parents. Starting with the current one
 	///
 	/// TODO should be private
-	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext> + '_ {
+	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext<'_>> + '_ {
 		iter::successors(Some(self.as_general_context()), |env| {
 			if let GeneralContext::Syntax(syn) = env {
 				Some(syn.get_parent())
@@ -827,8 +829,8 @@ impl<T: ContextType> Context<T> {
 			vacant.insert(variable);
 
 			// TODO unsure ...
-			let ty = if let Type::SpecialObject(SpecialObject::Function(..)) =
-				types.get_type_by_id(variable_ty)
+			let ty = if let Some(SpecialObject::Function(..)) =
+				types.get_type_by_id(variable_ty).try_into_special_object()
 			{
 				variable_ty
 			} else {
@@ -1018,7 +1020,7 @@ pub(crate) fn get_value_of_variable(
 	types: &TypeStore,
 ) -> Option<TypeId> {
 	for fact in info.get_chain_of_info() {
-		let res = if let Some(closures) = closures {
+		let current_value = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
 				// crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
 				fact.closure_current_values.get(&(closure, RootReference::Variable(on))).copied()
@@ -1027,12 +1029,16 @@ pub(crate) fn get_value_of_variable(
 			None
 		};
 
-		let res = res.or_else(|| fact.variable_current_value.get(&on).copied());
+		let current_value = current_value.or_else(|| fact.variable_current_value.get(&on).copied());
 
-		// TODO in remaining info, don't loop again
-		if let Some(res) = res {
-			let narrowed = info.get_narrowed_or_object(res, types);
-			return Some(narrowed.unwrap_or(res));
+		if let Some(current_value) = current_value {
+			// info = property on context
+			let narrowed = info.get_narrowed_or_object(current_value, types);
+			if let Some(narrowed) = narrowed {
+				return Some(narrowed);
+			} else {
+				return Some(current_value);
+			}
 		}
 	}
 	None

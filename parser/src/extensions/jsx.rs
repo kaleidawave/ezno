@@ -5,7 +5,7 @@ use crate::{
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum JSXRoot {
 	Element(JSXElement),
@@ -13,7 +13,7 @@ pub enum JSXRoot {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct JSXElement {
 	/// Name of the element (TODO or reference to element)
@@ -23,9 +23,10 @@ pub struct JSXElement {
 	pub position: Span,
 }
 
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type JSXChildren = Vec<JSXNode>;
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXElementChildren {
 	Children(JSXChildren),
@@ -78,7 +79,9 @@ impl ASTNode for JSXElement {
 				attributes.push(attribute);
 			} else {
 				let start = reader.get_start();
-				let (key, delimiter) = match reader.parse_until_one_of(&["=", " ", ">"]) {
+				// Using this because parse_identifier breaks on things that we want to include here
+				let result = reader.parse_until_one_of_advance(&["=", ">", " ", "\n"]);
+				let (key, delimiter) = match result {
 					Ok((key, delimiter)) => (key.to_owned(), delimiter),
 					Err(()) => {
 						return Err(ParseError::new(
@@ -87,6 +90,19 @@ impl ASTNode for JSXElement {
 						));
 					}
 				};
+				if !reader.get_options().special_jsx_attributes {
+					let idx_of_invalid_character = key.char_indices().find_map(|(idx, c)| {
+						(!(c.is_alphanumeric() || matches!(c, '_' | '-')))
+							.then_some(idx + c.len_utf8())
+					});
+					if let Some(idx) = idx_of_invalid_character {
+						return Err(ParseError::new(
+							ParseErrors::ExpectedIdentifier { location: "JSX Attribute" },
+							start.with_length(idx),
+						));
+					}
+				}
+
 				match delimiter {
 					"=" => {
 						let start = reader.get_start();
@@ -98,7 +114,7 @@ impl ASTNode for JSXElement {
 							// TODO _quoted
 							let (content, _quoted) = reader.parse_string_literal()?;
 							let position = start.with_length(content.len() + 2);
-							JSXAttribute::Static(key, content.to_owned(), position)
+							JSXAttribute::Static(key, content.into_owned(), position)
 						} else {
 							let (_found, position) = crate::lexer::utilities::next_item(reader);
 							return Err(ParseError::new(
@@ -177,8 +193,9 @@ impl ASTNode for JSXElement {
 				position: start.union(end),
 			})
 		} else {
-			todo!()
-			// Err(parse_lexing_error())
+			let (found, position) = crate::lexer::utilities::next_item(reader);
+			let err = ParseErrors::ExpectedOneOfItems { expected: &["</"], found };
+			Err(ParseError::new(err, position))
 		}
 	}
 
@@ -227,7 +244,7 @@ impl ASTNode for JSXElement {
 }
 
 /// TODO spread attributes and boolean attributes
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXAttribute {
 	Static(String, String, Span),
@@ -261,7 +278,7 @@ impl ASTNode for JSXAttribute {
 			} else if reader.starts_with_string_delimeter() {
 				let (content, _quoted) = reader.parse_string_literal()?;
 				let position = start.with_length(content.len() + 2);
-				Ok(JSXAttribute::Static(key, content.to_owned(), position))
+				Ok(JSXAttribute::Static(key, content.into_owned(), position))
 			} else {
 				let (_found, position) = crate::lexer::utilities::next_item(reader);
 				Err(ParseError::new(ParseErrors::ExpectedJSXAttribute, position))
@@ -309,7 +326,7 @@ impl ASTNode for JSXAttribute {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct JSXFragment {
 	pub children: JSXChildren,
@@ -376,6 +393,7 @@ fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNod
 	// TODO count new lines etc
 	loop {
 		reader.skip();
+		// for _ in 0..reader.last_was_from_new_line_consume() {
 		for _ in 0..reader.last_was_from_new_line() {
 			children.push(JSXNode::LineBreak);
 		}
@@ -415,7 +433,7 @@ fn jsx_children_to_string<T: source_map::ToString>(
 }
 
 // TODO can `JSXFragment` appear here?
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXNode {
 	Element(JSXElement),

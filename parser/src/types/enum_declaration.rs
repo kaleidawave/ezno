@@ -1,9 +1,11 @@
-use crate::{declarations::classes::ClassMember, derive_ASTNode, ASTNode, Expression};
+use crate::{
+	derive_ASTNode, statements_and_declarations::classes::ClassMember, ASTNode, Expression,
+};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct EnumDeclaration {
 	pub is_constant: bool,
@@ -78,15 +80,15 @@ impl ASTNode for EnumDeclaration {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum EnumMemberValue {
 	ClassMembers(Vec<crate::Decorated<ClassMember>>),
-	Value(Expression),
+	Value(Box<Expression>),
 	None,
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct EnumMember {
 	pub name: String,
@@ -103,9 +105,10 @@ impl ASTNode for EnumMember {
 		let start = reader.get_start();
 		let name = reader.parse_identifier("enum member name", true)?.to_owned();
 		let value = if reader.is_operator_advance("=") {
-			let expression = Expression::from_reader(reader)?;
+			let expression = Expression::from_reader(reader).map(Box::new)?;
 			EnumMemberValue::Value(expression)
-		} else if reader.is_operator_advance("{") {
+		} else if reader.get_options().enum_members_as_data_types && reader.is_operator_advance("{")
+		{
 			let mut members: Vec<crate::Decorated<ClassMember>> = Vec::new();
 			loop {
 				reader.skip();

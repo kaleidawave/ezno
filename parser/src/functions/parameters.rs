@@ -5,13 +5,12 @@ use crate::{
 	VariableField, WithComment,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct Parameter<V> {
 	#[visit_skip_field]
@@ -22,7 +21,7 @@ pub struct Parameter<V> {
 	pub position: Span,
 }
 
-pub trait ParameterVisibility: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
+pub trait ParameterVisibility: Send + Sync + Sized + Debug + Clone + 'static {
 	fn from_reader(reader: &mut crate::Lexer) -> Self;
 }
 
@@ -49,7 +48,7 @@ impl ParameterVisibility for Option<crate::types::Visibility> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ParameterData {
 	Optional,
@@ -65,7 +64,7 @@ pub type SpreadParameterName = VariableField;
 pub type SpreadParameterName = crate::VariableIdentifier;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub struct SpreadParameter {
 	pub name: SpreadParameterName,
 	pub type_annotation: Option<TypeAnnotation>,
@@ -73,8 +72,7 @@ pub struct SpreadParameter {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub struct FunctionParameters<L, V> {
 	#[visit_skip_field]
 	pub leading: L,
@@ -83,7 +81,7 @@ pub struct FunctionParameters<L, V> {
 	pub position: Span,
 }
 
-pub trait LeadingParameter: Send + Sync + Sized + Debug + PartialEq + Clone + 'static {
+pub trait LeadingParameter: Send + Sync + Sized + Debug + Clone + 'static {
 	fn try_make(
 		this_annotation: Option<ThisParameter>,
 		super_annotation: Option<SuperParameter>,
@@ -94,19 +92,17 @@ pub trait LeadingParameter: Send + Sync + Sized + Debug + PartialEq + Clone + 's
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub struct ThisParameter {
-	pub constraint: TypeAnnotation,
+	pub constraint: Box<TypeAnnotation>,
 	pub position: Span,
 }
 
 /// TODO WIP!
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable)]
 pub struct SuperParameter {
-	pub constraint: TypeAnnotation,
+	pub constraint: Box<TypeAnnotation>,
 	pub position: Span,
 }
 
@@ -186,19 +182,53 @@ where
 		let mut super_type = None::<SuperParameter>;
 		let mut rest_parameter = None;
 
+		// TODO want no owned version
+		let mut names: Vec<String> = Vec::new();
+
 		loop {
 			reader.skip();
-			if reader.is_operator(")") {
+			let s = reader.after_comment_literals();
+			if s.starts_with(')') {
+				reader.skip_including_comments();
 				break;
 			}
-			// Skip comments
-			// while reader.conditional_next(TSXToken::is_comment).is_some() {}
 
 			let start = reader.get_start();
 
 			if reader.is_operator_advance("...") {
 				let name = SpreadParameterName::from_reader(reader)?;
 				let name_position = name.get_position();
+
+				if !reader.get_options().skip_validation {
+					let mut duplicate = None;
+					#[cfg(feature = "extras")]
+					{
+						name.visit_names(&mut |name| {
+							if duplicate.is_none() {
+								duplicate = names
+									.iter()
+									.any(|existing| existing == name)
+									.then_some(name.to_owned());
+							}
+							names.push(name.to_owned());
+						});
+					}
+
+					#[cfg(not(feature = "extras"))]
+					{
+						duplicate = names
+							.iter()
+							.any(|existing| name == &**existing)
+							.then_some(name.clone());
+					}
+
+					if let Some(_duplicate) = duplicate {
+						return Err(ParseError::new(
+							crate::ParseErrors::DuplicateParameterName,
+							name_position,
+						));
+					}
+				}
 
 				let type_annotation = if reader.is_operator_advance(":") {
 					Some(TypeAnnotation::from_reader(reader)?)
@@ -219,13 +249,13 @@ where
 				reader.expect(':')?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
-				this_type = Some(ThisParameter { constraint, position });
+				this_type = Some(ThisParameter { constraint: Box::new(constraint), position });
 			} else if parameters.is_empty() && reader.is_keyword_advance("super") {
 				reader.expect(':')?;
 				// reader.expect(TSXToken::Colon)?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
-				super_type = Some(SuperParameter { constraint, position });
+				super_type = Some(SuperParameter { constraint: Box::new(constraint), position });
 			} else {
 				let visibility = V::from_reader(reader);
 
@@ -272,6 +302,25 @@ where
 				};
 
 				let position = name.get_position().union(end_position);
+
+				if !reader.get_options().skip_validation {
+					let mut duplicate = None;
+					name.get_ast_ref().visit_names(&mut |name| {
+						if duplicate.is_none() {
+							duplicate = names
+								.iter()
+								.any(|existing| existing == name)
+								.then_some(name.to_owned());
+						}
+						names.push(name.into());
+					});
+					if let Some(_duplicate) = duplicate {
+						return Err(ParseError::new(
+							crate::ParseErrors::DuplicateParameterName,
+							position,
+						));
+					}
+				}
 
 				parameters.push(Parameter {
 					visibility,

@@ -3,20 +3,15 @@
 use std::fmt::Debug;
 
 use crate::{
-	bracketed_items_from_reader, derive_ASTNode,
-	property_key::PropertyKey,
-	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
-	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseResult, Span,
-	VisitOptions, Visitable, WithComment,
+	bracketed_items_from_reader, derive_ASTNode, property_key::PropertyKey, ASTNode, Expression,
+	ListItem, Marker, ParseError, ParseErrors, ParseResult, Span, WithComment,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEqExtras, Clone, GetFieldByType)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum VariableIdentifier {
 	Standard(String, Span),
@@ -35,16 +30,25 @@ impl ASTNode for VariableIdentifier {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let identifier = reader.parse_identifier("variable identifier", true)?;
-		let position = start.with_length(identifier.len());
-		// TODO
-		if identifier == "let" {
-			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(3)))
-		} else if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
+		if reader.get_options().partial_syntax
+			&& (reader.starts_with('=') || reader.starts_with(','))
+		{
 			let span = start.with_length(0);
 			Ok(Self::Marker(reader.new_partial_point_marker(span), span))
 		} else {
-			Ok(Self::Standard(identifier.to_owned(), position))
+			let identifier = reader.parse_identifier("variable identifier", true)?;
+			let position = start.with_length(identifier.len());
+			// TODO
+			if identifier == "let" {
+				Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(3)))
+			} else if reader.get_options().interpolation_points
+				&& identifier == crate::marker::MARKER
+			{
+				let span = start.with_length(0);
+				Ok(Self::Marker(reader.new_partial_point_marker(span), span))
+			} else {
+				Ok(Self::Standard(identifier.to_owned(), position))
+			}
 		}
 	}
 
@@ -73,9 +77,15 @@ impl VariableIdentifier {
 	}
 }
 
+impl PartialEq<&str> for VariableIdentifier {
+	fn eq(&self, s: &&str) -> bool {
+		self.as_option_str().is_some_and(|name| name == *s)
+	}
+}
+
 /// A variable declaration name, used in variable declarations and function parameters.
 /// See [destructuring](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum VariableField {
 	/// `x`
@@ -88,6 +98,8 @@ pub enum VariableField {
 	},
 	/// `{ x, y: z }`.
 	Object {
+		#[cfg(feature = "extras")]
+		class_name: Option<String>,
 		members: Vec<WithComment<ObjectDestructuringField<VariableField>>>,
 		spread: Option<SpreadDestructuringField<VariableField>>,
 		position: Span,
@@ -109,11 +121,34 @@ impl ASTNode for VariableField {
 		let start = reader.get_start();
 		if reader.is_operator_advance("{") {
 			let (members, spread) = bracketed_items_from_reader(reader, "}")?;
-			Ok(Self::Object { members, spread, position: start.union(reader.get_end()) })
+			Ok(Self::Object {
+				members,
+				spread,
+				position: start.union(reader.get_end()),
+				#[cfg(feature = "extras")]
+				class_name: None,
+			})
 		} else if reader.is_operator_advance("[") {
 			let (members, spread) = bracketed_items_from_reader(reader, "]")?;
 			Ok(Self::Array { members, spread, position: start.union(reader.get_end()) })
 		} else {
+			#[cfg(feature = "extras")]
+			if reader.get_options().destructuring_type_annotation
+				&& reader.after_identifier().starts_with('{')
+			{
+				let start = reader.get_start();
+				let class_name =
+					reader.parse_identifier("class name in destructuring label", true)?;
+				let _ = reader.expect('{')?;
+				let (members, spread) = bracketed_items_from_reader(reader, "}")?;
+				return Ok(Self::Object {
+					class_name: Some(class_name.to_owned()),
+					members,
+					spread,
+					position: start.union(reader.get_end()),
+				});
+			}
+
 			Ok(Self::Name(VariableIdentifier::from_reader(reader)?))
 		}
 	}
@@ -148,7 +183,13 @@ impl ASTNode for VariableField {
 				}
 				buf.push(']');
 			}
-			Self::Object { members, spread, position: _ } => {
+			Self::Object { members, spread, position: _, .. } => {
+				#[cfg(feature = "extras")]
+				if let Self::Object { class_name: Some(class_name), .. } = self {
+					buf.push_str(class_name);
+					options.push_gap_optionally(buf);
+				}
+
 				buf.push('{');
 				options.push_gap_optionally(buf);
 				for (at_end, member) in members.iter().endiate() {
@@ -175,7 +216,7 @@ impl ASTNode for VariableField {
 
 pub trait DestructuringFieldInto: ASTNode {
 	// This in an extra
-	type TypeAnnotation: Clone + PartialEq + Debug + Sync + Send + 'static;
+	type TypeAnnotation: Clone + Debug + Sync + Send + 'static;
 
 	fn type_annotation_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self::TypeAnnotation>;
 }
@@ -205,7 +246,7 @@ impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
 /// For
 /// - declarations: `T = VariableField`
 /// - expressions: `T = LHSOfAssignment`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 	Name(T, T::TypeAnnotation, Option<Box<Expression>>),
@@ -213,7 +254,7 @@ pub enum ArrayDestructuringField<T: DestructuringFieldInto> {
 }
 
 /// Covers [`ArrayDestructuring`] AND [`ObjectDestructuringField`]
-#[derive(Debug, Clone, PartialEq, Eq, visitable_derive::Visitable)]
+#[derive(Debug, Clone, visitable_derive::Visitable)]
 #[apply(derive_ASTNode)]
 pub struct SpreadDestructuringField<T: DestructuringFieldInto>(pub Box<T>, pub Span);
 
@@ -292,9 +333,8 @@ impl<T: DestructuringFieldInto> ListItem for WithComment<ArrayDestructuringField
 /// - declarations: `T = VariableField`
 /// - expressions: `T = LHSOfAssignment`
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum ObjectDestructuringField<T: DestructuringFieldInto> {
 	/// `{ x }` and (annoyingly) `{ x = 2 }`
 	Name(VariableIdentifier, T::TypeAnnotation, Option<Box<Expression>>, Span),
@@ -413,322 +453,257 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 	}
 }
 
-/// For object literals and things with computable or literal keys
-impl Visitable for VariableField {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		match self {
-			VariableField::Name(id) => {
-				if let VariableIdentifier::Standard(name, pos) = id {
-					let item = ImmutableVariableOrProperty::VariableFieldName(name, pos);
-					visitors.visit_variable(&item, data, chain);
+pub mod visiting {
+	use super::{
+		ArrayDestructuringField, ObjectDestructuringField, VariableField, VariableIdentifier,
+		WithComment,
+	};
+	use crate::visiting::{
+		ImmutableVariableOrProperty, MutableVariableOrProperty, VisitOptions, Visitable,
+	};
+
+	/// For object literals and things with computable or literal keys
+	impl Visitable for VariableField {
+		fn visit<TData>(
+			&self,
+			visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+		) {
+			match self {
+				VariableField::Name(id) => {
+					if let VariableIdentifier::Standard(name, pos) = id {
+						let item = ImmutableVariableOrProperty::VariableFieldName(name, pos);
+						visitors.visit_variable(&item, data, chain);
+					}
+				}
+				VariableField::Array { members, spread: _, .. } => {
+					for f in members {
+						f.visit(visitors, data, options, chain);
+					}
+				}
+				VariableField::Object { members, spread: _, .. } => {
+					for f in members {
+						f.visit(visitors, data, options, chain);
+					}
 				}
 			}
-			VariableField::Array { members, spread: _, .. } => {
-				members.iter().for_each(|f| f.visit(visitors, data, options, chain));
-			}
-			VariableField::Object { members, spread: _, .. } => {
-				members.iter().for_each(|f| f.visit(visitors, data, options, chain));
-			}
 		}
-	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
-	) {
-		match self {
-			VariableField::Name(identifier) => {
-				if let VariableIdentifier::Standard(name, _span) = identifier {
-					visitors.visit_variable_mut(
-						&mut MutableVariableOrProperty::VariableFieldName(name),
-						data,
-						chain,
-					);
+		fn visit_mut<TData>(
+			&mut self,
+			visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
+		) {
+			match self {
+				VariableField::Name(identifier) => {
+					if let VariableIdentifier::Standard(name, _span) = identifier {
+						visitors.visit_variable_mut(
+							&mut MutableVariableOrProperty::VariableFieldName(name),
+							data,
+							chain,
+						);
+					}
+				}
+				VariableField::Array { members, spread: _, .. } => {
+					for f in members {
+						f.visit_mut(visitors, data, options, chain);
+					}
+				}
+				VariableField::Object { members, spread: _, .. } => {
+					for f in members {
+						f.visit_mut(visitors, data, options, chain);
+					}
 				}
 			}
-			VariableField::Array { members, spread: _, .. } => {
-				members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
-			}
-			VariableField::Object { members, spread: _, .. } => {
-				members.iter_mut().for_each(|f| f.visit_mut(visitors, data, options, chain));
-			}
-		}
-	}
-}
-
-impl Visitable for WithComment<ArrayDestructuringField<VariableField>> {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		let field = self.get_ast_ref();
-		let array_destructuring_member =
-			ImmutableVariableOrProperty::ArrayDestructuringMember(field);
-		visitors.visit_variable(&array_destructuring_member, data, chain);
-		match field {
-			// TODO should be okay, no nesting here
-			ArrayDestructuringField::None => {}
-			ArrayDestructuringField::Name(variable_field, _, expression) => {
-				variable_field.visit(visitors, data, options, chain);
-				expression.visit(visitors, data, options, chain);
-			}
 		}
 	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		let mut array_destructuring_member =
-			MutableVariableOrProperty::ArrayDestructuringMember(self.get_ast_mut());
-		visitors.visit_variable_mut(&mut array_destructuring_member, data, chain);
-		match self.get_ast_mut() {
-			ArrayDestructuringField::None => {}
-			ArrayDestructuringField::Name(variable_field, _, default_value) => {
-				variable_field.visit_mut(visitors, data, options, chain);
-				default_value.visit_mut(visitors, data, options, chain);
+	impl Visitable for WithComment<ArrayDestructuringField<VariableField>> {
+		fn visit<TData>(
+			&self,
+			visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			let field = self.get_ast_ref();
+			let array_destructuring_member =
+				ImmutableVariableOrProperty::ArrayDestructuringMember(field);
+			visitors.visit_variable(&array_destructuring_member, data, chain);
+			match field {
+				// TODO should be okay, no nesting here
+				ArrayDestructuringField::None => {}
+				ArrayDestructuringField::Name(variable_field, _, expression) => {
+					variable_field.visit(visitors, data, options, chain);
+					expression.visit(visitors, data, options, chain);
+				}
 			}
 		}
-	}
-}
 
-impl Visitable for WithComment<ArrayDestructuringField<crate::ast::LHSOfAssignment>> {
-	fn visit<TData>(
-		&self,
-		_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit array destructuring field")
-	}
-
-	fn visit_mut<TData>(
-		&mut self,
-		_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit array destructuring field")
-	}
-}
-
-impl Visitable for WithComment<ObjectDestructuringField<VariableField>> {
-	fn visit<TData>(
-		&self,
-		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		visitors.visit_variable(
-			&ImmutableVariableOrProperty::ObjectDestructuringMember(self),
-			data,
-			chain,
-		);
-		match self.get_ast_ref() {
-			ObjectDestructuringField::Name(_name, _, default_value, _) => {
-				default_value.visit(visitors, data, options, chain);
-			}
-			ObjectDestructuringField::Map {
-				name: variable_name,
-				annotation: _,
-				default_value,
-				..
-			} => {
-				variable_name.visit(visitors, data, options, chain);
-				default_value.visit(visitors, data, options, chain);
+		fn visit_mut<TData>(
+			&mut self,
+			visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			let mut array_destructuring_member =
+				MutableVariableOrProperty::ArrayDestructuringMember(self.get_ast_mut());
+			visitors.visit_variable_mut(&mut array_destructuring_member, data, chain);
+			match self.get_ast_mut() {
+				ArrayDestructuringField::None => {}
+				ArrayDestructuringField::Name(variable_field, _, default_value) => {
+					variable_field.visit_mut(visitors, data, options, chain);
+					default_value.visit_mut(visitors, data, options, chain);
+				}
 			}
 		}
 	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		data: &mut TData,
-		options: &VisitOptions,
-		chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		visitors.visit_variable_mut(
-			&mut MutableVariableOrProperty::ObjectDestructuringMember(self),
-			data,
-			chain,
-		);
-		match self.get_ast_mut() {
-			ObjectDestructuringField::Name(_id, _, default_value, _) => {
-				default_value.visit_mut(visitors, data, options, chain);
+	impl Visitable for WithComment<ArrayDestructuringField<crate::ast::LHSOfAssignment>> {
+		fn visit<TData>(
+			&self,
+			_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit array destructuring field")
+		}
+
+		fn visit_mut<TData>(
+			&mut self,
+			_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit array destructuring field")
+		}
+	}
+
+	impl Visitable for WithComment<ObjectDestructuringField<VariableField>> {
+		fn visit<TData>(
+			&self,
+			visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			visitors.visit_variable(
+				&ImmutableVariableOrProperty::ObjectDestructuringMember(self),
+				data,
+				chain,
+			);
+			match self.get_ast_ref() {
+				ObjectDestructuringField::Name(_name, _, default_value, _) => {
+					default_value.visit(visitors, data, options, chain);
+				}
+				ObjectDestructuringField::Map {
+					name: variable_name,
+					annotation: _,
+					default_value,
+					..
+				} => {
+					variable_name.visit(visitors, data, options, chain);
+					default_value.visit(visitors, data, options, chain);
+				}
 			}
-			ObjectDestructuringField::Map {
-				name: variable_name,
-				annotation: _,
-				default_value,
-				..
-			} => {
-				variable_name.visit_mut(visitors, data, options, chain);
-				default_value.visit_mut(visitors, data, options, chain);
+		}
+
+		fn visit_mut<TData>(
+			&mut self,
+			visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			data: &mut TData,
+			options: &VisitOptions,
+			chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			visitors.visit_variable_mut(
+				&mut MutableVariableOrProperty::ObjectDestructuringMember(self),
+				data,
+				chain,
+			);
+			match self.get_ast_mut() {
+				ObjectDestructuringField::Name(_id, _, default_value, _) => {
+					default_value.visit_mut(visitors, data, options, chain);
+				}
+				ObjectDestructuringField::Map {
+					name: variable_name,
+					annotation: _,
+					default_value,
+					..
+				} => {
+					variable_name.visit_mut(visitors, data, options, chain);
+					default_value.visit_mut(visitors, data, options, chain);
+				}
 			}
 		}
 	}
-}
-impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignment>> {
-	fn visit<TData>(
-		&self,
-		_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit object destructuring field")
+
+	impl Visitable for WithComment<ObjectDestructuringField<crate::ast::LHSOfAssignment>> {
+		fn visit<TData>(
+			&self,
+			_visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit object destructuring field")
+		}
+
+		fn visit_mut<TData>(
+			&mut self,
+			_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
+			_data: &mut TData,
+			_options: &VisitOptions,
+			_chain: &mut temporary_annex::Annex<crate::Chain>,
+		) {
+			todo!("visit object destructuring field")
+		}
 	}
 
-	fn visit_mut<TData>(
-		&mut self,
-		_visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
-		_data: &mut TData,
-		_options: &VisitOptions,
-		_chain: &mut temporary_annex::Annex<crate::Chain>,
-	) {
-		todo!("visit object destructuring field")
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::{assert_matches_ast, span};
-
-	#[test]
-	fn name() {
-		assert_matches_ast!(
-			"x",
-			VariableField::Name(VariableIdentifier::Standard(
-				Deref @ "x",
-				Span { start: 0, end: 1, .. },
-			))
-		);
-	}
-
-	#[test]
-	fn array() {
-		assert_matches_ast!(
-			"[x, y, z]",
-			VariableField::Array {
-				members: Deref @ [WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
-					None,
-					None,
-				)), WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "y", span!(4, 5))),
-					None,
-					None,
-				)), WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "z", span!(7, 8))),
-					None,
-					None,
-				))],
-				spread: _,
-				position: _
+	// Lower level visiting for parsing
+	impl VariableField {
+		pub fn visit_names(&self, cb: &mut impl FnMut(&str)) {
+			match self {
+				VariableField::Name(name) => {
+					if let Some(name) = name.as_option_str() {
+						cb(name);
+					}
+				}
+				VariableField::Array { members, spread, position: _ } => {
+					for member in members {
+						if let super::ArrayDestructuringField::Name(name, ..) = member.get_ast_ref()
+						{
+							name.visit_names(cb);
+						}
+					}
+					if let Some(ref spread) = spread {
+						spread.0.visit_names(cb);
+					}
+				}
+				VariableField::Object { members, spread, .. } => {
+					for member in members {
+						match member.get_ast_ref() {
+							super::ObjectDestructuringField::Name(name, ..) => {
+								if let Some(name) = name.as_option_str() {
+									cb(name);
+								}
+							}
+							super::ObjectDestructuringField::Map { name, .. } => {
+								name.get_ast_ref().visit_names(cb);
+							}
+						}
+					}
+					if let Some(ref spread) = spread {
+						spread.0.visit_names(cb);
+					}
+				}
 			}
-		);
-
-		assert_matches_ast!(
-			"[x,,z]",
-			VariableField::Array {
-				members:
-				Deref @ [WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
-					None,
-					None,
-				)), WithComment::None(ArrayDestructuringField::None), WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "z", span!(4, 5))),
-					None,
-					None,
-				))],
-				spread: None,
-				position: span!(0, 6),
-			}
-		);
-	}
-
-	#[test]
-	fn object() {
-		assert_matches_ast!(
-			"{x, y, z}",
-			VariableField::Object {
-				members: Deref @ [WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "x", span!(1, 2)),
-					None,
-					None,
-					span!(1, 2),
-				)), WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "y", span!(4, 5)),
-					None,
-					None,
-					span!(4, 5),
-				)), WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "z", span!(7, 8)),
-					None,
-					None,
-					span!(7, 8),
-				))],
-				spread: None,
-				position: span!(0, 9),
-			}
-		);
-	}
-
-	#[test]
-	fn name_with_default() {
-		assert_matches_ast!(
-			"{ x = 2 }",
-			VariableField::Object {
-				members:
-				Deref @ [WithComment::None(ObjectDestructuringField::Name(
-					VariableIdentifier::Standard(Deref @ "x", span!(2, 3)),
-					None,
-					Some(
-						Deref @ Expression::NumberLiteral(
-							crate::number::NumberRepresentation::Number { .. },
-							span!(6, 7),
-						),
-					),
-					span!(2, 7),
-				))],
-				spread: None,
-				position: span!(0, 9),
-			}
-		);
-	}
-
-	#[test]
-	fn array_spread() {
-		assert_matches_ast!(
-			"[x, ...y]",
-			VariableField::Array {
-				members:Deref @ [WithComment::None(ArrayDestructuringField::Name(
-					VariableField::Name(VariableIdentifier::Standard(Deref @ "x", span!(1, 2))),
-					None,
-					None,
-				))],
-				spread: Some(SpreadDestructuringField( Deref @ VariableField::Name(VariableIdentifier::Standard(Deref @ "y", span!(7, 8))), span!(4, 8))),
-				position: span!(0, 9)
-			}
-		);
+		}
 	}
 }

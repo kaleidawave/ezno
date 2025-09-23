@@ -7,9 +7,7 @@ use std::convert::TryFrom;
 
 use crate::derive_ASTNode;
 
-/// Comma operator is on [`crate::MultipleExpression`]
-/// 
-/// `InstanceOf`, In are special operators
+/// `instance_of`, `in` are special operators (because of their RHS) not found here
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[apply(derive_ASTNode!)]
@@ -23,17 +21,36 @@ pub enum BinaryOperator {
     GreaterThan, LessThan, LessThanEqual, GreaterThanEqual,
 
     LogicalAnd, LogicalOr,
-    NullCoalescing, 
+    NullCoalescing,
 
-    /// Non standard
+	Comma,
+
+	#[cfg(feature="extras")]
     Pipe,
+	#[cfg(feature="extras")]
     Compose
 }
 
 impl BinaryOperator {
+	/// For parsing under options
 	#[must_use]
+	#[cfg(feature = "extras")]
 	pub fn is_non_standard(&self) -> bool {
 		matches!(self, BinaryOperator::Pipe | BinaryOperator::Compose)
+	}
+
+	#[cfg(not(feature = "extras"))]
+	pub fn is_non_standard(&self) -> bool {
+		false
+	}
+
+	/// Operators which return true may or may not evaluate RHS based on their own value
+	#[must_use]
+	pub fn is_rhs_conditional_evaluation(&self) -> bool {
+		matches!(
+			self,
+			BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr | BinaryOperator::NullCoalescing
+		)
 	}
 }
 
@@ -42,14 +59,15 @@ impl BinaryOperator {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[apply(derive_ASTNode!)]
 pub enum BinaryAssignmentOperator {
-    LogicalNullishAssignment,
+    NullCoalescing,
     
-    AddAssign, SubtractAssign, MultiplyAssign, DivideAssign, RemainderAssign, ExponentAssign,
-    LogicalAndAssign, LogicalOrAssign,
-    BitwiseShiftLeftAssign, BitwiseShiftRightAssign, BitwiseShiftRightUnsigned, 
-    BitwiseAndAssign, BitwiseXOrAssign, BitwiseOrAssign,
+    Add, Subtract, Multiply, Divide, Remainder, Exponent,
+    LogicalAnd, LogicalOr,
+    BitwiseShiftLeft, BitwiseShiftRight, BitwiseShiftRightUnsigned, 
+    BitwiseAnd, BitwiseXOr, BitwiseOr,
 }
 
+// `yield` not here because can be used without expression
 #[rustfmt::skip]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[apply(derive_ASTNode!)]
@@ -57,7 +75,6 @@ pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
     Await, TypeOf, Void, Delete,
-	Yield, DelegatedYield,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -106,9 +123,6 @@ pub trait Operator {
 	/// Returns the associativity of the operator. Taken from: <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Operator_Precedence#table>
 	fn associativity_direction(&self) -> AssociativityDirection;
 
-	/// Is associative with self <https://en.wikipedia.org/wiki/Associative_property>
-	fn is_associative(&self) -> bool;
-
 	fn precedence_and_associativity_direction(&self) -> (u8, AssociativityDirection) {
 		(self.precedence(), self.associativity_direction())
 	}
@@ -140,13 +154,17 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseAnd => "&",
 			BinaryOperator::BitwiseOr => "|",
 			BinaryOperator::BitwiseXOr => "^",
+			BinaryOperator::Comma => ",",
+			#[cfg(feature = "extras")]
 			BinaryOperator::Compose => "<@>", // ∘
+			#[cfg(feature = "extras")]
 			BinaryOperator::Pipe => "|>",
 		}
 	}
 
 	fn precedence(&self) -> u8 {
 		match self {
+			#[cfg(feature = "extras")]
 			BinaryOperator::Pipe | BinaryOperator::Compose => 15,
 			BinaryOperator::Exponent => 14,
 			BinaryOperator::Multiply | BinaryOperator::Divide | BinaryOperator::Remainder => 13,
@@ -167,6 +185,7 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseOr => 6,
 			BinaryOperator::LogicalAnd => 5,
 			BinaryOperator::NullCoalescing | BinaryOperator::LogicalOr => 4,
+			BinaryOperator::Comma => 1,
 		}
 	}
 
@@ -176,10 +195,6 @@ impl Operator for BinaryOperator {
 		} else {
 			AssociativityDirection::LeftToRight
 		}
-	}
-
-	fn is_associative(&self) -> bool {
-		!matches!(self, Self::Subtract | Self::Exponent | Self::Divide)
 	}
 }
 
@@ -191,8 +206,6 @@ impl Operator for UnaryOperator {
 			UnaryOperator::BitwiseNot => "~",
 			UnaryOperator::LogicalNot => "!",
 			UnaryOperator::Delete => "delete ",
-			UnaryOperator::Yield => "yield ",
-			UnaryOperator::DelegatedYield => "yield* ",
 			UnaryOperator::Await => "await ",
 			UnaryOperator::TypeOf => "typeof ",
 			UnaryOperator::Void => "void ",
@@ -208,38 +221,33 @@ impl Operator for UnaryOperator {
 			| UnaryOperator::BitwiseNot
 			| UnaryOperator::LogicalNot
 			| UnaryOperator::Plus
-			| UnaryOperator::Negation => 15,
-			UnaryOperator::Yield | UnaryOperator::DelegatedYield => 2,
+			| UnaryOperator::Negation => 14,
 		}
 	}
 
 	fn associativity_direction(&self) -> AssociativityDirection {
 		AssociativityDirection::RightToLeft
 	}
-
-	fn is_associative(&self) -> bool {
-		true
-	}
 }
 
 impl Operator for BinaryAssignmentOperator {
 	fn to_str(&self) -> &'static str {
 		match self {
-			BinaryAssignmentOperator::LogicalNullishAssignment => "??=",
-			BinaryAssignmentOperator::AddAssign => "+=",
-			BinaryAssignmentOperator::SubtractAssign => "-=",
-			BinaryAssignmentOperator::MultiplyAssign => "*=",
-			BinaryAssignmentOperator::DivideAssign => "/=",
-			BinaryAssignmentOperator::RemainderAssign => "%=",
-			BinaryAssignmentOperator::ExponentAssign => "**=",
-			BinaryAssignmentOperator::BitwiseShiftLeftAssign => "<<=",
-			BinaryAssignmentOperator::BitwiseShiftRightAssign => ">>=",
+			BinaryAssignmentOperator::NullCoalescing => "??=",
+			BinaryAssignmentOperator::Add => "+=",
+			BinaryAssignmentOperator::Subtract => "-=",
+			BinaryAssignmentOperator::Multiply => "*=",
+			BinaryAssignmentOperator::Divide => "/=",
+			BinaryAssignmentOperator::Remainder => "%=",
+			BinaryAssignmentOperator::Exponent => "**=",
+			BinaryAssignmentOperator::BitwiseShiftLeft => "<<=",
+			BinaryAssignmentOperator::BitwiseShiftRight => ">>=",
 			BinaryAssignmentOperator::BitwiseShiftRightUnsigned => ">>>=",
-			BinaryAssignmentOperator::BitwiseAndAssign => "&=",
-			BinaryAssignmentOperator::BitwiseXOrAssign => "^=",
-			BinaryAssignmentOperator::BitwiseOrAssign => "|=",
-			BinaryAssignmentOperator::LogicalAndAssign => "&&=",
-			BinaryAssignmentOperator::LogicalOrAssign => "||=",
+			BinaryAssignmentOperator::BitwiseAnd => "&=",
+			BinaryAssignmentOperator::BitwiseXOr => "^=",
+			BinaryAssignmentOperator::BitwiseOr => "|=",
+			BinaryAssignmentOperator::LogicalAnd => "&&=",
+			BinaryAssignmentOperator::LogicalOr => "||=",
 		}
 	}
 
@@ -249,11 +257,6 @@ impl Operator for BinaryAssignmentOperator {
 
 	fn associativity_direction(&self) -> AssociativityDirection {
 		AssociativityDirection::RightToLeft
-	}
-
-	fn is_associative(&self) -> bool {
-		// dbg!("TODO unsure");
-		true
 	}
 }
 
@@ -272,10 +275,6 @@ impl Operator for UnaryPrefixAssignmentOperator {
 			UnaryPrefixAssignmentOperator::IncrementOrDecrement(inc_or_dec) => inc_or_dec.to_str(),
 		}
 	}
-
-	fn is_associative(&self) -> bool {
-		true
-	}
 }
 
 impl Operator for UnaryPostfixAssignmentOperator {
@@ -289,10 +288,6 @@ impl Operator for UnaryPostfixAssignmentOperator {
 
 	fn to_str(&self) -> &'static str {
 		self.0.to_str()
-	}
-
-	fn is_associative(&self) -> bool {
-		true
 	}
 }
 
@@ -308,23 +303,23 @@ impl IncrementOrDecrement {
 impl From<BinaryAssignmentOperator> for BinaryOperator {
 	fn from(val: BinaryAssignmentOperator) -> Self {
 		match val {
-			BinaryAssignmentOperator::LogicalNullishAssignment => BinaryOperator::NullCoalescing,
-			BinaryAssignmentOperator::AddAssign => BinaryOperator::Add,
-			BinaryAssignmentOperator::SubtractAssign => BinaryOperator::Subtract,
-			BinaryAssignmentOperator::MultiplyAssign => BinaryOperator::Multiply,
-			BinaryAssignmentOperator::DivideAssign => BinaryOperator::Divide,
-			BinaryAssignmentOperator::RemainderAssign => BinaryOperator::Remainder,
-			BinaryAssignmentOperator::ExponentAssign => BinaryOperator::Exponent,
-			BinaryAssignmentOperator::LogicalAndAssign => BinaryOperator::LogicalAnd,
-			BinaryAssignmentOperator::LogicalOrAssign => BinaryOperator::LogicalOr,
-			BinaryAssignmentOperator::BitwiseShiftLeftAssign => BinaryOperator::BitwiseShiftLeft,
-			BinaryAssignmentOperator::BitwiseShiftRightAssign => BinaryOperator::BitwiseShiftRight,
+			BinaryAssignmentOperator::NullCoalescing => BinaryOperator::NullCoalescing,
+			BinaryAssignmentOperator::Add => BinaryOperator::Add,
+			BinaryAssignmentOperator::Subtract => BinaryOperator::Subtract,
+			BinaryAssignmentOperator::Multiply => BinaryOperator::Multiply,
+			BinaryAssignmentOperator::Divide => BinaryOperator::Divide,
+			BinaryAssignmentOperator::Remainder => BinaryOperator::Remainder,
+			BinaryAssignmentOperator::Exponent => BinaryOperator::Exponent,
+			BinaryAssignmentOperator::LogicalAnd => BinaryOperator::LogicalAnd,
+			BinaryAssignmentOperator::LogicalOr => BinaryOperator::LogicalOr,
+			BinaryAssignmentOperator::BitwiseShiftLeft => BinaryOperator::BitwiseShiftLeft,
+			BinaryAssignmentOperator::BitwiseShiftRight => BinaryOperator::BitwiseShiftRight,
 			BinaryAssignmentOperator::BitwiseShiftRightUnsigned => {
 				BinaryOperator::BitwiseShiftRightUnsigned
 			}
-			BinaryAssignmentOperator::BitwiseAndAssign => BinaryOperator::BitwiseAnd,
-			BinaryAssignmentOperator::BitwiseXOrAssign => BinaryOperator::BitwiseXOr,
-			BinaryAssignmentOperator::BitwiseOrAssign => BinaryOperator::BitwiseOr,
+			BinaryAssignmentOperator::BitwiseAnd => BinaryOperator::BitwiseAnd,
+			BinaryAssignmentOperator::BitwiseXOr => BinaryOperator::BitwiseXOr,
+			BinaryAssignmentOperator::BitwiseOr => BinaryOperator::BitwiseOr,
 		}
 	}
 }
@@ -333,42 +328,25 @@ impl TryFrom<BinaryOperator> for BinaryAssignmentOperator {
 	type Error = ();
 	fn try_from(val: BinaryOperator) -> Result<Self, ()> {
 		match val {
-			BinaryOperator::NullCoalescing => {
-				Ok(BinaryAssignmentOperator::LogicalNullishAssignment)
-			}
-			BinaryOperator::Add => Ok(BinaryAssignmentOperator::AddAssign),
-			BinaryOperator::Subtract => Ok(BinaryAssignmentOperator::SubtractAssign),
-			BinaryOperator::Multiply => Ok(BinaryAssignmentOperator::MultiplyAssign),
-			BinaryOperator::Divide => Ok(BinaryAssignmentOperator::DivideAssign),
-			BinaryOperator::Remainder => Ok(BinaryAssignmentOperator::RemainderAssign),
-			BinaryOperator::Exponent => Ok(BinaryAssignmentOperator::ExponentAssign),
-			BinaryOperator::LogicalAnd => Ok(BinaryAssignmentOperator::LogicalAndAssign),
-			BinaryOperator::LogicalOr => Ok(BinaryAssignmentOperator::LogicalOrAssign),
-			BinaryOperator::BitwiseShiftLeft => {
-				Ok(BinaryAssignmentOperator::BitwiseShiftLeftAssign)
-			}
-			BinaryOperator::BitwiseShiftRight => {
-				Ok(BinaryAssignmentOperator::BitwiseShiftRightAssign)
-			}
+			BinaryOperator::NullCoalescing => Ok(BinaryAssignmentOperator::NullCoalescing),
+			BinaryOperator::Add => Ok(BinaryAssignmentOperator::Add),
+			BinaryOperator::Subtract => Ok(BinaryAssignmentOperator::Subtract),
+			BinaryOperator::Multiply => Ok(BinaryAssignmentOperator::Multiply),
+			BinaryOperator::Divide => Ok(BinaryAssignmentOperator::Divide),
+			BinaryOperator::Remainder => Ok(BinaryAssignmentOperator::Remainder),
+			BinaryOperator::Exponent => Ok(BinaryAssignmentOperator::Exponent),
+			BinaryOperator::LogicalAnd => Ok(BinaryAssignmentOperator::LogicalAnd),
+			BinaryOperator::LogicalOr => Ok(BinaryAssignmentOperator::LogicalOr),
+			BinaryOperator::BitwiseShiftLeft => Ok(BinaryAssignmentOperator::BitwiseShiftLeft),
+			BinaryOperator::BitwiseShiftRight => Ok(BinaryAssignmentOperator::BitwiseShiftRight),
 			BinaryOperator::BitwiseShiftRightUnsigned => {
 				Ok(BinaryAssignmentOperator::BitwiseShiftRightUnsigned)
 			}
-			BinaryOperator::BitwiseAnd => Ok(BinaryAssignmentOperator::BitwiseAndAssign),
-			BinaryOperator::BitwiseXOr => Ok(BinaryAssignmentOperator::BitwiseXOrAssign),
-			BinaryOperator::BitwiseOr => Ok(BinaryAssignmentOperator::BitwiseOrAssign),
+			BinaryOperator::BitwiseAnd => Ok(BinaryAssignmentOperator::BitwiseAnd),
+			BinaryOperator::BitwiseXOr => Ok(BinaryAssignmentOperator::BitwiseXOr),
+			BinaryOperator::BitwiseOr => Ok(BinaryAssignmentOperator::BitwiseOr),
 			_ => Err(()),
 		}
-	}
-}
-
-impl BinaryOperator {
-	/// Operators which return true may or may not evaluate RHS based on their own value
-	#[must_use]
-	pub fn is_rhs_conditional_evaluation(&self) -> bool {
-		matches!(
-			self,
-			BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr | BinaryOperator::NullCoalescing
-		)
 	}
 }
 
@@ -377,6 +355,7 @@ pub(crate) const COMMA_PRECEDENCE: u8 = 1;
 pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
 pub(crate) const ARROW_FUNCTION_PRECEDENCE: u8 = 2;
 pub(crate) const ASSIGNMENT_PRECEDENCE: u8 = 2;
+pub(crate) const YIELD_OPERATORS_PRECEDENCE: u8 = 2;
 pub(crate) const RELATION_PRECEDENCE: u8 = 10;
 pub(crate) const CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE: u8 = 17;
 pub(crate) const MEMBER_ACCESS_PRECEDENCE: u8 = 18;

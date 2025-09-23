@@ -206,7 +206,7 @@ impl LocalInformation {
 	pub fn get_properties_on_type_for_this_level(
 		&self,
 		ty: TypeId,
-	) -> Option<&Vec<(Publicity, PropertyKey, PropertyValue)>> {
+	) -> Option<&Vec<(Publicity, PropertyKey<'_>, PropertyValue)>> {
 		self.current_properties.get(&ty)
 	}
 

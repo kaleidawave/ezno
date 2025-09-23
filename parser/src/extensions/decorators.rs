@@ -5,7 +5,7 @@ use visitable_derive::Visitable;
 
 use crate::{derive_ASTNode, ASTNode, Expression, ParseResult, Visitable};
 
-#[derive(Debug, PartialEq, Clone, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct Decorator {
 	pub name: Vec<String>,
@@ -78,7 +78,7 @@ impl ASTNode for Decorator {
 
 /// TODO under cfg if don't want this could just be `type Decorated<T> = T;`
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct Decorated<T> {
 	pub decorators: Vec<Decorator>,

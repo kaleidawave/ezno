@@ -116,28 +116,6 @@ pub(crate) fn substitute(
 				}))
 			}
 		}
-		Type::SpecialObject(SpecialObject::Function(f, t)) => {
-			// Substitute the this type
-			let id = if let ThisValue::Passed(p) = t {
-				let function_id = *f;
-				let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
-				types.register_type(Type::SpecialObject(SpecialObject::Function(
-					function_id,
-					passed,
-				)))
-			} else {
-				id
-			};
-			// Apply curring
-			if arguments.closures.is_empty() {
-				id
-			} else {
-				types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
-					on: id,
-					arguments: GenericArguments::Closure(arguments.closures.clone()),
-				}))
-			}
-		}
 		Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
 			on,
 			arguments: structure_arguments,
@@ -174,7 +152,28 @@ pub(crate) fn substitute(
 				arguments: new_structure_arguments,
 			}))
 		}
-		Type::SpecialObject(special_object) => match special_object {
+		Type::SpecialObject(special_object) => match &**special_object {
+			SpecialObject::Function(f, t) => {
+				// Substitute the this type
+				let id = if let ThisValue::Passed(p) = t {
+					let function_id = *f;
+					let passed = ThisValue::Passed(substitute(*p, arguments, environment, types));
+					let new_ty =
+						Type::SpecialObject(Box::new(SpecialObject::Function(function_id, passed)));
+					types.register_type(new_ty)
+				} else {
+					id
+				};
+				// Apply curring
+				if arguments.closures.is_empty() {
+					id
+				} else {
+					types.register_type(Type::PartiallyAppliedGenerics(PartiallyAppliedGenerics {
+						on: id,
+						arguments: GenericArguments::Closure(arguments.closures.clone()),
+					}))
+				}
+			}
 			SpecialObject::Promise { .. } => todo!(),
 			SpecialObject::Generator { .. } => todo!(),
 			SpecialObject::Proxy(Proxy { over, handler }) => {
@@ -182,14 +181,11 @@ pub(crate) fn substitute(
 				let over = substitute(prev_over, arguments, environment, types);
 				let handler = substitute(prev_handler, arguments, environment, types);
 				crate::utilities::notify!("Here {:?}", (prev_over, prev_handler, over, handler));
-				types.register_type(Type::SpecialObject(SpecialObject::Proxy(Proxy {
-					over,
-					handler,
-				})))
+				let proxy = SpecialObject::Proxy(Proxy { over, handler });
+				types.register_type(Type::SpecialObject(Box::new(proxy)))
 			}
 			SpecialObject::RegularExpression { .. } => todo!(),
 			SpecialObject::Import(_) | SpecialObject::Null => id,
-			SpecialObject::Function(..) => unreachable!("done above"),
 		},
 		Type::And(lhs, rhs) => {
 			let rhs = *rhs;

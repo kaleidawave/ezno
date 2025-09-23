@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use argh::FromArgs;
-use parser::{visiting::VisitorsMut, ASTNode, Expression, Module, SourceId, Statement};
+use parser::{
+	visiting::VisitorsMut, ASTNode, Expression, Module, SourceId, StatementOrDeclaration,
+};
 
 use crate::reporting::report_diagnostics_to_cli;
 
@@ -91,7 +93,7 @@ impl ReplSystem {
 				Module {
 					hashbang_comment: None,
 					span: expression.get_position(),
-					items: vec![Statement::Expression(expression.into()).into()],
+					items: vec![StatementOrDeclaration::Expression(expression.into())],
 				}
 			})
 		} else {

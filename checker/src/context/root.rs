@@ -27,7 +27,7 @@ impl ContextType for Root {
 		None
 	}
 
-	fn as_syntax(&self) -> Option<&super::Syntax> {
+	fn as_syntax(&self) -> Option<&super::Syntax<'_>> {
 		None
 	}
 
@@ -48,7 +48,7 @@ impl RootContext {
 	/// **For testing only**
 	#[must_use]
 	#[allow(clippy::needless_lifetimes)]
-	pub fn new_testing_context<'a>(&'a self) -> Environment<'a> {
+	pub fn new_testing_context(&self) -> Environment<'_> {
 		self.new_lexical_environment(crate::Scope::Block {})
 	}
 

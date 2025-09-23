@@ -1,16 +1,17 @@
-use crate::{block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression};
+use crate::{
+	block::BlockOrSingleStatement, derive_ASTNode, expressions::MultipleExpression, ASTNode,
+	ParseResult, Span,
+};
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
 
-use super::{ASTNode, ParseResult, Span};
-
 /// A [if...else statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/if...else)
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct IfStatement {
-	pub condition: MultipleExpression,
+	pub condition: Box<MultipleExpression>,
 	pub inner: BlockOrSingleStatement,
 	pub else_conditions: Vec<ConditionalElseStatement>,
 	pub trailing_else: Option<UnconditionalElseStatement>,
@@ -18,16 +19,16 @@ pub struct IfStatement {
 }
 
 /// `... else if (...) { ... }`
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ConditionalElseStatement {
-	pub condition: MultipleExpression,
+	pub condition: Box<MultipleExpression>,
 	pub inner: BlockOrSingleStatement,
 	pub position: Span,
 }
 
 /// `... else { ... }`
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct UnconditionalElseStatement {
 	pub inner: BlockOrSingleStatement,
@@ -43,7 +44,7 @@ impl ASTNode for IfStatement {
 		let start = reader.expect_keyword("if")?;
 
 		reader.expect('(')?;
-		let condition = MultipleExpression::from_reader(reader)?;
+		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect(')')?;
 
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
@@ -63,7 +64,7 @@ impl ASTNode for IfStatement {
 			reader.advance("else".len() as u32);
 			if reader.is_keyword_advance("if") {
 				let _value = reader.expect('(')?;
-				let condition = MultipleExpression::from_reader(reader)?;
+				let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 				reader.expect(')')?;
 				let inner = BlockOrSingleStatement::from_reader(reader)?;
 				let value = ConditionalElseStatement {
@@ -131,7 +132,7 @@ impl ASTNode for ConditionalElseStatement {
 		let start = reader.expect_keyword("else")?;
 		reader.expect_keyword("if")?;
 		reader.expect('(')?;
-		let condition = MultipleExpression::from_reader(reader)?;
+		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect(')')?;
 		let statements = BlockOrSingleStatement::from_reader(reader)?;
 		Ok(Self { condition, position: start.union(statements.get_position()), inner: statements })

@@ -55,7 +55,7 @@ impl SynthesiseToAssignable for VariableField {
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 	) -> Assignable<super::EznoParser> {
 		match self {
-			VariableField::Object { members, spread, position: _ } => {
+			VariableField::Object { members, spread, position: _, .. } => {
 				synthesise_object_to_reference(members, spread.as_ref(), environment, checking_data)
 			}
 			VariableField::Array { members, spread, position: _ } => {
@@ -272,6 +272,9 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 		VariableOrPropertyAccess::NonNullAssertion(on, _) => {
 			// TODO
 			synthesise_access_to_reference(on, environment, checking_data)
+		}
+		VariableOrPropertyAccess::PropertyOnSuper(_, _) => {
+			todo!()
 		}
 	}
 }

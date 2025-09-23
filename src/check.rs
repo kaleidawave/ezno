@@ -18,7 +18,6 @@ pub fn check<T: crate::ReadFromFS>(
 		definitions,
 		read_from_filesystem,
 		type_check_options,
-		(),
 		None,
 	)
 }

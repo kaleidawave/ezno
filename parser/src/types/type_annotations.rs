@@ -3,19 +3,16 @@ use std::ops::Neg;
 use crate::{
 	ast::VariableOrPropertyAccess, bracketed_items_from_reader, bracketed_items_to_string,
 	derive_ASTNode, extensions::decorators::Decorated, number::NumberRepresentation, ASTNode,
-	Decorator, ListItem, Marker, ParseError, ParseErrors, ParseResult, Quoted, Span, VariableField,
-	WithComment,
+	Decorator, ListItem, Marker, ParseError, ParseResult, Quoted, Span, VariableField, WithComment,
 };
-use derive_partial_eq_extras::PartialEqExtras;
 use iterator_endiate::EndiateIteratorExt;
 
 use super::{interface::InterfaceMember, type_declarations::TypeParameter};
 
 /// A reference to a type
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum TypeAnnotation {
 	/// Common types that don't have to allocate a string for
 	CommonName(CommonTypes, Span),
@@ -34,19 +31,19 @@ pub enum TypeAnnotation {
 	/// Boolean literal e.g. `true`
 	BooleanLiteral(bool, Span),
 	/// Array literal e.g. `string[]`. This is syntactic sugar for `Array` with type arguments. **This is not the same
-	/// as a [TypeAnnotation::TupleLiteral]**
+	/// as a [`TypeAnnotation::TupleLiteral`]**
 	ArrayLiteral(Box<TypeAnnotation>, Span),
 	/// Function literal e.g. `(x: string) => string`
 	FunctionLiteral {
 		type_parameters: Option<Vec<TypeParameter>>,
-		parameters: TypeAnnotationFunctionParameters,
+		parameters: Box<TypeAnnotationFunctionParameters>,
 		return_type: Box<TypeAnnotation>,
 		position: Span,
 	},
 	/// Construction literal e.g. `new (x: string) => string`
 	ConstructorLiteral {
 		type_parameters: Option<Vec<TypeParameter>>,
-		parameters: TypeAnnotationFunctionParameters,
+		parameters: Box<TypeAnnotationFunctionParameters>,
 		return_type: Box<TypeAnnotation>,
 		position: Span,
 	},
@@ -66,7 +63,7 @@ pub enum TypeAnnotation {
 	Abstract(Box<TypeAnnotation>, Span),
 	/// Declares type as being union type of all property types e.g. `T[K]`
 	Index(Box<TypeAnnotation>, Box<TypeAnnotation>, Span),
-	/// KeyOf
+	/// `KeyOf`
 	KeyOf(Box<TypeAnnotation>, Span),
 	TypeOf(Box<VariableOrPropertyAccess>, Span),
 	Infer {
@@ -102,13 +99,12 @@ pub enum TypeAnnotation {
 	/// For operation precedence reasons
 	ParenthesizedReference(Box<TypeAnnotation>, Span),
 	/// With decorators
-	Decorated(
-		Decorator,
-		#[cfg_attr(target_family = "wasm", tsify(type = "TypeAnnotation"))] Box<Self>,
-		Span,
-	),
+	Decorated(Box<Decorator>, Box<TypeAnnotation>, Span),
 	/// Allowed in certain positions
 	This(Span),
+	#[cfg(feature = "extras")]
+	/// *almost* Shorthand for `ClassName` & { ... }
+	NameWithProperties(TypeName, Vec<BinderWithAnnotation>, Span),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(Marker<TypeAnnotation>, Span),
 }
@@ -117,35 +113,30 @@ impl ListItem for TypeAnnotation {
 	type LAST = ();
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
-pub enum AnnotationWithBinder {
-	Annotated { name: String, ty: TypeAnnotation, position: Span },
-	NoAnnotation(TypeAnnotation),
+pub struct AnnotationWithBinder {
+	pub name: Option<String>,
+	pub type_annotation: TypeAnnotation,
+	pub position: Span,
 }
 
 impl ASTNode for AnnotationWithBinder {
 	fn get_position(&self) -> Span {
-		match self {
-			AnnotationWithBinder::Annotated { position, .. } => *position,
-			AnnotationWithBinder::NoAnnotation(ty) => ty.get_position(),
-		}
+		self.position
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		if reader.after_identifier().starts_with(':') {
-			let start = reader.get_start();
+		let start = reader.get_start();
+		let name = if reader.after_identifier().starts_with(':') {
 			let name = reader.parse_identifier("type annotation binder", false)?.to_owned();
 			let _ = reader.expect(':')?;
-			let ty = TypeAnnotation::from_reader(reader)?;
-			Ok(AnnotationWithBinder::Annotated {
-				position: start.union(ty.get_position()),
-				name,
-				ty,
-			})
+			Some(name)
 		} else {
-			TypeAnnotation::from_reader(reader).map(Self::NoAnnotation)
-		}
+			None
+		};
+		let type_annotation = TypeAnnotation::from_reader(reader)?;
+		Ok(AnnotationWithBinder { position: start.union(reader.get_end()), name, type_annotation })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -154,26 +145,53 @@ impl ASTNode for AnnotationWithBinder {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if let AnnotationWithBinder::Annotated { name, .. } = self {
+		if let Some(name) = &self.name {
 			buf.push_str(name);
 			buf.push_str(": ");
 		}
-		self.get_inner_ref().to_string_from_buffer(buf, options, local);
+		self.type_annotation.to_string_from_buffer(buf, options, local);
 	}
 }
 
-impl AnnotationWithBinder {
-	#[must_use]
-	pub fn get_inner_ref(&self) -> &TypeAnnotation {
-		match self {
-			AnnotationWithBinder::Annotated { ty, .. } | AnnotationWithBinder::NoAnnotation(ty) => {
-				ty
-			}
+#[derive(Debug, Clone)]
+#[apply(derive_ASTNode)]
+pub struct BinderWithAnnotation {
+	pub name: crate::PropertyKey<crate::property_key::AlwaysPublic>,
+	pub ty: Option<TypeAnnotation>,
+	pub position: Span,
+}
+
+impl ASTNode for BinderWithAnnotation {
+	fn get_position(&self) -> Span {
+		self.position
+	}
+
+	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+		let name = crate::PropertyKey::from_reader(reader)?;
+		let ty = if reader.is_operator_advance(":") {
+			Some(TypeAnnotation::from_reader(reader)?)
+		} else {
+			None
+		};
+		Ok(BinderWithAnnotation { position: start.union(reader.get_end()), name, ty })
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		self.name.to_string_from_buffer(buf, options, local);
+		if let Some(ty) = &self.ty {
+			buf.push_str(": ");
+			ty.to_string_from_buffer(buf, options, local);
 		}
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum TupleElementKind {
 	Standard,
@@ -182,7 +200,7 @@ pub enum TupleElementKind {
 }
 
 /// Reduces string allocation and type lookup overhead. This always point to the same type regardless of context (because no type is allowed to be named these)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum CommonTypes {
 	String,
@@ -211,15 +229,45 @@ impl CommonTypes {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypeName {
-	Name(String),
-	// For `Intl.Int` or something
-	FromNamespace(Vec<String>),
+#[derive(Debug, Clone)]
+pub struct TypeName(pub(crate) String);
+
+impl TypeName {
+	pub fn from_parts<'a>(parts: impl Iterator<Item = &'a str>) -> Self {
+		let mut buf = String::new();
+		for part in parts {
+			if !buf.is_empty() {
+				buf.push('.');
+			}
+			buf.push_str(part);
+		}
+		TypeName(buf)
+	}
+	#[must_use]
+	pub fn is_namespace_reference(&self) -> bool {
+		self.0.contains('.')
+	}
+
+	pub fn parts(&self) -> impl Iterator<Item = &str> + '_ {
+		self.0.split('.')
+	}
+	#[must_use]
+	pub fn raw(&self) -> &str {
+		&self.0
+	}
+
+	#[must_use]
+	pub fn from_raw(on: String) -> Self {
+		Self(on)
+	}
+
+	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
+		buf.push_str(&self.0);
+	}
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum IsItem {
 	Reference(String),
 	This,
@@ -250,34 +298,15 @@ impl ASTNode for TypeAnnotation {
 				buf.push(' ');
 				on_type_annotation.to_string_from_buffer(buf, options, local);
 			}
-			Self::Name(name, _) => match name {
-				TypeName::Name(name) => {
-					buf.push_str(name);
-				}
-				TypeName::FromNamespace(namespace) => {
-					for (not_at_end, item) in namespace.iter().nendiate() {
-						buf.push_str(item);
-						if not_at_end {
-							buf.push('.');
-						}
-					}
-				}
-			},
+			Self::Name(name, _) => name.to_string_from_buffer(buf),
 			Self::NameWithGenericArguments(name, arguments, _) => {
-				match name {
-					TypeName::Name(name) => {
-						buf.push_str(name);
-					}
-					TypeName::FromNamespace(namespace) => {
-						for (not_at_end, item) in namespace.iter().nendiate() {
-							buf.push_str(item);
-							if not_at_end {
-								buf.push('.');
-							}
-						}
-					}
-				}
+				name.to_string_from_buffer(buf);
 				bracketed_items_to_string(arguments, ('<', '>'), buf, options, local);
+			}
+			#[cfg(feature = "extras")]
+			Self::NameWithProperties(name, properties, _) => {
+				name.to_string_from_buffer(buf);
+				bracketed_items_to_string(properties, ('{', '}'), buf, options, local);
 			}
 			Self::FunctionLiteral { type_parameters, parameters, return_type, .. } => {
 				if let Some(type_parameters) = type_parameters {
@@ -492,12 +521,16 @@ impl TypeAnnotation {
 
 		let start = reader.get_start();
 
-		let mut reference = if let Some(keyword) =
-			reader.is_one_of_keywords_advance(&["true", "false"])
-		{
-			TypeAnnotation::BooleanLiteral(keyword == "true", start.with_length(keyword.len()))
+		let mut reference = if reader.starts_with_number() {
+			let (value, length) = reader.parse_number_literal()?;
+			let position = start.with_length(length as usize);
+			Self::NumberLiteral(value, position)
 		} else if reader.is_keyword_advance("this") {
 			TypeAnnotation::This(start.with_length(4))
+		} else if reader.is_keyword_advance("true") {
+			TypeAnnotation::BooleanLiteral(true, start.with_length(4))
+		} else if reader.is_keyword_advance("false") {
+			TypeAnnotation::BooleanLiteral(false, start.with_length(5))
 		} else if reader.is_keyword_advance("infer") {
 			let name = reader.parse_identifier("infer name", false)?;
 			let (position, extends) = if reader.is_keyword_advance("extends") {
@@ -545,7 +578,7 @@ impl TypeAnnotation {
 			let position = start.union(return_type.get_position());
 			TypeAnnotation::ConstructorLiteral {
 				position,
-				parameters,
+				parameters: Box::new(parameters),
 				type_parameters,
 				return_type,
 			}
@@ -563,29 +596,22 @@ impl TypeAnnotation {
 			};
 			Self::CommonName(name, start.with_length(keyword.len()))
 		} else if reader.is_keyword_advance("unique") {
-			todo!("unique symbol type annotation")
-		// let position = t.get_span().union(kw_pos.with_length("symbol".len()));
-		// 	#[cfg(feature = "extras")]
-		// 	let name =
-		// 		reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
-		// 			|t| {
-		// 				if let Token(TSXToken::StringLiteral(content, _), _) = t {
-		// 					content
-		// 				} else {
-		// 					unreachable!()
-		// 				}
-		// 			},
-		// 		);
-		// 	Self::Symbol {
-		// 		unique: true,
-		// 		position,
-		// 		#[cfg(feature = "extras")]
-		// 		name,
-		// 	}
-		} else if reader.starts_with_number() {
-			let (value, length) = reader.parse_number_literal()?;
-			let position = start.with_length(length as usize);
-			Self::NumberLiteral(value, position)
+			reader.expect_keyword("symbol")?;
+			reader.skip();
+			#[cfg(feature = "extras")]
+			let name = if reader.get_options().extra_type_annotations
+				&& reader.starts_with_string_delimeter()
+			{
+				Some(reader.parse_string_literal()?.0.into_owned())
+			} else {
+				None
+			};
+			Self::Symbol {
+				unique: true,
+				position: start.union(reader.get_end()),
+				#[cfg(feature = "extras")]
+				name,
+			}
 		} else if reader.is_operator_advance("-") {
 			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
@@ -594,14 +620,14 @@ impl TypeAnnotation {
 		} else if reader.starts_with('"') || reader.starts_with('\'') {
 			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
-			Self::StringLiteral(content.to_owned(), quoted, position)
+			Self::StringLiteral(content.into_owned(), quoted, position)
 		} else if reader.starts_with('@') {
 			let decorator = Decorator::from_reader(reader)?;
 			// TODO ...
 			let this_declaration =
 				Self::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 			let position = start.union(this_declaration.get_position());
-			Self::Decorated(decorator, Box::new(this_declaration), position)
+			Self::Decorated(Box::new(decorator), Box::new(this_declaration), position)
 		} else if reader.is_operator("(") {
 			// Function literal or group
 			let after = reader.after_brackets();
@@ -614,7 +640,7 @@ impl TypeAnnotation {
 				Self::FunctionLiteral {
 					position: start.union(return_type.get_position()),
 					type_parameters: None,
-					parameters,
+					parameters: Box::new(parameters),
 					return_type: Box::new(return_type),
 				}
 			} else {
@@ -631,7 +657,7 @@ impl TypeAnnotation {
 			Self::FunctionLiteral {
 				position: start.union(return_type.get_position()),
 				type_parameters: Some(type_parameters),
-				parameters,
+				parameters: Box::new(parameters),
 				return_type: Box::new(return_type),
 			}
 		} else if reader.is_operator_advance("{") {
@@ -644,43 +670,17 @@ impl TypeAnnotation {
 			Self::TupleLiteral(members, position)
 		} else if reader.is_operator_advance("`") {
 			let start = reader.get_start();
-			let mut parts = Vec::new();
-			let result;
-			loop {
-				let (content, found) = reader.parse_until_one_of(&["${", "`"]).map_err(|()| {
-					let (_found, position) = crate::lexer::utilities::next_item(reader);
-					ParseError::new(ParseErrors::UnexpectedEnd, position)
-				})?;
-				if let "${" = found {
-					let expression = AnnotationWithBinder::from_reader(reader)?;
-					reader.expect('}')?;
-					parts.push((content.to_owned(), expression));
-				} else {
-					result = Self::TemplateLiteral {
-						parts,
-						final_part: content.to_owned(),
-						position: start.union(reader.get_end()),
-					};
-					break;
-				}
-			}
-			result
+			let (parts, final_part) = crate::expressions::template_literal::parse_template_literal::<
+				AnnotationWithBinder,
+			>(reader, start)?;
+			let position = start.union(reader.get_end());
+			Self::TemplateLiteral { parts, final_part, position }
 		} else {
 			let name = reader.parse_identifier("type name", false)?;
 			let position = start.with_length(name.len());
 			let name = name.to_owned();
 
-			let name = if reader.is_operator(".") {
-				let mut namespace = vec![name];
-				while reader.is_operator_advance(".") {
-					let name = reader.parse_identifier("type name", false)?;
-					namespace.push(name.to_owned());
-				}
-				let _position = position.union(reader.get_end());
-				TypeName::FromNamespace(namespace)
-			} else {
-				TypeName::Name(name)
-			};
+			let name = TypeName::from_raw(name);
 
 			// Generics arguments:
 			if reader.is_operator_advance("<") {
@@ -688,56 +688,18 @@ impl TypeAnnotation {
 				let end = reader.get_end();
 				Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
 			} else {
+				#[cfg(feature = "extras")]
+				if reader.get_options().extra_type_annotations && reader.is_operator_advance("{") {
+					let (binders, _) = bracketed_items_from_reader(reader, "}")?;
+					let end = reader.get_end();
+					Self::NameWithProperties(name, binders, start.union(end))
+				} else {
+					Self::Name(name, position)
+				}
+
+				#[cfg(not(feature = "extras"))]
 				Self::Name(name, position)
 			}
-			// Token(TSXToken::TemplateLiteralStart, start) => {
-			// 	let mut parts = Vec::new();
-			// 	let mut last = String::new();
-			// 	let mut end: Option<TokenEnd> = None;
-			// 	while end.is_none() {
-			// 		match reader.next().ok_or_else(parse_lexing_error)? {
-			// 			Token(TSXToken::TemplateLiteralChunk(chunk), _) => {
-			// 				last = chunk;
-			// 			}
-			// 			Token(TSXToken::TemplateLiteralExpressionStart, _) => {
-			// 				let expression =
-			// 					AnnotationWithBinder::from_reader(reader)?;
-			// 				parts.push((std::mem::take(&mut last), expression));
-			// 				let next = reader.next();
-			// 				debug_assert!(matches!(
-			// 					next,
-			// 					Some(Token(TSXToken::TemplateLiteralExpressionEnd, _))
-			// 				));
-			// 			}
-			// 			Token(TSXToken::TemplateLiteralEnd, end_position) => {
-			// 				end = Some(TokenEnd::new(end_position.0));
-			// 			}
-			// 			Token(TSXToken::EOS, _) => return Err(parse_lexing_error()),
-			// 			t => unreachable!("Token {:?}", t),
-			// 		}
-			// 	}
-			// 	Self::TemplateLiteral { parts, last, position: start.union(end.unwrap()) }
-			// }
-			// t @ Token(TSXToken::Keyword(TSXKeyword::Symbol), _) => {
-			// 	let position = t.get_span();
-			// 	#[cfg(feature = "extras")]
-			// 	let name =
-			// 		reader.conditional_next(|t| matches!(t, TSXToken::StringLiteral(..))).map(
-			// 			|t| {
-			// 				if let Token(TSXToken::StringLiteral(content, _), _) = t {
-			// 					content
-			// 				} else {
-			// 					unreachable!()
-			// 				}
-			// 			},
-			// 		);
-			// 	Self::Symbol {
-			// 		unique: false,
-			// 		position,
-			// 		#[cfg(feature = "extras")]
-			// 		name,
-			// 	}
-			// }
 		};
 
 		// Array shorthand & indexing type references. Loops as number[][]
@@ -764,7 +726,8 @@ impl TypeAnnotation {
 					TypeAnnotation::CommonName(name, span) => {
 						Ok((IsItem::Reference(name.name().to_owned()), span))
 					}
-					TypeAnnotation::Name(TypeName::Name(name), span) => {
+					TypeAnnotation::Name(name, span) if !name.is_namespace_reference() => {
+						let name = name.parts().next().unwrap().to_owned();
 						Ok((IsItem::Reference(name), span))
 					}
 					TypeAnnotation::This(span) => Ok((IsItem::This, span)),
@@ -845,8 +808,8 @@ impl TypeAnnotation {
 			}
 		}
 
-		if reader.is_operator("=>") {
-			// TODO is this good syntax?
+		// TODO is this worthwhile syntax or a good feature?
+		if reader.is_operator("=>") && reader.get_options().extra_type_annotations {
 			if let TypeOperatorKind::Query
 			| TypeOperatorKind::Function
 			| TypeOperatorKind::ReturnType
@@ -862,7 +825,7 @@ impl TypeAnnotation {
 			Ok(Self::FunctionLiteral {
 				position,
 				type_parameters: None,
-				parameters: TypeAnnotationFunctionParameters {
+				parameters: Box::new(TypeAnnotationFunctionParameters {
 					parameters: vec![TypeAnnotationFunctionParameter {
 						position,
 						name: None,
@@ -872,7 +835,7 @@ impl TypeAnnotation {
 					}],
 					rest_parameter: None,
 					position: parameters_position,
-				},
+				}),
 				return_type: Box::new(return_type),
 			})
 		} else if reader.is_operator("?") {
@@ -897,7 +860,7 @@ impl TypeAnnotation {
 }
 
 /// Mirrors [`crate::FunctionParameters`]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TypeAnnotationFunctionParameters {
 	pub parameters: Vec<TypeAnnotationFunctionParameter>,
@@ -920,8 +883,6 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			if reader.is_operator(")") {
 				break;
 			}
-			// Skip comments
-			// while reader.conditional_next(TSXToken::is_comment).is_some() {}
 
 			let start = reader.get_start();
 
@@ -1023,7 +984,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TypeAnnotationFunctionParameter {
 	pub decorators: Vec<Decorator>,
@@ -1034,7 +995,7 @@ pub struct TypeAnnotationFunctionParameter {
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TypeAnnotationSpreadFunctionParameter {
 	pub decorators: Vec<Decorator>,
@@ -1043,7 +1004,7 @@ pub struct TypeAnnotationSpreadFunctionParameter {
 	pub position: Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct TupleLiteralElement(pub TupleElementKind, pub AnnotationWithBinder, pub Span);
 
@@ -1092,193 +1053,6 @@ impl ListItem for TupleLiteralElement {
 	type LAST = ();
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::{assert_matches_ast, number::NumberRepresentation, span};
-
-	#[test]
-	fn name() {
-		assert_matches_ast!(
-			"something",
-			TypeAnnotation::Name(TypeName::Name(Deref @ "something"), span!(0, 9))
-		);
-		assert_matches_ast!("string", TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)));
-	}
-
-	#[test]
-	fn literals() {
-		assert_matches_ast!(
-			"\"my_string\"",
-			TypeAnnotation::StringLiteral(Deref @ "my_string", Quoted::Double, span!(0, 11))
-		);
-		assert_matches_ast!(
-			"45",
-			TypeAnnotation::NumberLiteral(NumberRepresentation::Number { .. }, span!(0, 2))
-		);
-		assert_matches_ast!("true", TypeAnnotation::BooleanLiteral(true, span!(0, 4)));
-	}
-
-	#[test]
-	fn generics() {
-		assert_matches_ast!(
-			"Array<string>",
-			TypeAnnotation::NameWithGenericArguments(
-				TypeName::Name(Deref @ "Array"),
-				Deref @ [TypeAnnotation::CommonName(CommonTypes::String, span!(6, 12))],
-				span!(0, 13),
-			)
-		);
-
-		assert_matches_ast!(
-			"Map<string, number>",
-			TypeAnnotation::NameWithGenericArguments(
-				TypeName::Name(Deref @ "Map"),
-				Deref @
-				[TypeAnnotation::CommonName(CommonTypes::String, span!(4, 10)), TypeAnnotation::CommonName(CommonTypes::Number, span!(12, 18))],
-				span!(0, 19),
-			)
-		);
-
-		assert_matches_ast!(
-			"Array<Array<string>>",
-			TypeAnnotation::NameWithGenericArguments(
-				TypeName::Name(Deref @ "Array"),
-				Deref @ [TypeAnnotation::NameWithGenericArguments(
-					TypeName::Name(Deref @ "Array"),
-					Deref @ [TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18))],
-					span!(6, 19),
-				)],
-				span!(0, 20),
-			)
-		);
-	}
-
-	#[test]
-	fn union() {
-		assert_matches_ast!(
-			"string | number",
-			TypeAnnotation::Union(
-				Deref @
-				[TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)), TypeAnnotation::CommonName(CommonTypes::Number, span!(9, 15))],
-				_,
-			)
-		);
-
-		// Leading | is valid
-		assert_matches_ast!(
-			"| string | number",
-			TypeAnnotation::Union(
-				Deref @
-				[TypeAnnotation::CommonName(CommonTypes::String, span!(2, 8)), TypeAnnotation::CommonName(CommonTypes::Number, span!(11, 17))],
-				_,
-			)
-		);
-	}
-
-	#[test]
-	fn intersection() {
-		assert_matches_ast!(
-			"string & number",
-			TypeAnnotation::Intersection(
-				Deref @
-				[TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)), TypeAnnotation::CommonName(CommonTypes::Number, span!(9, 15))],
-				_,
-			)
-		);
-	}
-
-	#[test]
-	fn tuple_literal() {
-		assert_matches_ast!(
-			"[number, x: string]",
-			TypeAnnotation::TupleLiteral(
-				Deref @ [TupleLiteralElement(
-					TupleElementKind::Standard,
-					AnnotationWithBinder::NoAnnotation(TypeAnnotation::CommonName(
-						CommonTypes::Number,
-						span!(1, 7),
-					)),
-					_,
-				), TupleLiteralElement(
-					TupleElementKind::Standard,
-					AnnotationWithBinder::Annotated {
-						name: Deref @ "x",
-						ty: TypeAnnotation::CommonName(CommonTypes::String, span!(12, 18)),
-						position: _,
-					},
-					_,
-				)],
-				span!(0, 19),
-			)
-		);
-	}
-
-	#[test]
-	fn functions() {
-		assert_matches_ast!(
-			"T => T",
-			TypeAnnotation::FunctionLiteral {
-				type_parameters: None,
-				parameters: TypeAnnotationFunctionParameters {
-					parameters: Deref @ [ TypeAnnotationFunctionParameter { .. } ],
-					..
-				},
-				return_type: Deref @ TypeAnnotation::Name(TypeName::Name(Deref @ "T"), span!(5, 6)),
-				..
-			}
-		);
-		// TODO more
-	}
-
-	#[test]
-	fn template_literal() {
-		assert_matches_ast!(
-			"`test-${X}`",
-			TypeAnnotation::TemplateLiteral {
-				parts: Deref @ [
-					(
-						Deref @ "test-",
-						AnnotationWithBinder::NoAnnotation(TypeAnnotation::Name(TypeName::Name(Deref @ "X"), span!(8, 9)))
-					)
-				],
-				..
-			}
-		);
-	}
-
-	#[test]
-	fn array_shorthand() {
-		assert_matches_ast!(
-			"string[]",
-			TypeAnnotation::ArrayLiteral(
-				Deref @ TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)),
-				span!(0, 8),
-			)
-		);
-		assert_matches_ast!(
-			"(number | null)[]",
-			TypeAnnotation::ArrayLiteral(
-				Deref @ TypeAnnotation::ParenthesizedReference(
-					Deref @ TypeAnnotation::Union(
-						Deref @
-						[TypeAnnotation::CommonName(CommonTypes::Number, span!(1, 7)), TypeAnnotation::CommonName(CommonTypes::Null, span!(10, 14))],
-						_,
-					),
-					span!(0, 15),
-				),
-				span!(0, 17),
-			)
-		);
-		assert_matches_ast!(
-			"string[][]",
-			TypeAnnotation::ArrayLiteral(
-				Deref @ TypeAnnotation::ArrayLiteral(
-					Deref @ TypeAnnotation::CommonName(CommonTypes::String, span!(0, 6)),
-					span!(0, 8),
-				),
-				span!(0, 10),
-			)
-		);
-	}
+impl ListItem for BinderWithAnnotation {
+	type LAST = ();
 }

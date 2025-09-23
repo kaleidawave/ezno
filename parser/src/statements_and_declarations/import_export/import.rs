@@ -7,7 +7,7 @@ use source_map::Span;
 use visitable_derive::Visitable;
 
 /// Side effects is represented under the Parts variant where the vector is empty
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ImportedItems {
 	Parts(Option<Vec<ImportExportPart<ImportDeclaration>>>),
@@ -22,7 +22,7 @@ impl ImportedItems {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]

@@ -18,10 +18,10 @@ use visitable_derive::Visitable;
 pub type IsStatic = bool;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 pub enum ClassMember {
-	Constructor(ClassConstructor),
-	Method(IsStatic, ClassFunction),
+	Constructor(Box<ClassConstructor>),
+	Method(IsStatic, Box<ClassFunction>),
 	Property(IsStatic, ClassProperty),
 	StaticBlock(Block),
 	/// Really for interfaces but here
@@ -35,15 +35,15 @@ pub enum ClassMember {
 	Comment(String, bool, Span),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ClassConstructorBase;
 pub type ClassConstructor = FunctionBase<ClassConstructorBase>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ClassFunctionBase;
 pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub struct ClassProperty {
 	pub is_readonly: bool,
@@ -86,7 +86,7 @@ impl ASTNode for ClassMember {
 		let _ = reader.is_keyword_advance("private");
 
 		if reader.is_keyword("constructor") {
-			let constructor = ClassConstructor::from_reader(reader)?;
+			let constructor = ClassConstructor::from_reader(reader).map(Box::new)?;
 			return Ok(ClassMember::Constructor(constructor));
 		}
 
@@ -98,38 +98,27 @@ impl ASTNode for ClassMember {
 			return Ok(ClassMember::StaticBlock(Block::from_reader(reader)?));
 		}
 
-		// Special index type annotation
-		// TODO ts
-		// if reader.starts_with('[')
-		// 	&& reader
-		// 		.get_current()
-		// 		.chars()
-		// 		.take_while(|c| c.is_whitespace() || c.is_alphabetic())
-		// 		.after(c == ':')
-		// {
-		// 	// let Token(_, start) = reader.next().unwrap();
-		// 	// let (name, _) = token_as_identifier(
-		// 	// 	reader.next().ok_or_else(parse_lexing_error)?,
-		// 	// 	"class indexer",
-		// 	// )?;
-		// 	// reader.expect(TSXToken::Colon)?;
-		// 	// let indexer_type = TypeAnnotation::from_reader(reader)?;
-		// 	// reader.expect(TSXToken::CloseBracket)?;
-		// 	// reader.expect(TSXToken::Colon)?;
-		// 	// let return_type = TypeAnnotation::from_reader(reader)?;
-		// 	// return Ok(ClassMember::Indexer {
-		// 	// 	name,
-		// 	// 	is_readonly: readonly_position.is_some(),
-		// 	// 	indexer_type,
-		// 	// 	position: start.union(return_type.get_position()),
-		// 	// 	return_type,
-		// 	// });
-		// 	todo!();
-		// }
-
 		let is_readonly = reader.is_keyword_advance("readonly");
 		reader.skip();
 		let start = reader.get_start();
+
+		// Special index type annotation. And needed for computed keys
+		if reader.starts_with('[') && reader.after_identifier_offset(1).starts_with(':') {
+			reader.advance(1);
+			let name = reader.parse_identifier("class indexer", false)?.to_owned();
+			reader.expect(':')?;
+			let indexer_type = TypeAnnotation::from_reader(reader)?;
+			reader.expect(']')?;
+			reader.expect(':')?;
+			let return_type = TypeAnnotation::from_reader(reader)?;
+			return Ok(ClassMember::Indexer {
+				name,
+				is_readonly,
+				indexer_type,
+				position: start.union(reader.get_end()),
+				return_type,
+			});
+		}
 
 		let header = MethodHeader::from_reader(reader);
 		let key =
@@ -137,7 +126,8 @@ impl ASTNode for ClassMember {
 		reader.skip();
 
 		if reader.starts_with('(') || reader.starts_with('<') {
-			let function = ClassFunction::from_reader_with_config(reader, header, key)?;
+			let function =
+				ClassFunction::from_reader_with_config(reader, header, key).map(Box::new)?;
 			Ok(ClassMember::Method(is_static, function))
 		} else {
 			if !header.is_no_modifiers() {

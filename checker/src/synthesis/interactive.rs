@@ -22,8 +22,7 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 		type_definition_files: Vec<PathBuf>,
 	) -> Result<Self, (DiagnosticsContainer, MapFileStore<WithPathMap>)> {
 		let mut root = RootContext::new_with_primitive_references();
-		let mut checking_data =
-			CheckingData::new(Default::default(), resolver, Default::default(), ());
+		let mut checking_data = CheckingData::new(Default::default(), resolver, Default::default());
 
 		add_definition_files_to_root(type_definition_files, &mut root, &mut checking_data);
 
@@ -44,9 +43,8 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 			crate::Scope::PassThrough { source: self.source },
 			&mut self.checking_data,
 			|environment, checking_data| {
-				if let Some(parser::StatementOrDeclaration::Statement(
-					parser::Statement::Expression(expression),
-				)) = item.items.last()
+				if let Some(parser::StatementOrDeclaration::Expression(expression)) =
+					item.items.last()
 				{
 					synthesise_block(
 						&item.items[..(item.items.len() - 1)],

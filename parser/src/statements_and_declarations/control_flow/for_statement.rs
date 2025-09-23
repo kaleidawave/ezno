@@ -1,14 +1,18 @@
 use crate::{
-	ast::MultipleExpression, block::BlockOrSingleStatement,
-	declarations::variable::VariableDeclaration, derive_ASTNode, ParseError, ParseErrors,
-	VariableField, VariableKeyword, WithComment,
+	ast::MultipleExpression,
+	block::BlockOrSingleStatement,
+	derive_ASTNode,
+	statements_and_declarations::variables::{
+		VarVariableStatement, VariableDeclaration, VariableField, VariableKeyword,
+	},
+	ParseError, ParseErrors, WithComment,
 };
 use visitable_derive::Visitable;
 
-use super::{ASTNode, Expression, ParseResult, Span, VarVariableStatement};
+use crate::{ASTNode, Expression, ParseResult, Span};
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ForLoopStatement {
 	pub condition: ForLoopCondition,
@@ -57,21 +61,31 @@ impl ASTNode for ForLoopStatement {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone)]
+#[apply(derive_ASTNode)]
+pub enum VariableKeywordOrUsing {
+	Const,
+	Let,
+	Var,
+	Using,
+}
+
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopStatementInitialiser {
 	VariableDeclaration(VariableDeclaration),
+	UsingDeclaration(super::super::using::UsingDeclaration),
 	VarStatement(VarVariableStatement),
-	Expression(MultipleExpression),
+	Expression(Box<MultipleExpression>),
 }
 
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopCondition {
 	ForOf {
-		keyword: Option<VariableKeyword>,
+		keyword: Option<VariableKeywordOrUsing>,
 		variable: WithComment<VariableField>,
-		of: Expression,
+		of: Box<Expression>,
 		is_await: bool,
 		position: Span,
 	},
@@ -79,13 +93,13 @@ pub enum ForLoopCondition {
 		keyword: Option<VariableKeyword>,
 		variable: WithComment<VariableField>,
 		/// Yes `of` is single expression, `in` is multiple
-		r#in: MultipleExpression,
+		r#in: Box<MultipleExpression>,
 		position: Span,
 	},
 	Statements {
 		initialiser: Option<ForLoopStatementInitialiser>,
-		condition: Option<MultipleExpression>,
-		afterthought: Option<MultipleExpression>,
+		condition: Option<Box<MultipleExpression>>,
+		afterthought: Option<Box<MultipleExpression>>,
 		position: Span,
 	},
 }
@@ -124,16 +138,18 @@ impl ASTNode for ForLoopCondition {
 
 			let _ = reader.expect_keyword("in")?;
 
-			let r#in = MultipleExpression::from_reader(reader)?;
+			let r#in = MultipleExpression::from_reader(reader).map(Box::new)?;
 			let position = start.union(r#in.get_position());
 			Self::ForIn { variable, keyword, r#in, position }
 		} else if after_stuff.starts_with("of") {
 			let keyword = if reader.is_keyword_advance("const") {
-				Some(VariableKeyword::Const)
+				Some(VariableKeywordOrUsing::Const)
 			} else if reader.is_keyword_advance("let") {
-				Some(VariableKeyword::Let)
+				Some(VariableKeywordOrUsing::Let)
 			} else if reader.is_keyword_advance("var") {
-				Some(VariableKeyword::Var)
+				Some(VariableKeywordOrUsing::Var)
+			} else if reader.is_keyword_advance("using") {
+				Some(VariableKeywordOrUsing::Using)
 			} else {
 				None
 			};
@@ -142,7 +158,7 @@ impl ASTNode for ForLoopCondition {
 
 			let _ = reader.expect_keyword("of")?;
 
-			let of = Expression::from_reader(reader)?;
+			let of = Expression::from_reader(reader).map(Box::new)?;
 			let position = start.union(of.get_position());
 
 			// Not great `is_await`, set from above
@@ -154,10 +170,13 @@ impl ASTNode for ForLoopCondition {
 			} else if reader.is_keyword("var") {
 				let stmt = VarVariableStatement::from_reader(reader)?;
 				Some(ForLoopStatementInitialiser::VarStatement(stmt))
+			} else if reader.is_keyword("using") {
+				let stmt = super::super::using::UsingDeclaration::from_reader(reader)?;
+				Some(ForLoopStatementInitialiser::UsingDeclaration(stmt))
 			} else if reader.is_operator(";") {
 				None
 			} else {
-				let expr = MultipleExpression::from_reader(reader)?;
+				let expr = MultipleExpression::from_reader(reader).map(Box::new)?;
 				Some(ForLoopStatementInitialiser::Expression(expr))
 			};
 
@@ -165,13 +184,13 @@ impl ASTNode for ForLoopCondition {
 			let condition = if reader.is_operator(";") {
 				None
 			} else {
-				Some(MultipleExpression::from_reader(reader)?)
+				Some(MultipleExpression::from_reader(reader).map(Box::new)?)
 			};
 			let _semi_colon_two = reader.expect(';')?;
 			let afterthought = if reader.is_operator(")") {
 				None
 			} else {
-				Some(MultipleExpression::from_reader(reader)?)
+				Some(MultipleExpression::from_reader(reader).map(Box::new)?)
 			};
 
 			let position = start.union(reader.get_end());
@@ -191,7 +210,13 @@ impl ASTNode for ForLoopCondition {
 		match self {
 			Self::ForOf { keyword, variable, of, position: _, is_await: _ } => {
 				if let Some(keyword) = keyword {
-					buf.push_str(keyword.as_str());
+					let keyword = match keyword {
+						VariableKeywordOrUsing::Const => "const",
+						VariableKeywordOrUsing::Let => "let",
+						VariableKeywordOrUsing::Var => "var",
+						VariableKeywordOrUsing::Using => "using",
+					};
+					buf.push_str(keyword);
 				}
 				variable.to_string_from_buffer(buf, options, local);
 				// TODO whitespace here if variable is array of object destructuring
@@ -220,17 +245,17 @@ impl ASTNode for ForLoopCondition {
 
 					if let Some(initialiser) = initialiser {
 						initialiser_to_string(initialiser, &mut buf, options, local);
-					};
+					}
 					large = buf.source.len() > room;
 					if !large {
 						if let Some(condition) = condition {
 							condition.to_string_from_buffer(&mut buf, options, local);
-						};
+						}
 						large = buf.source.len() > room;
 						if !large {
 							if let Some(afterthought) = afterthought {
 								afterthought.to_string_from_buffer(&mut buf, options, local);
-							};
+							}
 							large = buf.source.len() > room;
 						}
 					}
@@ -284,40 +309,14 @@ fn initialiser_to_string<T: source_map::ToString>(
 		ForLoopStatementInitialiser::VariableDeclaration(stmt) => {
 			stmt.to_string_from_buffer(buf, options, local);
 		}
+		ForLoopStatementInitialiser::UsingDeclaration(stmt) => {
+			stmt.to_string_from_buffer(buf, options, local);
+		}
 		ForLoopStatementInitialiser::Expression(expr) => {
 			expr.to_string_from_buffer(buf, options, local);
 		}
 		ForLoopStatementInitialiser::VarStatement(stmt) => {
 			stmt.to_string_from_buffer(buf, options, local);
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::ForLoopCondition;
-	use crate::{assert_matches_ast, statements::ForLoopStatement, ASTNode};
-
-	#[test]
-	fn condition_without_variable_keyword() {
-		assert_matches_ast!("(k in x)", ForLoopCondition::ForIn { .. });
-	}
-
-	#[test]
-	fn for_await() {
-		assert_matches_ast!(
-			"for await (let k of x) {}",
-			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: true, .. }, .. }
-		);
-		assert_matches_ast!(
-			"for (let k of x) {}",
-			ForLoopStatement { condition: ForLoopCondition::ForOf { is_await: false, .. }, .. }
-		);
-
-		assert!(ForLoopStatement::from_string(
-			"for await (let x = 0; x < 5; x++) {}".into(),
-			Default::default()
-		)
-		.is_err());
 	}
 }

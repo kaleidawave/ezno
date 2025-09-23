@@ -1,7 +1,11 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
 	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
-	use std::{fs, path::Path, time::Instant};
+	use std::{fs, path::Path};
+
+	fn resolver(path: &std::path::Path) -> Option<Vec<u8>> {
+		fs::read(path).ok()
+	}
 
 	let default_path = Path::new("private").join("tocheck").join("aaa.tsx");
 	let simple_dts_path = Path::new("checker").join("definitions").join("simple.d.ts");
@@ -21,10 +25,6 @@ fn main() {
 	let debug_dts = args.iter().any(|item| item == "--debug-dts");
 	let extras = args.iter().any(|item| item == "--extras");
 	let advanced_numbers = args.iter().any(|item| item == "--advanced-numbers");
-
-	let now = Instant::now();
-
-	let resolver = |path: &std::path::Path| fs::read(path).ok();
 
 	let type_definition_files = if no_lib {
 		Vec::new()
@@ -48,6 +48,7 @@ fn main() {
 		debug_dts,
 		extra_syntax: extras,
 		advanced_numbers,
+		measure_time: args.iter().any(|arg| arg == "--time"),
 		..Default::default()
 	};
 
@@ -56,7 +57,6 @@ fn main() {
 		type_definition_files,
 		&resolver,
 		options,
-		(),
 		None,
 	);
 
@@ -80,13 +80,11 @@ fn main() {
 	}
 
 	if args.iter().any(|arg| arg == "--time") {
-		let end = now.elapsed();
 		let count = result.diagnostics.into_iter().len();
-		eprintln!("Found {count} diagnostics in {end:?}");
-	} else if args.iter().any(|arg| arg == "--verbose-diagnostics") {
-		eprintln!("Diagnostics:");
+		eprintln!("Found {count} diagnostics in {chronometer:?}", chronometer = result.chronometer);
+	} else if args.iter().any(|arg| arg == "--simple-diagnostics") {
 		for diagnostic in result.diagnostics {
-			eprintln!("{diagnostic:?}");
+			println!("{reason}", reason = diagnostic.reason());
 		}
 	} else {
 		eprintln!("Diagnostics:");

@@ -274,7 +274,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 						allow_reregistration: true,
 					},
 				);
-			};
+			}
 
 			SynthesisedParameter {
 				ty,
@@ -588,7 +588,7 @@ fn get_parameter_name(parameter: &parser::VariableField) -> String {
 		VariableField::Array { members: _, spread: _, position: _ } => {
 			"todo: VariableField::Array".to_owned()
 		}
-		VariableField::Object { members: _, spread: _, position: _ } => {
+		VariableField::Object { members: _, spread: _, position: _, .. } => {
 			"todo: VariableField::Object".to_owned()
 		}
 	}

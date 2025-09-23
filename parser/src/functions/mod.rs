@@ -7,7 +7,6 @@ use crate::{
 	TypeParameter, VisitOptions, Visitable,
 };
 
-use derive_partial_eq_extras::PartialEqExtras;
 use source_map::{Nullable, Span, ToString};
 
 pub mod parameters;
@@ -17,13 +16,13 @@ pub use crate::expressions::ArrowFunction;
 
 pub mod bases {
 	pub use crate::{
-		declarations::{
-			classes::{ClassConstructorBase, ClassFunctionBase},
-			StatementFunctionBase,
-		},
 		expressions::{
 			arrow_function::ArrowFunctionBase, object_literal::ObjectLiteralMethodBase,
 			ExpressionFunctionBase,
+		},
+		statements_and_declarations::{
+			classes::{ClassConstructorBase, ClassFunctionBase},
+			StatementFunctionBase,
 		},
 	};
 }
@@ -31,12 +30,12 @@ pub mod bases {
 pub type HeadingAndPosition<T> = <T as FunctionBased>::Header;
 
 /// Specialization information for [`FunctionBase`]
-pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
+pub trait FunctionBased: Debug + Clone + Send + Sync {
 	/// Includes a keyword and/or modifiers
-	type Header: Debug + Clone + PartialEq + Send + Sync;
+	type Header: Debug + Clone + Send + Sync;
 
 	/// A name of the function
-	type Name: Debug + Clone + PartialEq + Send + Sync;
+	type Name: Debug + Clone + Send + Sync;
 
 	/// For `this` constraint
 	#[cfg(not(feature = "serde-serialize"))]
@@ -84,6 +83,12 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 		true
 	}
 
+	/// From TypeScript
+	#[must_use]
+	fn is_declare(_: &Self::Name) -> bool {
+		false
+	}
+
 	/// For [`crate::ArrowFunction`]
 	fn parameters_from_reader(
 		reader: &mut crate::Lexer,
@@ -127,9 +132,7 @@ pub trait FunctionBased: Debug + Clone + PartialEq + Send + Sync {
 }
 
 /// Base for all function based structures with bodies (no interface, type reference etc)
-///
-/// Note: the [`PartialEq`] implementation is based on syntactical representation rather than [`FunctionId`] equality
-#[derive(Debug, Clone, PartialEqExtras, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
@@ -153,8 +156,6 @@ const TYPES: &str = r"
 	}
 ";
 
-impl<T: FunctionBased> Eq for FunctionBase<T> {}
-
 impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 	fn get_position(&self) -> Span {
 		self.position
@@ -171,10 +172,15 @@ impl<T: FunctionBased + 'static> ASTNode for FunctionBase<T> {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		// Don't print overloads
-		#[cfg(feature = "full-typescript")]
-		if !options.include_type_annotations && !T::has_body(&self.body) {
-			return;
+		if !options.include_type_annotations {
+			if T::is_declare(&self.name) {
+				return;
+			}
+			// Don't print overloads
+			#[cfg(feature = "full-typescript")]
+			if !T::has_body(&self.body) {
+				return;
+			}
 		}
 
 		T::header_and_name_to_string_from_buffer(buf, &self.header, &self.name, options, local);
@@ -279,7 +285,7 @@ where
 }
 
 /// Base for all functions with the `function` keyword
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>);
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
@@ -306,10 +312,15 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		T::has_function_body(body)
 	}
 
+	fn is_declare(name: &Self::Name) -> bool {
+		name.is_declare()
+	}
+
 	fn header_and_name_from_reader(
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader)?;
+		reader.skip_including_comments();
 		let name = T::from_reader(reader)?;
 		Ok((header, name))
 	}
@@ -361,7 +372,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 }
 
 #[cfg(feature = "extras")]
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionLocationModifier {
 	Server,
@@ -369,7 +380,7 @@ pub enum FunctionLocationModifier {
 	Test,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionHeader {
 	VirginFunctionHeader {
@@ -379,7 +390,7 @@ pub enum FunctionHeader {
 		is_generator: bool,
 		position: Span,
 	},
-	/// Always is_generator
+	/// Always `is_generator`
 	#[cfg(feature = "extras")]
 	ChadFunctionHeader {
 		is_async: bool,
@@ -416,7 +427,7 @@ impl ASTNode for FunctionHeader {
 		let is_async = reader.is_keyword_advance("async");
 
 		#[cfg(feature = "extras")]
-		if reader.is_keyword_advance("generator") {
+		if reader.get_options().custom_function_headers && reader.is_keyword_advance("generator") {
 			let location = parse_location(reader);
 			let _ = reader.expect_keyword("function")?;
 			return Ok(Self::ChadFunctionHeader {
@@ -427,7 +438,11 @@ impl ASTNode for FunctionHeader {
 		}
 
 		#[cfg(feature = "extras")]
-		let location = parse_location(reader);
+		let location = if reader.get_options().custom_function_headers {
+			parse_location(reader)
+		} else {
+			None
+		};
 		let _ = reader.expect_keyword("function")?;
 		let is_generator = reader.is_operator_advance("*");
 		Ok(Self::VirginFunctionHeader {
@@ -484,10 +499,21 @@ impl FunctionHeader {
 			| FunctionHeader::ChadFunctionHeader { location, .. } => location.as_ref(),
 		}
 	}
+
+	#[must_use]
+	pub fn empty() -> Self {
+		Self::VirginFunctionHeader {
+			is_async: false,
+			#[cfg(feature = "extras")]
+			location: None,
+			is_generator: false,
+			position: source_map::Nullable::NULL,
+		}
+	}
 }
 
 /// This structure removes possible invalid combinations with async
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 #[apply(derive_ASTNode)]
 pub enum MethodHeader {
 	Get,
@@ -519,8 +545,7 @@ impl MethodHeader {
 	}
 
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
-		let after = reader.after_identifier();
-		if let Some('<' | '(' | '}' | ',' | ':' | '[') = after.chars().next() {
+		if reader.after_identifier().starts_with(['<', '(', '}', ',', ':']) {
 			MethodHeader::default()
 		} else if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
 			match kind {
@@ -529,8 +554,11 @@ impl MethodHeader {
 				slice => unreachable!("{slice:?}"),
 			}
 		} else {
+			reader.skip_including_comments();
 			let is_async = reader.is_keyword_advance("async");
+			reader.skip_including_comments();
 			let generator = GeneratorSpecifier::from_reader(reader);
+			reader.skip_including_comments();
 			MethodHeader::Regular { is_async, generator }
 		}
 	}
@@ -551,7 +579,7 @@ impl MethodHeader {
 	}
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 #[apply(derive_ASTNode)]
 pub enum GeneratorSpecifier {
 	Star(Span),
@@ -576,7 +604,7 @@ impl GeneratorSpecifier {
 /// None if overloaded (declaration only)
 #[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, visitable_derive::Visitable)]
+#[derive(Debug, Clone, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
 #[cfg(not(feature = "full-typescript"))]
@@ -590,6 +618,7 @@ impl ASTNode for FunctionBody {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// If type annotations. Allow elided bodies for function overloading
+		reader.skip_including_comments();
 		let body = if reader.is_operator("{") || !reader.get_options().type_annotations {
 			Some(Block::from_reader(reader)?)
 		} else {

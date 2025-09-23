@@ -39,7 +39,8 @@ impl std::fmt::Display for NumberSign {
 	}
 }
 
-/// Some of these can't be parsed, but are there to make so that a number expression can be generated from a f64
+/// Some of these can't be parsed into this form, but are here so that
+/// a number representation can be generated from a f64
 ///
 /// <https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals>
 #[derive(Debug, Clone)]
@@ -124,19 +125,12 @@ impl FromStr for NumberRepresentation {
 
 		if let Some(s) = s.strip_suffix('n') {
 			Ok(NumberRepresentation::BigInt(sign, s.to_owned()))
-		} else if let Some(s) = s.strip_prefix('0') {
+		} else if let (Some(s), false) = (s.strip_prefix('0'), s[1..].starts_with('.')) {
 			let next_char = s.chars().next();
 			match next_char {
-				Some('.') => {
-					if s.len() == 1 {
-						Ok(Self::Number(0f64))
-					} else {
-						Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)))
-					}
-				}
 				Some('X' | 'x') => {
 					let mut value = 0u64;
-					for c in s[1..].as_bytes() {
+					for c in &s.as_bytes()[1..] {
 						value <<= 4; // 16=2^4
 						match c {
 							b'0'..=b'9' => {
@@ -155,7 +149,7 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('B' | 'b') => {
 					let mut value = 0u64;
-					for c in s[1..].as_bytes() {
+					for c in &s.as_bytes()[1..] {
 						value <<= 1;
 						match c {
 							b'0' | b'1' => {
@@ -168,7 +162,8 @@ impl FromStr for NumberRepresentation {
 				}
 				Some('e' | 'E') => {
 					// Lol
-					let exponent: i32 = s[1..].parse().map_err(|_| s.to_owned())?;
+					let without_e = &s[1..];
+					let exponent: i32 = without_e.parse().map_err(|_| s.to_owned())?;
 					Ok(Self::Exponential { sign, value: 0f64, exponent })
 				}
 				// 'o' | 'O' but can also be missed
@@ -176,6 +171,7 @@ impl FromStr for NumberRepresentation {
 					let uses_character = matches!(c, 'o' | 'O');
 
 					if !uses_character && s.contains(['8', '9', '.']) {
+						// TODO missed here
 						return Ok(Self::Number(sign.apply(s.parse().map_err(|_| s.to_owned())?)));
 					}
 
@@ -183,7 +179,7 @@ impl FromStr for NumberRepresentation {
 					let start: usize = uses_character.into();
 
 					let mut value = 0u64;
-					for c in s[start..].as_bytes() {
+					for c in &s.as_bytes()[start..] {
 						value <<= 3; // 8=2^3
 						if matches!(c, b'0'..=b'7') {
 							value += u64::from(c - b'0');
@@ -205,7 +201,12 @@ impl FromStr for NumberRepresentation {
 		} else if let Some(s) = s.strip_suffix('.') {
 			Ok(Self::Number(sign.apply(s.parse::<f64>().map_err(|_| s)?)))
 		} else if let Some((left, right)) = s.split_once(['e', 'E']) {
-			let value = left.parse::<f64>().map_err(|_| s.clone())?;
+			let value = if left.starts_with('.') {
+				format!("0{left}").parse::<f64>()
+			} else {
+				left.parse::<f64>()
+			};
+			let value = value.map_err(|_| s.clone())?;
 			if let Ok(exponent) = right.parse::<i32>() {
 				Ok(Self::Exponential { sign, value, exponent })
 			} else if right.starts_with('-') || value == 0f64 {
@@ -225,20 +226,6 @@ impl std::fmt::Display for NumberRepresentation {
 		write!(f, "{}", self.clone().as_js_string())
 	}
 }
-
-// TODO not great
-impl PartialEq for NumberRepresentation {
-	fn eq(&self, other: &Self) -> bool {
-		if let (Ok(a), Ok(b)) = (f64::try_from(self.clone()), f64::try_from(other.clone())) {
-			a == b
-		} else {
-			// TODO ...
-			false
-		}
-	}
-}
-
-impl Eq for NumberRepresentation {}
 
 impl std::ops::Neg for NumberRepresentation {
 	type Output = Self;

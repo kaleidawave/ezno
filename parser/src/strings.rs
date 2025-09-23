@@ -1,5 +1,4 @@
 use crate::derive_ASTNode;
-use std::borrow::Cow;
 
 /// What surrounds a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -19,56 +18,95 @@ impl Quoted {
 	}
 }
 
-/// Modified version of <https://github.com/parcel-bundler/parcel/blob/f86f5f27c3a6553e70bd35652f19e6ab8d8e4e4a/crates/dev-dep-resolver/src/lib.rs#L368-L380>
-#[must_use]
-pub fn unescape_string_content(on: &str) -> Cow<'_, str> {
-	let mut result = Cow::Borrowed("");
-	let mut start = 0;
-	for (index, _matched) in on.match_indices('\\') {
-		result += &on[start..index];
-		start = index + 1;
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences>
+/// `Ok(true) = skip_next`
+pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usize, ()> {
+	fn parse_hex(on: &str) -> u32 {
+		let mut value = 0u32;
+		for byte in on.bytes() {
+			value <<= 4; // log2(16) = 4
+			let code = match byte {
+				b'0'..=b'9' => u32::from(byte - b'0'),
+				b'a'..=b'f' => u32::from(byte - b'a') + 10,
+				b'A'..=b'F' => u32::from(byte - b'A') + 10,
+				byte => {
+					panic!("bad char {byte:?}!");
+				}
+			};
+			value |= code;
+		}
+		value
 	}
 
-	result += &on[start..];
-	result
-}
-
-/// Also for template literals
-/// Modified version of <https://github.com/parcel-bundler/parcel/blob/f86f5f27c3a6553e70bd35652f19e6ab8d8e4e4a/crates/dev-dep-resolver/src/lib.rs#L368-L380>
-#[must_use]
-pub fn escape_string_content(on: &str, string_delimeter: char) -> Cow<'_, str> {
-	let mut result = Cow::Borrowed("");
-	let mut start = 0;
-	let to_escape: &[char] = match string_delimeter {
-		'"' => &['\\', '"'],
-		'\'' => &['\\', '\''],
-		'`' => &['\\', '`', '$'],
-		_ => panic!("Unknown string delimeter {string_delimeter:?}"),
-	};
-	for (index, matched) in on.match_indices(to_escape) {
-		result += &on[start..index];
-		result += "\\";
-		result += matched;
-		start = index + 1;
-	}
-
-	result += &on[start..];
-	result
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn unescape() {
-		assert_eq!(unescape_string_content("Hi \\\"Ben\\\""), "Hi \"Ben\"");
-		assert_eq!(unescape_string_content("Hello\\`"), "Hello`");
-	}
-
-	#[test]
-	fn escape() {
-		assert_eq!(escape_string_content("Hi \"Ben\"", '"'), "Hi \\\"Ben\\\"");
-		assert_eq!(escape_string_content("Hi ${Ben} `", '`'), "Hi \\${Ben} \\`");
+	match chr {
+		'\'' | '\"' | '`' | '\\' => {
+			buf.push(chr);
+			Ok(1)
+		}
+		't' => Ok(1),
+		'n' => {
+			buf.push('\n');
+			Ok(1)
+		}
+		'r' => {
+			buf.push('\r');
+			Ok(1)
+		}
+		'0' => {
+			buf.push('\0');
+			Ok(1)
+		}
+		'v' => {
+			buf.push_str("\u{000B}");
+			Ok(1)
+		}
+		'b' => {
+			buf.push_str("\u{0008}");
+			Ok(1)
+		}
+		'f' => {
+			buf.push_str("\u{000C}");
+			Ok(1)
+		}
+		// Line endings
+		'\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' => {
+			// custom
+			Ok(0)
+		}
+		'x' => {
+			if let Some(hex_code) = after.get(..2) {
+				let code = parse_hex(hex_code);
+				if let Some(chr) = char::from_u32(code) {
+					buf.push(chr);
+					Ok(hex_code.len() + 1)
+				} else {
+					Err(())
+				}
+			} else {
+				Err(())
+			}
+		}
+		'u' => {
+			if let Some(after) = after.strip_prefix('{') {
+				if let Some((inner, _)) = after.split_once('}') {
+					let code = parse_hex(inner);
+					if let Some(chr) = char::from_u32(code) {
+						buf.push(chr);
+						Ok(3 + inner.len())
+					} else {
+						eprintln!("bad code {inner:?}");
+						Err(())
+					}
+				} else {
+					Err(())
+				}
+			} else {
+				Err(())
+			}
+		}
+		chr => {
+			eprintln!("unexpected item {chr:?}");
+			Ok(0)
+		}
 	}
 }

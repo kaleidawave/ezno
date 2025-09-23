@@ -10,7 +10,7 @@ use temporary_annex::Annex;
 
 use crate::{number::NumberRepresentation, ASTNode, Expression, ParseResult};
 
-pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync + 'static {
+pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;
 
 	fn is_private(&self) -> bool;
@@ -19,7 +19,7 @@ pub trait PropertyKeyKind: Debug + PartialEq + Eq + Clone + Sized + Send + Sync 
 	fn new_public() -> Self;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub struct AlwaysPublic;
 
@@ -33,7 +33,7 @@ pub struct AlwaysPublic;
 impl PropertyKeyKind for AlwaysPublic {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
-		let name = reader.parse_identifier("propery key", false)?;
+		let name = reader.parse_identifier("property key", false)?;
 		Ok((name.to_owned(), start.with_length(name.len()), Self::new_public()))
 	}
 
@@ -79,7 +79,7 @@ impl PropertyKeyKind for PublicOrPrivate {
 
 /// A key for a member in a class or object literal
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Eq, Clone, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Identifier(String, Span, T),
@@ -94,6 +94,13 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 		match self {
 			PropertyKey::Identifier(_, _, p) => U::is_private(p),
 			_ => false,
+		}
+	}
+
+	pub fn as_str(&self) -> Option<&str> {
+		match self {
+			Self::Identifier(item, _, _) | Self::StringLiteral(item, _, _) => Some(item),
+			_ => None,
 		}
 	}
 }
@@ -119,7 +126,7 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		if reader.starts_with('"') || reader.starts_with('\'') {
 			let (content, quoted) = reader.parse_string_literal()?;
 			let position = start.with_length(content.len() + 2);
-			Ok(Self::StringLiteral(content.to_owned(), quoted, position))
+			Ok(Self::StringLiteral(content.into_owned(), quoted, position))
 		} else if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
