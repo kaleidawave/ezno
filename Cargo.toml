@@ -41,7 +41,6 @@ path = "src/main.rs"
 [dependencies]
 # ezno-web-framework = { path = "./plugins/web" }
 
-argh = "0.1"
 base64 = "0.22"
 
 # TODO requires https://github.com/kaleidawave/source-map/pull/7
@@ -54,6 +53,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simple-json-parser = "0.0"
 js-sys = "0.3"
+lahl = "0.0.3"
+# release-downloader = { version = "0.0.5", default-features = false, features = ["self-update"]}
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # For updating binary
@@ -108,11 +109,14 @@ new_without_default = "allow"
 result_unit_err = "allow"
 implicit_hasher = "allow"
 
+# ft means from 'target' (existing build)
 [package.metadata.commands]
 parse_print_check = "cargo run -p ezno-parser --example parse ./private/toparse/aaa.tsx"
 parse_print_ast = "cargo run -p ezno-parser --example parse ./private/toparse/aaa.tsx --ast"
 parse_print_ast_ft = "./target/debug/examples/parse.exe ./private/toparse/aaa.tsx"
 run_parser_tests = "cargo test -p ezno-parser --no-fail-fast --tests"
+run_parser_specification_ft = "spectra test parser/examples.md './target/debug/examples/parse.exe --rpc --interactive'"
+run_parser_specification_extras_dry_run_ft = "spectra test parser/private_extras.md './target/debug/examples/parse.exe --rpc --interactive' --dry-run"
 
 # [profile.dev]
 # debug = false

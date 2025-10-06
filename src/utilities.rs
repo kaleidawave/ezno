@@ -99,15 +99,15 @@ pub(crate) enum MaxDiagnostics {
 	FixedTo(u16),
 }
 
-impl argh::FromArgValue for MaxDiagnostics {
-	fn from_arg_value(value: &str) -> Result<Self, String> {
-		if value == "all" {
+impl std::str::FromStr for MaxDiagnostics {
+	type Err = std::num::ParseIntError;
+
+    // Required method
+    fn from_str(arg: &str) -> Result<Self, Self::Err> {
+		if arg == "all" {
 			Ok(Self::All)
 		} else {
-			match std::str::FromStr::from_str(value) {
-				Ok(value) => Ok(Self::FixedTo(value)),
-				Err(reason) => Err(reason.to_string()),
-			}
+			std::str::FromStr::from_str(arg).map(Self::FixedTo)
 		}
 	}
 }

@@ -23,8 +23,9 @@ fn main() -> std::process::ExitCode {
 		std::fs::write(path, content).unwrap();
 	}
 
-	let arguments = std::env::args().skip(1).collect::<Vec<_>>();
-	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
-
-	run_cli(&arguments, read_from_file, write_to_file)
+	let result = run_cli(std::env::args(), read_from_file, write_to_file);
+	match result {
+		Ok(()) => std::process::ExitCode::SUCCESS,
+		Err(code) => code
+	}
 }

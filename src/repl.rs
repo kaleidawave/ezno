@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use argh::FromArgs;
 use parser::{
 	visiting::VisitorsMut, ASTNode, Expression, Module, SourceId, StatementOrDeclaration,
 };
@@ -10,17 +9,18 @@ use crate::reporting::report_diagnostics_to_cli;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
-/// Run type checking REPL
-#[derive(FromArgs, PartialEq, Debug, Default)]
-#[argh(subcommand, name = "repl")]
-#[cfg_attr(target_family = "wasm", derive(serde::Deserialize), serde(default))]
 pub struct ReplArguments {
-	/// use mutable variables everywhere
-	#[argh(switch)]
 	const_as_let: bool,
-	/// a definition file to check with
-	#[argh(option, short = 'd')]
 	type_definition_module: Option<PathBuf>,
+	mode: REPLMode,
+}
+
+/// TODO `Evaluate`
+#[cfg_attr(target_family = "wasm", wasm_bindgen)]
+pub enum REPLMode {
+	Check,
+	PrintAST,
+	FormatAST,
 }
 
 /// Wraps `checker::synthesis::interactive::State`
@@ -42,9 +42,9 @@ impl ReplSystem {
 		file_system_resolver: crate::utilities::FSFunction,
 	) -> Result<ReplSystem, ReplSystemErr> {
 		let definitions = if let Some(tdm) = arguments.type_definition_module.clone() {
-			std::iter::once(tdm).collect()
+			vec![tdm]
 		} else {
-			std::iter::once(checker::INTERNAL_DEFINITION_FILE_PATH.into()).collect()
+			vec![checker::INTERNAL_DEFINITION_FILE_PATH.into()]
 		};
 
 		// TOOD
@@ -116,32 +116,43 @@ impl ReplSystem {
 					);
 				}
 
-				let result = self.state.check_item(&item);
-
-				match result {
-					Ok((last_ty, diagnostics)) => {
-						report_diagnostics_to_cli(
-							diagnostics,
-							self.state.get_fs_ref(),
-							false,
-							crate::utilities::MaxDiagnostics::All,
-						)
-						.unwrap();
-
-						if let Some(last_ty) = last_ty {
-							crate::utilities::print_to_cli(format_args!("{last_ty}"));
+				match self.arguments.mode {
+					REPLMode::Check => {
+						let result = self.state.check_item(&item);
+		
+						match result {
+							Ok((last_ty, diagnostics)) => {
+								report_diagnostics_to_cli(
+									diagnostics,
+									self.state.get_fs_ref(),
+									false,
+									crate::utilities::MaxDiagnostics::All,
+								)
+								.unwrap();
+		
+								if let Some(last_ty) = last_ty {
+									crate::utilities::print_to_cli(format_args!("{last_ty}"));
+								}
+							}
+							Err(diagnostics) => {
+								report_diagnostics_to_cli(
+									diagnostics,
+									self.state.get_fs_ref(),
+									false,
+									crate::utilities::MaxDiagnostics::All,
+								)
+								.unwrap();
+							}
 						}
 					}
-					Err(diagnostics) => {
-						report_diagnostics_to_cli(
-							diagnostics,
-							self.state.get_fs_ref(),
-							false,
-							crate::utilities::MaxDiagnostics::All,
-						)
-						.unwrap();
+					REPLMode::PrintAST => {
+						todo!()
+					}
+					REPLMode::FormatAST => {
+						todo!()
 					}
 				}
+
 			}
 			Err(err) => {
 				report_diagnostics_to_cli(
@@ -169,7 +180,8 @@ pub(crate) fn run_repl(arguments: ReplArguments) {
 
 	print_to_cli(format_args!("Entering REPL\n.Use #exist, .exit or close() to leave"));
 
-	let mut system = match ReplSystem::new(arguments, crate::utilities::FSFunction) {
+	let system = ReplSystem::new(arguments, crate::utilities::FSFunction);
+	let mut system = match system {
 		Ok(system) => system,
 		Err((diagnostics, fs)) => {
 			report_diagnostics_to_cli(
