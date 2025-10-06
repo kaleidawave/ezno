@@ -1,7 +1,7 @@
-pub use checker::{TypeCheckOptions, CheckOutput};
-use std::path::{Path, PathBuf};
-use crate::utilities::{print_to_cli, MaxDiagnostics};
 use crate::reporting::report_diagnostics_to_cli;
+use crate::utilities::{print_to_cli, MaxDiagnostics};
+pub use checker::{CheckOutput, TypeCheckOptions};
+use std::path::{Path, PathBuf};
 
 pub fn check<T: crate::ReadFromFS>(
 	entry_points: Vec<PathBuf>,

@@ -1,56 +1,72 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::Duration;
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::{
 	build::{build, BuildConfig, BuildOutput, FailedBuildOutput},
-	check::{check_and_report, TypeCheckOptions, CheckOutput},
+	check::{check_and_report, CheckOutput, TypeCheckOptions},
 	reporting::report_diagnostics_to_cli,
 	utilities::{print_to_cli, MaxDiagnostics},
 };
 
-use lahl::{CLI, Endpoint, NamedParameter, PositionalParameter, command_result_or_out, argument_result_or_out};
+use lahl::{
+	argument_result_or_out, command_result_or_out, Endpoint, NamedParameter, PositionalParameter,
+	CLI,
+};
 
 /// The Ezno type-checker & compiler
 static ENDPOINTS: &[Endpoint] = &[
-    Endpoint::new("check", "type checks code", CHECK_BUILD_POSITIONAL_PARAMETERS, CHECK_PARAMETERS),
-    Endpoint::new("repl", "run repl", &[], &[]),
-    Endpoint::new("info", "show information about binary", &[], &[]),
-    Endpoint::new_group("experimental", "parse", "parse code", &[], &[]),
-    Endpoint::new_group("experimental", "format", "format code", &[], &[]),
-    Endpoint::new_group("experimental", "build", "build code", CHECK_BUILD_POSITIONAL_PARAMETERS, BUILD_PARAMETERS),
-    Endpoint::new_group("experimental", "upgrade", "download latest binary", &[], &[]),
+	Endpoint::new("check", "type checks code", CHECK_BUILD_POSITIONAL_PARAMETERS, CHECK_PARAMETERS),
+	Endpoint::new("repl", "run repl", &[], &[]),
+	Endpoint::new("info", "show information about binary", &[], &[]),
+	Endpoint::new_group("experimental", "parse", "parse code", &[], &[]),
+	Endpoint::new_group("experimental", "format", "format code", &[], &[]),
+	Endpoint::new_group(
+		"experimental",
+		"build",
+		"build code",
+		CHECK_BUILD_POSITIONAL_PARAMETERS,
+		BUILD_PARAMETERS,
+	),
+	Endpoint::new_group("experimental", "upgrade", "download latest binary", &[], &[]),
 ];
 
 static BUILD_PARAMETERS: &[NamedParameter] = &[
-    NamedParameter::boolean("advanced-numbers", "test for number intrinsics"),
-    NamedParameter::boolean("tree-shake", "enable tree shake"),
-    NamedParameter::boolean("minify", "remove white-space from the output"),
-    NamedParameter::boolean("source-maps", "generate source maps"),
-    NamedParameter::boolean("compact-diagnostics", "emit diagnostics in compact form"),
-    NamedParameter::boolean("timings", "print time taken on various steps"),
-    NamedParameter::boolean("watch", "watch input files, rerun on input change"),
-    NamedParameter::value("max-diagnostics", "maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)"),
+	NamedParameter::boolean("advanced-numbers", "test for number intrinsics"),
+	NamedParameter::boolean("tree-shake", "enable tree shake"),
+	NamedParameter::boolean("minify", "remove white-space from the output"),
+	NamedParameter::boolean("source-maps", "generate source maps"),
+	NamedParameter::boolean("compact-diagnostics", "emit diagnostics in compact form"),
+	NamedParameter::boolean("timings", "print time taken on various steps"),
+	NamedParameter::boolean("watch", "watch input files, rerun on input change"),
+	NamedParameter::value(
+		"max-diagnostics",
+		"maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)",
+	),
 	NamedParameter::value("definition-file", "definition file to include"),
 ];
 
-static CHECK_BUILD_POSITIONAL_PARAMETERS: &[PositionalParameter] = &[
-	PositionalParameter::single("input", "a entrypoint to a project. defaults to . or index.js etc")
-];
+static CHECK_BUILD_POSITIONAL_PARAMETERS: &[PositionalParameter] = &[PositionalParameter::single(
+	"input",
+	"a entrypoint to a project. defaults to . or index.js etc",
+)];
 
 static CHECK_PARAMETERS: &[NamedParameter] = &[
-    NamedParameter::boolean("advanced-numbers", "more support for number intrinsics"),
-    NamedParameter::boolean("compact-diagnostics", "emit diagnostics in compact form"),
-    NamedParameter::boolean("timings", "print time taken on various steps"),
-    NamedParameter::boolean("watch", "watch input files, rerun on input change"),
-    NamedParameter::value("max-diagnostics", "maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)"),
-    NamedParameter::value("definition-file", "definition file to include"),
+	NamedParameter::boolean("advanced-numbers", "more support for number intrinsics"),
+	NamedParameter::boolean("compact-diagnostics", "emit diagnostics in compact form"),
+	NamedParameter::boolean("timings", "print time taken on various steps"),
+	NamedParameter::boolean("watch", "watch input files, rerun on input change"),
+	NamedParameter::value(
+		"max-diagnostics",
+		"maximum diagnostics to print (defaults to 30, pass `all` for all and `0` to count)",
+	),
+	NamedParameter::value("definition-file", "definition file to include"),
 ];
 
 pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
-	cli_arguments: impl Iterator<Item=String>,
+	cli_arguments: impl Iterator<Item = String>,
 	read_file: T,
 	write_file: U,
 ) -> Result<(), ExitCode> {
@@ -62,7 +78,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 		"info" => {
 			crate::utilities::print_info();
 			Ok(())
-		},
+		}
 		"check" => {
 			let mut input = String::default();
 			let mut watch = false;
@@ -80,7 +96,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					}
 					"advanced-numbers" => {
 						advanced_numbers = true;
-					},
+					}
 					"compact-diagnostics" => {
 						compact_diagnostics = true;
 					}
@@ -92,12 +108,13 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					}
 					"max-diagnostics" => {
 						// TODO unwraps
-						max_diagnostics = MaxDiagnostics::from_str(&argument.value.unwrap()).unwrap();
+						max_diagnostics =
+							MaxDiagnostics::from_str(&argument.value.unwrap()).unwrap();
 					}
 					"definition-file" => {
 						definition_file = Some(PathBuf::from(argument.value.unwrap()));
 					}
-					name => unreachable!("{name}")
+					name => unreachable!("{name}"),
 				}
 			}
 
@@ -198,7 +215,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					}
 					"advanced-numbers" => {
 						advanced_numbers = true;
-					},
+					}
 					"compact-diagnostics" => {
 						compact_diagnostics = true;
 					}
@@ -210,7 +227,8 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					}
 					"max-diagnostics" => {
 						// TODO unwraps
-						max_diagnostics = MaxDiagnostics::from_str(&argument.value.unwrap()).unwrap();
+						max_diagnostics =
+							MaxDiagnostics::from_str(&argument.value.unwrap()).unwrap();
 					}
 					"definition-file" => {
 						definition_file = Some(PathBuf::from(argument.value.unwrap()));
@@ -227,7 +245,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					"source-maps" => {
 						source_maps = true;
 					}
-					name => unreachable!("{name}")
+					name => unreachable!("{name}"),
 				}
 			}
 
@@ -324,7 +342,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 		"repl" => {
 			todo!()
 		}
-		name => unreachable!("{name}")
+		name => unreachable!("{name}"),
 	}
 }
 

@@ -212,6 +212,7 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "pretty_assertions",
+ "release-downloader",
  "self-replace",
  "serde",
  "serde-wasm-bindgen",
@@ -526,6 +527,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
+name = "mashrl"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "957d466dd156ce0814b1079f2ba9099c17897c1f6f3b0bc88ff99db94d0a4540"
+dependencies = [
+ "native-tls",
+]
+
+[[package]]
 name = "match_deref"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -739,6 +749,17 @@ checksum = "145bb27393fe455dd64d6cbc8d059adfa392590a45eadf079c01b11857e7b010"
 dependencies = [
  "hashbrown",
  "memchr",
+]
+
+[[package]]
+name = "release-downloader"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ed6472a93d14dc513b7432d4a27138bf06ae6d8c113199b3a6af25aab4ec76d"
+dependencies = [
+ "mashrl",
+ "self-replace",
+ "simple-json-parser",
 ]
 
 [[package]]

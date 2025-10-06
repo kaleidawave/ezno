@@ -26,6 +26,6 @@ fn main() -> std::process::ExitCode {
 	let result = run_cli(std::env::args(), read_from_file, write_to_file);
 	match result {
 		Ok(()) => std::process::ExitCode::SUCCESS,
-		Err(code) => code
+		Err(code) => code,
 	}
 }

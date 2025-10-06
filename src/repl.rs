@@ -119,7 +119,7 @@ impl ReplSystem {
 				match self.arguments.mode {
 					REPLMode::Check => {
 						let result = self.state.check_item(&item);
-		
+
 						match result {
 							Ok((last_ty, diagnostics)) => {
 								report_diagnostics_to_cli(
@@ -129,7 +129,7 @@ impl ReplSystem {
 									crate::utilities::MaxDiagnostics::All,
 								)
 								.unwrap();
-		
+
 								if let Some(last_ty) = last_ty {
 									crate::utilities::print_to_cli(format_args!("{last_ty}"));
 								}
@@ -152,7 +152,6 @@ impl ReplSystem {
 						todo!()
 					}
 				}
-
 			}
 			Err(err) => {
 				report_diagnostics_to_cli(

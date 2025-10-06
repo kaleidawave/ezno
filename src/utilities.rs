@@ -102,8 +102,8 @@ pub(crate) enum MaxDiagnostics {
 impl std::str::FromStr for MaxDiagnostics {
 	type Err = std::num::ParseIntError;
 
-    // Required method
-    fn from_str(arg: &str) -> Result<Self, Self::Err> {
+	// Required method
+	fn from_str(arg: &str) -> Result<Self, Self::Err> {
 		if arg == "all" {
 			Ok(Self::All)
 		} else {
@@ -145,173 +145,27 @@ impl checker::ReadFromFS for FSFunction {
 	}
 }
 
-// yes i implemented it only using `native_tls`...
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
-	use native_tls::{TlsConnector, TlsStream};
-	use std::io::{BufRead, BufReader, BufWriter, Read, Write};
-	use std::net::TcpStream;
-
-	fn make_request(
-		root: &str,
-		path: &str,
-	) -> Result<TlsStream<TcpStream>, Box<dyn std::error::Error>> {
-		let url = format!("{root}:443");
-		let tcp_stream = TcpStream::connect(url)?;
-		let connector = TlsConnector::new()?;
-		let mut tls_stream = connector.connect(root, tcp_stream)?;
-		let request = format!(
-			"GET {path} HTTP/1.1\r\n\
-        Host: {root}\r\n\
-        Connection: close\r\n\
-        User-Agent: ezno-self-update\r\n"
-		);
-
-		tls_stream.write_all(request.as_bytes())?;
-		if let "api.github.com" = path {
-			tls_stream.write_all(
-				b"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n",
-			)?;
-		}
-		tls_stream.write_all(b"\r\n")?;
-
-		Ok(tls_stream)
-	}
-
-	let (version_name, asset_url) = {
-		let mut stream = make_request("api.github.com", "/repos/kaleidawave/ezno/releases/latest")?;
-
-		let mut response = String::new();
-		stream.read_to_string(&mut response)?;
-
-		// Skip headers
-		let mut lines = response.lines();
-		for line in lines.by_ref() {
-			if line.is_empty() {
-				break;
-			}
-		}
-
-		use simple_json_parser::*;
-		let body = lines.next().ok_or("No body on API request")?;
-
-		#[cfg(target_os = "windows")]
-		const EXPECTED_END: &str = "windows.exe";
-		#[cfg(target_os = "linux")]
-		const EXPECTED_END: &str = "linux";
-		#[cfg(target_os = "macos")]
-		const EXPECTED_END: &str = "macos";
-
-		let mut required_binary = None;
-		let mut version_name = None;
-
-		// Name comes before assets so okay here on exit signal
-		let result = parse_with_exit_signal(
-			body,
-			|keys, value| {
-				if let [JSONKey::Slice("name")] = keys {
-					if let RootJSONValue::String(s) = value {
-						version_name = Some(s.to_owned());
-					}
-				} else if let [JSONKey::Slice("assets"), JSONKey::Index(_), JSONKey::Slice("browser_download_url")] =
-					keys
-				{
-					if let RootJSONValue::String(s) = value {
-						if s.ends_with(EXPECTED_END) {
-							required_binary = Some(s.to_owned());
-							return true;
-						}
-					}
-				}
-				false
-			},
-			false,
-			false,
-		);
-
-		if let Err(JSONParseError { at, reason }) = result {
-			return Err(Box::from(format!("JSON parse error: {reason:?} @ {at}")));
-		}
-
-		(
-			version_name.unwrap_or_default(),
-			required_binary.ok_or("could not find binary for platform")?,
-		)
+	use release_downloader::{
+		download_from_github, get_asset_urls_and_names_from_github_releases, replace_self,
+		DownloadOptions,
 	};
 
-	let actual_asset_url = {
-		let url = asset_url.strip_prefix("https://github.com").ok_or_else(|| {
-			format!("Asset url {asset_url:?} does not start with 'https://github.com'")
-		})?;
-		let response = make_request("github.com", url)?;
-		let mut reader = BufReader::new(response);
+	let urls = get_asset_urls_and_names_from_github_releases(
+		"kaleidawave",
+		"ezno",
+		DownloadOptions::default(),
+	)?;
 
-		// Read the status line
-		let mut status_line = String::new();
-		reader.read_line(&mut status_line)?;
+	let (_name, url) = urls.first().unwrap();
 
-		// Check for successful redirect
-		if !status_line.contains("302 Found") {
-			return Err(Box::from(format!("Expected redirect, got {status_line:?}")));
-		}
+	let readable = download_from_github(url, None)?;
 
-		let mut location = None;
-		loop {
-			let mut line = String::new();
-			reader.read_line(&mut line)?;
-			if line == "\r\n" {
-				break;
-			}
-			if let l @ Some(_) = line.strip_prefix("Location: ") {
-				location = l.map(str::to_string);
-				break;
-			}
-		}
+	replace_self(readable);
 
-		location.ok_or("no location")?
-	};
+	// TODO
+	let msg = "done".to_owned();
 
-	// Finally do download
-	let url = actual_asset_url
-		.strip_prefix("https://objects.githubusercontent.com")
-		.ok_or_else(|| {
-			format!("Asset url {asset_url:?} does not start with 'https://objects.githubusercontent.com'")
-		})?
-		.trim_end();
-
-	let response = make_request("objects.githubusercontent.com", url)?;
-
-	let mut reader = BufReader::new(response);
-
-	// Read the status line
-	let mut status_line = String::new();
-	reader.read_line(&mut status_line)?;
-
-	// Check for successful status code
-	if !status_line.contains("200 OK") {
-		return Err(Box::from(format!("Got status {status_line:?}")));
-	}
-
-	// Read and discard headers
-	loop {
-		let mut line = String::new();
-		reader.read_line(&mut line)?;
-		if let "\r\n" = line.as_str() {
-			break;
-		}
-	}
-
-	// Open the file to write the body
-	let new_binary = "new-ezno.exe";
-	let mut file = BufWriter::new(std::fs::File::create(new_binary)?);
-
-	// Read the body and write it to the file
-	let mut buffer = Vec::new();
-	reader.read_to_end(&mut buffer)?;
-	file.write_all(&buffer)?;
-
-	self_replace::self_replace(new_binary)?;
-	std::fs::remove_file(new_binary)?;
-
-	Ok(version_name)
+	Ok(msg)
 }
