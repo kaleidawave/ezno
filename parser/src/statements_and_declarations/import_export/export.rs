@@ -149,7 +149,8 @@ impl ASTNode for ExportDeclaration {
 		} else if reader.is_operator("{") || reader.is_keyword("type") {
 			let type_definitions_only = reader.is_keyword_advance("type");
 			if reader.after_brackets().starts_with("from") {
-				reader.advance(1);
+				let out = reader.is_operator_advance("{");
+				debug_assert!(out);
 
 				let (parts, _) =
 					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
@@ -164,8 +165,9 @@ impl ASTNode for ExportDeclaration {
 					position,
 				})
 			} else {
-				// FUTURE warn about type_definitions_only
-				reader.advance(1);
+				let out = reader.is_operator_advance("{");
+				debug_assert!(out);
+				// FUTURE warn about type_definitions_only with type
 				let (parts, _) =
 					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
 				let position = start.union(reader.get_end());

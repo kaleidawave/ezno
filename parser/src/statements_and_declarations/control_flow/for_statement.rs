@@ -211,10 +211,10 @@ impl ASTNode for ForLoopCondition {
 			Self::ForOf { keyword, variable, of, position: _, is_await: _ } => {
 				if let Some(keyword) = keyword {
 					let keyword = match keyword {
-						VariableKeywordOrUsing::Const => "const",
-						VariableKeywordOrUsing::Let => "let",
-						VariableKeywordOrUsing::Var => "var",
-						VariableKeywordOrUsing::Using => "using",
+						VariableKeywordOrUsing::Const => "const ",
+						VariableKeywordOrUsing::Let => "let ",
+						VariableKeywordOrUsing::Var => "var ",
+						VariableKeywordOrUsing::Using => "using ",
 					};
 					buf.push_str(keyword);
 				}
