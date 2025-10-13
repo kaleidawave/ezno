@@ -24,9 +24,9 @@ use parser::{
 use source_map::SourceId;
 
 use crate::{
+	CheckingData, Diagnostic, RootContext, TypeId, VariableId,
 	context::{Environment, LocalInformation, Names, VariableRegisterArguments},
 	types::properties::PropertyKey,
-	CheckingData, Diagnostic, RootContext, TypeId, VariableId,
 };
 
 use self::{

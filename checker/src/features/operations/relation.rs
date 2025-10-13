@@ -1,7 +1,7 @@
 use super::MathematicalOrBitwiseOperation;
 use crate::types::{
-	cast_as_number, disjoint, get_constraint, helpers, intrinsics, Constant, Constructor,
-	PartiallyAppliedGenerics, Type, TypeId,
+	Constant, Constructor, PartiallyAppliedGenerics, Type, TypeId, cast_as_number, disjoint,
+	get_constraint, helpers, intrinsics,
 };
 
 /// Not canonical / reducible form of [`CanonicalEqualityAndInequality`].

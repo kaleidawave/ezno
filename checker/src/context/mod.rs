@@ -14,6 +14,7 @@ pub use root::RootContext;
 use source_map::SpanWithSource;
 
 use crate::{
+	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 	context::environment::ExpectedReturnType,
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, VariableUsedInTDZ,
@@ -26,7 +27,6 @@ use crate::{
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{FunctionType, PolyNature, Type, TypeId, TypeStore},
-	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 };
 
 use self::environment::{DynamicBoundaryKind, FunctionScope};
@@ -36,8 +36,8 @@ pub use information::{InformationChain, LocalInformation};
 
 use std::{
 	collections::{
-		hash_map::{self, Entry},
 		HashMap, HashSet,
+		hash_map::{self, Entry},
 	},
 	hash::Hash,
 	iter::{self},
@@ -250,11 +250,7 @@ impl<T: ContextType> Context<T> {
 			}
 		}
 
-		if existing_that_can_be_rewritten {
-			Err(CannotRedeclareVariable { name })
-		} else {
-			Ok(())
-		}
+		if existing_that_can_be_rewritten { Err(CannotRedeclareVariable { name }) } else { Ok(()) }
 	}
 
 	pub fn register_variable_handle_error(
@@ -740,11 +736,7 @@ impl<T: ContextType> Context<T> {
 	/// TODO should be private
 	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext<'_>> + '_ {
 		iter::successors(Some(self.as_general_context()), |env| {
-			if let GeneralContext::Syntax(syn) = env {
-				Some(syn.get_parent())
-			} else {
-				None
-			}
+			if let GeneralContext::Syntax(syn) = env { Some(syn.get_parent()) } else { None }
 		})
 	}
 

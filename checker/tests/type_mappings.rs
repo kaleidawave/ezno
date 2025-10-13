@@ -1,7 +1,7 @@
 #[cfg(feature = "ezno-parser")]
 #[test]
 fn type_mappings() {
-	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
+	use ezno_checker::{TypeCheckOptions, check_project, synthesis};
 
 	let root = "index.ts";
 	let text = "const x: number = 2;
@@ -19,7 +19,6 @@ y()";
 		type_definition_files,
 		&|_path: &std::path::Path| Some(text.to_owned()),
 		options,
-		(),
 		None,
 	);
 

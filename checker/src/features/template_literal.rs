@@ -2,16 +2,16 @@ use source_map::SpanWithSource;
 use std::borrow::Cow;
 
 use crate::{
+	CheckingData, Constant, Environment, Type, TypeId,
 	context::invocation::CheckThings,
 	features::objects::ObjectBuilder,
 	types::{
 		calling::{
-			application_result_to_return_type, Callable, CallingContext, CallingInput,
-			SynthesisedArgument,
+			Callable, CallingContext, CallingInput, SynthesisedArgument,
+			application_result_to_return_type,
 		},
 		cast_as_string,
 	},
-	CheckingData, Constant, Environment, Type, TypeId,
 };
 
 /// Assumes that the text parts have been unesscaped

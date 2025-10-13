@@ -2,6 +2,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+	CheckingData, Instance, RootContext, TypeId,
 	context::{get_on_ctx, information::ReturnState},
 	diagnostics::{
 		NotInLoopOrCouldNotFindLabel, PropertyKeyRepresentation, TypeCheckError,
@@ -14,23 +15,22 @@ use crate::{
 			AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
 		},
 		modules::Exported,
-		operations::{evaluate_logical_operation_with_expression, MathematicalOrBitwiseOperation},
+		operations::{MathematicalOrBitwiseOperation, evaluate_logical_operation_with_expression},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
+	subtyping::{State, SubTypeResult, SubTypingOptions, type_is_subtype, type_is_subtype_object},
 	types::{
-		properties::{
-			get_property_key_names_on_a_single_type, AccessMode, PropertyKey, PropertyKind,
-			Publicity,
-		},
 		PolyNature, Type, TypeStore,
+		properties::{
+			AccessMode, PropertyKey, PropertyKind, Publicity,
+			get_property_key_names_on_a_single_type,
+		},
 	},
-	CheckingData, Instance, RootContext, TypeId,
 };
 
 use super::{
-	get_value_of_variable, invocation::CheckThings, AssignmentError, ClosedOverReferencesInScope,
-	Context, ContextType, Environment, GeneralContext, InformationChain,
+	AssignmentError, ClosedOverReferencesInScope, Context, ContextType, Environment,
+	GeneralContext, InformationChain, get_value_of_variable, invocation::CheckThings,
 };
 
 /// For WIP contextual access of certain APIs
@@ -1490,11 +1490,7 @@ impl Environment<'_> {
 		let alias_ty = types.register_type(ty);
 		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
 
-		if existing_type.is_none() {
-			Ok(alias_ty)
-		} else {
-			Err(AlreadyExists)
-		}
+		if existing_type.is_none() { Ok(alias_ty) } else { Err(AlreadyExists) }
 	}
 
 	// TODO copy this logic for interface and class

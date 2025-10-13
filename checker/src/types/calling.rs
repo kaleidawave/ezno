@@ -1,40 +1,41 @@
 use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
-	context::{invocation::CheckThings, CallCheckingBehavior, Environment, InformationChain},
+	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
+	context::{CallCheckingBehavior, Environment, InformationChain, invocation::CheckThings},
 	diagnostics::{
 		InfoDiagnostic, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
 		VariableUsedInTDZ,
 	},
 	events::{
-		application::ApplicationInput, apply_events, ApplicationResult, Event, RootReference,
+		ApplicationResult, Event, RootReference, application::ApplicationInput, apply_events,
 	},
 	features::{
 		constant_functions::{
-			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
+			CallSiteTypeArguments, ConstantFunctionError, ConstantOutput, call_constant_function,
 		},
 		objects::{ObjectBuilder, SpecialObject},
 	},
 	subtyping::{
-		type_is_subtype, type_is_subtype_with_generics, State, SubTypeResult, SubTypingMode,
-		SubTypingOptions,
+		State, SubTypeResult, SubTypingMode, SubTypingOptions, type_is_subtype,
+		type_is_subtype_with_generics,
 	},
 	types::{
+		GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
 		functions::{FunctionBehavior, FunctionEffect, FunctionType},
 		generics::substitution::SubstitutionArguments,
 		helpers::get_structure_arguments_based_on_object_constraint,
 		logical::{Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical},
 		properties::AccessMode,
-		substitute, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
+		substitute,
 	},
-	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
 };
 
 use super::{
+	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
 	generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
 	get_constraint,
 	properties::PropertyKey,
-	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
 };
 
 /// Other information to do with calling
@@ -139,11 +140,7 @@ pub struct SynthesisedArgument {
 
 impl SynthesisedArgument {
 	pub fn non_spread_type(&self) -> Result<TypeId, ()> {
-		if self.spread {
-			Err(())
-		} else {
-			Ok(self.value)
-		}
+		if self.spread { Err(()) } else { Ok(self.value) }
 	}
 }
 
@@ -2021,9 +2018,9 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 									*fixed_to
 								} else {
 									crate::utilities::notify!(
-									"Parameter is not `PolyNature::Parameter` when pairing arguments? Got {:?}",
-									ty
-								);
+										"Parameter is not `PolyNature::Parameter` when pairing arguments? Got {:?}",
+										ty
+									);
 									parameter_type
 								};
 

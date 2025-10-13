@@ -1,7 +1,7 @@
 use super::{
-	get_constraint, properties, subtyping, Constant, Constructor, GenericArguments, GenericChain,
-	InformationChain, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, PolyNature, Type,
-	TypeId, TypeStore,
+	Constant, Constructor, GenericArguments, GenericChain, InformationChain,
+	MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, PolyNature, Type, TypeId, TypeStore,
+	get_constraint, properties, subtyping,
 };
 
 pub(crate) fn get_structure_arguments_based_on_object_constraint<'a, C: InformationChain>(
@@ -445,11 +445,7 @@ impl TemplatelLiteralExpansion {
 
 	#[must_use]
 	pub fn as_single_string(&self) -> Option<&str> {
-		if self.parts.is_empty() {
-			Some(&self.rest)
-		} else {
-			None
-		}
+		if self.parts.is_empty() { Some(&self.rest) } else { None }
 	}
 
 	#[must_use]

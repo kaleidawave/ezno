@@ -2,14 +2,14 @@ use source_map::SpanWithSource;
 use std::collections::HashMap;
 
 use crate::{
+	PropertyValue, Type, TypeId, VariableId,
 	events::{Event, RootReference},
 	features::functions::ClosureId,
 	types::{
+		TypeStore,
 		calling::ThisValue,
 		properties::{Properties, PropertyKey, Publicity},
-		TypeStore,
 	},
-	PropertyValue, Type, TypeId, VariableId,
 };
 
 /// Things that are currently true or have happened

@@ -1,29 +1,29 @@
 use std::borrow::Cow;
 
 use parser::{
-	statements_and_declarations::variables::VariableDeclarationItem, ASTNode,
-	ArrayDestructuringField, Expression, ObjectDestructuringField, SpreadDestructuringField,
-	VariableField, VariableIdentifier,
+	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
+	SpreadDestructuringField, VariableField, VariableIdentifier,
+	statements_and_declarations::variables::VariableDeclarationItem,
 };
 
 use super::expressions::synthesise_expression;
 use crate::{
+	CheckingData, Environment, TypeId,
 	context::{Context, ContextType, VariableRegisterArguments},
 	diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation},
 	features::{
 		self,
-		variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
+		variables::{VariableMutability, VariableOrImport, get_new_register_argument_under},
 	},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		helpers::get_larger_type,
 		printing,
 		properties::{
-			get_properties_on_single_type, get_property_key_names_on_a_single_type, PropertyKey,
-			Publicity,
+			PropertyKey, Publicity, get_properties_on_single_type,
+			get_property_key_names_on_a_single_type,
 		},
 	},
-	CheckingData, Environment, TypeId,
 };
 
 pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(

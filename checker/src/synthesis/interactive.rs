@@ -4,8 +4,8 @@ use std::{mem, path::PathBuf};
 use source_map::{FileSystem, MapFileStore, SourceId, WithPathMap};
 
 use crate::{
-	add_definition_files_to_root, types::printing::print_type, CheckingData, DiagnosticsContainer,
-	RootContext, TypeId,
+	CheckingData, DiagnosticsContainer, RootContext, TypeId, add_definition_files_to_root,
+	types::printing::print_type,
 };
 
 use super::{block::synthesise_block, expressions::synthesise_multiple_expression};
@@ -65,11 +65,7 @@ impl<'a, T: crate::ReadFromFS> State<'a, T> {
 			},
 		);
 		let dc = mem::take(&mut self.checking_data.diagnostics_container);
-		if dc.contains_error() {
-			Err(dc)
-		} else {
-			Ok((ty, dc))
-		}
+		if dc.contains_error() { Err(dc) } else { Ok((ty, dc)) }
 	}
 
 	#[must_use]

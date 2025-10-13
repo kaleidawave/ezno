@@ -1,8 +1,8 @@
 use super::{Properties, PropertyKey, PropertyValue};
 use crate::{
+	Type, TypeId, TypeStore,
 	context::InformationChain,
 	types::{GenericChain, ObjectNature, SliceArguments},
-	Type, TypeId, TypeStore,
 };
 use std::collections::{BTreeMap, HashMap};
 

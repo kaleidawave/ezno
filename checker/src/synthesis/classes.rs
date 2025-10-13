@@ -1,23 +1,23 @@
 use parser::{
+	ASTNode, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
 	functions::MethodHeader,
 	statements_and_declarations::classes::{ClassDeclaration, ClassMember},
-	ASTNode, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
 };
 
 use crate::{
+	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 	context::{Environment, InformationChain, LocalInformation},
 	diagnostics::TypeCheckError,
 	features::functions::{
-		class_generics_to_function_generics, function_to_property, synthesise_function,
 		ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter, ReturnType,
-		SynthesisableFunction,
+		SynthesisableFunction, class_generics_to_function_generics, function_to_property,
+		synthesise_function,
 	},
 	types::{
+		FunctionType, PolyNature, SynthesisedParameters,
 		classes::ClassValue,
 		properties::{PropertyKey, Publicity},
-		FunctionType, PolyNature, SynthesisedParameters,
 	},
-	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 };
 
 use super::{

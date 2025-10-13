@@ -1,7 +1,7 @@
 use crate::{
-	context::{information::merge_info, Context, Syntax},
-	types::is_type_truthy_falsy,
 	CheckingData, Decidable, Environment, Scope, TypeId,
+	context::{Context, Syntax, information::merge_info},
+	types::is_type_truthy_falsy,
 };
 use source_map::Span;
 

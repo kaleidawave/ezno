@@ -32,11 +32,11 @@ pub use self::{
 pub use crate::features::objects::SpecialObject;
 
 use crate::{
+	Decidable, FunctionId,
 	context::InformationChain,
 	events::RootReference,
 	features::operations::{CanonicalEqualityAndInequality, MathematicalOrBitwiseOperation},
 	subtyping::SliceArguments,
-	Decidable, FunctionId,
 };
 
 use derive_debug_extras::DebugExtras;
@@ -320,21 +320,13 @@ impl Type {
 
 	#[must_use]
 	pub fn try_into_special_object(&self) -> Option<&SpecialObject> {
-		if let Type::SpecialObject(s) = self {
-			Some(s)
-		} else {
-			None
-		}
+		if let Type::SpecialObject(s) = self { Some(s) } else { None }
 	}
 
 	#[must_use]
 	pub fn try_into_function(&self) -> Option<FunctionId> {
 		if let Type::SpecialObject(obj) = self {
-			if let SpecialObject::Function(func, _) = &**obj {
-				Some(*func)
-			} else {
-				None
-			}
+			if let SpecialObject::Function(func, _) = &**obj { Some(*func) } else { None }
 		} else if let Type::FunctionReference(func) = self {
 			Some(*func)
 		} else {

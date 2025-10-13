@@ -1,8 +1,8 @@
 use crate::{
-	types::{
-		cast_as_number, helpers::simple_subtype, is_type_truthy_falsy, Constant, Type, TypeId,
-	},
 	Decidable,
+	types::{
+		Constant, Type, TypeId, cast_as_number, helpers::simple_subtype, is_type_truthy_falsy,
+	},
 };
 
 /// `typeof` and some others done elsewhere
@@ -31,18 +31,10 @@ pub fn evaluate_unary_operator(
 	match operator {
 		UnaryOperation::LogicalNot => {
 			if let Decidable::Known(value) = is_type_truthy_falsy(operand, types) {
-				if value {
-					Ok(TypeId::FALSE)
-				} else {
-					Ok(TypeId::TRUE)
-				}
+				if value { Ok(TypeId::FALSE) } else { Ok(TypeId::TRUE) }
 			} else {
 				let is_boolean = simple_subtype(operand, TypeId::BOOLEAN_TYPE, info, types);
-				if is_boolean {
-					Ok(types.new_logical_negation_type(operand))
-				} else {
-					Err(())
-				}
+				if is_boolean { Ok(types.new_logical_negation_type(operand)) } else { Err(()) }
 			}
 		}
 		UnaryOperation::Negation | UnaryOperation::BitwiseNot => {

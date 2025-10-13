@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use ezno_checker::{
-	check_project, synthesis::EznoParser, TypeCheckOptions, INTERNAL_DEFINITION_FILE_PATH,
+	INTERNAL_DEFINITION_FILE_PATH, TypeCheckOptions, check_project, synthesis::EznoParser,
 };
 
 fn main() {
@@ -17,7 +17,7 @@ const SIMPLE_DTS: Option<&str> = None;
 // const IN_CI: bool = option_env!("CI").is_some();
 
 fn run_interactive() {
-	use std::io::{stdin, BufRead};
+	use std::io::{BufRead, stdin};
 	let stdin = stdin();
 	let mut buf = Vec::new();
 
@@ -103,7 +103,6 @@ fn run_interactive() {
 					type_definition_files,
 					&resolver,
 					type_check_options,
-					(),
 					None,
 				);
 

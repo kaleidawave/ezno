@@ -3,18 +3,18 @@ use std::collections::{HashMap, HashSet};
 use source_map::{Nullable, Span, SpanWithSource};
 
 use crate::{
-	features::{functions::ClosureId, objects::SpecialObject, regexp::RegExp},
 	Constant, Environment, FunctionId, Map as SmallMap, TypeId, VariableId,
+	features::{functions::ClosureId, objects::SpecialObject, regexp::RegExp},
 };
 
 use super::{
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, PolyNature, Type,
+	TypeExtends,
 	functions::{FunctionBehavior, FunctionType},
 	generics::generic_type_arguments::GenericArguments,
 	get_constraint,
 	logical::{Logical, LogicalOrValid},
 	properties::PropertyKey,
-	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, PolyNature, Type,
-	TypeExtends,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -467,7 +467,7 @@ impl TypeStore {
 		indexer: TypeId,
 		environment: &Environment,
 	) -> TypeId {
-		use super::properties::{get_property_unbound, AccessMode, Publicity};
+		use super::properties::{AccessMode, Publicity, get_property_unbound};
 		if get_constraint(indexee, self).is_some() {
 			let under = PropertyKey::from_type(indexer, self);
 			let ty = Type::Constructor(Constructor::Property {

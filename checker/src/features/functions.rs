@@ -3,30 +3,30 @@ use std::{borrow::Cow, collections::hash_map::Entry};
 use source_map::{Nullable, SourceId, SpanWithSource};
 
 use crate::{
+	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Map,
+	ReadFromFS, Scope, Type, TypeId, VariableId,
 	context::{
-		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
-		information::{merge_info, LocalInformation},
 		ContextType, Syntax,
+		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
+		information::{LocalInformation, merge_info},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::RootReference,
 	features::{create_closed_over_references, objects::ObjectBuilder},
-	subtyping::{type_is_subtype_object, SubTypeResult},
+	subtyping::{SubTypeResult, type_is_subtype_object},
 	types::{
-		self,
+		self, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
+		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
+		SynthesisedRestParameter, TypeStore,
 		calling::Callable,
 		classes::ClassValue,
 		functions::{FunctionBehavior, SynthesisedParameters},
 		generics::GenericTypeParameters,
 		logical::{Logical, LogicalOrValid},
 		printing::print_type,
-		properties::{get_property_unbound, PropertyKey, PropertyValue, Publicity},
-		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
-		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
-		SynthesisedRestParameter, TypeStore,
+		properties::{PropertyKey, PropertyValue, Publicity, get_property_unbound},
+		substitute,
 	},
-	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Map,
-	ReadFromFS, Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Debug, Clone, Copy)]

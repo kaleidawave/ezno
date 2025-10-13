@@ -1,6 +1,6 @@
 use crate::{
-	types::{cast_as_number, cast_as_string, helpers, intrinsics, Constant, Type},
 	TypeId,
+	types::{Constant, Type, cast_as_number, cast_as_string, helpers, intrinsics},
 };
 
 /// For these **binary** operations both operands are synthesised

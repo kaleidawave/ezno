@@ -1,12 +1,12 @@
 use ezno_checker::types::{
+	TypeStore,
 	generics::contributions::Contributions,
 	properties::{PropertyKey, Publicity},
-	TypeStore,
 };
 use ezno_checker::{
-	features::objects::ObjectBuilder,
-	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypingOptions},
 	Constant, Environment, PropertyValue, RootContext, TypeId, VariableId,
+	features::objects::ObjectBuilder,
+	subtyping::{State, SubTypingOptions, type_is_subtype, type_is_subtype_object},
 };
 
 fn main() {

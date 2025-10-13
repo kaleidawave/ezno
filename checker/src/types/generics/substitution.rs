@@ -3,6 +3,7 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	Decidable, Environment, PropertyValue, TypeId,
 	context::LocalInformation,
 	features::{
 		functions::{ClosureChain, ClosureId},
@@ -11,14 +12,13 @@ use crate::{
 	},
 	subtyping::{State, SubTypingOptions},
 	types::{
+		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 		calling::ThisValue,
 		generics::contributions::Contributions,
 		intrinsics::{self, distribute_tsc_string_intrinsic},
 		logical::{BasedOnKey, Logical, LogicalOrValid},
-		properties::{get_property_unbound, Publicity},
-		Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
+		properties::{Publicity, get_property_unbound},
 	},
-	Decidable, Environment, PropertyValue, TypeId,
 };
 
 use super::generic_type_arguments::GenericArguments;
@@ -547,11 +547,7 @@ pub(crate) fn substitute(
 					types,
 				);
 
-				if result.is_subtype() {
-					TypeId::TRUE
-				} else {
-					TypeId::FALSE
-				}
+				if result.is_subtype() { TypeId::TRUE } else { TypeId::FALSE }
 			}
 			Constructor::Awaited { .. } => todo!("should have effect result"),
 			Constructor::KeyOf(on) => {

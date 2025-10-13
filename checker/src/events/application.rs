@@ -5,23 +5,24 @@ use super::{
 };
 
 use crate::{
-	context::{get_value_of_variable, invocation::InvocationContext, CallCheckingBehavior},
+	Decidable, Environment, Type,
+	context::{CallCheckingBehavior, get_value_of_variable, invocation::InvocationContext},
 	diagnostics::{TypeStringRepresentation, VariableUsedInTDZ},
 	features::{
+		CannotDeleteFromError,
 		iteration::{self, IterationKind},
 		objects::SpecialObject,
-		CannotDeleteFromError,
 	},
 	subtyping::type_is_subtype,
 	types::{
+		PartiallyAppliedGenerics, TypeId, TypeStore,
 		calling::{self, CallingDiagnostics, FunctionCallingError, SynthesisedArgument, ThisValue},
 		generics::substitution::SubstitutionArguments,
 		is_type_truthy_falsy,
 		printing::print_type,
-		properties::{assignment::SetPropertyError, get_property, set_property, PropertyValue},
-		substitute, PartiallyAppliedGenerics, TypeId, TypeStore,
+		properties::{PropertyValue, assignment::SetPropertyError, get_property, set_property},
+		substitute,
 	},
-	Decidable, Environment, Type,
 };
 
 pub(crate) struct ApplicationInput {

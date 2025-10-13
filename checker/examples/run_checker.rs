@@ -1,6 +1,6 @@
 #[cfg(feature = "ezno-parser")]
 fn main() {
-	use ezno_checker::{check_project, synthesis, Diagnostic, TypeCheckOptions};
+	use ezno_checker::{Diagnostic, TypeCheckOptions, check_project, synthesis};
 	use std::{fs, path::Path};
 
 	fn resolver(path: &std::path::Path) -> Option<Vec<u8>> {

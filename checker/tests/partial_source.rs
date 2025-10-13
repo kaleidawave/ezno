@@ -1,7 +1,7 @@
 #[cfg(feature = "ezno-parser")]
 #[test]
 fn partial_checking() {
-	use ezno_checker::{check_project, synthesis, TypeCheckOptions};
+	use ezno_checker::{TypeCheckOptions, check_project, synthesis};
 
 	// Below source has several issues
 	let root = "index.ts";
@@ -23,7 +23,6 @@ fn partial_checking() {
 		type_definition_files,
 		&|_path: &std::path::Path| Some(text.to_owned()),
 		options,
-		(),
 		None,
 	);
 

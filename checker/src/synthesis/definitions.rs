@@ -4,9 +4,9 @@ use source_map::SourceId;
 use super::classes::synthesise_class_declaration;
 
 use crate::{
+	TypeId,
 	context::{Environment, LocalInformation, Names, RootContext},
 	types::InternalFunctionEffect,
-	TypeId,
 };
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
@@ -60,30 +60,32 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 		if decorator.name.len() == 1 {
 			let decorator_name = decorator.name.first().map(String::as_str)?;
 			if let "Constant" | "InputOutput" = decorator_name {
-				let (identifier, may_throw) =
-					if let Some(arguments) = decorator.arguments.as_ref() {
-						let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
-							arguments.first()
-						{
-							identifier.clone()
-						} else {
-							panic!("first argument to constant or input output should be string literal");
-						};
-						let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
-							arguments.get(1)
-						{
-							Some(
-								environment
-									.get_type_from_name(identifier)
-									.expect("could not find thrown type"),
-							)
-						} else {
-							None
-						};
-						(identifier, may_throw)
+				let (identifier, may_throw) = if let Some(arguments) = decorator.arguments.as_ref()
+				{
+					let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
+						arguments.first()
+					{
+						identifier.clone()
 					} else {
-						(function_name.to_owned(), None)
+						panic!(
+							"first argument to constant or input output should be string literal"
+						);
 					};
+					let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
+						arguments.get(1)
+					{
+						Some(
+							environment
+								.get_type_from_name(identifier)
+								.expect("could not find thrown type"),
+						)
+					} else {
+						None
+					};
+					(identifier, may_throw)
+				} else {
+					(function_name.to_owned(), None)
+				};
 				Some(match decorator_name {
 					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
 					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },

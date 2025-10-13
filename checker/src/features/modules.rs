@@ -2,12 +2,12 @@ use std::path::{Path, PathBuf};
 
 use super::variables::{VariableMutability, VariableOrImport};
 use crate::{
+	CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings, VariableId,
 	context::{
-		information::{get_value_of_constant_import_variable, LocalInformation},
 		VariableRegisterArguments,
+		information::{LocalInformation, get_value_of_constant_import_variable},
 	},
-	parse_source, CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings,
-	VariableId,
+	parse_source,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};

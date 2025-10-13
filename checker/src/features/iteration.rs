@@ -6,21 +6,22 @@ use std::collections::HashMap;
 use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
+	CheckingData, Constant, Type, TypeId, VariableId,
 	context::{
-		environment::Label, invocation::InvocationContext, CallCheckingBehavior,
-		ClosedOverReferencesInScope, Environment, LocalInformation, Scope,
+		CallCheckingBehavior, ClosedOverReferencesInScope, Environment, LocalInformation, Scope,
+		environment::Label, invocation::InvocationContext,
 	},
 	events::{
-		application::ApplicationInput, apply_events, ApplicationResult, Event, FinalEvent,
-		RootReference,
+		ApplicationResult, Event, FinalEvent, RootReference, application::ApplicationInput,
+		apply_events,
 	},
 	features::{functions::ClosedOverVariables, operations::CanonicalEqualityAndInequality},
 	types::{
+		Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
 		calling::{CallingContext, CallingDiagnostics},
 		properties::get_properties_on_single_type,
-		substitute, Constructor, ObjectNature, PolyNature, SubstitutionArguments, TypeStore,
+		substitute,
 	},
-	CheckingData, Constant, Type, TypeId, VariableId,
 };
 
 /// The type of iteration to synthesis

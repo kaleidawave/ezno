@@ -2,6 +2,7 @@ use iterator_endiate::EndiateIteratorExt;
 use source_map::SpanWithSource;
 
 use crate::{
+	Constant, Environment, PropertyValue, TypeId,
 	context::{
 		information::{InformationChain, ObjectProtectionState},
 		invocation::CheckThings,
@@ -9,15 +10,14 @@ use crate::{
 	events::printing::debug_effects,
 	features::objects::{ObjectBuilder, Proxy},
 	types::{
+		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 		calling::{
 			Callable, CallingDiagnostics, FunctionCallingError, SynthesisedArgument, ThisValue,
 		},
 		logical::{Logical, LogicalOrValid},
 		printing::print_type,
 		properties::{AccessMode, Descriptor, PropertyKey, Publicity},
-		FunctionEffect, PartiallyAppliedGenerics, Type, TypeRestrictions, TypeStore,
 	},
-	Constant, Environment, PropertyValue, TypeId,
 };
 
 use super::objects::SpecialObject;

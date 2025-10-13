@@ -4,17 +4,17 @@ use std::fmt::Write;
 
 use super::{GenericChain, PolyNature, Type, TypeId, TypeStore};
 use crate::{
-	context::information::{get_value_of_constant_import_variable, InformationChain},
+	PropertyValue,
+	context::information::{InformationChain, get_value_of_constant_import_variable},
 	features::objects::{Proxy, SpecialObject},
 	types::{
+		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, TypeExtends,
 		functions::{FunctionBehavior, FunctionEffect},
 		generics::generic_type_arguments::GenericArguments,
 		get_constraint, get_simple_property_value,
 		helpers::get_array_length,
-		properties::{get_properties_on_single_type, AccessMode, PropertyKey, Publicity},
-		Constructor, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, TypeExtends,
+		properties::{AccessMode, PropertyKey, Publicity, get_properties_on_single_type},
 	},
-	PropertyValue,
 };
 
 #[must_use]

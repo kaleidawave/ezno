@@ -1,22 +1,23 @@
 use std::{borrow::Cow, str::FromStr};
 
 use parser::{
+	ASTNode, Expression, ExpressionOrStatementPosition,
 	ast::{ImportExpression, TypeOrConst},
 	expressions::{
+		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
+		TemplateLiteral,
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		operators::{
 			BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
 			UnaryPrefixAssignmentOperator,
 		},
-		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
-		TemplateLiteral,
 	},
 	functions::MethodHeader,
-	ASTNode, Expression, ExpressionOrStatementPosition,
 };
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
 	context::Environment,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::{
@@ -25,46 +26,45 @@ use crate::{
 		await_expression,
 		conditional::new_conditional_context,
 		functions::{
-			function_to_property, register_arrow_function, register_expression_function,
-			synthesise_function, GetterSetter,
+			GetterSetter, function_to_property, register_arrow_function,
+			register_expression_function, synthesise_function,
 		},
 		in_operator,
 		objects::ObjectBuilder,
 		operations::is_null_or_undefined,
 		operations::{
+			EqualityAndInequality, EqualityAndInequalityResultKind, LogicalOperator,
+			MathematicalOrBitwiseOperation, OperatorOptions, UnaryOperation,
 			evaluate_equality_inequality_operation, evaluate_logical_operation_with_expression,
-			evaluate_mathematical_operation, evaluate_unary_operator, EqualityAndInequality,
-			EqualityAndInequalityResultKind, LogicalOperator, MathematicalOrBitwiseOperation,
-			OperatorOptions, UnaryOperation,
+			evaluate_mathematical_operation, evaluate_unary_operator,
 		},
 		template_literal::synthesise_template_literal_expression,
 		variables::VariableWithValue,
+	},
+	types::{
+		Constructor,
+		calling::{CallingInput, UnsynthesisedArgument},
+		helpers::get_larger_type,
+		logical::{Logical, LogicalOrValid},
+		printing::{print_property_key, print_type},
+		properties::{
+			AccessMode, PropertyKey, get_properties_on_single_type, get_property_unbound,
+		},
 	},
 	types::{
 		calling::CalledWithNew,
 		properties::Publicity,
 		{Constant, TypeId},
 	},
-	types::{
-		calling::{CallingInput, UnsynthesisedArgument},
-		helpers::get_larger_type,
-		logical::{Logical, LogicalOrValid},
-		printing::{print_property_key, print_type},
-		properties::{
-			get_properties_on_single_type, get_property_unbound, AccessMode, PropertyKey,
-		},
-		Constructor,
-	},
-	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
 };
 
 use super::{
+	EznoParser,
 	assignments::SynthesiseToAssignable,
 	classes::synthesise_class_declaration,
 	extensions::{is_expression::synthesise_is_expression, jsx::synthesise_jsx_root},
 	parser_property_key_to_checker_property_key,
 	type_annotations::synthesise_type_annotation,
-	EznoParser,
 };
 
 pub(super) fn synthesise_multiple_expression<T: crate::ReadFromFS>(
@@ -114,7 +114,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			};
 		}
 		Expression::BooleanLiteral(value, ..) => {
-			return checking_data.types.new_constant_type(Constant::Boolean(*value))
+			return checking_data.types.new_constant_type(Constant::Boolean(*value));
 		}
 		Expression::ArrayLiteral(elements, _) => {
 			fn synthesise_array_item<T: crate::ReadFromFS>(

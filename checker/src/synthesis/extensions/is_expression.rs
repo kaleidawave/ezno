@@ -1,10 +1,10 @@
 use crate::{
+	CheckingData, TypeId,
 	context::{Environment, Scope},
 	synthesis::{
 		expressions::synthesise_multiple_expression, functions::SynthesisableFunctionBody,
 		type_annotations::synthesise_type_annotation,
 	},
-	CheckingData, TypeId,
 };
 
 pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(

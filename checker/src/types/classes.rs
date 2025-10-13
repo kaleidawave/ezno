@@ -1,8 +1,8 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	events::Event, features::functions::ClassPropertiesToRegister, types::properties::Publicity,
-	CheckingData, Environment, PropertyValue, TypeId,
+	CheckingData, Environment, PropertyValue, TypeId, events::Event,
+	features::functions::ClassPropertiesToRegister, types::properties::Publicity,
 };
 
 use super::properties::PropertyKey;

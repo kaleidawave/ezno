@@ -11,7 +11,7 @@ pub mod substitution;
 pub use generic_type_parameters::*;
 use source_map::SpanWithSource;
 
-use crate::{types::SubstitutionArguments, TypeId};
+use crate::{TypeId, types::SubstitutionArguments};
 
 pub struct ExplicitTypeArguments(pub crate::Map<TypeId, (TypeId, SpanWithSource)>);
 

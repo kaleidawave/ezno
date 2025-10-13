@@ -1,33 +1,33 @@
 use std::iter;
 
 use parser::{
+	ASTNode, Decorated, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier,
 	statements_and_declarations::{
+		DeclareVariableDeclaration, ExportDeclaration, StatementOrDeclaration,
 		import::ImportedItems,
 		import_export::{ImportExportName, ImportExportPart, ImportOrExport},
 		variables::{VariableDeclaration, VariableDeclarationKeyword},
-		DeclareVariableDeclaration, ExportDeclaration, StatementOrDeclaration,
 	},
-	ASTNode, Decorated, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier,
 };
 
 use crate::{
-	context::{environment::DeclareInterfaceResult, Environment, VariableRegisterArguments},
+	CheckingData, ReadFromFS, TypeId,
+	context::{Environment, VariableRegisterArguments, environment::DeclareInterfaceResult},
 	diagnostics::TypeCheckError,
 	features::{
 		functions::{
-			synthesise_declare_statement_function, synthesise_hoisted_statement_function,
-			SynthesisableFunction,
+			SynthesisableFunction, synthesise_declare_statement_function,
+			synthesise_hoisted_statement_function,
 		},
-		modules::{import_items, ImportKind, NamePair},
+		modules::{ImportKind, NamePair, import_items},
 		variables::VariableMutability,
 	},
 	synthesis::type_annotations::get_annotation_from_declaration,
-	CheckingData, ReadFromFS, TypeId,
 };
 
 use super::{
-	definitions::get_internal_function_effect_from_decorators, variables::register_variable,
-	EznoParser,
+	EznoParser, definitions::get_internal_function_effect_from_decorators,
+	variables::register_variable,
 };
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
@@ -436,9 +436,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				);
 			}
 		} else if let StatementOrDeclaration::Interface(item) = item {
-			use crate::types::{PolyNature, Type};
 			use crate::ASTImplementation;
 			use crate::Scope;
+			use crate::types::{PolyNature, Type};
 
 			let interface = &item.on.item;
 

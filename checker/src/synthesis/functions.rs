@@ -2,24 +2,24 @@
 
 use iterator_endiate::EndiateIteratorExt;
 use parser::{
-	expressions::ExpressionOrBlock,
-	functions::{LeadingParameter, ParameterData},
 	ASTNode, Block, FunctionBased, Span, SpreadDestructuringField, TypeAnnotation, TypeParameter,
 	VariableField, VariableIdentifier, WithComment,
+	expressions::ExpressionOrBlock,
+	functions::{LeadingParameter, ParameterData},
 };
 
 use crate::{
+	CheckingData, Environment, FunctionId,
 	context::{Context, ContextType, Scope, VariableRegisterArguments},
-	features::functions::{synthesise_function_default_value, ReturnType, SynthesisableFunction},
+	features::functions::{ReturnType, SynthesisableFunction, synthesise_function_default_value},
 	types::{
+		PartiallyAppliedGenerics, Type, TypeId,
 		functions::{
 			FunctionBehavior, FunctionType, SynthesisedParameter, SynthesisedParameters,
 			SynthesisedRestParameter,
 		},
 		generics::GenericTypeParameters,
-		PartiallyAppliedGenerics, Type, TypeId,
 	},
-	CheckingData, Environment, FunctionId,
 };
 
 use super::{
@@ -762,7 +762,7 @@ pub(super) fn build_overloaded_function(
 	effect: crate::types::FunctionEffect,
 ) -> TypeId {
 	use crate::diagnostics::{TypeCheckError, TypeStringRepresentation};
-	use crate::types::subtyping::{type_is_subtype, State, SubTypeResult};
+	use crate::types::subtyping::{State, SubTypeResult, type_is_subtype};
 
 	// TODO bad
 	let expected_parameters = actual.1.clone();

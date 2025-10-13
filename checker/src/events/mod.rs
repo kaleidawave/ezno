@@ -6,14 +6,14 @@ pub(crate) mod application;
 pub mod printing;
 
 use crate::{
+	FunctionId, GeneralContext, SpanWithSource, VariableId,
 	context::get_on_ctx,
 	features::{functions::ClosedOverVariables, iteration::IterationKind},
 	types::{
+		TypeId,
 		calling::{Callable, CalledWithNew, SynthesisedArgument},
 		properties::{AccessMode, PropertyKey, PropertyValue, Publicity},
-		TypeId,
 	},
-	FunctionId, GeneralContext, SpanWithSource, VariableId,
 };
 
 pub(crate) use application::apply_events;

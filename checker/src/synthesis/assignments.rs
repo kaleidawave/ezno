@@ -1,18 +1,18 @@
 use std::borrow::Cow;
 
 use parser::{
-	ast::LHSOfAssignment, expressions::assignments::VariableOrPropertyAccess, VariableField,
-	VariableIdentifier,
+	VariableField, VariableIdentifier, ast::LHSOfAssignment,
+	expressions::assignments::VariableOrPropertyAccess,
 };
 
 use crate::{
+	CheckingData, TypeId,
 	context::Environment,
 	features::assignments::{
 		Assignable, AssignableArrayDestructuringField, AssignableObjectDestructuringField,
 		AssignableSpread, Reference,
 	},
 	types::properties::{PropertyKey, Publicity},
-	CheckingData, TypeId,
 };
 
 use super::{

@@ -22,8 +22,8 @@ use std::{
 };
 
 use context::{
-	information::{LocalInformation, ModuleInformation},
 	Names,
+	information::{LocalInformation, ModuleInformation},
 };
 
 use diagnostics::{TypeCheckError, TypeCheckWarning};
@@ -37,8 +37,8 @@ pub use context::{Environment, GeneralContext, RootContext, Scope, VariableRegis
 pub use diagnostics::{Diagnostic, DiagnosticKind, DiagnosticsContainer};
 pub use options::TypeCheckOptions;
 pub use types::{
-	calling::call_type_handle_errors, generics::GenericTypeParameters, properties::PropertyValue,
-	subtyping, Constant, Type, TypeId, TypeStore,
+	Constant, Type, TypeId, TypeStore, calling::call_type_handle_errors,
+	generics::GenericTypeParameters, properties::PropertyValue, subtyping,
 };
 
 pub use source_map::{self, SourceId, Span};

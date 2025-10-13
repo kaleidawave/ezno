@@ -24,15 +24,15 @@ pub mod variables;
 use source_map::SpanWithSource;
 
 use crate::{
-	context::{get_value_of_variable, ClosedOverReferencesInScope, InformationChain},
+	CheckingData, Environment, PropertyValue, Type, TypeId,
+	context::{ClosedOverReferencesInScope, InformationChain, get_value_of_variable},
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
 	types::{
-		self,
+		self, PartiallyAppliedGenerics, TypeStore,
 		logical::{Logical, LogicalOrValid},
-		properties, PartiallyAppliedGenerics, TypeStore,
+		properties,
 	},
-	CheckingData, Environment, PropertyValue, Type, TypeId,
 };
 
 use self::{functions::ClosedOverVariables, objects::SpecialObject};
@@ -173,11 +173,7 @@ pub(crate) fn instance_of_operator_rhs_prototype(
 		)))
 	} else if let Type::Object(types::ObjectNature::RealDeal) = types.get_type_by_id(lhs) {
 		let extends = extends_prototype(lhs, rhs_prototype, information);
-		if extends {
-			TypeId::TRUE
-		} else {
-			TypeId::FALSE
-		}
+		if extends { TypeId::TRUE } else { TypeId::FALSE }
 	} else {
 		crate::utilities::notify!("TODO might be missed case");
 		TypeId::OPEN_BOOLEAN_TYPE
@@ -521,9 +517,8 @@ pub mod tsc {
 	use source_map::SpanWithSource;
 
 	use crate::{
-		diagnostics,
+		CheckingData, Environment, Type, TypeId, diagnostics,
 		types::{Constructor, TypeStore},
-		CheckingData, Environment, Type, TypeId,
 	};
 
 	/// Returns result of `*on* as *cast_to*`. Returns `Err(())` for invalid casts where invalid casts

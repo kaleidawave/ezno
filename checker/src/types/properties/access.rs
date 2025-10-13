@@ -1,10 +1,13 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	Constant, Type, TypeId,
 	context::{CallCheckingBehavior, Environment, InformationChain, LocalInformation},
 	events::Event,
 	features::objects::Proxy,
 	types::{
+		Constructor, GenericChain, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
+		SliceArguments, SpecialObject, TypeStore,
 		calling::{Callable, CallingDiagnostics, ThisValue},
 		generics::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
@@ -15,10 +18,7 @@ use crate::{
 			BasedOnKey, Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical,
 			PropertyOn,
 		},
-		Constructor, GenericChain, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
-		SliceArguments, SpecialObject, TypeStore,
 	},
-	Constant, Type, TypeId,
 };
 
 use super::{PropertyKey, PropertyKind, PropertyValue, Publicity};
@@ -902,9 +902,10 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						| Type::AliasTo { to: _, name: _, parameters: _ }
 						| Type::Or(_, _) => {
 							crate::utilities::notify!(
-							    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
-							    property, ty
-						    );
+								"property was {:?} {:?}, which should be NOT be able to be returned from a function",
+								property,
+								ty
+							);
 
 							Some((PropertyKind::Direct, value))
 						}
@@ -934,7 +935,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				PropertyValue::GetterAndSetter { getter, setter: _ }
 				| PropertyValue::Getter(getter) => {
 					use crate::types::calling::{
-						application_result_to_return_type, CalledWithNew, CallingInput,
+						CalledWithNew, CallingInput, application_result_to_return_type,
 					};
 
 					let input = CallingInput {
@@ -1139,7 +1140,7 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 	types: &mut TypeStore,
 ) -> Option<(PropertyKind, TypeId)> {
 	use crate::types::calling::{
-		application_result_to_return_type, CalledWithNew, CallingInput, SynthesisedArgument,
+		CalledWithNew, CallingInput, SynthesisedArgument, application_result_to_return_type,
 	};
 
 	// TODO pass down

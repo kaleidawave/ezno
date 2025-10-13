@@ -3,12 +3,12 @@ use super::{
 	LocalInformation,
 };
 use crate::{
+	CheckingData,
 	features::{
 		modules::{Exported, SynthesisedModule},
 		variables::VariableOrImport,
 	},
 	types::TypeId,
-	CheckingData,
 };
 use source_map::SourceId;
 use std::{collections::HashMap, iter::FromIterator, mem};

@@ -6,7 +6,7 @@ license = "MIT"
 repository = "https://github.com/kaleidawave/ezno"
 homepage = "https://kaleidawave.github.io/posts/introducing-ezno"
 authors = ["Ben <kaleidawave@gmail.com>"]
-edition = "2021"
+edition = "2024"
 categories = ["compilers"]
 keywords = [
 	"javascript",

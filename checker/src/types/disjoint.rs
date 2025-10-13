@@ -1,6 +1,6 @@
 use super::{
-	helpers, Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, Type,
-	TypeId, TypeStore,
+	Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, Type, TypeId,
+	TypeStore, helpers,
 };
 use crate::context::InformationChain;
 
@@ -294,11 +294,7 @@ fn number_range_disjoint(
 		let other_ty = types.get_type_by_id(other);
 		if let Type::Constant(Constant::Number(other)) = other_ty {
 			crate::utilities::notify!("{:?} {} {}", on, other, this);
-			if greater_than {
-				other < this
-			} else {
-				other > this
-			}
+			if greater_than { other < this } else { other > this }
 		} else {
 			crate::utilities::notify!("Unsure here {:?}", (other_ty, this_ty));
 			false

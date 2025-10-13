@@ -1,11 +1,11 @@
 use source_map::SpanWithSource;
 
 use crate::{
-	types::{
-		generics::generic_type_arguments::GenericArguments, get_constraint, helpers::into_cases,
-		Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, TypeStore,
-	},
 	TypeId,
+	types::{
+		Constant, Constructor, MathematicalOrBitwiseOperation, PartiallyAppliedGenerics, TypeStore,
+		generics::generic_type_arguments::GenericArguments, get_constraint, helpers::into_cases,
+	},
 };
 
 use super::Type;

@@ -1,7 +1,7 @@
 use crate::{
+	GeneralContext, RangeMap, VariableId,
 	features::variables::VariableWithValue,
 	types::{TypeId, TypeStore},
-	GeneralContext, RangeMap, VariableId,
 };
 use source_map::{SourceId, SpanWithSource};
 use std::{collections::HashMap, path::PathBuf};

@@ -4,22 +4,22 @@ use super::{
 	assignments::synthesise_access_to_reference, functions::synthesise_function_annotation,
 };
 use crate::{
+	CheckingData, Map,
 	context::{Environment, LocalInformation, Scope},
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
 	features::objects::ObjectBuilder,
 	types::{
-		generics::generic_type_arguments::GenericArguments,
+		Constant, Constructor, PartiallyAppliedGenerics, PolyNature, Type, TypeId,
 		generics::ExplicitTypeArguments,
+		generics::generic_type_arguments::GenericArguments,
 		helpers::{ArrayItem, Counter},
 		intrinsics::{self, distribute_tsc_string_intrinsic},
 		properties::{PropertyKey, PropertyValue, Publicity},
-		Constant, Constructor, PartiallyAppliedGenerics, PolyNature, Type, TypeId,
 	},
-	CheckingData, Map,
 };
 use parser::{
-	type_annotations::{CommonTypes, TupleElementKind, TupleLiteralElement, TypeName},
 	ASTNode, TypeAnnotation,
+	type_annotations::{CommonTypes, TupleElementKind, TupleLiteralElement, TypeName},
 };
 use source_map::SpanWithSource;
 
@@ -82,11 +82,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 
 			let inner_type_alias_id = if let Type::AliasTo { to, .. } = inner_type {
 				// Fix for recursion
-				if *to == TypeId::ANY_TO_INFER_TYPE {
-					None
-				} else {
-					Some(*to)
-				}
+				if *to == TypeId::ANY_TO_INFER_TYPE { None } else { Some(*to) }
 			} else {
 				None
 			};
@@ -595,7 +591,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			{
 				if let Type::Constant(_) = checking_data.types.get_type_by_id(*item) {
 					use crate::types::generics::substitution::{
-						compute_extends_rule, SubstitutionArguments,
+						SubstitutionArguments, compute_extends_rule,
 					};
 					let temp_args = SubstitutionArguments::new_arguments_for_use_in_loop();
 					crate::utilities::notify!("Here");

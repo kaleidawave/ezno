@@ -3,11 +3,11 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	CheckingData, Decidable, Environment, Scope, Type, TypeId,
 	context::VariableRegisterArguments,
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::{Event, FinalEvent, Trapped},
 	subtyping::type_is_subtype_object,
-	CheckingData, Decidable, Environment, Scope, Type, TypeId,
 };
 
 /// TODO

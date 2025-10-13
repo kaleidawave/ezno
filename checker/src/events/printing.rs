@@ -5,10 +5,10 @@ use crate::{
 	context::InformationChain,
 	events::CallingTiming,
 	types::{
+		GenericChain, TypeStore,
 		calling::Callable,
 		printing::{print_property_key_into_buf, print_type_into_buf},
 		properties::PropertyKey,
-		GenericChain, TypeStore,
 	},
 };
 

@@ -1,19 +1,19 @@
 use parser::{
-	types::interface::InterfaceMember, Decorated, PropertyKey as ParserPropertyKey, WithComment,
+	Decorated, PropertyKey as ParserPropertyKey, WithComment, types::interface::InterfaceMember,
 };
 use source_map::SpanWithSource;
 
 use crate::{
+	CheckingData, Scope, TypeId,
 	context::{Context, Environment},
 	features::functions::GetterSetter,
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
+		FunctionType, Type,
 		calling::Callable,
 		helpers::references_key_of,
 		properties::{Descriptor, PropertyKey, PropertyValue, Publicity},
-		FunctionType, Type,
 	},
-	CheckingData, Scope, TypeId,
 };
 
 use super::{

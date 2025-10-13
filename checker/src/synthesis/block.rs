@@ -1,6 +1,6 @@
 use parser::{ASTNode, StatementOrDeclaration};
 
-use crate::{context::Environment, diagnostics::TypeCheckWarning, CheckingData};
+use crate::{CheckingData, context::Environment, diagnostics::TypeCheckWarning};
 
 use super::{
 	hoisting::hoist_statements, statements_and_declarations::synthesise_statement_or_declaration,

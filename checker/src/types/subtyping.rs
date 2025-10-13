@@ -4,15 +4,16 @@
 use source_map::SpanWithSource;
 
 use crate::{
+	Constant, Environment, PropertyValue, TypeId,
 	context::{GeneralContext, InformationChain},
 	features::{
 		objects::{self, SpecialObject},
 		operations::MathematicalOrBitwiseOperation,
 	},
-	Constant, Environment, PropertyValue, TypeId,
 };
 
 use super::{
+	Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	generics::{
 		chain::{GenericChain, GenericChainLink, SpecialGenericChainLink},
 		contributions::{ContributionDepth, Contributions, CovariantContribution, TriMap},
@@ -23,8 +24,7 @@ use super::{
 	logical::{BasedOnKey, Logical, LogicalOrValid, NeedsCalculation, PropertyOn},
 	printing::print_type,
 	properties::PropertyKey,
-	properties::{get_properties_on_single_type2, get_property_unbound, Publicity},
-	Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
+	properties::{Publicity, get_properties_on_single_type2, get_property_unbound},
 };
 
 pub use super::{NonEqualityReason, PropertyError};
@@ -202,8 +202,12 @@ impl State<'_> {
 
 	/// For setting the state back to where it was at the point of [`Self::produce_save_point`]
 	pub fn reset(&mut self, last: StateSavePoint) {
-		let [already_checked, contributions_covariant, contributions_contravariant, object_constraint_count] =
-			last;
+		let [
+			already_checked,
+			contributions_covariant,
+			contributions_contravariant,
+			object_constraint_count,
+		] = last;
 
 		let _ = self.already_checked.drain((already_checked as usize)..);
 		if let Some(ref mut contributions) = self.contributions {
