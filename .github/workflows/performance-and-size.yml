@@ -68,7 +68,16 @@ jobs:
       - name: Install valgrind
         id: install-valgrind
         continue-on-error: true
-        run: sudo apt-get install valgrind
+        run: |
+          # See <https://github.com/actions/runner-images/issues/10977#issuecomment-2810713336>
+          # Skip installing pacakge docs {makes the man-db trigger much faster) 
+          # (I disabled `/doc` and `/info` too, just in case.)
+          sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null << 'EOF'
+          path-exclude /usr/share/doc/*
+          path-exclude /usr/share/man/*
+          path-exclude /usr/share/info/*
+          EOF
+          sudo apt-get install valgrind
 
       # TODO is there a way to cache this?
       - name: Build latest version of demo.tsx
