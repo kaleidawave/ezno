@@ -1,6 +1,9 @@
 use std::borrow::Cow;
 use std::fs::{create_dir, read_dir, read_to_string};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+const ADD_TO_DB: bool = false;
 
 #[allow(unused_mut)]
 fn main() {
@@ -9,11 +12,8 @@ fn main() {
 	let mut completed = 0;
 	let mut successful = 0;
 
-	let add_to_db = true;
-
-	let now = std::time::Instant::now();
-	let mut yaml_parsing = std::time::Duration::default();
-	let mut parsing = std::time::Duration::default();
+	let mut yaml_parsing = Duration::default();
+	let mut parsing = Duration::default();
 
 	let _ = create_dir("out");
 	let connection = sqlite::open("out/results.db").unwrap();
@@ -38,7 +38,17 @@ CREATE TABLE IF NOT EXISTS results (
     )";
 	let mut statement = connection.prepare(query).unwrap();
 
-	visit_dirs(path, &mut |path| {
+	let now = Instant::now();
+
+	let mut current: std::sync::Arc<std::sync::Mutex<PathBuf>> = std::sync::Arc::default();
+
+	let other = current.clone();
+	let _ = std::thread::spawn(move || {
+		std::thread::sleep(Duration::from_secs(14));
+		eprintln!("stuck on {path}", path = other.lock().unwrap().display());
+	});
+
+	visit_dirs(path, &mut move |path| {
 		if let Some(path) = path.file_name().and_then(std::ffi::OsStr::to_str) {
 			if path.contains("_FIXTURE") {
 				return;
@@ -65,6 +75,10 @@ CREATE TABLE IF NOT EXISTS results (
 
 			let metadata = &remaining[..end];
 
+			{
+				*current.lock().unwrap() = path.to_path_buf();
+			}
+
 			let end = end + "---*/".len();
 			let code = &remaining[end..];
 
@@ -87,7 +101,7 @@ CREATE TABLE IF NOT EXISTS results (
 					}
 
 					// TODO negative.type, locale
-					if add_to_db {
+					if ADD_TO_DB {
 						match key {
 							
 							&[Slice("info")] => {
@@ -126,6 +140,11 @@ CREATE TABLE IF NOT EXISTS results (
 				yaml_parsing += now.elapsed();
 			};
 
+			// TODO
+			// if let Some(ref mut trace_file) = trace_file {
+			// 	writeln!(trace_file, "{path}", path = path.display());
+			// }
+
 			let now = std::time::Instant::now();
 			let result = <ezno_parser::Module as ezno_parser::ASTNode>::from_string_with_options(
 				code.into(),
@@ -147,7 +166,7 @@ CREATE TABLE IF NOT EXISTS results (
 				}
 			};
 
-			if add_to_db {
+			if ADD_TO_DB {
 				let values = &[
 					(":path", path.display().to_string().into()),
 					(":info", info.into()),

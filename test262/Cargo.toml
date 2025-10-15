@@ -1,11 +1,11 @@
+workspace = {}
+
 [package]
 name = "ezno-test262"
 description = "test262 runner for the Ezno toolchain"
-version = "0.0.1"
+version = "0.0.0"
 edition = "2024"
 publish = false
-
-[workspace]
 
 [dependencies]
 simple-yaml-parser = { git = "https://github.com/kaleidawave/simple-yaml-parser.git", branch = "improvements" }
