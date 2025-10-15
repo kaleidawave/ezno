@@ -1,8 +1,68 @@
-use crate::derive_ASTNode;
+use std::borrow::Cow;
 
-/// What surrounds a string
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StringError {
+	InvalidStart,
+	InvalidDelimeter,
+	// TODO
+	InvalidCharacter,
+}
+
+pub fn parse_string<'a>(current: &'a str) -> Result<(Cow<'a, str>, Quoted, u32), StringError> {
+	let (delimeter, quoted) = if current.starts_with('"') {
+		('"', Quoted::Double)
+	} else if current.starts_with('\'') {
+		('\'', Quoted::Single)
+	} else {
+		return Err(StringError::InvalidStart);
+	};
+
+	let chars: [char; _] = [delimeter, '\\', '\u{000A}', '\u{000D}', '\u{2028}', '\u{2029}'];
+
+	let mut buf = Cow::Borrowed("");
+	let current = &current[1..];
+	let delimeters = current.match_indices(chars);
+
+	let mut last = 0;
+	for (idx, matched) in delimeters {
+		if last > idx {
+			continue;
+		}
+		buf += &current[last..idx];
+
+		if let "\"" | "'" = matched {
+			return Ok((buf, quoted, idx as u32 + 2));
+		} else if matched == "\\" {
+			let immediate = &current[idx + 1..];
+			let chr = immediate.chars().next();
+			if let Some(chr) = chr {
+				let after = &immediate[chr.len_utf8()..];
+				let result = escape_character(chr, after, buf.to_mut());
+				match result {
+					Ok(offset) => {
+						// Skip others
+						last = idx + 1 + offset;
+					}
+					Err(()) => {
+						return Err(StringError::InvalidCharacter);
+					}
+				}
+			} else {
+				eprintln!("Expected end");
+				return Err(StringError::InvalidCharacter);
+			}
+		} else {
+			eprintln!("Expected matched but got {matched:?}");
+			return Err(StringError::InvalidCharacter);
+		}
+	}
+
+	Err(StringError::InvalidCharacter)
+}
+
+// What surrounds a string
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[apply(derive_ASTNode!)]
+#[apply(crate::derive_ASTNode!)]
 pub enum Quoted {
 	Single,
 	Double,
@@ -21,7 +81,7 @@ impl Quoted {
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences>
 /// `Ok(true) = skip_next`
 pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usize, ()> {
-	fn parse_hex(on: &str) -> u32 {
+	fn parse_hex(on: &str) -> Result<u32, ()> {
 		let mut value = 0u32;
 		for byte in on.bytes() {
 			value <<= 4; // log2(16) = 4
@@ -30,12 +90,13 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 				b'a'..=b'f' => u32::from(byte - b'a') + 10,
 				b'A'..=b'F' => u32::from(byte - b'A') + 10,
 				byte => {
-					panic!("bad char {byte:?}!");
+					eprintln!("bad char {byte:?}!");
+					return Err(());
 				}
 			};
 			value |= code;
 		}
-		value
+		Ok(value)
 	}
 
 	match chr {
@@ -43,7 +104,10 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 			buf.push(chr);
 			Ok(1)
 		}
-		't' => Ok(1),
+		't' => {
+			buf.push('\t');
+			Ok(1)
+		}
 		'n' => {
 			buf.push('\n');
 			Ok(1)
@@ -70,12 +134,17 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 		}
 		// Line endings
 		'\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' => {
-			// custom
-			Ok(0)
+			let mut count = 1;
+			let mut after = after.chars();
+			while let Some('\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}') = after.next() {
+				count += 1;
+			}
+			Ok(count)
 		}
+		// Hexadecimal escape sequences
 		'x' => {
 			if let Some(hex_code) = after.get(..2) {
-				let code = parse_hex(hex_code);
+				let code = parse_hex(hex_code)?;
 				if let Some(chr) = char::from_u32(code) {
 					buf.push(chr);
 					Ok(hex_code.len() + 1)
@@ -86,10 +155,12 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 				Err(())
 			}
 		}
+		// Unicode escape sequences
 		'u' => {
 			if let Some(after) = after.strip_prefix('{') {
 				if let Some((inner, _)) = after.split_once('}') {
-					let code = parse_hex(inner);
+					// TODO I think this can be multiple characters
+					let code = parse_hex(inner)?;
 					if let Some(chr) = char::from_u32(code) {
 						buf.push(chr);
 						Ok(3 + inner.len())
@@ -100,13 +171,86 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 				} else {
 					Err(())
 				}
+			} else if let Some(inner) = after.get(0..4) {
+				// TODO no early returns
+				let higher = parse_hex(inner)?;
+				// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
+				dbg!(inner, &after[4..10]);
+				let (code, count) = if let Some(inner) = after[4..10].strip_prefix("\\u") {
+					// TODO no early returns
+					let lower = parse_hex(inner)?;
+					// 10000_16 + (H − D800_16) × 400_16 + (L − DC00_16)
+					let code = 0x10000 + 0x400 * (higher - 0xD800) + (lower - 0xDC00);
+					(code, 11)
+				} else {
+					(higher, 5)
+				};
+				if let Some(chr) = char::from_u32(code) {
+					buf.push(chr);
+					Ok(count)
+				} else {
+					buf.push('\u{FFFD}');
+					eprintln!("TODO warning here {inner:?}");
+					Ok(count)
+				}
 			} else {
 				Err(())
 			}
 		}
 		chr => {
-			eprintln!("unexpected item {chr:?}");
+			eprintln!("unexpected escape {chr:?}");
 			Ok(0)
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{Quoted, parse_string};
+	use std::borrow::Cow::Borrowed as b;
+
+	#[test]
+	fn quoted() {
+		assert_eq!(parse_string("'Hello World'"), Ok((b("Hello World"), Quoted::Single, 13)));
+		assert_eq!(
+			parse_string("'Hello World'.length"),
+			Ok((b("Hello World"), Quoted::Single, 13))
+		);
+
+		assert_eq!(parse_string("\"Hello World\""), Ok((b("Hello World"), Quoted::Double, 13)));
+		assert_eq!(
+			parse_string("\"Hello World\".length"),
+			Ok((b("Hello World"), Quoted::Double, 13))
+		);
+	}
+
+	#[test]
+	fn escape_sequences() {
+		assert_eq!(parse_string("'\\r\\n\\t'"), Ok((b("\r\n\t"), Quoted::Single, 8)));
+		assert_eq!(
+			parse_string("'\\0\\v\\b\\f'"),
+			Ok((b("\0\u{000B}\u{0008}\u{000C}"), Quoted::Single, 10))
+		);
+	}
+
+	#[test]
+	fn hex_specifier() {
+		assert_eq!(parse_string("'\\x41'"), Ok((b("A"), Quoted::Single, 6)));
+		assert_eq!(parse_string("'\\x415'"), Ok((b("A5"), Quoted::Single, 7)));
+	}
+
+	#[test]
+	fn unicode() {
+		assert_eq!(parse_string("'\\u{1f600}'"), Ok((b("😀"), Quoted::Single, 11)));
+
+		assert_eq!(parse_string("'\\u{2f804}'"), Ok((b("你"), Quoted::Single, 11)));
+		assert_eq!(parse_string("'\\uD87E\\uDC04'"), Ok((b("你"), Quoted::Single, 14)));
+
+		// TODO more
+	}
+
+	#[test]
+	fn whitespace() {
+		assert_eq!(parse_string("'a\\\nb'"), Ok((b("ab"), Quoted::Single, 6)));
 	}
 }
