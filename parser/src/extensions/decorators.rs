@@ -3,7 +3,7 @@ use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{derive_ASTNode, ASTNode, Expression, ParseResult, Visitable};
+use crate::{ASTNode, Expression, ParseResult, Visitable, derive_ASTNode};
 
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]

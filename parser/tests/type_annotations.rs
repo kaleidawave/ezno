@@ -22,11 +22,10 @@ type Z7 = X[Y]
 
 	assert_eq!(output, input.clone());
 
-	assert!(Module::from_string(
-		input,
-		ParseOptions { type_annotations: false, ..Default::default() }
-	)
-	.is_err());
+	assert!(
+		Module::from_string(input, ParseOptions { type_annotations: false, ..Default::default() })
+			.is_err()
+	);
 }
 
 #[test]
@@ -44,11 +43,10 @@ function y(a: string): string {
 
 	assert_eq!(output, input.clone());
 
-	assert!(Module::from_string(
-		input,
-		ParseOptions { type_annotations: false, ..Default::default() }
-	)
-	.is_err());
+	assert!(
+		Module::from_string(input, ParseOptions { type_annotations: false, ..Default::default() })
+			.is_err()
+	);
 }
 
 // `satisfies` is actually not under `feature="full-typescript"`
@@ -70,11 +68,10 @@ fn expression_level_expressions() {
 
 	assert_eq!(output, input.clone());
 
-	assert!(Module::from_string(
-		input,
-		ParseOptions { type_annotations: false, ..Default::default() }
-	)
-	.is_err());
+	assert!(
+		Module::from_string(input, ParseOptions { type_annotations: false, ..Default::default() })
+			.is_err()
+	);
 }
 
 #[test]
@@ -101,11 +98,10 @@ class X {
 
 	assert_eq!(output, input.clone());
 
-	assert!(Module::from_string(
-		input,
-		ParseOptions { type_annotations: false, ..Default::default() }
-	)
-	.is_err());
+	assert!(
+		Module::from_string(input, ParseOptions { type_annotations: false, ..Default::default() })
+			.is_err()
+	);
 }
 
 #[test]
@@ -149,7 +145,8 @@ type B<T extends boolean> = T ? string : <U>(a: number, b: U) => T
 "
 	.trim();
 
-	let parse_options = ParseOptions { jsx: true, ..Default::default() };
+	let mut parse_options = ParseOptions::default();
+	parse_options.jsx.enable_jsx = true;
 
 	let module = Module::from_string(input.to_owned(), parse_options).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());

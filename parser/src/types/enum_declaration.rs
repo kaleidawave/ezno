@@ -1,5 +1,5 @@
 use crate::{
-	derive_ASTNode, statements_and_declarations::classes::ClassMember, ASTNode, Expression,
+	ASTNode, Expression, derive_ASTNode, statements_and_declarations::classes::ClassMember,
 };
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;

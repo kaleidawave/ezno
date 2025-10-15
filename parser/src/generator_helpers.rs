@@ -50,19 +50,13 @@ impl IntoAST<VariableIdentifier> for &str {
 #[allow(clippy::cast_precision_loss)]
 impl IntoAST<Expression> for usize {
 	fn into_ast(self) -> Expression {
-		Expression::NumberLiteral(
-			crate::number::NumberRepresentation::from(self as f64),
-			source_map::Nullable::NULL,
-		)
+		Expression::NumberLiteral(self as f64, source_map::Nullable::NULL)
 	}
 }
 
 impl IntoAST<Expression> for f64 {
 	fn into_ast(self) -> Expression {
-		Expression::NumberLiteral(
-			crate::number::NumberRepresentation::from(self),
-			source_map::Nullable::NULL,
-		)
+		Expression::NumberLiteral(self, source_map::Nullable::NULL)
 	}
 }
 

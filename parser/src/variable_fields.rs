@@ -3,8 +3,8 @@
 use std::fmt::Debug;
 
 use crate::{
-	bracketed_items_from_reader, derive_ASTNode, property_key::PropertyKey, ASTNode, Expression,
-	ListItem, Marker, ParseError, ParseErrors, ParseResult, Span, WithComment,
+	ASTNode, Expression, ListItem, Marker, ParseError, ParseErrors, ParseResult, Span, WithComment,
+	bracketed_items_from_reader, derive_ASTNode, property_key::PropertyKey,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -173,7 +173,7 @@ impl ASTNode for VariableField {
 						options.push_gap_optionally(buf);
 					}
 				}
-				if let Some(ref spread) = spread {
+				if let Some(spread) = spread {
 					if !members.is_empty() {
 						buf.push(',');
 						options.push_gap_optionally(buf);
@@ -199,7 +199,7 @@ impl ASTNode for VariableField {
 						options.push_gap_optionally(buf);
 					}
 				}
-				if let Some(ref spread) = spread {
+				if let Some(spread) = spread {
 					if !members.is_empty() {
 						buf.push(',');
 						options.push_gap_optionally(buf);
@@ -280,7 +280,7 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 				None
 			};
 			// let position =
-			// 	if let Some(ref pos) = default_value {
+			// 	if let Some(pos) = default_value {
 			// 		key.get_position().union(pos)
 			// 	} else {
 			// 		*key.get_position()
@@ -682,7 +682,7 @@ pub mod visiting {
 							name.visit_names(cb);
 						}
 					}
-					if let Some(ref spread) = spread {
+					if let Some(spread) = spread {
 						spread.0.visit_names(cb);
 					}
 				}
@@ -699,7 +699,7 @@ pub mod visiting {
 							}
 						}
 					}
-					if let Some(ref spread) = spread {
+					if let Some(spread) = spread {
 						spread.0.visit_names(cb);
 					}
 				}

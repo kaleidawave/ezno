@@ -1,4 +1,4 @@
-use ezno_parser::{jsx::JSXRoot, ASTNode, ToStringOptions};
+use ezno_parser::{ASTNode, ToStringOptions, jsx::JSXRoot};
 
 fn main() {
 	let source = "<MySiteLayout> <p>My page content, wrapped in a layout!</p> </MySiteLayout>";

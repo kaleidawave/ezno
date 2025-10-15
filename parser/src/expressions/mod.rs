@@ -5,23 +5,26 @@ pub mod operators;
 pub mod template_literal;
 
 use crate::{
-	are_nodes_over_length, bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
-	functions, number::NumberRepresentation, statements_and_declarations::ClassDeclaration,
-	ExpressionPosition, ListItem, Marker, ParseErrors, ParseResult, Quoted,
+	ExpressionPosition, ListItem, Marker, ParseErrors, ParseResult, Quoted, are_nodes_over_length,
+	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode, functions,
+	statements_and_declarations::ClassDeclaration,
 };
+
+use crate::numbers::{BigInt, NumberRepresentation};
 
 use self::{
 	assignments::{LHSOfAssignment, VariableOrPropertyAccess},
 	object_literal::ObjectLiteral,
 	operators::{
-		IncrementOrDecrement, Operator, ARROW_FUNCTION_PRECEDENCE, COMMA_PRECEDENCE,
-		CONDITIONAL_TERNARY_PRECEDENCE, CONSTRUCTOR_PRECEDENCE,
-		CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE, MEMBER_ACCESS_PRECEDENCE,
+		ARROW_FUNCTION_PRECEDENCE, COMMA_PRECEDENCE, CONDITIONAL_TERNARY_PRECEDENCE,
+		CONSTRUCTOR_PRECEDENCE, CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE,
+		IncrementOrDecrement, MEMBER_ACCESS_PRECEDENCE, Operator,
 		PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, YIELD_OPERATORS_PRECEDENCE,
 	},
 };
 
-use super::{jsx::JSXRoot, ASTNode, Block, FunctionBase, ParseError, Span, TypeAnnotation};
+use super::jsx::JSXRoot;
+use super::{ASTNode, Block, FunctionBase, ParseError, Span, TypeAnnotation};
 
 #[cfg(feature = "extras")]
 use crate::extensions::is_expression::IsExpression;
@@ -34,9 +37,9 @@ pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 pub use template_literal::TemplateLiteral;
 
 use operators::{
-	AssociativityDirection, BinaryAssignmentOperator, BinaryOperator, UnaryOperator,
-	UnaryPostfixAssignmentOperator, UnaryPrefixAssignmentOperator, ASSIGNMENT_PRECEDENCE,
-	FUNCTION_CALL_PRECEDENCE, RELATION_PRECEDENCE,
+	ASSIGNMENT_PRECEDENCE, AssociativityDirection, BinaryAssignmentOperator, BinaryOperator,
+	FUNCTION_CALL_PRECEDENCE, RELATION_PRECEDENCE, UnaryOperator, UnaryPostfixAssignmentOperator,
+	UnaryPrefixAssignmentOperator,
 };
 
 pub type ExpressionFunctionBase = functions::GeneralFunctionBase<ExpressionPosition>;
@@ -54,6 +57,7 @@ use std::convert::TryInto;
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
+	BigIntLiteral(BigInt, Span),
 	StringLiteral(String, Quoted, Span),
 	BooleanLiteral(bool, Span),
 	RegexLiteral {
@@ -62,9 +66,11 @@ pub enum Expression {
 		flags: String,
 		position: Span,
 	},
+	// Structures
 	ArrayLiteral(Vec<ArrayElement>, Span),
 	ObjectLiteral(ObjectLiteral),
 	TemplateLiteral(TemplateLiteral),
+	// `(...)` for changing precedence
 	Parenthesised(Box<MultipleExpression>, Span),
 	// Regular operations:
 	BinaryOperation {
@@ -230,13 +236,20 @@ impl Expression {
 		let start = reader.get_start();
 		let first_expression = {
 			if reader.starts_with_string_delimeter() {
-				let (content, quoted) = reader.parse_string_literal()?;
-				let position = start.with_length(content.len() + 2);
+				let (content, quoted, width) = reader.parse_string_literal()?;
+				let position = start.with_length(width as usize);
 				Expression::StringLiteral(content.into_owned(), quoted, position)
 			} else if reader.starts_with_number() {
 				let (value, length) = reader.parse_number_literal()?;
-				let position = start.with_length(length as usize);
-				Expression::NumberLiteral(value, position)
+				match value {
+					crate::numbers::ParsedNumberLiteral::Number(value) => {
+						let position = start.with_length(length as usize);
+						Self::NumberLiteral(value, position)
+					}
+					crate::numbers::ParsedNumberLiteral::BigInt(_value) => {
+						todo!()
+					}
+				}
 			}
 			// Yes single line comment can occur here if the line splits
 			// ```
@@ -297,7 +310,7 @@ impl Expression {
 				{
 					let arrow_function = ArrowFunction::from_reader(reader).map(Box::new)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
-				} else if reader.get_options().jsx {
+				} else if reader.get_options().jsx.enable_jsx {
 					JSXRoot::from_reader(reader).map(Box::new).map(Expression::JSXRoot)?
 				} else {
 					let (_found, position) = crate::lexer::utilities::next_item(reader);
@@ -1137,6 +1150,7 @@ impl Expression {
 		// TODO unsure about some of these
 		match self {
 			Self::NumberLiteral(..)
+			| Self::BigIntLiteral(..)
 			| Self::BooleanLiteral(..)
 			| Self::StringLiteral(..)
 			| Self::RegexLiteral { .. }
@@ -1169,7 +1183,7 @@ impl Expression {
 			Self::ArrowFunction(..) => ARROW_FUNCTION_PRECEDENCE,
 			Self::Index { .. } => INDEX_PRECEDENCE,
 			Self::ConditionalTernary { .. } => CONDITIONAL_TERNARY_PRECEDENCE,
-			Self::Comment { ref on, .. } => on.get_precedence(),
+			Self::Comment { on, .. } => on.get_precedence(),
 			Self::SpecialOperators(SpecialOperators::Yield { .. }, _) => YIELD_OPERATORS_PRECEDENCE,
 			// I think this is correct
 			#[cfg(feature = "full-typescript")]
@@ -1198,6 +1212,10 @@ impl Expression {
 				assert!(options.expect_markers, "marker found");
 			}
 			Self::NumberLiteral(num, _) => buf.push_str(&num.to_string()),
+			Self::BigIntLiteral(num, _) => {
+				buf.push_str(&num.source);
+				buf.push('n');
+			}
 			Self::StringLiteral(string, quoted, _) => {
 				buf.push(quoted.as_char());
 				buf.push_str(string);
@@ -1330,7 +1348,7 @@ impl Expression {
 					buf.push_str("yield");
 					// TODO can be dropped sometimes
 					buf.push(' ');
-					if let Some((is_delegated, ref yielded)) = yielded {
+					if let Some((is_delegated, yielded)) = yielded {
 						if *is_delegated {
 							buf.push('*');
 						}

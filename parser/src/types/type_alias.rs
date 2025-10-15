@@ -1,8 +1,8 @@
 use source_map::Span;
 
 use crate::{
-	bracketed_items_to_string, derive_ASTNode, ASTNode, ExpressionOrStatementPosition,
-	StatementPosition, TypeAnnotation, TypeParameter,
+	ASTNode, ExpressionOrStatementPosition, StatementPosition, TypeAnnotation, TypeParameter,
+	bracketed_items_to_string, derive_ASTNode,
 };
 
 /// e.g. `type NumberArray = Array<number>`

@@ -215,30 +215,15 @@ mod ast {
 	create_blank_visiting_implementations![
 		(),
 		bool,
-		isize,
 		usize,
-		i8,
-		u8,
-		i16,
-		u16,
-		i32,
 		u32,
-		i64,
-		u64,
-		i128,
-		u128,
-		f32,
-		f64,
 		char,
 		String,
-		Box<str>,
-		std::rc::Rc<str>,
-		std::path::Path,
-		std::path::PathBuf,
 		source_map::Span,
 		crate::TypeAnnotation,
 		crate::types::Visibility,
-		crate::number::NumberRepresentation,
+		crate::numbers::NumberRepresentation,
+		crate::numbers::BigInt,
 		crate::expressions::operators::BinaryOperator,
 		crate::expressions::operators::BinaryAssignmentOperator,
 		crate::expressions::operators::UnaryOperator,
@@ -264,8 +249,8 @@ mod ast {
 /// Data used when visiting AST
 mod structures {
 	use crate::{
-		property_key::{AlwaysPublic, PublicOrPrivate},
 		VariableField, VariableIdentifier,
+		property_key::{AlwaysPublic, PublicOrPrivate},
 	};
 
 	use super::{

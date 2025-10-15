@@ -1,7 +1,7 @@
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode, ASTNode};
+use crate::{ASTNode, ast::MultipleExpression, block::BlockOrSingleStatement, derive_ASTNode};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]

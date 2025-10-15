@@ -3,9 +3,8 @@ use source_map::Span;
 use visitable_derive::Visitable;
 
 use crate::{
-	derive_ASTNode,
+	ASTNode, TypeAnnotation, derive_ASTNode,
 	expressions::{ExpressionOrBlock, MultipleExpression},
-	ASTNode, TypeAnnotation,
 };
 
 #[apply(derive_ASTNode)]

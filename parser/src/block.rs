@@ -2,8 +2,8 @@ use derive_enum_from_into::EnumFrom;
 use iterator_endiate::EndiateIteratorExt;
 
 use crate::{
-	derive_ASTNode, ASTNode, ParseResult, Span, Statement, StatementOrDeclaration, VisitOptions,
-	Visitable,
+	ASTNode, ParseResult, Span, Statement, StatementOrDeclaration, VisitOptions, Visitable,
+	derive_ASTNode,
 };
 
 /// A "block" of braced statements and declarations
@@ -307,10 +307,10 @@ impl Visitable for BlockOrSingleStatement {
 		chain: &mut temporary_annex::Annex<crate::visiting::Chain>,
 	) {
 		match self {
-			BlockOrSingleStatement::Braced(ref mut b) => {
+			BlockOrSingleStatement::Braced(b) => {
 				b.visit_mut(visitors, data, options, chain);
 			}
-			BlockOrSingleStatement::SingleStatement(ref mut s) => {
+			BlockOrSingleStatement::SingleStatement(s) => {
 				s.visit_mut(visitors, data, options, chain);
 				visitors.visit_statement_or_declaration_mut(&mut s.0, data, chain);
 			}

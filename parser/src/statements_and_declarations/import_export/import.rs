@@ -1,7 +1,7 @@
 use super::{ImportExportPart, ImportLocation};
 use crate::{
-	ast::object_literal::ObjectLiteral, bracketed_items_from_reader, derive_ASTNode, ASTNode,
-	ParseResult, VariableIdentifier,
+	ASTNode, ParseResult, VariableIdentifier, ast::object_literal::ObjectLiteral,
+	bracketed_items_from_reader, derive_ASTNode,
 };
 use source_map::Span;
 use visitable_derive::Visitable;

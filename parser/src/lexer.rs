@@ -1,8 +1,8 @@
 use crate::{
+	Span,
 	errors::{ParseError, ParseErrors},
 	marker::Marker,
 	options::ParseOptions,
-	Span,
 };
 
 // TODO state for "use strict" etc?
@@ -248,11 +248,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub fn is_no_advance(&mut self, chr: char) -> Result<(), ()> {
-		if self.get_current().starts_with(chr) {
-			Ok(())
-		} else {
-			Err(())
-		}
+		if self.get_current().starts_with(chr) { Ok(()) } else { Err(()) }
 	}
 
 	#[must_use]
@@ -559,95 +555,6 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	pub fn starts_with_string_delimeter(&self) -> bool {
-		self.starts_with('"') || self.starts_with('\'')
-	}
-
-	pub fn parse_string_literal(
-		&mut self,
-	) -> Result<(std::borrow::Cow<'a, str>, crate::Quoted), ParseError> {
-		let current = self.get_current();
-		// FUTURE impl pattern for delimeter
-		let (delimeter, quoted) = if current.starts_with('"') {
-			('"', crate::Quoted::Double)
-		} else if current.starts_with('\'') {
-			('\'', crate::Quoted::Single)
-		} else {
-			let found = &current[..utilities::next_empty_occurance(current)];
-			return Err(ParseError::new(
-				ParseErrors::ExpectedOneOfItems { expected: &["\"", "'"], found },
-				self.get_start().with_length(1),
-			));
-		};
-
-		let chars: [char; _] = [delimeter, '\\', '\u{000A}', '\u{000D}', '\u{2028}', '\u{2029}'];
-
-		let mut buf = std::borrow::Cow::Borrowed("");
-		let current = &current[1..];
-		let mut delimeters = current.match_indices(chars);
-
-		let mut last = 0;
-		while let Some((idx, matched)) = delimeters.next() {
-			buf += &current[last..idx];
-
-			if let "\"" | "'" = matched {
-				self.advance(idx as u32 + 2);
-				return Ok((buf, quoted));
-			} else if matched == "\\" {
-				let immediate = &current[idx + 1..];
-				let chr = immediate.chars().next();
-				if let Some(chr) = chr {
-					let after = &immediate[chr.len_utf8()..];
-					let result = crate::strings::escape_character(chr, after, buf.to_mut());
-					match result {
-						Ok(offset) => {
-							// Skip others
-							last = idx + 1 + offset;
-
-							if chr == delimeter {
-								let _ = delimeters.next();
-							} else if let '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' = chr {
-								for chr in immediate.chars() {
-									if let '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' = chr {
-										let _ = delimeters.next();
-										last += 1;
-									} else {
-										break;
-									}
-								}
-							}
-						}
-						Err(()) => {
-							eprintln!("Invalid character");
-							return Err(ParseError::new(
-								ParseErrors::InvalidStringLiteral,
-								self.get_start().with_length(self.get_current().len()),
-							));
-						}
-					}
-				} else {
-					eprintln!("Expected end");
-					return Err(ParseError::new(
-						ParseErrors::InvalidStringLiteral,
-						self.get_start().with_length(self.get_current().len()),
-					));
-				}
-			} else {
-				eprintln!("Expected matched {matched:?}");
-				return Err(ParseError::new(
-					ParseErrors::InvalidStringLiteral,
-					self.get_start().with_length(self.get_current().len()),
-				));
-			}
-		}
-
-		Err(ParseError::new(
-			ParseErrors::UnexpectedEnd,
-			self.get_start().with_length(self.get_current().len()),
-		))
-	}
-
-	#[must_use]
 	pub fn starts_with_number(&self) -> bool {
 		let bytes = self.get_current().as_bytes();
 		if let Some(start) = bytes.first() {
@@ -670,204 +577,42 @@ impl<'a> Lexer<'a> {
 	// TODO errors + some parts are weird
 	pub fn parse_number_literal(
 		&mut self,
-	) -> Result<(crate::number::NumberRepresentation, u32), ParseError> {
-		use std::str::FromStr;
-
-		enum NumberLiteralType {
-			BinaryLiteral,
-			/// strict mode done at the parse level
-			OctalLiteral,
-			HexadecimalLiteral,
-			/// Base 10
-			Decimal {
-				/// has decimal point
-				fractional: bool,
-			},
-			Exponent,
-		}
-
-		let current = self.get_current();
-		let mut chars = current.char_indices();
-
-		let mut state = match chars.next().map(|(_idx, chr)| chr) {
-			Some('0') if current.as_bytes().get(1).is_some_and(|b| (b'0'..=b'7').contains(b)) => {
-				// TODO strict mode should be done in the parser stage (as that is where context is)
-				NumberLiteralType::OctalLiteral
+	) -> Result<(crate::numbers::ParsedNumberLiteral<'a>, u32), ParseError> {
+		let value = self.get_current();
+		let result = crate::numbers::parse_number(value);
+		match result {
+			Ok((value, count)) => {
+				self.advance(count);
+				Ok((value, count))
 			}
-			Some('0'..='9') => NumberLiteralType::Decimal { fractional: false },
-			Some('.') => NumberLiteralType::Decimal { fractional: true },
-			Some(_) | None => {
-				return Err(ParseError::new(
-					ParseErrors::InvalidNumberLiteral,
-					self.get_start().with_length(1),
-				))
-			}
-		};
-
-		for (idx, chr) in chars {
-			match chr {
-				'n' => {
-					return if let NumberLiteralType::Decimal { fractional: false } = state {
-						let num_slice = current[..idx].to_owned();
-						let number = crate::number::NumberRepresentation::BigInt(
-							crate::number::NumberSign::Positive,
-							num_slice,
-						);
-						let length = (idx + 'n'.len_utf16()) as u32;
-						self.head += length;
-						Ok((number, length))
-					} else {
-						Err(ParseError::new(
-							ParseErrors::InvalidNumberLiteral,
-							self.get_start().with_length(idx),
-						))
-					};
-				}
-				// For binary/hexadecimal/octal literals
-				'b' | 'B' | 'x' | 'X' | 'o' | 'O' if idx == 1 => {
-					if current.starts_with('0') {
-						state = match chr {
-							'b' | 'B' => NumberLiteralType::BinaryLiteral,
-							'o' | 'O' => NumberLiteralType::OctalLiteral,
-							'x' | 'X' => NumberLiteralType::HexadecimalLiteral,
-							_ => unreachable!(),
-						}
-					} else {
-						// LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
-						return Err(ParseError::new(
-							ParseErrors::InvalidNumberLiteral,
-							self.get_start().with_length(idx),
-						));
-					}
-				}
-				'0'..='9' | 'a'..='f' | 'A'..='F' => match state {
-					NumberLiteralType::BinaryLiteral => {
-						if !matches!(chr, '0' | '1') {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumberLiteral,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					NumberLiteralType::OctalLiteral => {
-						if !matches!(chr, '0'..='7') {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumberLiteral,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					// Handling for 'e' & 'E'
-					NumberLiteralType::Decimal { ref fractional } => {
-						if matches!(chr, 'e' | 'E')
-							&& !(*fractional || current[..idx].ends_with('_'))
-						{
-							state = NumberLiteralType::Exponent;
-						} else if !chr.is_ascii_digit() {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumberLiteral,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					NumberLiteralType::Exponent => {
-						if !chr.is_ascii_digit() {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumberLiteral,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					// all above allowed
-					NumberLiteralType::HexadecimalLiteral => {}
-				},
-				'.' => {
-					if let NumberLiteralType::Decimal { ref mut fractional } = state {
-						// Return if already fractional. This is valid syntax: `1..toString()`
-						if *fractional {
-							let num_slice = &current[..idx];
-							let number = crate::number::NumberRepresentation::from_str(num_slice);
-							let number = number.unwrap();
-							let length = idx as u32;
-							self.head += length;
-							return Ok((number, length));
-						}
-
-						if current[..idx].ends_with(['_']) {
-							// (LexingErrors::InvalidUnderscore)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumberLiteral,
-								self.get_start().with_length(idx),
-							));
-						}
-
-						*fractional = true;
-					} else {
-						// (LexingErrors::NumberLiteralCannotHaveDecimalPoint);
-						return Err(ParseError::new(
-							ParseErrors::InvalidNumberLiteral,
-							self.get_start().with_length(idx),
-						));
-					}
-				}
-				'_' => {
-					let invalid = match &state {
-						NumberLiteralType::BinaryLiteral |
-						NumberLiteralType::OctalLiteral |
-						// Second `(idx - start) < 1` is for octal with prefix 0
-						NumberLiteralType::HexadecimalLiteral => {
-							if idx == 2 {
-								current[..idx].ends_with(['b', 'B', 'x', 'X', 'o', 'O'])
-							} else {
-								false
-							}
-						},
-						NumberLiteralType::Decimal { .. } => current[..idx].ends_with('.') || &current[..idx] == "0",
-						NumberLiteralType::Exponent => current[..idx].ends_with(['e', 'E']),
-					};
-					if invalid {
-						// (LexingErrors::InvalidUnderscore);
-						return Err(ParseError::new(
-							ParseErrors::InvalidNumberLiteral,
-							self.get_start().with_length(idx),
-						));
-					}
-				}
-				// `10e-5` is a valid literal
-				'-' if matches!(state, NumberLiteralType::Exponent if current[..idx].ends_with(['e', 'E'])) =>
-					{}
-				_chr => {
-					let num_slice = &current[..idx];
-					let length = idx;
-					return match crate::number::NumberRepresentation::from_str(num_slice) {
-						Ok(number) => {
-							self.head += length as u32;
-							Ok((number, length as u32))
-						}
-						Err(_) => Err(ParseError::new(
-							ParseErrors::InvalidNumberLiteral,
-							self.get_start().with_length(length),
-						)),
-					};
-				}
+			Err(_) => {
+				// TODO ...
+				let span = self.get_start().with_length(1);
+				Err(ParseError::new(ParseErrors::InvalidNumberLiteral, span))
 			}
 		}
+	}
 
-		// Fix if don't find end
-		let length = current.len();
-		match crate::number::NumberRepresentation::from_str(current) {
-			Ok(number) => {
-				self.head += length as u32;
-				Ok((number, length as u32))
+	#[must_use]
+	pub fn starts_with_string_delimeter(&self) -> bool {
+		self.starts_with('"') || self.starts_with('\'')
+	}
+
+	pub fn parse_string_literal(
+		&mut self,
+	) -> Result<(std::borrow::Cow<'a, str>, crate::strings::Quoted, u32), ParseError> {
+		let value = self.get_current();
+		let result = crate::strings::parse_string(value);
+		match result {
+			Ok((value, quoted, count)) => {
+				self.advance(count);
+				Ok((value, quoted, count))
 			}
-			Err(_) => Err(ParseError::new(
-				ParseErrors::InvalidNumberLiteral,
-				self.get_start().with_length(length),
-			)),
+			Err(_) => {
+				// TODO ...
+				let span = self.get_start().with_length(1);
+				Err(ParseError::new(ParseErrors::InvalidStringLiteral, span))
+			}
 		}
 	}
 

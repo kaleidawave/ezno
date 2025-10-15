@@ -1,6 +1,6 @@
 use crate::{
-	ast::FunctionArgument, derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors,
-	ParseResult, Span,
+	ASTNode, Expression, ParseError, ParseErrors, ParseResult, Span, ast::FunctionArgument,
+	derive_ASTNode,
 };
 use visitable_derive::Visitable;
 
@@ -90,7 +90,7 @@ impl ASTNode for JSXElement {
 						));
 					}
 				};
-				if !reader.get_options().special_jsx_attributes {
+				if !reader.get_options().jsx.special_jsx_attributes {
 					let idx_of_invalid_character = key.char_indices().find_map(|(idx, c)| {
 						(!(c.is_alphanumeric() || matches!(c, '_' | '-')))
 							.then_some(idx + c.len_utf8())
@@ -106,14 +106,21 @@ impl ASTNode for JSXElement {
 				match delimiter {
 					"=" => {
 						let start = reader.get_start();
-						let attribute = if reader.is_operator_advance("{") {
+						let attribute = if reader.get_options().jsx.attributes_as_expressions
+							|| reader.is_operator_advance("{")
+						{
 							let expression = Expression::from_reader(reader)?;
-							let end = reader.expect('}')?;
-							JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
+							if reader.get_options().jsx.attributes_as_expressions {
+								let end = reader.get_end();
+								JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
+							} else {
+								let end = reader.expect('}')?;
+								JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
+							}
 						} else if reader.starts_with_string_delimeter() {
 							// TODO _quoted
-							let (content, _quoted) = reader.parse_string_literal()?;
-							let position = start.with_length(content.len() + 2);
+							let (content, _quoted, width) = reader.parse_string_literal()?;
+							let position = start.with_length(width as usize);
 							JSXAttribute::Static(key, content.into_owned(), position)
 						} else {
 							let (_found, position) = crate::lexer::utilities::next_item(reader);
@@ -271,13 +278,20 @@ impl ASTNode for JSXAttribute {
 		let key = reader.parse_identifier("JSX element attribute", false)?.to_owned();
 		if reader.is_operator_advance("=") {
 			let start = reader.get_start();
-			if reader.is_operator_advance("{") {
+			if reader.get_options().jsx.attributes_as_expressions || reader.is_operator_advance("{")
+			{
 				let expression = Expression::from_reader(reader)?;
-				let end = reader.expect('}')?;
-				Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
+				if reader.get_options().jsx.attributes_as_expressions {
+					let end = reader.get_end();
+					Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
+				} else {
+					let end = reader.expect('}')?;
+					Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
+				}
 			} else if reader.starts_with_string_delimeter() {
-				let (content, _quoted) = reader.parse_string_literal()?;
-				let position = start.with_length(content.len() + 2);
+				// TODO _quoted
+				let (content, _quoted, width) = reader.parse_string_literal()?;
+				let position = start.with_length(width as usize);
 				Ok(JSXAttribute::Static(key, content.into_owned(), position))
 			} else {
 				let (_found, position) = crate::lexer::utilities::next_item(reader);

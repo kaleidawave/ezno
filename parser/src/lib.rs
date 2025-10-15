@@ -12,7 +12,7 @@ pub mod generator_helpers;
 mod lexer;
 pub mod marker;
 mod modules;
-pub mod number;
+pub mod numbers;
 pub mod options;
 pub mod property_key;
 pub mod statements_and_declarations;
@@ -486,18 +486,18 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 /// Re-exports or generator and general use
 pub mod ast {
 	pub use crate::{
+		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
+		StatementPosition, VariableField, VariableIdentifier, WithComment,
 		expressions::*,
 		extensions::jsx::*,
 		functions::{
 			FunctionBase, FunctionBody, FunctionHeader, FunctionParameters, MethodHeader,
 			Parameter, ParameterData, SpreadParameter,
 		},
-		number::NumberRepresentation,
+		numbers::NumberRepresentation,
 		statements_and_declarations::classes::*,
 		statements_and_declarations::*,
 		variable_fields::*,
-		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
-		StatementPosition, VariableField, VariableIdentifier, WithComment,
 	};
 
 	pub use source_map::{BaseSpan, SourceId};

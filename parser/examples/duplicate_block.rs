@@ -1,6 +1,6 @@
 use ezno_parser::{
-	visiting::{Chain, ImmutableVariableOrProperty, VisitOptions, Visitor, Visitors},
 	ASTNode, Expression, Module, StatementOrDeclaration, VariableField,
+	visiting::{Chain, ImmutableVariableOrProperty, VisitOptions, Visitor, Visitors},
 };
 use std::collections::HashSet;
 

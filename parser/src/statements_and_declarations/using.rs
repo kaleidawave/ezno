@@ -1,4 +1,4 @@
-use crate::{derive_ASTNode, Expression, Span};
+use crate::{Expression, Span, derive_ASTNode};
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
 

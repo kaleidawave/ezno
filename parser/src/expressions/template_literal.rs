@@ -1,5 +1,5 @@
 use super::{Expression, MultipleExpression};
-use crate::{derive_ASTNode, ASTNode, ParseError, ParseErrors, ParseResult, Span};
+use crate::{ASTNode, ParseError, ParseErrors, ParseResult, Span, derive_ASTNode};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -111,7 +111,7 @@ pub fn parse_template_literal<T: ASTNode>(
 								// Skip others
 								last = idx + 1 + offset;
 
-								if let '$' | '`' = chr {
+								if let '$' | '`' | '\\' = chr {
 									let _ = delimeters.next();
 								} else if let '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' =
 									chr

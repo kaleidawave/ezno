@@ -5,7 +5,7 @@ use visitable_derive::Visitable;
 /// re-export
 pub use crate::VariableField;
 use crate::{
-	derive_ASTNode, ASTNode, Expression, ParseError, ParseResult, Span, TypeAnnotation, WithComment,
+	ASTNode, Expression, ParseError, ParseResult, Span, TypeAnnotation, WithComment, derive_ASTNode,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

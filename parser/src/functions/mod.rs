@@ -1,10 +1,10 @@
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
-	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
 	ASTNode, Block, ExpressionOrStatementPosition, ExpressionPosition, ParseResult, TypeAnnotation,
-	TypeParameter, VisitOptions, Visitable,
+	TypeParameter, VisitOptions, Visitable, bracketed_items_from_reader, bracketed_items_to_string,
+	derive_ASTNode,
+	visiting::{ImmutableVariableOrProperty, MutableVariableOrProperty},
 };
 
 use source_map::{Nullable, Span, ToString};
@@ -17,12 +17,12 @@ pub use crate::expressions::ArrowFunction;
 pub mod bases {
 	pub use crate::{
 		expressions::{
-			arrow_function::ArrowFunctionBase, object_literal::ObjectLiteralMethodBase,
-			ExpressionFunctionBase,
+			ExpressionFunctionBase, arrow_function::ArrowFunctionBase,
+			object_literal::ObjectLiteralMethodBase,
 		},
 		statements_and_declarations::{
-			classes::{ClassConstructorBase, ClassFunctionBase},
 			StatementFunctionBase,
+			classes::{ClassConstructorBase, ClassFunctionBase},
 		},
 	};
 }

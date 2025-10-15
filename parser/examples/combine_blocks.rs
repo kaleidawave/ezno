@@ -4,9 +4,9 @@ use std::io::{IsTerminal, Read, Write};
 use ezno_parser::source_map::{Nullable, SourceId, Span};
 use ezno_parser::visiting::{self, VisitOptions, Visitors};
 use ezno_parser::{
-	ast, expressions::operators, functions, ASTNode, Expression, ExpressionPosition, Module,
-	StatementOrDeclaration, StatementPosition, ToStringOptions, VariableField, VariableIdentifier,
-	WithComment,
+	ASTNode, Expression, ExpressionPosition, Module, StatementOrDeclaration, StatementPosition,
+	ToStringOptions, VariableField, VariableIdentifier, WithComment, ast, expressions::operators,
+	functions,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

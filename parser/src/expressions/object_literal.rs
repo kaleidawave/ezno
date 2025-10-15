@@ -1,9 +1,9 @@
 use crate::{
+	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, WithComment,
 	derive_ASTNode,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
 	visiting::Visitable,
-	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, WithComment,
 };
 
 use std::fmt::Debug;

@@ -5,7 +5,7 @@ use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{derive_ASTNode, Marker, ParseError, ParseErrors, Quoted};
+use crate::{Marker, ParseError, ParseErrors, Quoted, derive_ASTNode};
 
 pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
 	const PREFIX: bool;
@@ -176,8 +176,8 @@ impl ImportExportName {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
-			let (content, quoted) = reader.parse_string_literal()?;
-			let position = start.with_length(content.len() + 2);
+			let (content, quoted, width) = reader.parse_string_literal()?;
+			let position = start.with_length(width as usize);
 			Ok((ImportExportName::Quoted(content.into_owned(), quoted), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
@@ -256,7 +256,7 @@ impl ImportLocation {
 		reader.skip();
 
 		let _start = reader.get_start();
-		let (content, quoted) = reader.parse_string_literal()?;
+		let (content, quoted, _width) = reader.parse_string_literal()?;
 		Ok(ImportLocation::Quoted(content.into_owned(), quoted))
 	}
 
@@ -274,10 +274,6 @@ impl ImportLocation {
 	/// Can be `None` if self is a marker point
 	#[must_use]
 	pub fn get_path(&self) -> Option<&str> {
-		if let Self::Quoted(name, _) = self {
-			Some(name)
-		} else {
-			None
-		}
+		if let Self::Quoted(name, _) = self { Some(name) } else { None }
 	}
 }

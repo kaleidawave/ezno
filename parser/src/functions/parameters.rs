@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode, ASTNode, Expression, ParseError, ParseErrors, ParseResult, TypeAnnotation,
-	VariableField, WithComment,
+	ASTNode, Expression, ParseError, ParseErrors, ParseResult, TypeAnnotation, VariableField,
+	WithComment, derive_ASTNode,
 };
 
 use iterator_endiate::EndiateIteratorExt;
@@ -391,7 +391,7 @@ where
 			}
 			// decorators_to_string_from_buffer(decorators, buf, options, inner_local);
 			name.to_string_from_buffer(buf, options, inner_local);
-			if let (true, Some(ref type_annotation)) =
+			if let (true, Some(type_annotation)) =
 				(options.include_type_annotations, type_annotation)
 			{
 				if let Some(ParameterData::Optional) = additionally {

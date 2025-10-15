@@ -1,6 +1,6 @@
 use crate::{
-	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField,
-	WithComment,
+	ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField, WithComment,
+	derive_ASTNode,
 };
 use source_map::Span;
 use visitable_derive::Visitable;

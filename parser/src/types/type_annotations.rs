@@ -1,9 +1,8 @@
-use std::ops::Neg;
-
 use crate::{
-	ast::VariableOrPropertyAccess, bracketed_items_from_reader, bracketed_items_to_string,
-	derive_ASTNode, extensions::decorators::Decorated, number::NumberRepresentation, ASTNode,
-	Decorator, ListItem, Marker, ParseError, ParseResult, Quoted, Span, VariableField, WithComment,
+	ASTNode, Decorator, ListItem, Marker, ParseError, ParseResult, Quoted, Span, VariableField,
+	WithComment, ast::VariableOrPropertyAccess, bracketed_items_from_reader,
+	bracketed_items_to_string, derive_ASTNode, extensions::decorators::Decorated,
+	numbers::NumberRepresentation,
 };
 use iterator_endiate::EndiateIteratorExt;
 
@@ -350,7 +349,7 @@ impl ASTNode for TypeAnnotation {
 			Self::Infer { name, extends, position: _ } => {
 				buf.push_str("infer ");
 				buf.push_str(name.as_str());
-				if let Some(ref extends) = extends {
+				if let Some(extends) = extends {
 					buf.push_str(" extends ");
 					extends.to_string_from_buffer(buf, options, local);
 				}
@@ -523,8 +522,12 @@ impl TypeAnnotation {
 
 		let mut reference = if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
-			let position = start.with_length(length as usize);
-			Self::NumberLiteral(value, position)
+			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
+				let position = start.with_length(length as usize);
+				TypeAnnotation::NumberLiteral(value, position)
+			} else {
+				todo!()
+			}
 		} else if reader.is_keyword_advance("this") {
 			TypeAnnotation::This(start.with_length(4))
 		} else if reader.is_keyword_advance("true") {
@@ -602,7 +605,8 @@ impl TypeAnnotation {
 			let name = if reader.get_options().extra_type_annotations
 				&& reader.starts_with_string_delimeter()
 			{
-				Some(reader.parse_string_literal()?.0.into_owned())
+				let (name, ..) = reader.parse_string_literal()?;
+				Some(name.into_owned())
 			} else {
 				None
 			};
@@ -614,12 +618,16 @@ impl TypeAnnotation {
 			}
 		} else if reader.is_operator_advance("-") {
 			let (value, length) = reader.parse_number_literal()?;
-			let position = start.with_length(length as usize);
-			// important negation here
-			Self::NumberLiteral(value.neg(), position)
+			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
+				let position = start.with_length(length as usize);
+				// important negation here
+				Self::NumberLiteral(-value, position)
+			} else {
+				todo!()
+			}
 		} else if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoted) = reader.parse_string_literal()?;
-			let position = start.with_length(content.len() + 2);
+			let (content, quoted, width) = reader.parse_string_literal()?;
+			let position = start.with_length(width as usize);
 			Self::StringLiteral(content.into_owned(), quoted, position)
 		} else if reader.starts_with('@') {
 			let decorator = Decorator::from_reader(reader)?;

@@ -20,11 +20,13 @@ const z = 2
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: false, ..Default::default() },
-	)
-	.is_err());
+	assert!(
+		Module::from_string(
+			input.clone(),
+			ParseOptions { partial_syntax: false, ..Default::default() },
+		)
+		.is_err()
+	);
 
 	// TODO difference in semi colons
 	// assert_eq!(output, input);
@@ -48,11 +50,13 @@ if () {
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: false, ..Default::default() },
-	)
-	.is_err());
+	assert!(
+		Module::from_string(
+			input.clone(),
+			ParseOptions { partial_syntax: false, ..Default::default() },
+		)
+		.is_err()
+	);
 
 	assert_eq!(output, input);
 }
@@ -78,11 +82,13 @@ function y(c: ) {
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: false, ..Default::default() },
-	)
-	.is_err());
+	assert!(
+		Module::from_string(
+			input.clone(),
+			ParseOptions { partial_syntax: false, ..Default::default() },
+		)
+		.is_err()
+	);
 
 	assert_eq!(output, input);
 }
@@ -101,11 +107,13 @@ fn property_access() {
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: false, ..Default::default() },
-	)
-	.is_err());
+	assert!(
+		Module::from_string(
+			input.clone(),
+			ParseOptions { partial_syntax: false, ..Default::default() },
+		)
+		.is_err()
+	);
 
 	assert_eq!(output, input);
 }

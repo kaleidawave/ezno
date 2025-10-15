@@ -1,6 +1,6 @@
 use crate::{
-	derive_ASTNode, type_annotations::TypeAnnotationFunctionParameters, ASTNode, Expression,
-	ParseResult, Span, TypeAnnotation, VariableIdentifier,
+	ASTNode, Expression, ParseResult, Span, TypeAnnotation, VariableIdentifier, derive_ASTNode,
+	type_annotations::TypeAnnotationFunctionParameters,
 };
 
 use super::{ImportExportPart, ImportLocation};
@@ -235,12 +235,12 @@ impl ASTNode for ExportDeclaration {
 						buf.push_str("async ");
 					}
 					buf.push_str("function ");
-					if let Some(ref identifier) = identifier {
+					if let Some(identifier) = identifier {
 						identifier.to_string_from_buffer(buf, options, local);
 						buf.push(' ');
 					}
 					parameters.to_string_from_buffer(buf, options, local);
-					if let Some(ref return_type) = return_type {
+					if let Some(return_type) = return_type {
 						buf.push_str(": ");
 						return_type.to_string_from_buffer(buf, options, local);
 					}

@@ -1,14 +1,13 @@
 use crate::{
-	derive_ASTNode,
+	Quoted, derive_ASTNode,
 	visiting::{Chain, VisitOptions, Visitable},
-	Quoted,
 };
 use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use std::fmt::Debug;
 use temporary_annex::Annex;
 
-use crate::{number::NumberRepresentation, ASTNode, Expression, ParseResult};
+use crate::{ASTNode, Expression, ParseResult, numbers::NumberRepresentation};
 
 pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;
@@ -124,13 +123,17 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoted) = reader.parse_string_literal()?;
-			let position = start.with_length(content.len() + 2);
+			let (content, quoted, width) = reader.parse_string_literal()?;
+			let position = start.with_length(width as usize);
 			Ok(Self::StringLiteral(content.into_owned(), quoted, position))
 		} else if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
-			let position = start.with_length(length as usize);
-			Ok(Self::NumberLiteral(value, position))
+			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
+				let position = start.with_length(length as usize);
+				Ok(Self::NumberLiteral(value, position))
+			} else {
+				todo!()
+			}
 		} else if reader.is_operator_advance("[") {
 			let expression = Expression::from_reader(reader)?;
 			let end = reader.expect(']')?;

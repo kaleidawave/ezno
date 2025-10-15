@@ -1,9 +1,9 @@
 use crate::{
-	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
-	extensions::decorators::Decorated, functions::MethodHeader, property_key::PublicOrPrivate,
-	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode,
-	ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span, StatementPosition,
-	TypeAnnotation, TypeParameter, WithComment,
+	ASTNode, ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span,
+	StatementPosition, TypeAnnotation, TypeParameter, WithComment, bracketed_items_from_reader,
+	bracketed_items_to_string, derive_ASTNode, extensions::decorators::Decorated,
+	functions::MethodHeader, property_key::PublicOrPrivate,
+	types::type_annotations::TypeAnnotationFunctionParameters,
 };
 
 use get_field_by_type::GetFieldByType;
@@ -304,15 +304,20 @@ impl ASTNode for InterfaceMember {
 		} else {
 			let header = MethodHeader::from_reader(reader);
 
+			// We do not use `PropertyKey::from_reader` to handle a case with type annotation
 			let name = if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
-					let (content, quoted) = reader.parse_string_literal()?;
-					let position = start.with_length(content.len() + 2);
+					let (content, quoted, width) = reader.parse_string_literal()?;
+					let position = start.with_length(width as usize);
 					PropertyKey::StringLiteral(content.into_owned(), quoted, position)
 				} else if reader.starts_with_number() {
 					let (value, length) = reader.parse_number_literal()?;
-					let position = start.with_length(length as usize);
-					PropertyKey::NumberLiteral(value, position)
+					if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
+						let position = start.with_length(length as usize);
+						PropertyKey::NumberLiteral(value, position)
+					} else {
+						todo!()
+					}
 				} else {
 					use crate::Expression;
 					// "name" is the name of the parameter name for indexing
@@ -513,11 +518,11 @@ impl ASTNode for InterfaceMember {
 					buf.push_str("readonly ");
 				}
 				buf.push_str("new ");
-				if let Some(ref type_parameters) = type_parameters {
+				if let Some(type_parameters) = type_parameters {
 					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
-				if let Some(ref return_type) = return_type {
+				if let Some(return_type) = return_type {
 					buf.push_str(": ");
 					return_type.to_string_from_buffer(buf, options, local);
 				}
@@ -532,11 +537,11 @@ impl ASTNode for InterfaceMember {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
-				if let Some(ref type_parameters) = type_parameters {
+				if let Some(type_parameters) = type_parameters {
 					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
-				if let Some(ref return_type) = return_type {
+				if let Some(return_type) = return_type {
 					buf.push_str(": ");
 					return_type.to_string_from_buffer(buf, options, local);
 				}

@@ -1,15 +1,14 @@
 use std::fmt::Debug;
 
 use crate::{
-	derive_ASTNode,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, TypeAnnotation,
+	WithComment, derive_ASTNode,
 	functions::{
 		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
 		ThisParameter,
 	},
 	property_key::PublicOrPrivate,
 	visiting::Visitable,
-	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, TypeAnnotation,
-	WithComment,
 };
 use source_map::Span;
 use visitable_derive::Visitable;

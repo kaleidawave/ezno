@@ -1,10 +1,11 @@
 use crate::{
+	ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
 	ast::{
-		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		ArrayDestructuringField, Expression, FunctionArgument, ObjectDestructuringField,
 		PropertyKey, PropertyLike, PropertyReference, SpreadDestructuringField, SuperReference,
+		object_literal::{ObjectLiteral, ObjectLiteralMember},
 	},
-	derive_ASTNode, ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
+	derive_ASTNode,
 };
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -240,7 +241,7 @@ impl ASTNode for LHSOfAssignment {
 						options.push_gap_optionally(buf);
 					}
 				}
-				if let Some(ref spread) = spread {
+				if let Some(spread) = spread {
 					if !members.is_empty() {
 						buf.push(',');
 						options.push_gap_optionally(buf);
@@ -260,7 +261,7 @@ impl ASTNode for LHSOfAssignment {
 						options.push_gap_optionally(buf);
 					}
 				}
-				if let Some(ref spread) = spread {
+				if let Some(spread) = spread {
 					if !members.is_empty() {
 						buf.push(',');
 						options.push_gap_optionally(buf);
@@ -307,7 +308,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
 									position,
 								})
-							}
+							};
 						}
 						Some(FunctionArgument::Standard(expression)) => {
 							WithComment::None(match expression {
@@ -343,7 +344,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
 									position,
 								})
-							}
+							};
 						}
 						ObjectLiteralMember::Shorthand(name, pos) => {
 							ObjectDestructuringField::Name(
@@ -390,7 +391,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 							return Err(ParseError::new(
 								crate::ParseErrors::InvalidLHSAssignment,
 								position,
-							))
+							));
 						}
 						ObjectLiteralMember::Comment(..) => {
 							continue;

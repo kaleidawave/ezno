@@ -1,4 +1,4 @@
-use crate::{derive_ASTNode, Span};
+use crate::{Span, derive_ASTNode};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]

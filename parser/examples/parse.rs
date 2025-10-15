@@ -2,9 +2,8 @@ use std::{path::Path, time::Instant};
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::term::{
-	self,
+	self, Config,
 	termcolor::{ColorChoice, StandardStream},
-	Config,
 };
 use ezno_parser::{ASTNode, Comments, Module, ParseError, ParseOptions, ToStringOptions};
 use source_map::FileSystem;
@@ -47,9 +46,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			"--extras" => {
 				parse_options.custom_function_headers = true;
 				parse_options.destructuring_type_annotation = true;
-				parse_options.jsx = true;
+				parse_options.jsx.enable_jsx = true;
 				parse_options.is_expressions = true;
-				parse_options.special_jsx_attributes = true;
+				parse_options.jsx.special_jsx_attributes = true;
 				parse_options.extra_operators = true;
 				parse_options.reversed_imports = true;
 			}
@@ -67,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 				parse_options.type_definition_module = true;
 			}
 			"--top-level-html" => {
-				parse_options.top_level_html = true;
+				parse_options.jsx.top_level_html = true;
 			}
 			"--source-map" => {
 				print_source_maps = true;
@@ -137,9 +136,9 @@ fn parse_path(
 	let now = Instant::now();
 	let extension: &str = path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or_default();
 	let type_annotations = extension.contains("ts");
-	let jsx = extension.contains('x');
 
-	let parse_options = ParseOptions { jsx, type_annotations, ..*parse_options };
+	let mut parse_options = ParseOptions { type_annotations, ..*parse_options };
+	parse_options.jsx.enable_jsx = extension.contains('x');
 
 	let on = source.clone();
 
@@ -206,9 +205,9 @@ fn parse_path(
 			let writer = StandardStream::stderr(ColorChoice::Always);
 			let config = Config::default();
 
-			let diagnostic = Diagnostic::error()
-				.with_labels(vec![Label::primary(source_id, position)
-					.with_message(format!("ParseError: {reason}"))]);
+			let diagnostic = Diagnostic::error().with_labels(vec![
+				Label::primary(source_id, position).with_message(format!("ParseError: {reason}")),
+			]);
 			term::emit(&mut writer.lock(), &config, &fs.into_code_span_store(), &diagnostic)?;
 			// Err(Box::<dyn std::error::Error>::from(ParseError { reason, position }))
 		}

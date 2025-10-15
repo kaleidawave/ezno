@@ -1,7 +1,6 @@
 use crate::{
-	derive_ASTNode,
+	ASTNode, Decorator, ParseResult, Span, derive_ASTNode,
 	statements_and_declarations::variables::{VariableDeclarationItem, VariableKeyword},
-	ASTNode, Decorator, ParseResult, Span,
 };
 
 /// A `declare var/let/const` thingy.
