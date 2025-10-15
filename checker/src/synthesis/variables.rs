@@ -109,7 +109,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, _type, ..) => {
 						let name = match variable {
-							VariableIdentifier::Standard(ref name, _) => name,
+							VariableIdentifier::Standard(name, _) => name,
 							VariableIdentifier::Marker(_, _) => "?",
 						};
 						if let Some(ref mut taken_members) = taken_members {
@@ -336,7 +336,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 					environment.context_type.scope
 				{
 					let name = match name {
-						VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+						VariableIdentifier::Standard(name, _) => name.to_owned(),
 						VariableIdentifier::Marker(_, _) => "?".to_owned(),
 					};
 					exported.named.insert(name, (id, mutability));

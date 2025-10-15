@@ -503,7 +503,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			// TODO this should be anonymous object type
 			obj.build_object()
 		}
-		TypeAnnotation::ParenthesizedReference(ref reference, _) => {
+		TypeAnnotation::ParenthesizedReference(reference, _) => {
 			synthesise_type_annotation(reference, environment, checking_data)
 		}
 		TypeAnnotation::Index(being_indexed, indexer, _) => {
@@ -688,7 +688,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			}
 		}
 		TypeAnnotation::Infer { name, extends, position: _ } => {
-			let extends = if let Some(ref extends) = extends {
+			let extends = if let Some(extends) = extends {
 				synthesise_type_annotation(extends, environment, checking_data)
 			} else {
 				TypeId::ANY_TYPE

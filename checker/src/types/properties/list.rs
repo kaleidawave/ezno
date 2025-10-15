@@ -37,7 +37,7 @@ pub fn get_properties_on_single_type(
 			let mut numerical_properties = BTreeMap::new();
 
 			for (publicity, key, value) in flattened_properties {
-				if let PropertyValue::Configured { on: _, ref descriptor } = value {
+				if let PropertyValue::Configured { on: _, descriptor } = value {
 					// TODO what about if not `TypeId::TRUE | TypeId::FALSE`
 					crate::utilities::notify!("descriptor.enumerable={:?}", descriptor.enumerable);
 					if filter_enumerable && !matches!(descriptor.enumerable, TypeId::TRUE) {

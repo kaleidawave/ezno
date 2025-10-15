@@ -240,23 +240,14 @@ pub(super) fn parser_property_key_to_checker_property_key<
 		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Identifier(value, ..) => {
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
-		ParserPropertyKey::NumberLiteral(number, pos) => {
-			let result = f64::try_from(number.clone());
-			if let Ok(v) = result {
-				// TODO is there a better way
-				#[allow(clippy::float_cmp)]
-				if v.floor() == v {
-					PropertyKey::from_usize(v as usize)
-				} else {
-					// TODO
-					PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
-				}
+		ParserPropertyKey::NumberLiteral(number, _pos) => {
+			// TODO is there a better way
+			#[allow(clippy::float_cmp)]
+			if number.floor() == *number {
+				PropertyKey::from_usize(*number as usize)
 			} else {
-				checking_data.raise_unimplemented_error(
-					"big int as property key",
-					pos.with_source(environment.get_source()),
-				);
-				PropertyKey::Type(TypeId::UNIMPLEMENTED_ERROR_TYPE)
+				// TODO
+				PropertyKey::String(std::borrow::Cow::Owned(number.to_string()))
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {

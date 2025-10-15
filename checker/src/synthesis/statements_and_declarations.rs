@@ -321,7 +321,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 				);
 			}
 		},
-		StatementOrDeclaration::Block(ref block) => {
+		StatementOrDeclaration::Block(block) => {
 			let (_result, _, _) = environment.new_lexical_environment_fold_into_parent(
 				Scope::Block {},
 				checking_data,

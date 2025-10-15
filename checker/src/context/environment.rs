@@ -1307,7 +1307,7 @@ impl Environment<'_> {
 					| Scope::StaticBlock { .. } => {
 						break;
 					}
-					Scope::Iteration { ref label } => {
+					Scope::Iteration { label } => {
 						match looking_for_label {
 							Some(looking_for_label) => {
 								if let Some(label) = label {

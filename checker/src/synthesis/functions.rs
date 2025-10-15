@@ -549,7 +549,8 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 								buf.push('"');
 							}
 							parser::PropertyKey::NumberLiteral(n, _) => {
-								buf.push_str(n.clone().as_js_string().as_str());
+								// TODO check
+								buf.push_str(n.to_string().as_str());
 							}
 							parser::PropertyKey::Computed(_, _) => {
 								// TODO maybe could do better here?
@@ -582,7 +583,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 fn get_parameter_name(parameter: &parser::VariableField) -> String {
 	match parameter {
 		VariableField::Name(name) => match name {
-			VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+			VariableIdentifier::Standard(name, _) => name.to_owned(),
 			VariableIdentifier::Marker(_, _) => String::new(),
 		},
 		VariableField::Array { members: _, spread: _, position: _ } => {

@@ -663,8 +663,8 @@ where
 		// `this` changes stuff
 		if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
 			match scope {
-				FunctionScope::ArrowFunction { ref mut free_this_type, .. }
-				| FunctionScope::MethodFunction { ref mut free_this_type, .. } => {
+				FunctionScope::ArrowFunction { free_this_type, .. }
+				| FunctionScope::MethodFunction { free_this_type, .. } => {
 					let type_id = if let Some(tc) = this_constraint {
 						checking_data.types.register_type(Type::RootPolyType(
 							PolyNature::FreeVariable {
@@ -681,7 +681,7 @@ where
 					}
 					*free_this_type = type_id;
 				}
-				FunctionScope::Function { ref mut this_type, .. } => {
+				FunctionScope::Function { this_type, .. } => {
 					// TODO temp to reduce types
 
 					// TODO this could be done conditionally to create less objects, but also doesn't introduce any bad side effects so
@@ -743,11 +743,7 @@ where
 
 					*this_type = new_conditional_type;
 				}
-				FunctionScope::Constructor {
-					extends: _,
-					type_of_super: _,
-					ref mut this_object_type,
-				} => {
+				FunctionScope::Constructor { extends: _, type_of_super: _, this_object_type } => {
 					crate::utilities::notify!("Setting 'this' type here");
 					if let Some((prototype, properties)) = constructor {
 						let this_constructed_object = function_environment.info.new_object(

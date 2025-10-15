@@ -591,7 +591,7 @@ fn call_logical<B: CallCheckingBehavior>(
 				// TODO clone
 				let function_type = function_type.clone();
 
-				if let FunctionEffect::Constant { identifier: ref const_fn_ident, .. } =
+				if let FunctionEffect::Constant { identifier: const_fn_ident, .. } =
 					&function_type.effect
 				{
 					let has_dependent_argument =
@@ -1208,25 +1208,15 @@ impl FunctionType {
 
 					// Adjust call sites. (because they aren't currently passed down)
 					for d in &mut diagnostics.errors[current_errors..] {
-						if let FunctionCallingError::VariableUsedInTDZ {
-							call_site: ref mut c,
-							..
-						}
-						| FunctionCallingError::SetPropertyConstraint {
-							call_site: ref mut c,
-							..
-						} = d
+						if let FunctionCallingError::VariableUsedInTDZ { call_site, .. }
+						| FunctionCallingError::SetPropertyConstraint { call_site, .. } = d
 						{
-							*c = input.call_site;
+							*call_site = input.call_site;
 						}
 					}
 					for d in &mut diagnostics.warnings[current_warnings..] {
-						if let TypeCheckWarning::ConditionalExceptionInvoked {
-							call_site: ref mut c,
-							..
-						} = d
-						{
-							*c = input.call_site;
+						if let TypeCheckWarning::ConditionalExceptionInvoked { call_site, .. } = d {
+							*call_site = input.call_site;
 						}
 					}
 
@@ -1917,7 +1907,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 
 						None
 					}
-					(Some(ref function_type_parameters), Some(call_site_type_arguments)) => {
+					(Some(function_type_parameters), Some(call_site_type_arguments)) => {
 						let expected_parameters_length = function_type_parameters.0.len();
 						let provided_parameters_length = call_site_type_arguments.len();
 						if provided_parameters_length > expected_parameters_length {

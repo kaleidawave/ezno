@@ -106,12 +106,11 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			}
 		}
 		Expression::NumberLiteral(value, ..) => {
-			return if let Ok(value) = f64::try_from(value.clone()) {
-				checking_data.types.new_constant_type(Constant::Number(value))
-			} else {
-				crate::utilities::notify!("TODO big int");
-				TypeId::UNIMPLEMENTED_ERROR_TYPE
-			};
+			return checking_data.types.new_constant_type(Constant::Number(*value));
+		}
+		Expression::BigIntLiteral(_value, ..) => {
+			crate::utilities::notify!("TODO big int");
+			return TypeId::UNIMPLEMENTED_ERROR_TYPE;
 		}
 		Expression::BooleanLiteral(value, ..) => {
 			return checking_data.types.new_constant_type(Constant::Boolean(*value));
