@@ -27,6 +27,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: kaleidawave/release-downloader@improvements
+        env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
         with:
           # TODO benchmark tool
           items: kaleidawave/experiments@assets[shell-language|spectra|sde],sharkdp/hyperfine@v1.19.0

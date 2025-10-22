@@ -53,6 +53,7 @@ jobs:
         run: cargo fmt --all --check
 
       - uses: kaleidawave/release-downloader@improvements
+        env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
         with: { items: 'kaleidawave/simple-toml-parser@canary[format]' }
 
       - name: Check 'Cargo.toml' formatting
@@ -72,6 +73,7 @@ jobs:
 
       - name: Install spectra
         uses: kaleidawave/release-downloader@improvements
+        env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
         with: { 'items': 'kaleidawave/experiments@assets[spectra]' }
 
       - uses: dorny/paths-filter@v3
@@ -228,6 +230,7 @@ jobs:
       
       - name: Install cargo-fuzz
         uses: kaleidawave/release-downloader@improvements
+        env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
         with: { items: 'rust-fuzz/cargo-fuzz@0.13.1' }
           
       - uses: dorny/paths-filter@v3
@@ -280,6 +283,7 @@ jobs:
 
       - name: Install cargo-fuzz
         uses: kaleidawave/release-downloader@improvements
+        env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
         with: { items: 'rust-fuzz/cargo-fuzz@0.13.1' }
 
       - uses: dorny/paths-filter@v3
@@ -319,6 +323,7 @@ jobs:
 
       - uses: kaleidawave/release-downloader@improvements
         if: steps.changes.outputs.manifests == 'true'
+        env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
         with: { items: 'kaleidawave/crates-release-gh-action@assets[crates-release]' }
           
       - name: Check that it will publish to crates.io
