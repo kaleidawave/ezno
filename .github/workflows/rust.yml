@@ -217,7 +217,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-        with: { targets: x86_64-unknown-linux-musl }
       - uses: actions/cache@v4
         with:
           # TODO fuzz specific key & paths
@@ -267,7 +266,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
-        with: { targets: x86_64-unknown-linux-musl }
       - uses: actions/cache@v4
         with:
           # TODO fuzz specific key & paths
