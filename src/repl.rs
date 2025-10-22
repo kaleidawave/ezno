@@ -9,7 +9,7 @@ use crate::reporting::report_diagnostics_to_cli;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
-#[cfg_attr(target_family = "wasm", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(serde::Deserialize))]
 pub struct ReplArguments {
 	const_as_let: bool,
 	type_definition_module: Option<PathBuf>,
