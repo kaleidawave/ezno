@@ -1,50 +1,16 @@
-name: Performance and size
+name: performance
+run-name: Performance on ${{ github.ref_name }}
 
-on:
-  workflow_dispatch:
-    inputs:
-      paths: 
-        default: "[]"
-        type: string
-        description: Some binaries to build and compare with
+on: workflow_dispatch
 
-env:
-  CARGO_TERM_COLOR: always
+env: { CARGO_TERM_COLOR: always }
 
 jobs:
-  TEMP:
-    runs-on: ubuntu-latest
-    if: false
-
-    strategy:
-      matrix: 
-        ref: ${{ fromJson(inputs.paths) }} 
-      fail-fast: true
-
-    steps:
-    - uses: actions/checkout@v4
-      id: checkout
-      with:
-        ref: ${{ matrix.ref }}
-    - uses: dtolnay/rust-toolchain@stable
-    
-    - name: Build binary
-      run: cargo build --release
-      shell: bash
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: binary-${{ runner.os }}${{ runner.arch }}-TEMP-${{ matrix.ref }}
-        path: target/release/ezno
-        retention-days: 30
-
   run-benchmarks:
     runs-on: ubuntu-latest
-    needs: TEMP
     if: ${{ always() }}
 
-    env:
-      GH_TOKEN: ${{ github.token }}
+    env: { GH_TOKEN: '${{ github.token }}' }
 
     steps:
       - id: checkout
