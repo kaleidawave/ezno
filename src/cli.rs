@@ -323,22 +323,22 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 		"parse" => {
 			todo!()
 		}
+		#[cfg(target_family = "wasm")]
 		"upgrade" => {
-			#[cfg(target_family = "wasm")]
 			print_to_cli(format_args!("Cannot self upgrade self"));
-
-			#[cfg(not(target_family = "wasm"))]
-			match crate::utilities::upgrade_self() {
-				Ok(name) => {
-					print_to_cli(format_args!("Successfully updated to {name}"));
-					Err(std::process::ExitCode::SUCCESS)
-				}
-				Err(err) => {
-					print_to_cli(format_args!("Error: {err}\nCould not upgrade binary. Retry manually from {repository}/releases", repository=env!("CARGO_PKG_REPOSITORY")));
-					Err(std::process::ExitCode::FAILURE)
-				}
-			}
+			Err(std::process::ExitCode::SUCCESS)
 		}
+		#[cfg(not(target_family = "wasm"))]
+		"upgrade" => match crate::utilities::upgrade_self() {
+			Ok(name) => {
+				print_to_cli(format_args!("Successfully updated to {name}"));
+				Err(std::process::ExitCode::SUCCESS)
+			}
+			Err(err) => {
+				print_to_cli(format_args!("Error: {err}\nCould not upgrade binary. Retry manually from {repository}/releases", repository=env!("CARGO_PKG_REPOSITORY")));
+				Err(std::process::ExitCode::FAILURE)
+			}
+		},
 		"repl" => {
 			todo!()
 		}

@@ -190,8 +190,8 @@ pub fn run_cli_wasm(
 ) {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-	let arguments = cli_arguments.iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
-	let arguments = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+	let arguments: Vec<String> =
+		cli_arguments.iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
 
 	let read_from_file = |path: &std::path::Path| {
 		let res =
@@ -209,7 +209,7 @@ pub fn run_cli_wasm(
 			.unwrap();
 	};
 
-	crate::run_cli(&arguments, &read_from_file, write_to_file);
+	crate::run_cli(arguments.into_iter(), &read_from_file, write_to_file);
 }
 
 #[wasm_bindgen(typescript_custom_section)]
