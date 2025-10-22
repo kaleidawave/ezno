@@ -178,10 +178,10 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						true,
 						TypeId::ANY_TYPE,
 					) {
-						if let PropertyKey::String(ref s) = key {
-							if taken_members.contains(s) {
-								continue;
-							}
+						if let PropertyKey::String(ref s) = key
+							&& taken_members.contains(s)
+						{
+							continue;
 						}
 						rest.push((publicity, key, property));
 					}

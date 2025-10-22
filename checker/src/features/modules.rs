@@ -282,12 +282,12 @@ pub fn import_items<
 								},
 							);
 						}
-						if also_export {
-							if let Scope::Module { ref mut exported, .. } =
+
+						if also_export
+							&& let Scope::Module { ref mut exported, .. } =
 								environment.context_type.scope
-							{
-								exported.named.insert(part.r#as.to_owned(), (variable, mutability));
-							}
+						{
+							exported.named.insert(part.r#as.to_owned(), (variable, mutability));
 						}
 					}
 

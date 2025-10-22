@@ -158,7 +158,7 @@ pub fn narrow_based_on_expression(
 
 					let result = if negate {
 						// TODO wip
-						let narrowed_to = if get_type_as_conditional(lhs, types).is_some() {
+						if get_type_as_conditional(lhs, types).is_some() {
 							let mut result = Vec::new();
 							build_union_from_filter(
 								lhs,
@@ -176,8 +176,7 @@ pub fn narrow_based_on_expression(
 								rhs,
 								types,
 							)
-						};
-						narrowed_to
+						}
 					} else {
 						rhs
 					};

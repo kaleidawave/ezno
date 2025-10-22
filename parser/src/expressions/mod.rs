@@ -2242,16 +2242,15 @@ impl Expression {
 
 	#[must_use]
 	pub fn is_iife(&self) -> Option<&ExpressionOrBlock> {
-		if let Expression::FunctionCall { arguments, function, .. } = self {
-			if let (true, Expression::Parenthesised(expression, _)) =
-				(arguments.is_empty(), &**function)
-			{
-				if let MultipleExpression(Expression::ArrowFunction(function)) = &**expression {
-					return Some(&function.body);
-				}
-			}
+		if let Expression::FunctionCall { arguments, function, .. } = self
+			&& arguments.is_empty()
+			&& let Expression::Parenthesised(expression, _) = &**function
+			&& let MultipleExpression(Expression::ArrowFunction(function)) = &**expression
+		{
+			Some(&function.body)
+		} else {
+			None
 		}
-		None
 	}
 
 	/// Recurses to find first non parenthesized expression

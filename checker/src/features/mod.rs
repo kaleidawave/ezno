@@ -373,17 +373,17 @@ pub fn delete_operator(
 		}
 
 		// Cannot `delete` from non-configurable
-		if let Ok(LogicalOrValid::Logical(Logical::Pure(value))) =
-			types::properties::get_property_unbound(
-				(rhs, None),
-				(publicity, &under, None),
-				false,
-				environment,
-				types,
-			) {
-			if !value.is_configuable_simple() {
-				return Err(CannotDeleteFromError::NonConfigurable { position });
-			}
+		let property = types::properties::get_property_unbound(
+			(rhs, None),
+			(publicity, &under, None),
+			false,
+			environment,
+			types,
+		);
+		if let Ok(LogicalOrValid::Logical(Logical::Pure(value))) = property
+			&& !value.is_configuable_simple()
+		{
+			return Err(CannotDeleteFromError::NonConfigurable { position });
 		}
 	}
 
@@ -398,9 +398,9 @@ pub fn delete_operator(
 
 	// TODO not great
 	let dependency = if types::get_constraint(rhs, types).is_some() {
-		Some(types.register_type(Type::Constructor(types::Constructor::TypeOperator(
-			types::TypeOperator::HasProperty(rhs, under.into_owned()),
-		))))
+		let ty = types::TypeOperator::HasProperty(rhs, under.into_owned());
+		let ty = types.register_type(Type::Constructor(types::Constructor::TypeOperator(ty)));
+		Some(ty)
 	} else {
 		None
 	};

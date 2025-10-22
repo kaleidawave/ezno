@@ -313,14 +313,13 @@ pub fn print_type_into_buf<C: InformationChain>(
 
 				// WIP!
 				{
-					if let Some(narrowed_value) = info.get_narrowed(*condition) {
-						if let crate::Decidable::Known(condition) =
+					if let Some(narrowed_value) = info.get_narrowed(*condition)
+						&& let crate::Decidable::Known(condition) =
 							crate::types::is_type_truthy_falsy(narrowed_value, types)
-						{
-							let value = if condition { truthy_result } else { otherwise_result };
-							print_type_into_buf(*value, buf, cycles, args, types, info, debug);
-							return;
-						}
+					{
+						let value = if condition { truthy_result } else { otherwise_result };
+						print_type_into_buf(*value, buf, cycles, args, types, info, debug);
+						return;
 					}
 				}
 

@@ -52,14 +52,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					.types_to_types
 					.push(class.name.identifier.get_position(), ty);
 
-				if item.on.is_exported {
-					if let crate::Scope::Module { ref mut exported, .. } =
+				if item.on.is_exported
+					&& let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
-					{
-						exported
-							.named_types
-							.insert(class.name.as_option_str().unwrap_or_default().to_owned(), ty);
-					}
+				{
+					exported
+						.named_types
+						.insert(class.name.as_option_str().unwrap_or_default().to_owned(), ty);
 				}
 			} else {
 				checking_data.diagnostics_container.add_error(
@@ -92,12 +91,11 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				checking_data.local_type_mappings.types_to_types.push(r#enum.get_position(), ty);
 				checking_data.types.update_alias(ty, TypeId::NUMBER_TYPE);
 
-				if item.on.is_exported {
-					if let crate::Scope::Module { ref mut exported, .. } =
+				if item.on.is_exported
+					&& let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
-					{
-						exported.named_types.insert(r#enum.name.clone(), ty);
-					}
+				{
+					exported.named_types.insert(r#enum.name.clone(), ty);
 				}
 			} else {
 				let position = r#enum.get_position().with_source(environment.get_source());
@@ -132,15 +130,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			{
 				checking_data.local_type_mappings.types_to_types.push(interface.get_position(), ty);
 
-				if item.on.is_exported {
-					if let crate::Scope::Module { ref mut exported, .. } =
+				if item.on.is_exported
+					&& let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
-					{
-						exported.named_types.insert(
-							interface.name.as_option_str().unwrap_or_default().to_owned(),
-							ty,
-						);
-					}
+				{
+					exported
+						.named_types
+						.insert(interface.name.as_option_str().unwrap_or_default().to_owned(), ty);
 				}
 			} else {
 				checking_data.diagnostics_container.add_error(
@@ -162,14 +158,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			if let Ok(ty) = result {
 				checking_data.local_type_mappings.types_to_types.push(alias.get_position(), ty);
 
-				if item.on.is_exported {
-					if let crate::Scope::Module { ref mut exported, .. } =
+				if item.on.is_exported
+					&& let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
-					{
-						exported
-							.named_types
-							.insert(alias.name.as_option_str().unwrap_or_default().to_owned(), ty);
-					}
+				{
+					exported
+						.named_types
+						.insert(alias.name.as_option_str().unwrap_or_default().to_owned(), ty);
 				}
 			} else {
 				checking_data.diagnostics_container.add_error(
@@ -765,14 +760,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					.0
 					.insert(variable_id, value);
 
-				if item.on.is_exported {
-					if let crate::Scope::Module { ref mut exported, .. } =
+				if item.on.is_exported
+					&& let crate::Scope::Module { ref mut exported, .. } =
 						environment.context_type.scope
-					{
-						exported
-							.named
-							.insert(name.clone(), (variable_id, VariableMutability::Constant));
-					}
+				{
+					exported
+						.named
+						.insert(name.clone(), (variable_id, VariableMutability::Constant));
 				}
 			}
 		}

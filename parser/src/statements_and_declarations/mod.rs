@@ -283,7 +283,7 @@ impl ASTNode for StatementOrDeclaration {
 							// Return empty slice
 							Default::default()
 						};
-					!after.starts_with(&['=', '<'])
+					!after.starts_with(['=', '<'])
 				};
 				if type_import {
 					ExportDeclaration::from_reader(reader).map(|on| {

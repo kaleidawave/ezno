@@ -71,7 +71,6 @@ pub enum ParseErrors<'a> {
 	ConstDeclarationRequiresValue,
 	// TODO not sure CannotAccessObjectLiteralDirectly,
 	TrailingCommaNotAllowedHere,
-	InvalidNumberLiteralLiteral,
 	ReservedIdentifier,
 	AwaitRequiresForOf,
 	CannotUseLeadingParameterHere,
@@ -192,9 +191,6 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::ConstDeclarationRequiresValue => {
 				write!(f, "const declaration requires value")
-			}
-			ParseErrors::InvalidNumberLiteralLiteral => {
-				write!(f, "Invalid number literal")
 			}
 			ParseErrors::ReservedIdentifier => {
 				write!(f, "Found reserved identifier")

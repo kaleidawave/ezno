@@ -8,7 +8,7 @@ pub enum StringError {
 	InvalidCharacter,
 }
 
-pub fn parse_string<'a>(current: &'a str) -> Result<(Cow<'a, str>, Quoted, u32), StringError> {
+pub fn parse_string(current: &str) -> Result<(Cow<'_, str>, Quoted, u32), StringError> {
 	let (delimeter, quoted) = if current.starts_with('"') {
 		('"', Quoted::Double)
 	} else if current.starts_with('\'') {
@@ -121,23 +121,24 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 			Ok(1)
 		}
 		'v' => {
-			buf.push_str("\u{000B}");
+			buf.push('\u{000B}');
 			Ok(1)
 		}
 		'b' => {
-			buf.push_str("\u{0008}");
+			buf.push('\u{0008}');
 			Ok(1)
 		}
 		'f' => {
-			buf.push_str("\u{000C}");
+			buf.push('\u{000C}');
 			Ok(1)
 		}
 		// Line endings
-		'\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' => {
-			let mut count = 1;
+		chr @ ('\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}') => {
+			let mut count = chr.len_utf8();
 			let mut after = after.chars();
-			while let Some('\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}') = after.next() {
-				count += 1;
+			while let Some(chr @ ('\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}')) = after.next()
+			{
+				count += chr.len_utf8();
 			}
 			Ok(count)
 		}

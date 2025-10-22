@@ -109,16 +109,14 @@ impl ASTNode for ImportDeclaration {
 				buf.push(' ');
 			}
 			ImportedItems::Parts(ref parts) => {
-				if let Some(parts) = parts {
-					if !parts.is_empty() {
-						if self.default.is_some() {
-							buf.push_str(", ");
-						}
-						super::import_export_parts_to_string_from_buffer(
-							parts, buf, options, local,
-						);
-						options.push_gap_optionally(buf);
+				if let Some(parts) = parts
+					&& !parts.is_empty()
+				{
+					if self.default.is_some() {
+						buf.push_str(", ");
 					}
+					super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
+					options.push_gap_optionally(buf);
 				}
 			}
 		}

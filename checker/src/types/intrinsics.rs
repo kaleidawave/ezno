@@ -385,10 +385,10 @@ pub fn get_range_and_mod_class(
 			if let [value] = &case.0[..] {
 				if let Type::Constant(Constant::Number(num)) = types.get_type_by_id(value.0) {
 					let num = *num;
-					if let Some(ref modulo_class) = modulo_class {
-						if !modulo_class.contains(num) {
-							return (None, None);
-						}
+					if let Some(ref modulo_class) = modulo_class
+						&& !modulo_class.contains(num)
+					{
+						return (None, None);
 					}
 					if let Some(ref mut range) = range {
 						if range.floor.1 == num {

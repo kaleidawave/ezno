@@ -1015,24 +1015,23 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 			// WIP!
 			{
 				// TODO get_chain_of_info with behavior??
-				if let Some(narrowed_value) = environment.get_narrowed(condition) {
-					if let crate::Decidable::Known(condition) =
+				if let Some(narrowed_value) = environment.get_narrowed(condition)
+					&& let crate::Decidable::Known(condition) =
 						crate::types::is_type_truthy_falsy(narrowed_value, types)
-					{
-						let to_evaluate = if condition { left } else { right };
-						return if let LogicalOrValid::Logical(to_evaluate) = *to_evaluate {
-							resolve_property_on_logical(
-								(to_evaluate, generics),
-								(on, under),
-								environment,
-								types,
-								(behavior, diagnostics),
-								mode,
-							)
-						} else {
-							todo!()
-						};
-					}
+				{
+					let to_evaluate = if condition { left } else { right };
+					return if let LogicalOrValid::Logical(to_evaluate) = *to_evaluate {
+						resolve_property_on_logical(
+							(to_evaluate, generics),
+							(on, under),
+							environment,
+							types,
+							(behavior, diagnostics),
+							mode,
+						)
+					} else {
+						todo!()
+					};
 				}
 			}
 

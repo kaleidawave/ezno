@@ -53,9 +53,7 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			checking_data.types.new_constant_type(Constant::String(value.clone()))
 		}
 		TypeAnnotation::NumberLiteral(value, _) => {
-			let constant =
-				Constant::Number(f64::try_from(value.clone()).expect("big int number type"));
-			checking_data.types.new_constant_type(constant)
+			checking_data.types.new_constant_type(Constant::Number(*value))
 		}
 		TypeAnnotation::BigIntLiteral(_value, position) => {
 			checking_data.raise_unimplemented_error(
@@ -595,23 +593,22 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				item,
 				extends,
 			})) = checking_data.types.get_type_by_id(condition)
+				&& let Type::Constant(_) = checking_data.types.get_type_by_id(*item)
 			{
-				if let Type::Constant(_) = checking_data.types.get_type_by_id(*item) {
-					use crate::types::generics::substitution::{
-						SubstitutionArguments, compute_extends_rule,
-					};
-					let temp_args = SubstitutionArguments::new_arguments_for_use_in_loop();
-					crate::utilities::notify!("Here");
-					return compute_extends_rule(
-						*extends,
-						*item,
-						environment,
-						&mut checking_data.types,
-						truthy_result,
-						&temp_args,
-						otherwise_result,
-					);
-				}
+				use crate::types::generics::substitution::{
+					SubstitutionArguments, compute_extends_rule,
+				};
+				let temp_args = SubstitutionArguments::new_arguments_for_use_in_loop();
+				crate::utilities::notify!("Here");
+				return compute_extends_rule(
+					*extends,
+					*item,
+					environment,
+					&mut checking_data.types,
+					truthy_result,
+					&temp_args,
+					otherwise_result,
+				);
 			}
 
 			// TODO might want to record whether infer_types is_empty here

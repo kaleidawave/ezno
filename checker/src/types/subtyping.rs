@@ -1249,11 +1249,10 @@ pub(crate) fn type_is_subtype_with_generics(
 					under: r_under,
 					result: _,
 					mode: _,
-				}) = subtype
+				}) = subtype && on == r_on
+					&& under == r_under
 				{
-					if on == r_on && under == r_under {
-						return SubTypeResult::IsSubType;
-					}
+					return SubTypeResult::IsSubType;
 				}
 
 				// TODO this only seems to work in simple cases. For mapped types

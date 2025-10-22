@@ -89,11 +89,10 @@ impl FunctionBased for ArrowFunctionBase {
 				&& !matches!(
 					additionally,
 					Some(crate::functions::ParameterData::WithDefaultValue(_))
-				) {
-				if let VariableField::Name(name, ..) = name.get_ast_ref() {
-					name.to_string_from_buffer(buf, options, local);
-					return;
-				}
+				) && let VariableField::Name(name, ..) = name.get_ast_ref()
+			{
+				name.to_string_from_buffer(buf, options, local);
+				return;
 			}
 		}
 		parameters.to_string_from_buffer(buf, options, local);

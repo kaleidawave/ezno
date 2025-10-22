@@ -797,18 +797,16 @@ where
 
 		{
 			// Add expected return type
-			if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
-				if !matches!(scope, FunctionScope::Constructor { .. }) {
-					if let (expect @ None, Some(ReturnType(return_type_annotation, pos))) =
-						(scope.get_expected_return_type_mut(), return_type_annotation)
-					{
-						*expect = Some(ExpectedReturnType::FromReturnAnnotation(
-							return_type_annotation,
-							// TODO lol
-							pos.without_source(),
-						));
-					}
-				}
+			if let Scope::Function(ref mut scope) = function_environment.context_type.scope
+				&& !matches!(scope, FunctionScope::Constructor { .. })
+				&& let (expect @ None, Some(ReturnType(return_type_annotation, pos))) =
+					(scope.get_expected_return_type_mut(), return_type_annotation)
+			{
+				*expect = Some(ExpectedReturnType::FromReturnAnnotation(
+					return_type_annotation,
+					// TODO lol
+					pos.without_source(),
+				));
 			}
 		}
 
@@ -841,47 +839,47 @@ where
 			let returned = info.state.get_returned(&mut checking_data.types);
 
 			// TODO temp fix for predicates. This should be really be done in `environment.throw` ()?
-			if let Some(ReturnType(expected, _)) = return_type_annotation {
-				if crate::types::type_is_assert_is_type(expected, &checking_data.types).is_ok() {
-					let mut state = crate::subtyping::State {
-						already_checked: Default::default(),
-						mode: Default::default(),
-						contributions: Default::default(),
-						others: crate::subtyping::SubTypingOptions::default(),
-						// TODO don't think there is much case in constraining it here
-						object_constraints: None,
-					};
+			if let Some(ReturnType(expected, _)) = return_type_annotation
+				&& crate::types::type_is_assert_is_type(expected, &checking_data.types).is_ok()
+			{
+				let mut state = crate::subtyping::State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: crate::subtyping::SubTypingOptions::default(),
+					// TODO don't think there is much case in constraining it here
+					object_constraints: None,
+				};
 
-					let result = crate::subtyping::type_is_subtype(
-						expected,
-						returned,
-						&mut state,
-						base_environment,
-						&checking_data.types,
+				let result = crate::subtyping::type_is_subtype(
+					expected,
+					returned,
+					&mut state,
+					base_environment,
+					&checking_data.types,
+				);
+
+				if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::ReturnedTypeDoesNotMatch {
+							expected_return_type: TypeStringRepresentation::from_type_id(
+								expected,
+								base_environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							returned_type: TypeStringRepresentation::from_type_id(
+								returned,
+								base_environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							annotation_position: position,
+							returned_position: function
+								.get_position()
+								.with_source(base_environment.get_source()),
+						},
 					);
-
-					if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::ReturnedTypeDoesNotMatch {
-								expected_return_type: TypeStringRepresentation::from_type_id(
-									expected,
-									base_environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								returned_type: TypeStringRepresentation::from_type_id(
-									returned,
-									base_environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								annotation_position: position,
-								returned_position: function
-									.get_position()
-									.with_source(base_environment.get_source()),
-							},
-						);
-					}
 				}
 			}
 

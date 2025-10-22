@@ -1310,10 +1310,10 @@ impl Environment<'_> {
 					Scope::Iteration { label } => {
 						match looking_for_label {
 							Some(looking_for_label) => {
-								if let Some(label) = label {
-									if label == looking_for_label {
-										return Some(falling_through_structures);
-									}
+								if let Some(label) = label
+									&& label == looking_for_label
+								{
+									return Some(falling_through_structures);
 								}
 							}
 							None => {

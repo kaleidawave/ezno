@@ -10,7 +10,7 @@ pub enum Context {
 pub type NumberRepresentation = f64;
 
 /// Parses a number to a f64 value and returns the width
-pub fn parse_number<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, u32), ()> {
+pub fn parse_number(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()> {
 	if let Some(after) = current.strip_prefix('0')
 		&& !current[1..].starts_with(['.', 'E', 'e'])
 	{
@@ -25,17 +25,17 @@ pub fn parse_number<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, u3
 					match c {
 						b'0'..=b'9' => {
 							value *= 16f64;
-							value += (c - b'0') as f64;
+							value += f64::from(c - b'0');
 							seperator_allowed = true;
 						}
 						b'a'..=b'f' => {
 							value *= 16f64;
-							value += (c - b'a') as f64 + 10f64;
+							value += f64::from(c - b'a') + 10f64;
 							seperator_allowed = true;
 						}
 						b'A'..=b'F' => {
 							value *= 16f64;
-							value += (c - b'A') as f64 + 10f64;
+							value += f64::from(c - b'A') + 10f64;
 							seperator_allowed = true;
 						}
 						b'_' => {
@@ -69,7 +69,7 @@ pub fn parse_number<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, u3
 					if let b'0' | b'1' = c {
 						value *= 2f64;
 						seperator_allowed = true;
-						value += (c - b'0') as f64;
+						value += f64::from(c - b'0');
 					} else if let b'_' = c {
 						if seperator_allowed {
 							// not allow adjacent
@@ -101,7 +101,8 @@ pub fn parse_number<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, u3
 						}
 
 						// hmm `| b'n'`
-						return if let b'.' | b'8' | b'9' | b'_' = chr { true } else { false };
+						let is_not_octal = matches!(chr, b'.' | b'8' | b'9' | b'_');
+						return is_not_octal;
 					}
 					false
 				}
@@ -123,7 +124,7 @@ pub fn parse_number<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, u3
 						if let b'0'..=b'7' = c {
 							value *= 8f64;
 							seperator_allowed = true;
-							value += (c - b'0') as f64;
+							value += f64::from(c - b'0');
 						} else if let b'_' = c {
 							if seperator_allowed {
 								// not allow adjacent
@@ -160,7 +161,7 @@ pub enum ParsedNumberLiteral<'a> {
 	BigInt(&'a str),
 }
 
-fn parse_no_specifier<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, u32), ()> {
+fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()> {
 	fn is_not_number_character(chr: char) -> bool {
 		let is_number_character = matches!(chr, '0'..='9' | '.' | '_');
 		!is_number_character
@@ -308,6 +309,7 @@ pub struct BigInt {
 }
 
 impl BigInt {
+	#[must_use]
 	pub fn radix(&self) -> u32 {
 		let s = self.source.chars().nth(1);
 		match s {
@@ -318,6 +320,7 @@ impl BigInt {
 		}
 	}
 
+	#[must_use]
 	pub fn value_and_radix(&self) -> (&str, u32) {
 		let radix = self.radix();
 		if radix == 1 { (&self.source, radix) } else { (&self.source[2..], radix) }

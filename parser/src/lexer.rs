@@ -55,7 +55,6 @@ impl<'a> Lexer<'a> {
 
 	// TODO want to remove where public
 	#[must_use]
-	#[inline(always)]
 	pub(crate) fn get_current(&self) -> &'a str {
 		&self.script[self.head as usize..]
 	}
@@ -66,13 +65,11 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	#[inline(always)]
 	pub fn is_finished(&self) -> bool {
 		self.head >= self.source_size()
 	}
 
 	#[must_use]
-	#[inline(always)]
 	pub fn left_to_parse(&self) -> u32 {
 		self.source_size().saturating_sub(self.head)
 	}
@@ -87,12 +84,10 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	#[inline(always)]
 	pub fn last_was_from_new_line(&self) -> u32 {
 		self.state.last_new_lines
 	}
 
-	#[inline(always)]
 	pub fn skip(&mut self) {
 		let current = self.get_current();
 		if current.starts_with(char::is_whitespace) {
@@ -331,13 +326,11 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	#[inline(always)]
 	pub fn get_start(&self) -> source_map::Start {
 		source_map::Start(self.head)
 	}
 
 	#[must_use]
-	#[inline(always)]
 	pub fn get_end(&self) -> source_map::End {
 		source_map::End(self.head)
 	}
@@ -574,7 +567,7 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	// TODO errors + some parts are weird
+	#[allow(clippy::single_match_else)]
 	pub fn parse_number_literal(
 		&mut self,
 	) -> Result<(crate::numbers::ParsedNumberLiteral<'a>, u32), ParseError> {
@@ -585,7 +578,7 @@ impl<'a> Lexer<'a> {
 				self.advance(count);
 				Ok((value, count))
 			}
-			Err(_) => {
+			Err(()) => {
 				// TODO ...
 				let span = self.get_start().with_length(1);
 				Err(ParseError::new(ParseErrors::InvalidNumberLiteral, span))
@@ -598,6 +591,7 @@ impl<'a> Lexer<'a> {
 		self.starts_with('"') || self.starts_with('\'')
 	}
 
+	#[allow(clippy::single_match_else)]
 	pub fn parse_string_literal(
 		&mut self,
 	) -> Result<(std::borrow::Cow<'a, str>, crate::strings::Quoted, u32), ParseError> {
@@ -720,8 +714,6 @@ impl<'a> Lexer<'a> {
 	pub fn after_brackets(&self) -> &'a str {
 		use crate::Quoted;
 
-		let current = self.get_current();
-
 		enum State {
 			None,
 			Comment,
@@ -731,7 +723,7 @@ impl<'a> Lexer<'a> {
 			MultilineComment,
 		}
 
-		// let mut template_literal_depth = 0;
+		let current = self.get_current();
 
 		let mut bracket_count: u32 = 0;
 		let mut open_chevrons = 0u64;
@@ -928,13 +920,11 @@ pub(crate) mod utilities {
 		}
 	}
 
-	#[inline(always)]
 	pub fn is_valid_identifier(chr: char) -> bool {
 		// TODO `\\` for unicode identifiers
 		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
 	}
 
-	#[inline(always)]
 	pub fn is_reserved_word(identifier: &str) -> bool {
 		matches!(
 			identifier,
@@ -947,7 +937,6 @@ pub(crate) mod utilities {
 		)
 	}
 
-	#[inline(always)]
 	pub fn is_valid_variable_identifier(identifier: &str) -> bool {
 		let is_invalid = matches!(
 			identifier,
@@ -999,7 +988,6 @@ pub(crate) mod utilities {
 		&on[idx..]
 	}
 
-	#[inline(always)]
 	pub fn is_function_header(slice: &str) -> bool {
 		let slice = slice.trim_start();
 		// TODO

@@ -129,21 +129,16 @@ pub fn evaluate_equality_inequality_operation(
 				{
 					if let Type::Constructor(Constructor::BinaryOperator {
 						lhs: op_lhs,
-						operator,
+						operator: MathematicalOrBitwiseOperation::Add,
 						rhs: op_rhs,
 						result: _,
 					}) = types.get_type_by_id(lhs)
+						&& let Type::Constant(Constant::Number(add)) = types.get_type_by_id(*op_rhs)
+						&& let Type::Constant(Constant::Number(lt)) = types.get_type_by_id(rhs)
 					{
-						if let (
-							Type::Constant(Constant::Number(add)),
-							MathematicalOrBitwiseOperation::Add,
-							Type::Constant(Constant::Number(lt)),
-						) = (types.get_type_by_id(*op_rhs), operator, types.get_type_by_id(rhs))
-						{
-							crate::utilities::notify!("Shifted LT");
-							lhs = *op_lhs;
-							rhs = types.register_type(Type::Constant(Constant::Number(lt - add)));
-						}
+						crate::utilities::notify!("Shifted LT");
+						lhs = *op_lhs;
+						rhs = types.register_type(Type::Constant(Constant::Number(lt - add)));
 					}
 				}
 

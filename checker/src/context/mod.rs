@@ -262,10 +262,10 @@ impl<T: ContextType> Context<T> {
 		type_mappings: &mut TypeMappings,
 		record_event: bool,
 	) {
-		if argument.allow_reregistration {
-			if let Some(existing) = self.variables.get(name) {
-				type_mappings.var_aliases.insert(declared_at.start, existing.get_id());
-			}
+		if argument.allow_reregistration
+			&& let Some(existing) = self.variables.get(name)
+		{
+			type_mappings.var_aliases.insert(declared_at.start, existing.get_id());
 		}
 
 		if let Some(reassignment_constraint) = argument.space {
@@ -340,12 +340,12 @@ impl<T: ContextType> Context<T> {
 			// 	get_on_ctx!(&ctx.info.variable_current_value)
 			// )
 			// .unwrap();
-			if let GeneralContext::Syntax(syn) = ctx {
-				if !syn.info.events.is_empty() {
-					writeln!(buf, "{indent}> Events:").unwrap();
-					for event in &syn.info.events {
-						writeln!(buf, "{indent}   {event:?}").unwrap();
-					}
+			if let GeneralContext::Syntax(syn) = ctx
+				&& !syn.info.events.is_empty()
+			{
+				writeln!(buf, "{indent}> Events:").unwrap();
+				for event in &syn.info.events {
+					writeln!(buf, "{indent}   {event:?}").unwrap();
 				}
 			}
 		}
@@ -460,14 +460,13 @@ impl<T: ContextType> Context<T> {
 			let is_dynamic_boundary =
 				self.context_type.as_syntax().and_then(|scope| scope.scope.is_dynamic_boundary());
 
-			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
-				if !self
+			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary
+				&& !self
 					.get_chain_of_info()
 					.any(|info| info.variable_current_value.contains_key(&found_var.get_id()))
-				{
-					// Cannot use yet in loop
-					return None;
-				}
+			{
+				// Cannot use yet in loop
+				return None;
 			}
 
 			let record_as_free = (is_dynamic_boundary.is_some() && parent_boundary.is_none())
@@ -1026,11 +1025,8 @@ pub(crate) fn get_value_of_variable(
 		if let Some(current_value) = current_value {
 			// info = property on context
 			let narrowed = info.get_narrowed_or_object(current_value, types);
-			if let Some(narrowed) = narrowed {
-				return Some(narrowed);
-			} else {
-				return Some(current_value);
-			}
+			let value = if let Some(narrowed) = narrowed { narrowed } else { current_value };
+			return Some(value);
 		}
 	}
 	None

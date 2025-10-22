@@ -188,13 +188,11 @@ pub fn statements_and_declarations_to_string<T: source_map::ToString>(
 ) {
 	// let mut last_was_empty = false;
 	for (at_end, item) in items.iter().endiate() {
-		if !options.pretty {
-			if let StatementOrDeclaration::Expression(crate::expressions::MultipleExpression(
-				crate::Expression::Null(..),
-			)) = item
-			{
-				continue;
-			}
+		if let StatementOrDeclaration::Expression(crate::expressions::MultipleExpression(
+			crate::Expression::Null(..),
+		)) = item && !options.pretty
+		{
+			continue;
 		}
 
 		// if options.pretty {
