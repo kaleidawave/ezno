@@ -192,7 +192,7 @@ fn parse_no_specifier<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, 
 		} else {
 			source
 		};
-		
+
 		if let Ok(value) = source.parse::<f64>() {
 			Ok((ParsedNumberLiteral::Number(value), count as u32))
 		} else {
