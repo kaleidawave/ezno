@@ -1,8 +1,10 @@
 use crate::{
 	ASTNode, Decorator, ListItem, Marker, ParseError, ParseResult, Quoted, Span, VariableField,
-	WithComment, ast::VariableOrPropertyAccess, bracketed_items_from_reader,
-	bracketed_items_to_string, derive_ASTNode, extensions::decorators::Decorated,
-	numbers::NumberRepresentation,
+	WithComment,
+	ast::VariableOrPropertyAccess,
+	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
+	extensions::decorators::Decorated,
+	numbers::{BigInt, NumberRepresentation},
 };
 use iterator_endiate::EndiateIteratorExt;
 
@@ -27,6 +29,8 @@ pub enum TypeAnnotation {
 	StringLiteral(String, Quoted, Span),
 	/// Number literal e.g. `45`
 	NumberLiteral(NumberRepresentation, Span),
+	/// Big integer literal e.g. `100n`
+	BigIntLiteral(BigInt, Span),
 	/// Boolean literal e.g. `true`
 	BooleanLiteral(bool, Span),
 	/// Array literal e.g. `string[]`. This is syntactic sugar for `Array` with type arguments. **This is not the same
@@ -321,6 +325,9 @@ impl ASTNode for TypeAnnotation {
 			Self::NumberLiteral(value, _) => {
 				buf.push_str(&value.to_string());
 			}
+			Self::BigIntLiteral(value, _) => {
+				buf.push_str(&value.source);
+			}
 			Self::StringLiteral(expression, quoted, _) => {
 				buf.push(quoted.as_char());
 				buf.push_str(expression.as_str());
@@ -522,11 +529,14 @@ impl TypeAnnotation {
 
 		let mut reference = if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
-			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
-				let position = start.with_length(length as usize);
-				TypeAnnotation::NumberLiteral(value, position)
-			} else {
-				todo!()
+			let position = start.with_length(length as usize);
+			match value {
+				crate::numbers::ParsedNumberLiteral::Number(value) => {
+					TypeAnnotation::NumberLiteral(value, position)
+				}
+				crate::numbers::ParsedNumberLiteral::BigInt(value) => {
+					TypeAnnotation::BigIntLiteral(BigInt { source: value.to_string() }, position)
+				}
 			}
 		} else if reader.is_keyword_advance("this") {
 			TypeAnnotation::This(start.with_length(4))
@@ -618,12 +628,14 @@ impl TypeAnnotation {
 			}
 		} else if reader.is_operator_advance("-") {
 			let (value, length) = reader.parse_number_literal()?;
-			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
-				let position = start.with_length(length as usize);
-				// important negation here
-				Self::NumberLiteral(-value, position)
-			} else {
-				todo!()
+			let position = start.with_length(length as usize);
+			match value {
+				crate::numbers::ParsedNumberLiteral::Number(value) => {
+					TypeAnnotation::NumberLiteral(-value, position)
+				}
+				crate::numbers::ParsedNumberLiteral::BigInt(value) => {
+					TypeAnnotation::BigIntLiteral(BigInt { source: format!("-{value}") }, position)
+				}
 			}
 		} else if reader.starts_with('"') || reader.starts_with('\'') {
 			let (content, quoted, width) = reader.parse_string_literal()?;

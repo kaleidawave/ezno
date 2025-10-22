@@ -162,7 +162,7 @@ pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 
 	let readable = download_from_github(url, None)?;
 
-	replace_self(readable);
+	replace_self(readable).unwrap();
 
 	// TODO
 	let msg = "done".to_owned();

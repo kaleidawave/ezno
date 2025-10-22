@@ -312,11 +312,14 @@ impl ASTNode for InterfaceMember {
 					PropertyKey::StringLiteral(content.into_owned(), quoted, position)
 				} else if reader.starts_with_number() {
 					let (value, length) = reader.parse_number_literal()?;
+					let position = start.with_length(length as usize);
 					if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
-						let position = start.with_length(length as usize);
 						PropertyKey::NumberLiteral(value, position)
 					} else {
-						todo!()
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::BigIntNotAllowedHere,
+							position,
+						));
 					}
 				} else {
 					use crate::Expression;

@@ -11,20 +11,69 @@ fn main() {
 	let simple_dts_path = Path::new("checker").join("definitions").join("simple.d.ts");
 	let overrides_dts_path = Path::new("checker").join("definitions").join("overrides.d.ts");
 
-	let args: Vec<_> = std::env::args().skip(1).collect();
+	let mut args = std::env::args().skip(1);
 
-	let path = args
-		.first()
-		.and_then(|arg| (!arg.starts_with("--")).then_some(arg))
-		.map_or(default_path.as_path(), Path::new);
+	let path = args.next().and_then(|arg| (!arg.starts_with("--")).then_some(arg));
 
-	let use_simple = args.iter().any(|item| item == "--simple-dts");
-	let no_cache = args.iter().any(|item| item == "--no-cache");
-	let debug_types = args.iter().any(|item| item == "--debug-types");
-	let no_lib = args.iter().any(|item| item == "--no-lib");
-	let debug_dts = args.iter().any(|item| item == "--debug-dts");
-	let extras = args.iter().any(|item| item == "--extras");
-	let advanced_numbers = args.iter().any(|item| item == "--advanced-numbers");
+	let path = path.as_deref().map_or(default_path.as_path(), Path::new);
+
+	let mut use_simple = false;
+	let mut no_cache = false;
+	let mut debug_types = false;
+	let mut no_lib = false;
+	let mut debug_dts = false;
+	let mut extras = false;
+	let mut advanced_numbers = false;
+	let mut measure_time = false;
+	let mut simple_diagnostics = false;
+
+	let mut print_types = false;
+	let mut print_events = false;
+	let mut print_called_functions = false;
+
+	for arg in args {
+		match arg.as_str() {
+			"--simple-dts" => {
+				use_simple = true;
+			}
+			"--no-cache" => {
+				no_cache = true;
+			}
+			"--debug-types" => {
+				debug_types = true;
+			}
+			"--no-lib" => {
+				no_lib = true;
+			}
+			"--debug-dts" => {
+				debug_dts = true;
+			}
+			"--extras" => {
+				extras = true;
+			}
+			"--advanced-numbers" => {
+				advanced_numbers = true;
+			}
+			"--timings" => {
+				measure_time = true;
+			}
+			"--types" => {
+				print_types = true;
+			}
+			"--events" => {
+				print_events = true;
+			}
+			"--called-functions" => {
+				print_called_functions = true;
+			}
+			"--simple-diagnostics" => {
+				simple_diagnostics = true;
+			}
+			arg => {
+				eprintln!("unknown argument {arg}");
+			}
+		}
+	}
 
 	let type_definition_files = if no_lib {
 		Vec::new()
@@ -41,14 +90,16 @@ fn main() {
 
 	let entry_points = vec![path.to_path_buf()];
 
+	let max_inline_count = 600;
+
 	let options = TypeCheckOptions {
 		debug_types,
 		record_all_assignments_and_reads: true,
-		max_inline_count: 600,
+		max_inline_count,
 		debug_dts,
 		extra_syntax: extras,
 		advanced_numbers,
-		measure_time: args.iter().any(|arg| arg == "--time"),
+		measure_time,
 		..Default::default()
 	};
 
@@ -60,14 +111,14 @@ fn main() {
 		None,
 	);
 
-	if args.iter().any(|arg| arg == "--types") {
+	if print_types {
 		eprintln!("Types:");
 		for (type_id, item) in result.types.user_types() {
 			eprintln!("\t{type_id:?}: {item:?}");
 		}
 	}
 
-	if args.iter().any(|arg| arg == "--events") {
+	if print_events {
 		eprintln!("Events on entry:");
 		let (_, entry_module) = result.modules.into_iter().next().unwrap();
 		for item in entry_module.info.get_events() {
@@ -75,14 +126,14 @@ fn main() {
 		}
 	}
 
-	if args.iter().any(|arg| arg == "--called-functions") {
+	if print_called_functions {
 		eprintln!("Called function: {:?}", result.types.called_functions);
 	}
 
-	if args.iter().any(|arg| arg == "--time") {
+	if measure_time {
 		let count = result.diagnostics.into_iter().len();
 		eprintln!("Found {count} diagnostics in {chronometer:?}", chronometer = result.chronometer);
-	} else if args.iter().any(|arg| arg == "--simple-diagnostics") {
+	} else if simple_diagnostics {
 		for diagnostic in result.diagnostics {
 			println!("{reason}", reason = diagnostic.reason());
 		}

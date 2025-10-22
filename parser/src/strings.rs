@@ -175,12 +175,14 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 				// TODO no early returns
 				let higher = parse_hex(inner)?;
 				// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
-				dbg!(inner, &after[4..10]);
-				let (code, count) = if let Some(inner) = after[4..10].strip_prefix("\\u") {
+				let surrogate = after.get(4..10).and_then(|after| after.strip_prefix("\\u"));
+				let (code, count) = if let Some(inner) = surrogate
+					&& let Some(higher_sub) = higher.checked_sub(0xD800)
+				{
 					// TODO no early returns
 					let lower = parse_hex(inner)?;
 					// 10000_16 + (H − D800_16) × 400_16 + (L − DC00_16)
-					let code = 0x10000 + 0x400 * (higher - 0xD800) + (lower - 0xDC00);
+					let code = 0x10000 + 0x400 * (higher_sub) + (lower - 0xDC00);
 					(code, 11)
 				} else {
 					(higher, 5)

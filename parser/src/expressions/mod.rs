@@ -241,13 +241,13 @@ impl Expression {
 				Expression::StringLiteral(content.into_owned(), quoted, position)
 			} else if reader.starts_with_number() {
 				let (value, length) = reader.parse_number_literal()?;
+				let position = start.with_length(length as usize);
 				match value {
 					crate::numbers::ParsedNumberLiteral::Number(value) => {
-						let position = start.with_length(length as usize);
 						Self::NumberLiteral(value, position)
 					}
-					crate::numbers::ParsedNumberLiteral::BigInt(_value) => {
-						todo!()
+					crate::numbers::ParsedNumberLiteral::BigInt(value) => {
+						Self::BigIntLiteral(BigInt { source: value.to_owned() }, position)
 					}
 				}
 			}

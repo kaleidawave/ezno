@@ -92,6 +92,7 @@ pub enum ParseErrors<'a> {
 	InvalidRegexFlag,
 	InvalidRegularExpression,
 	InvalidNumberLiteral,
+	BigIntNotAllowedHere,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
 	UnexpectedEnd,
@@ -240,6 +241,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::DuplicateParameterName => {
 				write!(f, "Duplicate parameter name")
+			}
+			ParseErrors::BigIntNotAllowedHere => {
+				write!(f, "Big integer literal not allowed here")
 			}
 		}
 	}

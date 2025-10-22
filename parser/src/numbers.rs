@@ -192,7 +192,7 @@ fn parse_no_specifier<'a>(current: &'a str) -> Result<(ParsedNumberLiteral<'a>, 
 		} else {
 			source
 		};
-
+		
 		if let Ok(value) = source.parse::<f64>() {
 			Ok((ParsedNumberLiteral::Number(value), count as u32))
 		} else {
@@ -205,12 +205,12 @@ fn try_remove_seperator(on: &str) -> Result<String, ()> {
 	let mut buf = String::new();
 	let mut last = 0;
 	for (idx, _) in on.match_indices('_') {
-		let item = &on[..idx];
-		let is_invalid = idx == 0 || item.ends_with(['.', '_']) || on[idx..].starts_with('.');
+		let (before, after) = on.split_at(idx);
+		let is_invalid = idx == 0 || before.ends_with(['.', '_']) || after.starts_with('.');
 		if is_invalid {
 			return Err(());
 		}
-		buf.push_str(item);
+		buf.push_str(&before[last..]);
 		last = idx + 1;
 	}
 	let rest = &on[last..];
@@ -235,6 +235,7 @@ mod tests {
 		assert_eq!(parse_number(".2"), Ok((f(0.2f64), 2)));
 		assert_eq!(parse_number("42."), Ok((f(42f64), 3)));
 		assert_eq!(parse_number("1_000.002"), Ok((f(1000.002f64), 9)));
+		assert_eq!(parse_number("1_000_000"), Ok((f(1000000f64), 9)));
 		assert_eq!(parse_number("0"), Ok((f(0f64), 1)));
 		assert_eq!(parse_number("0;"), Ok((f(0f64), 1)));
 	}
@@ -298,6 +299,7 @@ mod tests {
 	}
 }
 
+/// FUTURE Cow
 #[derive(Debug, Clone)]
 #[apply(crate::derive_ASTNode!)]
 pub struct BigInt {
@@ -314,5 +316,10 @@ impl BigInt {
 			Some('b' | 'B') => 2,
 			_ => 1,
 		}
+	}
+
+	pub fn value_and_radix(&self) -> (&str, u32) {
+		let radix = self.radix();
+		if radix == 1 { (&self.source, radix) } else { (&self.source[2..], radix) }
 	}
 }

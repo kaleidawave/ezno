@@ -16,9 +16,7 @@ fn expr() {
         ),
     ),
     rhs: NumberLiteral(
-        Number(
-            4.0,
-        ),
+        4.0,
         4..5,
     ),
     position: 0..5,
@@ -52,9 +50,7 @@ fn stmt_with_expr_interpolation() {
                     type_annotation: None,
                     expression: Some(
                         NumberLiteral(
-                            Number(
-                                -0.8715757724135882,
-                            ),
+                            -0.8715757724135882,
                             0..0,
                         ),
                     ),
@@ -94,9 +90,7 @@ fn stmt_with_var_name_interpolation() {
                     type_annotation: None,
                     expression: Some(
                         NumberLiteral(
-                            Number(
-                                4.0,
-                            ),
+                            4.0,
                             27..28,
                         ),
                     ),

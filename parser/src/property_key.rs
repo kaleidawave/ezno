@@ -128,11 +128,11 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 			Ok(Self::StringLiteral(content.into_owned(), quoted, position))
 		} else if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
+			let position = start.with_length(length as usize);
 			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
-				let position = start.with_length(length as usize);
 				Ok(Self::NumberLiteral(value, position))
 			} else {
-				todo!()
+				Err(crate::ParseError::new(crate::ParseErrors::BigIntNotAllowedHere, position))
 			}
 		} else if reader.is_operator_advance("[") {
 			let expression = Expression::from_reader(reader)?;
@@ -167,13 +167,13 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 	}
 }
 
-// TODO visit expression?
+// FUTURE consider order here
 impl Visitable for PropertyKey<PublicOrPrivate> {
 	fn visit<TData>(
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		_options: &VisitOptions,
+		options: &VisitOptions,
 		chain: &mut Annex<Chain>,
 	) {
 		visitors.visit_variable(
@@ -181,13 +181,16 @@ impl Visitable for PropertyKey<PublicOrPrivate> {
 			data,
 			chain,
 		);
+		if let Self::Computed(key, _) = self {
+			key.visit(visitors, data, options, chain);
+		}
 	}
 
 	fn visit_mut<TData>(
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		_options: &VisitOptions,
+		options: &VisitOptions,
 		chain: &mut Annex<Chain>,
 	) {
 		visitors.visit_variable_mut(
@@ -195,6 +198,9 @@ impl Visitable for PropertyKey<PublicOrPrivate> {
 			data,
 			chain,
 		);
+		if let Self::Computed(key, _) = self {
+			key.visit_mut(visitors, data, options, chain);
+		}
 	}
 }
 
@@ -203,7 +209,7 @@ impl Visitable for PropertyKey<AlwaysPublic> {
 		&self,
 		visitors: &mut (impl crate::VisitorReceiver<TData> + ?Sized),
 		data: &mut TData,
-		_options: &VisitOptions,
+		options: &VisitOptions,
 		chain: &mut Annex<Chain>,
 	) {
 		visitors.visit_variable(
@@ -211,13 +217,16 @@ impl Visitable for PropertyKey<AlwaysPublic> {
 			data,
 			chain,
 		);
+		if let Self::Computed(key, _) = self {
+			key.visit(visitors, data, options, chain);
+		}
 	}
 
 	fn visit_mut<TData>(
 		&mut self,
 		visitors: &mut (impl crate::VisitorMutReceiver<TData> + ?Sized),
 		data: &mut TData,
-		_options: &VisitOptions,
+		options: &VisitOptions,
 		chain: &mut Annex<Chain>,
 	) {
 		visitors.visit_variable_mut(
@@ -225,5 +234,8 @@ impl Visitable for PropertyKey<AlwaysPublic> {
 			data,
 			chain,
 		);
+		if let Self::Computed(key, _) = self {
+			key.visit_mut(visitors, data, options, chain);
+		}
 	}
 }

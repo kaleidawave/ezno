@@ -57,6 +57,13 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 				Constant::Number(f64::try_from(value.clone()).expect("big int number type"));
 			checking_data.types.new_constant_type(constant)
 		}
+		TypeAnnotation::BigIntLiteral(_value, position) => {
+			checking_data.raise_unimplemented_error(
+				"big int literal",
+				position.with_source(environment.get_source()),
+			);
+			TypeId::UNIMPLEMENTED_ERROR_TYPE
+		}
 		TypeAnnotation::BooleanLiteral(value, _) => {
 			checking_data.types.new_constant_type(Constant::Boolean(*value))
 		}
