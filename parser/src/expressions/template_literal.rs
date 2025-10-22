@@ -87,7 +87,7 @@ pub fn parse_template_literal<T: ASTNode>(
 		} else {
 			let mut buf = std::borrow::Cow::Borrowed("");
 			let chars: [char; _] = ['$', '`', '\\'];
-			let mut delimeters = current.match_indices(chars);
+			let delimeters = current.match_indices(chars);
 
 			// Mirrors string parsing (strings.rs@parse_string) but modified for `${`
 
