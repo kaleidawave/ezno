@@ -71,7 +71,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 	write_file: U,
 ) -> Result<(), ExitCode> {
 	let cli = CLI::new(ENDPOINTS, "type checker", Some("info"));
-	let (binary_name, result) = cli.run();
+	let (binary_name, result) = cli.run_args(cli_arguments);
 	let (selected, arguments) = command_result_or_out(result, &binary_name)?;
 
 	match selected.name {
