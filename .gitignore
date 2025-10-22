@@ -4,10 +4,5 @@ target
 /private
 .vscode
 .env
-**/examples/private*.rs
-build
 node_modules
-/TODO.txt
-checker/specification/Cargo.lock
-checker/definitions/es5.d.ts
-.grit
+test262/out
