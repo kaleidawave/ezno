@@ -204,7 +204,10 @@ jobs:
           retention-days: 90
 
   fuzzing_parser:
-    if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
+    # waiting on https://github.com/rust-fuzz/cargo-fuzz/issues/355
+    if: false 
+    # if : $ {{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
+
     needs: validity
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -250,7 +253,10 @@ jobs:
           # fi
 
   fuzzing_checker:
-    if: github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me')
+    # waiting on https://github.com/rust-fuzz/cargo-fuzz/issues/355
+    if: false 
+    # if : $ {{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
+
     needs: validity
 
     runs-on: ubuntu-latest

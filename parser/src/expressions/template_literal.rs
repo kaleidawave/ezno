@@ -89,18 +89,20 @@ pub fn parse_template_literal<T: ASTNode>(
 			let chars: [char; _] = ['$', '`', '\\'];
 			let mut delimeters = current.match_indices(chars);
 
+			// Mirrors string parsing (strings.rs@parse_string) but modified for `${`
+
 			let mut last = 0;
-			while let Some((idx, matched)) = delimeters.next() {
-				buf += &current[last..idx];
+			for (idx, matched) in delimeters {
+				if last > idx {
+					continue;
+				}
 
 				if matched == "`" {
+					buf += &current[last..idx];
 					reader.advance(idx as u32 + 1);
 					return Ok((parts, buf.into_owned()));
-				} else if current[idx..].starts_with("${") {
-					reader.advance(idx as u32);
-					last_part = buf;
-					break;
 				} else if matched == "\\" {
+					buf += &current[last..idx];
 					let immediate = &current[idx + 1..];
 					let chr = immediate.chars().next();
 					if let Some(chr) = chr {
@@ -110,42 +112,28 @@ pub fn parse_template_literal<T: ASTNode>(
 							Ok(offset) => {
 								// Skip others
 								last = idx + 1 + offset;
-
-								if let '$' | '`' | '\\' = chr {
-									let _ = delimeters.next();
-								} else if let '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' =
-									chr
-								{
-									for chr in immediate.chars() {
-										if let '\u{000A}' | '\u{000D}' | '\u{2028}' | '\u{2029}' =
-											chr
-										{
-											let _ = delimeters.next();
-											last += 1;
-										} else {
-											break;
-										}
-									}
-								}
 							}
 							Err(()) => {
 								return Err(ParseError::new(
 									ParseErrors::InvalidStringLiteral,
-									reader.get_start().with_length(reader.get_current().len()),
+									start.with_length(idx),
 								));
 							}
 						}
 					} else {
+						eprintln!("Expected end");
 						return Err(ParseError::new(
 							ParseErrors::InvalidStringLiteral,
-							reader.get_start().with_length(reader.get_current().len()),
+							start.with_length(idx),
 						));
 					}
+				} else if current[idx..].starts_with("${") {
+					buf += &current[last..idx];
+					reader.advance(idx as u32);
+					last_part = buf;
+					break;
 				} else {
-					return Err(ParseError::new(
-						ParseErrors::InvalidStringLiteral,
-						start.with_length(idx),
-					));
+					// sometimes we have a lone dollar which is fine
 				}
 			}
 		}
