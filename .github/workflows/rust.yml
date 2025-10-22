@@ -319,8 +319,7 @@ jobs:
 
       - uses: kaleidawave/release-downloader@improvements
         if: steps.changes.outputs.manifests == 'true'
-        with:
-          items: kaleidawave/crates-release-gh-action@assets[crates-release]
+        with: { items: 'kaleidawave/crates-release-gh-action@assets[crates-release]' }
           
       - name: Check that it will publish to crates.io
         if: steps.changes.outputs.manifests == 'true'
@@ -332,5 +331,5 @@ jobs:
     steps:
       - name: Kick off other workflow if main or a PR with 'compiler-performance' label
         if: github.ref_name == 'main' || contains(github.event.pull_request.labels.*.name, 'compiler-performance')
-        run: gh workflow run performance-and-size.yml --ref "${{ github.head_ref }}" -R kaleidawave/ezno
-        env: { 'GH_TOKEN': '${{ github.token }}' }
+        run: gh workflow run performance.yml --ref "${{ github.head_ref }}" -R kaleidawave/ezno
+        env: { GH_TOKEN: '${{ github.token }}' }
