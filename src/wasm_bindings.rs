@@ -190,7 +190,7 @@ pub fn run_cli_wasm(
 ) {
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-	let arguments: Vec<String> =
+	let mut arguments: Vec<String> =
 		cli_arguments.iter().flat_map(JsValue::as_string).collect::<Vec<_>>();
 
 	let read_from_file = |path: &std::path::Path| {
@@ -208,6 +208,9 @@ pub fn run_cli_wasm(
 			)
 			.unwrap();
 	};
+
+	// TODO temp
+	arguments.insert(0, String::from("ezno.js"));
 
 	crate::run_cli(arguments.into_iter(), &read_from_file, write_to_file);
 }
