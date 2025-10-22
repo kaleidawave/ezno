@@ -145,6 +145,7 @@ impl checker::ReadFromFS for FSFunction {
 	}
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub(crate) fn upgrade_self() -> Result<String, Box<dyn std::error::Error>> {
 	use release_downloader::{
