@@ -6,3 +6,4 @@ target
 .env
 node_modules
 test262/out
+test262/test262
