@@ -437,7 +437,9 @@ impl<'a> Lexer<'a> {
 					} else {
 						// Note `is_alphanumeric` here
 						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
-						if !is_valid {
+						// Expanded type names can contains '.'
+						let valid_type_name = location == "type name" && chr == '.';
+						if !is_valid && !valid_type_name {
 							let value = &current[..idx];
 							let is_invalid = check_reserved
 								&& !crate::lexer::utilities::is_valid_variable_identifier(value);
@@ -808,7 +810,7 @@ impl<'a> Lexer<'a> {
 	pub fn after_identifier_offset(&self, offset: usize) -> &'a str {
 		let current = &self.get_current().trim_start()[offset..];
 
-		if let Some(idx) = current.find(|chr: char| !chr.is_ascii_alphanumeric()) {
+		if let Some(idx) = current.find(|chr: char| !(chr.is_alphanumeric() || chr == '_')) {
 			current[idx..].trim_start()
 		} else {
 			// Return empty slice

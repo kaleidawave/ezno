@@ -952,6 +952,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			} else {
 				false
 			};
+
 			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			let position = start.union(type_annotation.get_position());
 

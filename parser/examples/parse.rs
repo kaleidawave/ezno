@@ -132,12 +132,17 @@ fn parse_path(
 	let source = std::fs::read_to_string(path)?;
 	let source_id = fs.new_source_id(path.into(), source.to_owned());
 
-	eprintln!("parsing {:?} ({:?} bytes)", path.display(), source.len());
+	eprintln!("parsing {path:?} ({bytes:?} bytes)", path = path.display(), bytes = source.len());
 	let now = Instant::now();
-	let extension: &str = path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or_default();
-	let type_annotations = extension.contains("ts");
 
-	let mut parse_options = ParseOptions { type_annotations, ..*parse_options };
+	let extension: &str = path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or_default();
+
+	let type_annotations = extension.contains("ts");
+	let type_definition_module = parse_options.type_definition_module
+		|| path.to_str().is_some_and(|path| path.contains(".d.ts"));
+	let mut parse_options =
+		ParseOptions { type_annotations, type_definition_module, ..*parse_options };
+	// TODO bad
 	parse_options.jsx.enable_jsx = extension.contains('x');
 
 	let on = source.clone();
