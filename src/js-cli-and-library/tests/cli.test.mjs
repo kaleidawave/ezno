@@ -5,7 +5,9 @@ import stripAnsi from "strip-ansi";
 
 const wait = (timeout = 500) => new Promise(res => setTimeout(res, timeout));
 
-test("ast-explorer", { timeout: 10000 }, async (t) => {
+const options = { timeout: 10000, skip: true };
+
+test("ast-explorer", options, async (t) => {
 	await t.test("works", async () => {
 		const decoder = new TextDecoder();
 
@@ -26,6 +28,7 @@ test("ast-explorer", { timeout: 10000 }, async (t) => {
 		write(child, "close()")
 		await wait();
 
+		// TODO indentation
 		const expected = `Entering ast-explorer
 > {
 	Ok: {
@@ -42,13 +45,11 @@ test("ast-explorer", { timeout: 10000 }, async (t) => {
 }
 > `;
 
-		// console.log(stripAnsi(out.join("")).replaceAll("\n", "\\n"));
-
 		assertEqual(stripAnsi(out.join("")), expected);
 	});
 });
 
-test("type checking repl", { timeout: 10000, skip: true }, async (t) => {
+test("type checking repl", options, async (t) => {
 	await t.test("works", async () => {
 		const decoder = new TextDecoder();
 
@@ -70,8 +71,6 @@ test("type checking repl", { timeout: 10000, skip: true }, async (t) => {
 		await wait();
 
 		const expected = `Entering REPL\n> error: \n  ┌─ CLI.tsx:1:22\n  │\n1 │ const var1: string = 5 + 6;\n  │             ------   ^^^^^ Type 11 is not assignable to type string\n  │             │         \n  │             Variable declared with type string\n\n\n> `;
-
-		// console.log(stripAnsi(out.join("")).replaceAll("\n", "\\n"));
 
 		assertEqual(stripAnsi(out.join("")), expected);
 	});

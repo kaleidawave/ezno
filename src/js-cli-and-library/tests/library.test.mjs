@@ -1,9 +1,6 @@
-import { check, parse_expression, get_version, experimental_build } from "../dist/initialised.mjs";
+import { check, parse_expression, experimental_build } from "../dist/initialised.mjs";
 import { deepStrictEqual } from "node:assert";
 import { test } from "node:test";
-import { inspect } from "node:util";
-
-// console.log(`Running ezno@${get_version()}`)
 
 test("Type checking on code diagnostics", (t) => {
 	t.test("type check", () => {
@@ -42,8 +39,6 @@ test("Parsing", (t) => {
 	t.test("expressions", () => {
 		const expression = parse_expression("x = 4 + 2");
 
-		// console.log(inspect(expression, { depth: Infinity, colors: true }));
-
 		deepStrictEqual(expression, {
 			Ok: {
 				Assignment: {
@@ -52,9 +47,9 @@ test("Parsing", (t) => {
 					},
 					rhs: {
 						BinaryOperation: {
-							lhs: { NumberLiteral: [{ Number: 4 }, { start: 4, end: 5 }] },
+							lhs: { NumberLiteral: [4, { start: 4, end: 5 }] },
 							operator: 'Add',
-							rhs: { NumberLiteral: [{ Number: 2 }, { start: 8, end: 9 }] },
+							rhs: { NumberLiteral: [2, { start: 8, end: 9 }] },
 							position: { start: 4, end: 9 }
 						}
 					},
