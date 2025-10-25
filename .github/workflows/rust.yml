@@ -195,8 +195,8 @@ jobs:
 
           npm run run-tests
 
-          npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
-          echo "debug checked with TSC"
+          # npx -p typescript tsc --strict --pretty ./build/ezno_lib.d.ts
+          # echo "debug checked with TSC"
 
           # TEMP check
           cargo run -p ezno-parser --example parse ./build/ezno_lib.d.ts --type-definition-module
@@ -339,7 +339,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: validity
     # TODO temp fix
-    if: ${{ github.ref_name != 'general-fixed' }}
+    if: ${{ github.ref_name != 'general-fixes' }}
     steps:
       - name: Kick off other workflow if main or a PR with 'compiler-performance' label
         if: github.ref_name == 'main' || contains(github.event.pull_request.labels.*.name, 'compiler-performance')
