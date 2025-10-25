@@ -2,10 +2,10 @@ use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{derive_ASTNode, Block};
+use crate::{Block, derive_ASTNode};
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType, Visitable)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType, Visitable)]
 #[get_field_by_type_target(Span)]
 pub struct Namespace {
 	pub is_declare: bool,

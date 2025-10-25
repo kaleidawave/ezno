@@ -5,9 +5,9 @@ use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{derive_ASTNode, Marker, ParseError, ParseErrors, Quoted};
+use crate::{Marker, ParseError, ParseErrors, Quoted, derive_ASTNode};
 
-pub trait ImportOrExport: std::fmt::Debug + Clone + PartialEq + Sync + Send + 'static {
+pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
 	const PREFIX: bool;
 }
 
@@ -20,7 +20,7 @@ impl ImportOrExport for export::ExportDeclaration {
 }
 
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
-#[derive(Debug, Clone, PartialEq, Visitable, GetFieldByType)]
+#[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportExportPart<T: ImportOrExport> {
@@ -158,7 +158,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 }
 
 /// TODO `default` should have its own variant?
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
@@ -176,9 +176,9 @@ impl ImportExportName {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
-			let (content, quoted) = reader.parse_string_literal()?;
-			let position = start.with_length(content.len() + 2);
-			Ok((ImportExportName::Quoted(content.to_owned(), quoted), position))
+			let (content, quoted, width) = reader.parse_string_literal()?;
+			let position = start.with_length(width as usize);
+			Ok((ImportExportName::Quoted(content.into_owned(), quoted), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
 			Ok((ImportExportName::Reference("default".into()), start.with_length("default".len())))
@@ -187,7 +187,7 @@ impl ImportExportName {
 			let marker = reader.new_partial_point_marker(position);
 			Ok((ImportExportName::Marker(marker), position))
 		} else {
-			let identifier = reader.parse_identifier("import alias", false)?.to_owned();
+			let identifier = reader.parse_identifier("import or export alias", false)?.to_owned();
 			if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
 				let position = start.with_length(0);
 				Ok((ImportExportName::Marker(reader.new_partial_point_marker(position)), position))
@@ -217,7 +217,7 @@ impl ImportExportName {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum ImportLocation {
 	Quoted(String, Quoted),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
@@ -256,8 +256,8 @@ impl ImportLocation {
 		reader.skip();
 
 		let _start = reader.get_start();
-		let (content, quoted) = reader.parse_string_literal()?;
-		Ok(ImportLocation::Quoted(content.to_owned(), quoted))
+		let (content, quoted, _width) = reader.parse_string_literal()?;
+		Ok(ImportLocation::Quoted(content.into_owned(), quoted))
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
@@ -274,10 +274,6 @@ impl ImportLocation {
 	/// Can be `None` if self is a marker point
 	#[must_use]
 	pub fn get_path(&self) -> Option<&str> {
-		if let Self::Quoted(name, _) = self {
-			Some(name)
-		} else {
-			None
-		}
+		if let Self::Quoted(name, _) = self { Some(name) } else { None }
 	}
 }

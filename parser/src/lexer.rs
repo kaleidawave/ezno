@@ -1,29 +1,9 @@
 use crate::{
+	Span,
 	errors::{ParseError, ParseErrors},
 	marker::Marker,
 	options::ParseOptions,
-	Span,
 };
-
-// pub(super) enum NumberLiteralType {
-// 	BinaryLiteral,
-// 	/// strict mode done at the parse level
-// 	OctalLiteral,
-// 	HexadecimalLiteral,
-// 	/// Base 10
-// 	Decimal {
-// 		/// has decimal point
-// 		fractional: bool,
-// 	},
-// 	BigInt,
-// 	Exponent,
-// }
-
-// impl Default for NumberLiteralType {
-// 	fn default() -> Self {
-// 		Self::Decimal { fractional: false }
-// 	}
-// }
 
 // TODO state for "use strict" etc?
 // TODO hold Keywords map, markers, syntax errors etc
@@ -85,6 +65,16 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
+	pub fn is_finished(&self) -> bool {
+		self.head >= self.source_size()
+	}
+
+	#[must_use]
+	pub fn left_to_parse(&self) -> u32 {
+		self.source_size().saturating_sub(self.head)
+	}
+
+	#[must_use]
 	pub fn get_some_current(&self) -> (&'a str, usize) {
 		(
 			&self.script
@@ -119,6 +109,11 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
+	pub fn skip_including_comments(&mut self) {
+		// TODO
+		self.skip();
+	}
+
 	pub fn is_keyword(&mut self, keyword: &str) -> bool {
 		self.skip();
 		let current = self.get_current();
@@ -127,7 +122,7 @@ impl<'a> Lexer<'a> {
 			&& current[length..]
 				.chars()
 				.next()
-				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 	}
 
 	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
@@ -138,7 +133,7 @@ impl<'a> Lexer<'a> {
 			&& current[length..]
 				.chars()
 				.next()
-				.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 		{
 			self.state.last_new_lines = 0;
 			self.head += length as u32;
@@ -157,7 +152,7 @@ impl<'a> Lexer<'a> {
 				&& current[item.len()..]
 					.chars()
 					.next()
-					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 			{
 				return Some(item);
 			}
@@ -175,7 +170,7 @@ impl<'a> Lexer<'a> {
 				&& current[item.len()..]
 					.chars()
 					.next()
-					.map_or(true, |chr| !utilities::is_valid_identifier(chr))
+					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
 			{
 				self.head += item.len() as u32;
 				return Some(item);
@@ -217,48 +212,38 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub fn expect_operator(&mut self, operator: &'static str) -> Result<(), ParseError> {
+	pub fn expect_operator(&mut self, expected: &'static str) -> Result<(), ParseError> {
 		self.skip();
 		let current = self.get_current();
-		if current.starts_with(operator) {
-			self.head += operator.len() as u32;
+		if current.starts_with(expected) {
+			self.head += expected.len() as u32;
 			Ok(())
 		} else {
-			let trailing = utilities::next_empty_occurance(current);
-			let position = self.get_start().with_length(trailing);
-			let found = &current[..trailing];
-			let reason = ParseErrors::ExpectedOperator { expected: operator, found };
+			let (found, position) = utilities::next_item(self);
+			let reason = ParseErrors::ExpectedOperator { expected, found };
 			Err(ParseError::new(reason, position))
-			// let position = self.get_start().with_length(chr.len_utf8());
-			// let reason = ParseErrors::UnexpectedCharacter {
-			// 	expected: &[chr],
-			// 	found: current.chars().next().unwrap(),
-			// };
-			// Err(ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect_keyword(&mut self, str: &'static str) -> Result<source_map::Start, ParseError> {
+	pub fn expect_keyword(
+		&mut self,
+		expected: &'static str,
+	) -> Result<source_map::Start, ParseError> {
 		self.skip();
 		let current = self.get_current();
-		if current.starts_with(str) {
+		if current.starts_with(expected) {
 			let start = source_map::Start(self.head);
-			self.head += str.len() as u32;
+			self.head += expected.len() as u32;
 			Ok(start)
 		} else {
-			let found = &current[..utilities::next_empty_occurance(current)];
-			let position = self.get_start().with_length(found.len());
-			let reason = ParseErrors::ExpectedKeyword { expected: str, found };
+			let (found, position) = utilities::next_item(self);
+			let reason = ParseErrors::ExpectedKeyword { expected, found };
 			Err(ParseError::new(reason, position))
 		}
 	}
 
 	pub fn is_no_advance(&mut self, chr: char) -> Result<(), ()> {
-		if self.get_current().starts_with(chr) {
-			Ok(())
-		} else {
-			Err(())
-		}
+		if self.get_current().starts_with(chr) { Ok(()) } else { Err(()) }
 	}
 
 	#[must_use]
@@ -338,11 +323,6 @@ impl<'a> Lexer<'a> {
 			self.head += operator.len() as u32;
 		}
 		matches
-	}
-
-	#[must_use]
-	pub fn is_finished(&self) -> bool {
-		self.get_current().is_empty()
 	}
 
 	#[must_use]
@@ -457,7 +437,9 @@ impl<'a> Lexer<'a> {
 					} else {
 						// Note `is_alphanumeric` here
 						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
-						if !is_valid {
+						// Expanded type names can contains '.'
+						let valid_type_name = location == "type name" && chr == '.';
+						if !is_valid && !valid_type_name {
 							let value = &current[..idx];
 							let is_invalid = check_reserved
 								&& !crate::lexer::utilities::is_valid_variable_identifier(value);
@@ -531,7 +513,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	// For JSX attributes and content. Also returns which one of `possibles` matched
-	pub fn parse_until_one_of(
+	pub fn parse_until_one_of_advance(
 		&mut self,
 		possibles: &[&'static str],
 	) -> Result<(&'a str, &'static str), ()> {
@@ -545,7 +527,7 @@ impl<'a> Lexer<'a> {
 		Err(())
 	}
 
-	/// Similar to `parse_until_one_of`. Does not add the matched lenght to head
+	/// Similar to `parse_until_one_of_advance`. Does not add the matched lenght to head
 	pub fn parse_until_one_of_no_advance(
 		&mut self,
 		possibles: &[&'static str],
@@ -568,55 +550,6 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	pub fn starts_with_string_delimeter(&self) -> bool {
-		self.starts_with('"') || self.starts_with('\'')
-	}
-
-	pub fn parse_string_literal(&mut self) -> Result<(&'a str, crate::Quoted), ParseError> {
-		let current = self.get_current();
-		let mut chars = current.char_indices();
-		let quoted = match chars.next() {
-			Some((_, '"')) => crate::Quoted::Double,
-			Some((_, '\'')) => crate::Quoted::Single,
-			_ => {
-				let found = &current[..crate::lexer::utilities::next_empty_occurance(current)];
-				return Err(ParseError::new(
-					ParseErrors::ExpectedOneOfItems { expected: &["\"", "'"], found },
-					self.get_start().with_length(1),
-				));
-			}
-		};
-		let mut escaped = false;
-		for (idx, chr) in chars {
-			if escaped {
-				escaped = false;
-				continue;
-			} else if let '\\' = chr {
-				escaped = true;
-				continue;
-			}
-
-			if let (crate::Quoted::Double, '"') | (crate::Quoted::Single, '\'') = (quoted, chr) {
-				// TODO double check
-				let content = &current[1..idx];
-				self.head += idx as u32 + 1;
-				return Ok((content, quoted));
-			}
-
-			if let '\n' = chr {
-				return Err(ParseError::new(
-					ParseErrors::NoNewLinesInString,
-					self.get_start().with_length(idx),
-				));
-			}
-		}
-		Err(ParseError::new(
-			ParseErrors::UnexpectedEnd,
-			self.get_start().with_length(self.get_current().len()),
-		))
-	}
-
-	#[must_use]
 	pub fn starts_with_number(&self) -> bool {
 		let bytes = self.get_current().as_bytes();
 		if let Some(start) = bytes.first() {
@@ -636,207 +569,46 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	// TODO errors + some parts are weird
+	#[allow(clippy::single_match_else)]
 	pub fn parse_number_literal(
 		&mut self,
-	) -> Result<(crate::number::NumberRepresentation, u32), ParseError> {
-		use std::str::FromStr;
-
-		enum NumberLiteralType {
-			BinaryLiteral,
-			/// strict mode done at the parse level
-			OctalLiteral,
-			HexadecimalLiteral,
-			/// Base 10
-			Decimal {
-				/// has decimal point
-				fractional: bool,
-			},
-			Exponent,
-		}
-
-		let current = self.get_current();
-		let mut chars = current.char_indices();
-
-		let mut state = match chars.next().map(|(_idx, chr)| chr) {
-			Some('0') if current.as_bytes().get(1).is_some_and(|b| (b'0'..=b'7').contains(b)) => {
-				// TODO strict mode should be done in the parser stage (as that is where context is)
-				NumberLiteralType::OctalLiteral
+	) -> Result<(crate::numbers::ParsedNumberLiteral<'a>, u32), ParseError> {
+		let value = self.get_current();
+		let result = crate::numbers::parse_number(value);
+		match result {
+			Ok((value, count)) => {
+				self.advance(count);
+				Ok((value, count))
 			}
-			Some('0'..='9') => NumberLiteralType::Decimal { fractional: false },
-			Some('.') => NumberLiteralType::Decimal { fractional: true },
-			Some(_) | None => {
-				return Err(ParseError::new(
-					ParseErrors::InvalidNumber,
-					self.get_start().with_length(1),
-				))
-			}
-		};
-
-		for (idx, chr) in chars {
-			match chr {
-				'n' => {
-					return if let NumberLiteralType::Decimal { fractional: false } = state {
-						let num_slice = current[..idx].to_owned();
-						let number = crate::number::NumberRepresentation::BigInt(
-							crate::number::NumberSign::Positive,
-							num_slice,
-						);
-						let length = (idx + 'n'.len_utf16()) as u32;
-						self.head += length;
-						Ok((number, length))
-					} else {
-						Err(ParseError::new(
-							ParseErrors::InvalidNumber,
-							self.get_start().with_length(idx),
-						))
-					};
-				}
-				// For binary/hexadecimal/octal literals
-				'b' | 'B' | 'x' | 'X' | 'o' | 'O' if idx == 1 => {
-					if current.starts_with('0') {
-						state = match chr {
-							'b' | 'B' => NumberLiteralType::BinaryLiteral,
-							'o' | 'O' => NumberLiteralType::OctalLiteral,
-							'x' | 'X' => NumberLiteralType::HexadecimalLiteral,
-							_ => unreachable!(),
-						}
-					} else {
-						// LexingErrors::NumberLiteralBaseSpecifierMustPrecededWithZero
-						return Err(ParseError::new(
-							ParseErrors::InvalidNumber,
-							self.get_start().with_length(idx),
-						));
-					}
-				}
-				'0'..='9' | 'a'..='f' | 'A'..='F' => match state {
-					NumberLiteralType::BinaryLiteral => {
-						if !matches!(chr, '0' | '1') {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					NumberLiteralType::OctalLiteral => {
-						if !matches!(chr, '0'..='7') {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					// Handling for 'e' & 'E'
-					NumberLiteralType::Decimal { ref fractional } => {
-						if matches!(chr, 'e' | 'E')
-							&& !(*fractional || current[..idx].ends_with('_'))
-						{
-							state = NumberLiteralType::Exponent;
-						} else if !chr.is_ascii_digit() {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					NumberLiteralType::Exponent => {
-						if !chr.is_ascii_digit() {
-							// (LexingErrors::InvalidNumeralItemBecauseOfLiteralKind)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
-								self.get_start().with_length(idx),
-							));
-						}
-					}
-					// all above allowed
-					NumberLiteralType::HexadecimalLiteral => {}
-				},
-				'.' => {
-					if let NumberLiteralType::Decimal { ref mut fractional } = state {
-						// Return if already fractional. This is valid syntax: `1..toString()`
-						if *fractional {
-							let num_slice = &current[..idx];
-							let number = crate::number::NumberRepresentation::from_str(num_slice);
-							let number = number.unwrap();
-							let length = idx as u32;
-							self.head += length;
-							return Ok((number, length));
-						}
-
-						if current[..idx].ends_with(['_']) {
-							// (LexingErrors::InvalidUnderscore)
-							return Err(ParseError::new(
-								ParseErrors::InvalidNumber,
-								self.get_start().with_length(idx),
-							));
-						}
-
-						*fractional = true;
-					} else {
-						// (LexingErrors::NumberLiteralCannotHaveDecimalPoint);
-						return Err(ParseError::new(
-							ParseErrors::InvalidNumber,
-							self.get_start().with_length(idx),
-						));
-					}
-				}
-				'_' => {
-					let invalid = match &state {
-						NumberLiteralType::BinaryLiteral |
-						NumberLiteralType::OctalLiteral |
-						// Second `(idx - start) < 1` is for octal with prefix 0
-						NumberLiteralType::HexadecimalLiteral => {
-							if idx == 2 {
-								current[..idx].ends_with(['b', 'B', 'x', 'X', 'o', 'O'])
-							} else {
-								false
-							}
-						},
-						NumberLiteralType::Decimal { .. } => current[..idx].ends_with('.') || &current[..idx] == "0",
-						NumberLiteralType::Exponent => current[..idx].ends_with(['e', 'E']),
-					};
-					if invalid {
-						// (LexingErrors::InvalidUnderscore);
-						return Err(ParseError::new(
-							ParseErrors::InvalidNumber,
-							self.get_start().with_length(idx),
-						));
-					}
-				}
-				// `10e-5` is a valid literal
-				'-' if matches!(state, NumberLiteralType::Exponent if current[..idx].ends_with(['e', 'E'])) =>
-					{}
-				_chr => {
-					let num_slice = &current[..idx];
-					let length = idx;
-					return match crate::number::NumberRepresentation::from_str(num_slice) {
-						Ok(number) => {
-							self.head += length as u32;
-							Ok((number, length as u32))
-						}
-						Err(_) => Err(ParseError::new(
-							ParseErrors::InvalidNumber,
-							self.get_start().with_length(length),
-						)),
-					};
-				}
+			Err(()) => {
+				// TODO ...
+				let span = self.get_start().with_length(1);
+				Err(ParseError::new(ParseErrors::InvalidNumberLiteral, span))
 			}
 		}
+	}
 
-		// Fix if don't find end
-		let length = current.len();
-		match crate::number::NumberRepresentation::from_str(current) {
-			Ok(number) => {
-				self.head += length as u32;
-				Ok((number, length as u32))
+	#[must_use]
+	pub fn starts_with_string_delimeter(&self) -> bool {
+		self.starts_with('"') || self.starts_with('\'')
+	}
+
+	#[allow(clippy::single_match_else)]
+	pub fn parse_string_literal(
+		&mut self,
+	) -> Result<(std::borrow::Cow<'a, str>, crate::strings::Quoted, u32), ParseError> {
+		let value = self.get_current();
+		let result = crate::strings::parse_string(value);
+		match result {
+			Ok((value, quoted, count)) => {
+				self.advance(count);
+				Ok((value, quoted, count))
 			}
-			Err(_) => Err(ParseError::new(
-				ParseErrors::InvalidNumber,
-				self.get_start().with_length(length),
-			)),
+			Err(_) => {
+				// TODO ...
+				let span = self.get_start().with_length(1);
+				Err(ParseError::new(ParseErrors::InvalidStringLiteral, span))
+			}
 		}
 	}
 
@@ -912,7 +684,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	/// Expects that `//` or `/*` has been parsed
-	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&str, ParseError> {
+	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&'a str, ParseError> {
 		if is_multiline {
 			self.parse_until("*/").map_err(|()| {
 				// TODO might be a problem
@@ -947,15 +719,14 @@ impl<'a> Lexer<'a> {
 		enum State {
 			None,
 			Comment,
-			StringLiteral { escaped: bool, quoted: Quoted },
+			StringLiteral { escaped: bool, quoted: crate::Quoted },
 			// TemplateLiteral { escaped: bool },
 			// RegexLiteral { escaped: bool },
 			MultilineComment,
 		}
 
-		// let mut template_literal_depth = 0;
-
 		let current = self.get_current();
+
 		let mut bracket_count: u32 = 0;
 		let mut open_chevrons = 0u64;
 		let mut state = State::None;
@@ -966,24 +737,27 @@ impl<'a> Lexer<'a> {
 			match state {
 				State::None => {
 					if let '(' | '{' | '[' | '<' = chr {
-						open_chevrons |= u64::from(chr == '<');
 						open_chevrons <<= 1;
+						open_chevrons |= u64::from(chr == '<');
 						bracket_count += 1;
+						// dbg!(chr, bracket_count);
 					} else if let ')' | '}' | ']' | '>' = chr {
 						// TODO WIP
-						open_chevrons >>= 1;
 						let last_was_open_chevron = (open_chevrons & 1) != 0;
-						if last_was_open_chevron {
-							if let ')' | '}' | ']' = chr {
-								// Extra removal
-								open_chevrons >>= 1;
-								bracket_count = bracket_count.saturating_sub(1);
+						if let '>' = chr {
+							if !last_was_open_chevron {
+								continue;
 							}
-						} else if let '>' = chr {
-							continue;
+							// ...
+						} else if last_was_open_chevron {
+							// Extra removal
+							open_chevrons >>= 1;
+							bracket_count = bracket_count.saturating_sub(1);
 						}
 
+						open_chevrons >>= 1;
 						bracket_count = bracket_count.saturating_sub(1);
+						// dbg!(chr, bracket_count, last_was_open_chevron);
 						if bracket_count == 0 {
 							return current[(idx + 1)..].trim_start();
 						}
@@ -999,11 +773,6 @@ impl<'a> Lexer<'a> {
 						}
 					}
 				}
-				State::Comment => {
-					if let '\n' = chr {
-						state = State::None;
-					}
-				}
 				State::StringLiteral { ref mut escaped, quoted } => {
 					if *escaped {
 						*escaped = false;
@@ -1012,6 +781,11 @@ impl<'a> Lexer<'a> {
 					if let '\\' = chr {
 						*escaped = true;
 					} else if let (Quoted::Double, '"') | (Quoted::Single, '\'') = (quoted, chr) {
+						state = State::None;
+					}
+				}
+				State::Comment => {
+					if let '\n' = chr {
 						state = State::None;
 					}
 				}
@@ -1029,31 +803,22 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub fn after_identifier(&self) -> &'a str {
-		let current = self.get_current();
-
-		let mut chars = current.as_bytes().iter().enumerate();
-		for (idx, chr) in chars.by_ref() {
-			if !chr.is_ascii_whitespace() {
-				// test here as iteration consumed
-				if chr.is_ascii_alphanumeric() {
-					break;
-				}
-
-				return current[idx..].trim_start();
-			}
-		}
-
-		for (idx, chr) in chars {
-			if !chr.is_ascii_alphanumeric() {
-				return current[idx..].trim_start();
-			}
-		}
-
-		// Return empty slice
-		Default::default()
+		self.after_identifier_offset(0)
 	}
 
-	// TODO WIP
+	#[must_use]
+	pub fn after_identifier_offset(&self, offset: usize) -> &'a str {
+		let current = &self.get_current().trim_start()[offset..];
+
+		if let Some(idx) = current.find(|chr: char| !(chr.is_alphanumeric() || chr == '_')) {
+			current[idx..].trim_start()
+		} else {
+			// Return empty slice
+			Default::default()
+		}
+	}
+
+	// TODO WIP. for for loops
 	#[must_use]
 	pub fn after_variable_start(&self) -> &'a str {
 		let mut current = self.get_current().trim_start();
@@ -1063,6 +828,8 @@ impl<'a> Lexer<'a> {
 			current = current["let".len()..].trim_start();
 		} else if current.starts_with("var") {
 			current = current["var".len()..].trim_start();
+		} else if current.starts_with("using") {
+			current = current["using".len()..].trim_start();
 		}
 
 		if current.starts_with('{') || current.starts_with('[') {
@@ -1110,11 +877,8 @@ impl<'a> Lexer<'a> {
 		if semi_colon_like {
 			Ok(())
 		} else {
-			let current = self.get_current();
-			let until_empty = crate::lexer::utilities::next_empty_occurance(current);
-			let position = self.get_start().with_length(until_empty);
-			let error =
-				ParseErrors::ExpectedOperator { expected: ";", found: &current[..until_empty] };
+			let (found, position) = utilities::next_item(self);
+			let error = ParseErrors::ExpectedOperator { expected: ";", found };
 			Err(ParseError::new(error, position))
 		}
 	}
@@ -1124,26 +888,30 @@ impl<'a> Lexer<'a> {
 		self.starts_with('}')
 			|| self.starts_with(';')
 			|| self.last_was_from_new_line() > 0
-			|| self.get_current().is_empty()
+			|| self.is_finished()
 	}
+}
 
-	pub fn is_arrow_function(&mut self) -> (bool, Option<crate::types::TypeAnnotation>) {
-		let after_brackets = utilities::trim_whitespace_not_newlines(self.after_brackets());
+pub(crate) mod utilities {
+	pub fn is_arrow_function(
+		reader: &mut super::Lexer,
+	) -> (bool, Option<crate::types::TypeAnnotation>) {
+		let after_brackets = trim_whitespace_not_newlines(reader.after_brackets());
 		if after_brackets.starts_with("=>") {
 			(true, None)
-		} else if self.options.type_annotations && after_brackets.starts_with(':') {
+		} else if reader.options.type_annotations && after_brackets.starts_with(':') {
 			// TODO WIP implementation
-			let save_point = self.head;
-			let after = self.get_current().len() - after_brackets.len();
-			self.head += after as u32 + 1;
+			let save_point = reader.head;
+			let after = reader.left_to_parse() - after_brackets.len() as u32;
+			reader.head += after as u32 + 1;
 			// TODO: I hate this!!
 			// Can double allocate for expressions build up bad information
 			let annotation = crate::types::TypeAnnotation::from_reader_with_precedence(
-				self,
+				reader,
 				crate::types::type_annotations::TypeOperatorKind::ReturnType,
 			);
-			let starts_with_arrow = self.starts_with_slice("=>");
-			self.head = save_point;
+			let starts_with_arrow = reader.starts_with_slice("=>");
+			reader.head = save_point;
 			if let (true, Ok(annotation)) = (starts_with_arrow, annotation) {
 				(true, Some(annotation))
 			} else {
@@ -1153,9 +921,7 @@ impl<'a> Lexer<'a> {
 			(false, None)
 		}
 	}
-}
 
-pub(crate) mod utilities {
 	pub fn is_valid_identifier(chr: char) -> bool {
 		// TODO `\\` for unicode identifiers
 		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
@@ -1289,9 +1055,5 @@ pub(crate) mod utilities {
 
 		// Else nothing exists
 		Some(0)
-	}
-
-	pub fn get_after_operator<'a>(reader: &super::Lexer<'a>, item: &str) -> &'a str {
-		&reader.get_current()[item.len()..]
 	}
 }

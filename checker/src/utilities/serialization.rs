@@ -58,11 +58,7 @@ impl<T: BinarySerializable> BinarySerializable for Option<T> {
 	}
 
 	fn deserialize<I: Iterator<Item = u8>>(iter: &mut I, source: SourceId) -> Self {
-		if iter.next().unwrap() == 0 {
-			None
-		} else {
-			Some(T::deserialize(iter, source))
-		}
+		if iter.next().unwrap() == 0 { None } else { Some(T::deserialize(iter, source)) }
 	}
 }
 

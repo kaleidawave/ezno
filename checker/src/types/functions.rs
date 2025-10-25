@@ -5,10 +5,10 @@ use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use super::calling::{Callable, CallingContext, CallingInput};
 use crate::{
+	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 	context::{environment::FunctionScope, invocation::CheckThings},
 	events::{Event, RootReference},
 	features::functions::{ClassPropertiesToRegister, ClosedOverVariables},
-	CheckingData, Environment, FunctionId, GenericTypeParameters, Scope, TypeId,
 };
 
 /// This is a mesh of annotation and actually defined functions

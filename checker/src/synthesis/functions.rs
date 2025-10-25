@@ -2,24 +2,24 @@
 
 use iterator_endiate::EndiateIteratorExt;
 use parser::{
-	expressions::ExpressionOrBlock,
-	functions::{LeadingParameter, ParameterData},
 	ASTNode, Block, FunctionBased, Span, SpreadDestructuringField, TypeAnnotation, TypeParameter,
 	VariableField, VariableIdentifier, WithComment,
+	expressions::ExpressionOrBlock,
+	functions::{LeadingParameter, ParameterData},
 };
 
 use crate::{
+	CheckingData, Environment, FunctionId,
 	context::{Context, ContextType, Scope, VariableRegisterArguments},
-	features::functions::{synthesise_function_default_value, ReturnType, SynthesisableFunction},
+	features::functions::{ReturnType, SynthesisableFunction, synthesise_function_default_value},
 	types::{
+		PartiallyAppliedGenerics, Type, TypeId,
 		functions::{
 			FunctionBehavior, FunctionType, SynthesisedParameter, SynthesisedParameters,
 			SynthesisedRestParameter,
 		},
 		generics::GenericTypeParameters,
-		PartiallyAppliedGenerics, Type, TypeId,
 	},
-	CheckingData, Environment, FunctionId,
 };
 
 use super::{
@@ -274,7 +274,7 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 						allow_reregistration: true,
 					},
 				);
-			};
+			}
 
 			SynthesisedParameter {
 				ty,
@@ -549,7 +549,8 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 								buf.push('"');
 							}
 							parser::PropertyKey::NumberLiteral(n, _) => {
-								buf.push_str(n.clone().as_js_string().as_str());
+								// TODO check
+								buf.push_str(n.to_string().as_str());
 							}
 							parser::PropertyKey::Computed(_, _) => {
 								// TODO maybe could do better here?
@@ -582,13 +583,13 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 fn get_parameter_name(parameter: &parser::VariableField) -> String {
 	match parameter {
 		VariableField::Name(name) => match name {
-			VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+			VariableIdentifier::Standard(name, _) => name.to_owned(),
 			VariableIdentifier::Marker(_, _) => String::new(),
 		},
 		VariableField::Array { members: _, spread: _, position: _ } => {
 			"todo: VariableField::Array".to_owned()
 		}
-		VariableField::Object { members: _, spread: _, position: _ } => {
+		VariableField::Object { members: _, spread: _, position: _, .. } => {
 			"todo: VariableField::Object".to_owned()
 		}
 	}
@@ -762,7 +763,7 @@ pub(super) fn build_overloaded_function(
 	effect: crate::types::FunctionEffect,
 ) -> TypeId {
 	use crate::diagnostics::{TypeCheckError, TypeStringRepresentation};
-	use crate::types::subtyping::{type_is_subtype, State, SubTypeResult};
+	use crate::types::subtyping::{State, SubTypeResult, type_is_subtype};
 
 	// TODO bad
 	let expected_parameters = actual.1.clone();

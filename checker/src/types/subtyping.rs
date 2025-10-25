@@ -4,15 +4,16 @@
 use source_map::SpanWithSource;
 
 use crate::{
+	Constant, Environment, PropertyValue, TypeId,
 	context::{GeneralContext, InformationChain},
 	features::{
 		objects::{self, SpecialObject},
 		operations::MathematicalOrBitwiseOperation,
 	},
-	Constant, Environment, PropertyValue, TypeId,
 };
 
 use super::{
+	Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
 	generics::{
 		chain::{GenericChain, GenericChainLink, SpecialGenericChainLink},
 		contributions::{ContributionDepth, Contributions, CovariantContribution, TriMap},
@@ -23,8 +24,7 @@ use super::{
 	logical::{BasedOnKey, Logical, LogicalOrValid, NeedsCalculation, PropertyOn},
 	printing::print_type,
 	properties::PropertyKey,
-	properties::{get_properties_on_single_type2, get_property_unbound, Publicity},
-	Constructor, ObjectNature, PartiallyAppliedGenerics, PolyNature, Type, TypeStore,
+	properties::{Publicity, get_properties_on_single_type2, get_property_unbound},
 };
 
 pub use super::{NonEqualityReason, PropertyError};
@@ -202,8 +202,12 @@ impl State<'_> {
 
 	/// For setting the state back to where it was at the point of [`Self::produce_save_point`]
 	pub fn reset(&mut self, last: StateSavePoint) {
-		let [already_checked, contributions_covariant, contributions_contravariant, object_constraint_count] =
-			last;
+		let [
+			already_checked,
+			contributions_covariant,
+			contributions_contravariant,
+			object_constraint_count,
+		] = last;
 
 		let _ = self.already_checked.drain((already_checked as usize)..);
 		if let Some(ref mut contributions) = self.contributions {
@@ -444,8 +448,7 @@ pub(crate) fn type_is_subtype_with_generics(
 	}
 
 	match supertype {
-		Type::FunctionReference(left_func)
-		| Type::SpecialObject(SpecialObject::Function(left_func, _)) => subtype_function(
+		Type::FunctionReference(left_func) => subtype_function(
 			(*left_func, base_type_arguments),
 			(subtype, ty, ty_structure_arguments),
 			state,
@@ -1246,11 +1249,10 @@ pub(crate) fn type_is_subtype_with_generics(
 					under: r_under,
 					result: _,
 					mode: _,
-				}) = subtype
+				}) = subtype && on == r_on
+					&& under == r_under
 				{
-					if on == r_on && under == r_under {
-						return SubTypeResult::IsSubType;
-					}
+					return SubTypeResult::IsSubType;
 				}
 
 				// TODO this only seems to work in simple cases. For mapped types
@@ -1504,14 +1506,13 @@ pub(crate) fn type_is_subtype_with_generics(
 					)
 				}
 			}
-			Type::SpecialObject(SpecialObject::Function(..)) | Type::FunctionReference(..)
-				if base_type == TypeId::FUNCTION_TYPE =>
-			{
-				SubTypeResult::IsSubType
-			}
-			_ty => {
-				// crate::utilities::notify!("{:?} does not match class", base_type);
-				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			ty => {
+				if let (TypeId::FUNCTION_TYPE, Some(_)) = (base_type, ty.try_into_function()) {
+					SubTypeResult::IsSubType
+				} else {
+					// crate::utilities::notify!("{:?} does not match class", base_type);
+					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+				}
 			}
 		},
 		Type::Interface { .. } => {
@@ -1538,10 +1539,6 @@ pub(crate) fn type_is_subtype_with_generics(
 					information,
 					types,
 				),
-				Type::SpecialObject(SpecialObject::Function(..)) => {
-					crate::utilities::notify!("TODO implement function checking");
-					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-				}
 				Type::And(a, b) => {
 					// TODO more
 					crate::utilities::notify!("Here LHS interface, RHS and");
@@ -1566,14 +1563,23 @@ pub(crate) fn type_is_subtype_with_generics(
 						types,
 					)
 				}
-				Type::FunctionReference(_)
-				| Type::SpecialObject(_)
+				Type::SpecialObject(_)
+				| Type::FunctionReference(_)
 				| Type::Class { .. }
 				| Type::AliasTo { .. }
 				| Type::Interface { .. } => {
-					crate::utilities::notify!("supertype={:?}, subtype={:?}", supertype, subtype);
-					// TODO
-					SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					if let Some(_func_id) = subtype.try_into_function() {
+						crate::utilities::notify!("TODO implement function checking");
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					} else {
+						crate::utilities::notify!(
+							"supertype={:?}, subtype={:?}",
+							supertype,
+							subtype
+						);
+						// TODO
+						SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+					}
 				}
 				Type::Narrowed { .. } | Type::Constructor(..) | Type::RootPolyType(..) => {
 					let arg =
@@ -1615,11 +1621,23 @@ pub(crate) fn type_is_subtype_with_generics(
 				}
 			}
 		}
-		Type::SpecialObject(SpecialObject::Null) => {
-			crate::utilities::notify!("rhs={:?}", subtype);
-			SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
-		}
-		Type::SpecialObject(_) => todo!(),
+		Type::SpecialObject(so) => match &**so {
+			SpecialObject::Null => {
+				crate::utilities::notify!("rhs={:?}", subtype);
+				SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch)
+			}
+			SpecialObject::Function(left_func, _) => subtype_function(
+				(*left_func, base_type_arguments),
+				(subtype, ty, ty_structure_arguments),
+				state,
+				information,
+				types,
+			),
+			_ => {
+				crate::utilities::notify!("TODO");
+				SubTypeResult::IsSubType
+			}
+		},
 	}
 }
 
@@ -1630,19 +1648,15 @@ fn subtype_function(
 	information: &impl InformationChain,
 	types: &TypeStore,
 ) -> SubTypeResult {
-	let right_func = if let Type::FunctionReference(right_func)
-	| Type::SpecialObject(SpecialObject::Function(right_func, _)) = subtype
-	{
+	let right_func = if let Some(right_func) = subtype.try_into_function() {
 		right_func
 	} else if let Some(constraint) = get_constraint(ty, types) {
 		// TODO explain why get_constraint early breaks a bunch of tests
-		let subtype = types.get_type_by_id(constraint);
-		if let Type::FunctionReference(right_func)
-		| Type::SpecialObject(SpecialObject::Function(right_func, _)) = subtype
-		{
+		let subtype_constraint = types.get_type_by_id(constraint);
+		if let Some(right_func) = subtype_constraint.try_into_function() {
 			right_func
 		} else {
-			crate::utilities::notify!("Not function after constraint!! {:?}", subtype);
+			crate::utilities::notify!("Not function after constraint!! {:?}", subtype_constraint);
 			return SubTypeResult::IsNotSubType(NonEqualityReason::Mismatch);
 		}
 	} else {
@@ -1651,7 +1665,7 @@ fn subtype_function(
 	};
 
 	let left_func = types.functions.get(&left_func).unwrap();
-	let right_func = types.functions.get(right_func).unwrap();
+	let right_func = types.functions.get(&right_func).unwrap();
 
 	for (idx, lhs_param) in left_func.parameters.parameters.iter().enumerate() {
 		if let Some((right_param_ty, position)) =
@@ -1924,8 +1938,8 @@ fn check_lhs_property_is_super_type_of_rhs(
 
 					if let Ok(LogicalOrValid::Logical(Logical::Pure(get_res))) = get_handler {
 						let function = get_res.as_get_type(types);
-						if let Type::SpecialObject(SpecialObject::Function(id, _)) =
-							types.get_type_by_id(function)
+						if let Some(SpecialObject::Function(id, _)) =
+							types.get_type_by_id(function).try_into_special_object()
 						{
 							let function = types.get_function_from_id(*id);
 							let mut map = crate::Map::new();
@@ -2760,10 +2774,8 @@ pub(crate) fn slice_matches_type(
 			arguments,
 		}) => {
 			let matches_constraint = match *transform {
-				TypeId::STRING_CAPITALIZE => slice.chars().next().map_or(true, char::is_uppercase),
-				TypeId::STRING_UNCAPITALIZE => {
-					slice.chars().next().map_or(true, char::is_lowercase)
-				}
+				TypeId::STRING_CAPITALIZE => slice.chars().next().is_none_or(char::is_uppercase),
+				TypeId::STRING_UNCAPITALIZE => slice.chars().next().is_none_or(char::is_lowercase),
 				TypeId::STRING_LOWERCASE => slice.chars().all(char::is_lowercase),
 				TypeId::STRING_UPPERCASE => slice.chars().all(char::is_uppercase),
 				_ => unreachable!(),

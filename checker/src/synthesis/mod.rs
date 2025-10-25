@@ -6,7 +6,6 @@
 mod assignments;
 pub mod block;
 pub mod classes;
-pub mod declarations;
 pub mod definitions;
 pub mod expressions;
 mod extensions;
@@ -14,7 +13,7 @@ pub mod functions;
 pub mod hoisting;
 pub mod interactive;
 pub mod interfaces;
-pub mod statements;
+pub mod statements_and_declarations;
 pub mod type_annotations;
 pub mod variables;
 
@@ -25,17 +24,15 @@ use parser::{
 use source_map::SourceId;
 
 use crate::{
+	CheckingData, Diagnostic, RootContext, TypeId, VariableId,
 	context::{Environment, LocalInformation, Names, VariableRegisterArguments},
 	types::properties::PropertyKey,
-	CheckingData, Diagnostic, RootContext, TypeId, VariableId,
 };
 
 use self::{
-	declarations::synthesise_variable_declaration,
-	expressions::{synthesise_expression, synthesise_multiple_expression},
-	hoisting::hoist_variable_declaration,
-	type_annotations::synthesise_type_annotation,
-	variables::register_variable,
+	expressions::synthesise_expression, hoisting::hoist_variable_declaration,
+	statements_and_declarations::synthesise_variable_declaration,
+	type_annotations::synthesise_type_annotation, variables::register_variable,
 };
 
 pub struct EznoParser;
@@ -43,7 +40,6 @@ pub struct EznoParser;
 impl crate::ASTImplementation for EznoParser {
 	type ParseOptions = parser::ParseOptions;
 	type ParseError = (parser::ParseError, SourceId);
-	type ParserRequirements = ();
 
 	type Module<'_a> = parser::Module;
 	type OwnedModule = parser::Module;
@@ -53,19 +49,17 @@ impl crate::ASTImplementation for EznoParser {
 	type TypeParameter<'_a> = parser::TypeParameter;
 	type Expression<'_a> = parser::Expression;
 	type Block<'_a> = parser::Block;
-	type MultipleExpression<'_a> = parser::expressions::MultipleExpression;
 	type ClassMethod<'_a> = parser::FunctionBase<parser::ast::ClassFunctionBase>;
 
 	type VariableField<'_a> = parser::VariableField;
 
-	type ForStatementInitiliser<'_a> = parser::statements::ForLoopStatementInitialiser;
+	type ForStatementInitiliser<'_a> = parser::statements_and_declarations::control_flow::for_statement::ForLoopStatementInitialiser;
 
 	fn module_from_string(
 		// TODO remove
 		source_id: SourceId,
 		string: String,
 		options: Self::ParseOptions,
-		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
 		<parser::Module as parser::ASTNode>::from_string(string, options)
 			.map_err(|err| (err, source_id))
@@ -75,7 +69,6 @@ impl crate::ASTImplementation for EznoParser {
 		// TODO remove
 		source_id: SourceId,
 		string: String,
-		_parser_requirements: &mut Self::ParserRequirements,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
 		let options = ParseOptions { type_definition_module: true, ..Default::default() };
 
@@ -111,12 +104,6 @@ impl crate::ASTImplementation for EznoParser {
 	}
 
 	fn expression_position<'_a>(expression: &'_a Self::Expression<'_a>) -> source_map::Span {
-		ASTNode::get_position(expression)
-	}
-
-	fn multiple_expression_position<'_a>(
-		expression: &'_a Self::MultipleExpression<'_a>,
-	) -> source_map::Span {
 		ASTNode::get_position(expression)
 	}
 
@@ -167,6 +154,8 @@ impl crate::ASTImplementation for EznoParser {
 			// TODO
 			retain_blank_lines: lsp_mode,
 			is_expressions: extra_syntax,
+			// TODO
+			skip_validation: true,
 			..Default::default()
 		}
 	}
@@ -175,22 +164,14 @@ impl crate::ASTImplementation for EznoParser {
 		m
 	}
 
-	fn synthesise_multiple_expression<'_a, T: crate::ReadFromFS>(
-		expression: &'_a Self::MultipleExpression<'_a>,
-		expected_type: TypeId,
-		environment: &mut Environment,
-		checking_data: &mut crate::CheckingData<T, Self>,
-	) -> TypeId {
-		synthesise_multiple_expression(expression, environment, checking_data, expected_type)
-	}
-
 	fn synthesise_for_loop_initialiser<'_a, T: crate::ReadFromFS>(
 		for_loop_initialiser: &'_a Self::ForStatementInitiliser<'_a>,
 		environment: &mut Environment,
 		checking_data: &mut crate::CheckingData<T, Self>,
 	) {
+		use parser::statements_and_declarations::ForLoopStatementInitialiser;
 		match for_loop_initialiser {
-			parser::statements::ForLoopStatementInitialiser::VariableDeclaration(declaration) => {
+			ForLoopStatementInitialiser::VariableDeclaration(declaration) => {
 				// TODO is this correct & the best
 				hoist_variable_declaration(declaration, environment, checking_data);
 				synthesise_variable_declaration(
@@ -202,13 +183,19 @@ impl crate::ASTImplementation for EznoParser {
 					checking_data.options.infer_sensible_constraints_in_for_loops,
 				);
 			}
-			parser::statements::ForLoopStatementInitialiser::VarStatement(stmt) => {
+			ForLoopStatementInitialiser::UsingDeclaration(stmt) => {
+				checking_data.raise_unimplemented_error(
+					"using in for statement initiliser",
+					stmt.get_position().with_source(environment.get_source()),
+				);
+			}
+			ForLoopStatementInitialiser::VarStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
 					"var in for statement initiliser",
 					stmt.get_position().with_source(environment.get_source()),
 				);
 			}
-			parser::statements::ForLoopStatementInitialiser::Expression(expr) => {
+			ForLoopStatementInitialiser::Expression(expr) => {
 				checking_data.raise_unimplemented_error(
 					"expression as for statement initiliser",
 					expr.get_position().with_source(environment.get_source()),
@@ -253,23 +240,14 @@ pub(super) fn parser_property_key_to_checker_property_key<
 		ParserPropertyKey::StringLiteral(value, ..) | ParserPropertyKey::Identifier(value, ..) => {
 			PropertyKey::String(std::borrow::Cow::Owned(value.clone()))
 		}
-		ParserPropertyKey::NumberLiteral(number, pos) => {
-			let result = f64::try_from(number.clone());
-			if let Ok(v) = result {
-				// TODO is there a better way
-				#[allow(clippy::float_cmp)]
-				if v.floor() == v {
-					PropertyKey::from_usize(v as usize)
-				} else {
-					// TODO
-					PropertyKey::String(std::borrow::Cow::Owned(v.to_string()))
-				}
+		ParserPropertyKey::NumberLiteral(number, _pos) => {
+			// TODO is there a better way
+			#[allow(clippy::float_cmp)]
+			if number.floor() == *number {
+				PropertyKey::from_usize(*number as usize)
 			} else {
-				checking_data.raise_unimplemented_error(
-					"big int as property key",
-					pos.with_source(environment.get_source()),
-				);
-				PropertyKey::Type(TypeId::UNIMPLEMENTED_ERROR_TYPE)
+				// TODO
+				PropertyKey::String(std::borrow::Cow::Owned(number.to_string()))
 			}
 		}
 		ParserPropertyKey::Computed(expression, _) => {

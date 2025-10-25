@@ -1,6 +1,6 @@
 use ezno_parser::{
-	visiting::{Annex, Chain, VisitOptions, Visitable, Visitor, Visitors},
 	ASTNode, Expression,
+	visiting::{Annex, Chain, VisitOptions, Visitable, Visitor, Visitors},
 };
 
 fn parse<T: ASTNode>(s: &str) -> T {

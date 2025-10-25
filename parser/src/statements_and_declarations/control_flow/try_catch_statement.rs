@@ -1,6 +1,6 @@
 use crate::{
-	derive_ASTNode, ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField,
-	WithComment,
+	ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField, WithComment,
+	derive_ASTNode,
 };
 use source_map::Span;
 use visitable_derive::Visitable;
@@ -9,7 +9,7 @@ use visitable_derive::Visitable;
 pub type ExceptionVarField = WithComment<VariableField>;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct TryCatchStatement {
 	pub try_inner: Block,

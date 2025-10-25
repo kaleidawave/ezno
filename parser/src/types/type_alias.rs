@@ -1,13 +1,13 @@
 use source_map::Span;
 
 use crate::{
-	bracketed_items_to_string, derive_ASTNode, ASTNode, ExpressionOrStatementPosition,
-	StatementPosition, TypeAnnotation, TypeParameter,
+	ASTNode, ExpressionOrStatementPosition, StatementPosition, TypeAnnotation, TypeParameter,
+	bracketed_items_to_string, derive_ASTNode,
 };
 
 /// e.g. `type NumberArray = Array<number>`
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct TypeAlias {
 	pub name: StatementPosition,

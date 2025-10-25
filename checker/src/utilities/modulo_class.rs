@@ -50,31 +50,19 @@ impl ModuloClass {
 	#[must_use]
 	pub fn offset(self, offset: f64) -> Self {
 		// TODO temp fix
-		if self.is_default() {
-			self
-		} else {
-			Self::new(self.modulo, self.offset + offset)
-		}
+		if self.is_default() { self } else { Self::new(self.modulo, self.offset + offset) }
 	}
 
 	#[must_use]
 	pub fn multiply(self, multiple: f64) -> Self {
 		// TODO temp fix
-		if self.is_default() {
-			self
-		} else {
-			Self::new(self.modulo * multiple, self.offset)
-		}
+		if self.is_default() { self } else { Self::new(self.modulo * multiple, self.offset) }
 	}
 
 	#[must_use]
 	pub fn negate(self) -> Self {
 		// TODO temp fix
-		if self.is_default() {
-			self
-		} else {
-			Self::new(self.modulo, self.modulo - self.offset)
-		}
+		if self.is_default() { self } else { Self::new(self.modulo, self.modulo - self.offset) }
 	}
 
 	#[must_use]

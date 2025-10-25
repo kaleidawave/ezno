@@ -1,13 +1,12 @@
 use crate::{
+	ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
 	ast::{
+		ArrayDestructuringField, Expression, FunctionArgument, ObjectDestructuringField,
+		PropertyKey, PropertyLike, PropertyReference, SpreadDestructuringField, SuperReference,
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		FunctionArgument,
 	},
-	derive_ASTNode, ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
-	ParseError, ParseErrors, ParseResult, PropertyKey, PropertyReference, SpreadDestructuringField,
-	WithComment,
+	derive_ASTNode,
 };
-use derive_partial_eq_extras::PartialEqExtras;
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
@@ -16,9 +15,8 @@ use visitable_derive::Visitable;
 use super::MultipleExpression;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEqExtras, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
-#[partial_eq_ignore_types(Span)]
 pub enum VariableOrPropertyAccess {
 	Variable(String, Span),
 	PropertyAccess {
@@ -32,8 +30,9 @@ pub enum VariableOrPropertyAccess {
 		indexer: Box<MultipleExpression>,
 		position: Span,
 	},
+	PropertyOnSuper(PropertyLike, Span),
 	#[cfg(feature = "full-typescript")]
-	NonNullAssertion(Box<Self>, Span),
+	NonNullAssertion(Box<VariableOrPropertyAccess>, Span),
 }
 
 impl ASTNode for VariableOrPropertyAccess {
@@ -60,7 +59,7 @@ impl ASTNode for VariableOrPropertyAccess {
 			VariableOrPropertyAccess::PropertyAccess { parent, property, .. } => {
 				if let Expression::NumberLiteral(..)
 				| Expression::ObjectLiteral(..)
-				| Expression::ArrowFunction(..) = parent.get_non_parenthesized()
+				| Expression::ArrowFunction(..) = parent.get_non_parenthesised()
 				{
 					buf.push('(');
 					parent.to_string_from_buffer(buf, options, local);
@@ -81,6 +80,15 @@ impl ASTNode for VariableOrPropertyAccess {
 			VariableOrPropertyAccess::Index { indexee, indexer, .. } => {
 				indexee.to_string_from_buffer(buf, options, local);
 				buf.push('[');
+				indexer.to_string_from_buffer(buf, options, local);
+				buf.push(']');
+			}
+			VariableOrPropertyAccess::PropertyOnSuper(PropertyLike::Fixed(name), _) => {
+				buf.push_str("super.");
+				buf.push_str(name);
+			}
+			VariableOrPropertyAccess::PropertyOnSuper(PropertyLike::Computed(indexer), _) => {
+				buf.push_str("super[");
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
@@ -112,17 +120,11 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			Expression::Index { indexer, position, indexee, is_optional: false } => {
 				Ok(Self::Index { indexer, position, indexee })
 			}
-			// Yah weird and recursion is fine here
-			Expression::Parenthesised(inner, _) => {
-				if let MultipleExpression::Single(expression) = *inner {
-					TryFrom::try_from(expression)
-				} else {
-					Err(ParseError::new(
-						crate::ParseErrors::InvalidLHSAssignment,
-						inner.get_position(),
-					))
-				}
+			Expression::SuperExpression(SuperReference::PropertyAccess(property), position) => {
+				Ok(Self::PropertyOnSuper(property, position))
 			}
+			// Yah weird and recursion is fine here
+			Expression::Parenthesised(inner, _) => TryFrom::try_from(inner.0),
 			#[cfg(feature = "full-typescript")]
 			Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(on),
@@ -149,6 +151,9 @@ impl From<VariableOrPropertyAccess> for Expression {
 			VariableOrPropertyAccess::PropertyAccess { parent, position, property } => {
 				Expression::PropertyAccess { parent, position, property, is_optional: false }
 			}
+			VariableOrPropertyAccess::PropertyOnSuper(property, position) => {
+				Expression::SuperExpression(SuperReference::PropertyAccess(property), position)
+			}
 			#[cfg(feature = "full-typescript")]
 			VariableOrPropertyAccess::NonNullAssertion(on, position) => Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
@@ -162,7 +167,8 @@ impl VariableOrPropertyAccess {
 	#[must_use]
 	pub fn get_parent(&self) -> Option<&Expression> {
 		match self {
-			VariableOrPropertyAccess::Variable(..) => None,
+			VariableOrPropertyAccess::Variable(..)
+			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]
@@ -172,7 +178,8 @@ impl VariableOrPropertyAccess {
 
 	pub fn get_parent_mut(&mut self) -> Option<&mut Expression> {
 		match self {
-			VariableOrPropertyAccess::Variable(..) => None,
+			VariableOrPropertyAccess::Variable(..)
+			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]
@@ -185,8 +192,7 @@ impl VariableOrPropertyAccess {
 ///
 /// Includes [Destructuring assignment](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment)
 #[apply(derive_ASTNode)]
-#[derive(PartialEqExtras, Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
-#[partial_eq_ignore_types(Span)]
+#[derive(Debug, Clone, Visitable, derive_enum_from_into::EnumFrom)]
 pub enum LHSOfAssignment {
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
 	ArrayDestructuring {
@@ -235,7 +241,7 @@ impl ASTNode for LHSOfAssignment {
 						options.push_gap_optionally(buf);
 					}
 				}
-				if let Some(ref spread) = spread {
+				if let Some(spread) = spread {
 					if !members.is_empty() {
 						buf.push(',');
 						options.push_gap_optionally(buf);
@@ -255,7 +261,7 @@ impl ASTNode for LHSOfAssignment {
 						options.push_gap_optionally(buf);
 					}
 				}
-				if let Some(ref spread) = spread {
+				if let Some(spread) = spread {
 					if !members.is_empty() {
 						buf.push(',');
 						options.push_gap_optionally(buf);
@@ -302,7 +308,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
 									position,
 								})
-							}
+							};
 						}
 						Some(FunctionArgument::Standard(expression)) => {
 							WithComment::None(match expression {
@@ -338,7 +344,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
 									position,
 								})
-							}
+							};
 						}
 						ObjectLiteralMember::Shorthand(name, pos) => {
 							ObjectDestructuringField::Name(
@@ -385,7 +391,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 							return Err(ParseError::new(
 								crate::ParseErrors::InvalidLHSAssignment,
 								position,
-							))
+							));
 						}
 						ObjectLiteralMember::Comment(..) => {
 							continue;

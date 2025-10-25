@@ -1,13 +1,13 @@
-use regress::{backends, Flags, Regex};
+use regress::{Flags, Regex, backends};
 use source_map::{SourceId, SpanWithSource};
 
 use super::objects::ObjectBuilder;
 use crate::{
-	types::{
-		properties::{PropertyKey, PropertyValue, Publicity},
-		TypeStore,
-	},
 	BinarySerializable, Constant, Environment, Type, TypeId,
+	types::{
+		TypeStore,
+		properties::{PropertyKey, PropertyValue, Publicity},
+	},
 };
 
 #[derive(Debug, Clone)]

@@ -2,12 +2,12 @@ use std::path::{Path, PathBuf};
 
 use super::variables::{VariableMutability, VariableOrImport};
 use crate::{
+	CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings, VariableId,
 	context::{
-		information::{get_value_of_constant_import_variable, LocalInformation},
 		VariableRegisterArguments,
+		information::{LocalInformation, get_value_of_constant_import_variable},
 	},
-	parse_source, CheckingData, Environment, Instance, Map, Scope, TypeId, TypeMappings,
-	VariableId,
+	parse_source,
 };
 
 use simple_json_parser::{JSONKey, RootJSONValue};
@@ -282,12 +282,12 @@ pub fn import_items<
 								},
 							);
 						}
-						if also_export {
-							if let Scope::Module { ref mut exported, .. } =
+
+						if also_export
+							&& let Scope::Module { ref mut exported, .. } =
 								environment.context_type.scope
-							{
-								exported.named.insert(part.r#as.to_owned(), (variable, mutability));
-							}
+						{
+							exported.named.insert(part.r#as.to_owned(), (variable, mutability));
 						}
 					}
 
@@ -318,9 +318,9 @@ pub fn import_items<
 		}
 		ImportKind::All { under, position } => {
 			let value = if let Ok(Ok(ref exports)) = exports {
-				let import_object = crate::Type::SpecialObject(
+				let import_object = crate::Type::SpecialObject(Box::new(
 					crate::features::objects::SpecialObject::Import(exports.clone()),
-				);
+				));
 				checking_data.types.register_type(import_object)
 			} else {
 				crate::utilities::notify!("TODO :?");

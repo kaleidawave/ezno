@@ -8,13 +8,13 @@ pub use list::*;
 
 use super::{Type, TypeStore};
 use crate::{
-	context::InformationChain,
-	subtyping::{slice_matches_type, SliceArguments, SubTypingOptions},
-	types::{
-		calling::Callable, generics::contributions::Contributions, logical, GenericChain,
-		PolyNature,
-	},
 	Constant, Environment, TypeId,
+	context::InformationChain,
+	subtyping::{SliceArguments, SubTypingOptions, slice_matches_type},
+	types::{
+		GenericChain, PolyNature, calling::Callable, generics::contributions::Contributions,
+		logical,
+	},
 };
 use std::borrow::Cow;
 
@@ -231,11 +231,7 @@ pub(crate) fn get_simple_property_value(
 		get_property_unbound((on, None), (Publicity::Public, property, None), false, ctx, types)
 			.ok()?;
 
-	if let logical::LogicalOrValid::Logical(value) = value {
-		get_logical(value)
-	} else {
-		None
-	}
+	if let logical::LogicalOrValid::Logical(value) = value { get_logical(value) } else { None }
 }
 
 /// TODO getter, setter need a closure id (or implement using `Callable::Type`)

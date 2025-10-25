@@ -6,21 +6,19 @@
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ParseOptions {
-	/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
-	pub jsx: bool,
 	/// allow type annotations
 	pub type_annotations: bool,
 	/// just definition file
 	pub type_definition_module: bool,
-	/// Allow custom characters in JSX attributes
-	pub special_jsx_attributes: bool,
+	/// JSX options
+	pub jsx: JSXOptions,
 	/// Parses decorators on items
 	pub decorators: bool,
 	/// Skip **all** comments from the AST
 	pub comments: Comments,
-	/// See [`crate::extensions::is_expression::IsExpression`]
+	/// See [`crate::extensions::is_expression::IsExpression`] & is operator
 	pub is_expressions: bool,
-	/// Allows functions to be prefixed with 'server'
+	/// Allows functions to be prefixed with 'server' and `generator`
 	pub custom_function_headers: bool,
 	/// Useful for LSP information
 	pub record_keyword_positions: bool,
@@ -32,33 +30,58 @@ pub struct ParseOptions {
 	pub reversed_imports: bool,
 	/// Extra
 	pub extra_operators: bool,
+	/// Extra. Enables unique symbols, class names
+	pub extra_type_annotations: bool,
+	/// Extra
+	pub enum_members_as_data_types: bool,
 	/// For formatting
 	pub retain_blank_lines: bool,
 	/// For LSP
 	pub partial_syntax: bool,
-	/// JSX with modifications equiv
+	/// Skips checking some syntatical errors (that should be runtime errors)
+	pub skip_validation: bool,
+}
+
+/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
+#[allow(unused)]
+#[derive(Copy, Clone)]
+// TODO: Can be refactored with bit to reduce memory
+#[allow(clippy::struct_excessive_bools)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+pub struct JSXOptions {
+	pub enable_jsx: bool,
+	/// Allow custom characters in JSX attributes
+	pub special_jsx_attributes: bool,
+	/// JSX with modifications
 	pub top_level_html: bool,
+	/// Attributes are JavaScript expressions (al)
+	pub attributes_as_expressions: bool,
+}
+
+impl Default for JSXOptions {
+	fn default() -> Self {
+		JSXOptions {
+			enable_jsx: true,
+			special_jsx_attributes: true,
+			top_level_html: false,
+			attributes_as_expressions: false,
+		}
+	}
 }
 
 impl ParseOptions {
-	// pub(crate) fn get_lex_options(&self) -> LexerOptions {
-	// 	LexerOptions {
-	// 		comments: self.comments,
-	// 		lex_jsx: self.jsx,
-	// 		allow_unsupported_characters_in_jsx_attribute_keys: self.special_jsx_attributes,
-	// 		allow_expressions_in_jsx: true,
-	// 		// allow_expressions_in_jsx: !self.top_level_html,
-	// 		top_level_html: self.top_level_html,
-	// 	}
-	// }
-
 	#[must_use]
 	pub fn all_features() -> Self {
 		Self {
-			jsx: true,
 			type_annotations: true,
 			type_definition_module: false,
-			special_jsx_attributes: true,
+			jsx: JSXOptions {
+				enable_jsx: true,
+				special_jsx_attributes: true,
+				top_level_html: true,
+				attributes_as_expressions: true,
+			},
 			comments: Comments::All,
 			decorators: true,
 			custom_function_headers: true,
@@ -71,7 +94,9 @@ impl ParseOptions {
 			extra_operators: true,
 			retain_blank_lines: true,
 			reversed_imports: true,
-			top_level_html: false,
+			enum_members_as_data_types: true,
+			extra_type_annotations: true,
+			skip_validation: false,
 		}
 	}
 }
@@ -80,10 +105,9 @@ impl ParseOptions {
 impl Default for ParseOptions {
 	fn default() -> Self {
 		Self {
-			jsx: true,
+			jsx: JSXOptions::default(),
 			type_annotations: true,
 			type_definition_module: false,
-			special_jsx_attributes: false,
 			comments: Comments::All,
 			decorators: true,
 			custom_function_headers: false,
@@ -94,8 +118,11 @@ impl Default for ParseOptions {
 			destructuring_type_annotation: false,
 			extra_operators: false,
 			retain_blank_lines: false,
-			top_level_html: false,
 			reversed_imports: false,
+			enum_members_as_data_types: false,
+			// TODO this should be fine right?
+			extra_type_annotations: false,
+			skip_validation: false,
 		}
 	}
 }

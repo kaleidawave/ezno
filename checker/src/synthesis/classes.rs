@@ -1,23 +1,23 @@
 use parser::{
-	declarations::{classes::ClassMember, ClassDeclaration},
-	functions::MethodHeader,
 	ASTNode, Expression, PropertyKey as ParserPropertyKey, StatementPosition,
+	functions::MethodHeader,
+	statements_and_declarations::classes::{ClassDeclaration, ClassMember},
 };
 
 use crate::{
+	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 	context::{Environment, InformationChain, LocalInformation},
 	diagnostics::TypeCheckError,
 	features::functions::{
-		class_generics_to_function_generics, function_to_property, synthesise_function,
 		ClassPropertiesToRegister, FunctionRegisterBehavior, GetterSetter, ReturnType,
-		SynthesisableFunction,
+		SynthesisableFunction, class_generics_to_function_generics, function_to_property,
+		synthesise_function,
 	},
 	types::{
+		FunctionType, PolyNature, SynthesisedParameters,
 		classes::ClassValue,
 		properties::{PropertyKey, Publicity},
-		FunctionType, PolyNature, SynthesisedParameters,
 	},
-	CheckingData, FunctionId, PropertyValue, Scope, Type, TypeId,
 };
 
 use super::{
@@ -238,7 +238,7 @@ fn synthesise_class_declaration_extends_and_members<
 					name: key.into_name_type(&mut checking_data.types),
 				};
 
-				let function = synthesise_function(method, behavior, environment, checking_data);
+				let function = synthesise_function(&**method, behavior, environment, checking_data);
 
 				let property = function_to_property(
 					getter_setter,
@@ -361,7 +361,7 @@ fn synthesise_class_declaration_extends_and_members<
 			internal_marker,
 			name: name_as_type_id,
 		};
-		synthesise_function(constructor, behavior, environment, checking_data)
+		synthesise_function(&**constructor, behavior, environment, checking_data)
 	} else {
 		let function_id = FunctionId(environment.get_source(), class.position.start);
 		FunctionType::new_auto_constructor(
@@ -442,7 +442,7 @@ fn synthesise_class_declaration_extends_and_members<
 					};
 
 					let function =
-						synthesise_function(method, behavior, environment, checking_data);
+						synthesise_function(&**method, behavior, environment, checking_data);
 
 					let property = function_to_property(
 						getter_setter,
@@ -612,7 +612,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					} else {
 						checking_data.diagnostics_container.add_error(
 							TypeCheckError::FunctionWithoutBodyNotAllowedHere {
-								position: ASTNode::get_position(method)
+								position: ASTNode::get_position(&**method)
 									.with_source(environment.get_source()),
 							},
 						);
@@ -853,9 +853,21 @@ fn next_key_matches(
 ) -> bool {
 	if let ClassMember::Method(is_static, method) = member {
 		initial_is_static == *is_static
-			&& method.name.get_ast_ref() == initial_name
+			&& property_key_matches(method.name.get_ast_ref(), initial_name)
 			&& !method.has_body()
 	} else {
+		false
+	}
+}
+
+fn property_key_matches(
+	lhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
+	rhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
+) -> bool {
+	if let (Some(lhs), Some(rhs)) = (lhs.as_str(), rhs.as_str()) {
+		lhs == rhs
+	} else {
+		// FUTURE might be missing cases here
 		false
 	}
 }

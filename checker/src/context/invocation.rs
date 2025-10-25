@@ -4,8 +4,8 @@ use source_map::SpanWithSource;
 
 use super::LocalInformation;
 use crate::{
-	context::information::merge_info, events::ApplicationResult, types::TypeStore, Environment,
-	FunctionId, TypeId,
+	Environment, FunctionId, TypeId, context::information::merge_info, events::ApplicationResult,
+	types::TypeStore,
 };
 
 /// For anything that might involve a call, including gets, sets and actual calls
@@ -90,11 +90,7 @@ impl CallCheckingBehavior for InvocationContext {
 			.iter_mut()
 			.rev()
 			.find_map(|kind| -> Option<&mut LocalInformation> {
-				if let InvocationKind::Conditional(info) = kind {
-					Some(&mut *info)
-				} else {
-					None
-				}
+				if let InvocationKind::Conditional(info) = kind { Some(&mut *info) } else { None }
 			})
 			.unwrap_or(&mut environment.info)
 	}

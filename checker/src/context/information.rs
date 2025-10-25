@@ -2,14 +2,14 @@ use source_map::SpanWithSource;
 use std::collections::HashMap;
 
 use crate::{
+	PropertyValue, Type, TypeId, VariableId,
 	events::{Event, RootReference},
 	features::functions::ClosureId,
 	types::{
+		TypeStore,
 		calling::ThisValue,
 		properties::{Properties, PropertyKey, Publicity},
-		TypeStore,
 	},
-	PropertyValue, Type, TypeId, VariableId,
 };
 
 /// Things that are currently true or have happened
@@ -206,7 +206,7 @@ impl LocalInformation {
 	pub fn get_properties_on_type_for_this_level(
 		&self,
 		ty: TypeId,
-	) -> Option<&Vec<(Publicity, PropertyKey, PropertyValue)>> {
+	) -> Option<&Vec<(Publicity, PropertyKey<'_>, PropertyValue)>> {
 		self.current_properties.get(&ty)
 	}
 

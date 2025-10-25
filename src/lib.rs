@@ -1,6 +1,5 @@
 #![cfg_attr(target_family = "wasm", allow(unused))]
 
-mod ast_explorer;
 mod build;
 mod check;
 mod repl;

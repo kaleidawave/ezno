@@ -1,8 +1,8 @@
 use super::{Properties, PropertyKey, PropertyValue};
 use crate::{
+	Type, TypeId, TypeStore,
 	context::InformationChain,
 	types::{GenericChain, ObjectNature, SliceArguments},
-	Type, TypeId, TypeStore,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -37,7 +37,7 @@ pub fn get_properties_on_single_type(
 			let mut numerical_properties = BTreeMap::new();
 
 			for (publicity, key, value) in flattened_properties {
-				if let PropertyValue::Configured { on: _, ref descriptor } = value {
+				if let PropertyValue::Configured { on: _, descriptor } = value {
 					// TODO what about if not `TypeId::TRUE | TypeId::FALSE`
 					crate::utilities::notify!("descriptor.enumerable={:?}", descriptor.enumerable);
 					if filter_enumerable && !matches!(descriptor.enumerable, TypeId::TRUE) {
@@ -119,16 +119,28 @@ pub fn get_properties_on_single_type(
 			filter_enumerable,
 			filter_type,
 		),
-		Type::SpecialObject(crate::types::SpecialObject::Function(..))
-		| Type::FunctionReference(_) => get_properties_on_single_type(
+		Type::FunctionReference(_) => get_properties_on_single_type(
 			TypeId::FUNCTION_TYPE,
 			types,
 			info,
 			filter_enumerable,
 			filter_type,
 		),
-		t @ (Type::SpecialObject(_)
-		| Type::Constructor(_)
+		Type::SpecialObject(so) => {
+			if let crate::types::SpecialObject::Function(..) = &**so {
+				get_properties_on_single_type(
+					TypeId::FUNCTION_TYPE,
+					types,
+					info,
+					filter_enumerable,
+					filter_type,
+				)
+			} else {
+				crate::utilities::notify!("Cannot get all properties on {:?}", so);
+				Default::default()
+			}
+		}
+		t @ (Type::Constructor(_)
 		| Type::RootPolyType(_)
 		| Type::PartiallyAppliedGenerics(_)
 		| Type::Or(..)
@@ -290,14 +302,26 @@ pub fn get_properties_on_single_type2(
 			info,
 			filter_type,
 		),
-		Type::SpecialObject(crate::types::SpecialObject::Function(..))
-		| Type::FunctionReference(_) => get_properties_on_single_type2(
+		Type::FunctionReference(_) => get_properties_on_single_type2(
 			(TypeId::FUNCTION_TYPE, base_arguments),
 			types,
 			info,
 			filter_type,
 		),
-		t @ (Type::SpecialObject(_) | Type::Or(..) | Type::And(_, _)) => {
+		Type::SpecialObject(so) => {
+			if let crate::types::SpecialObject::Function(..) = &**so {
+				get_properties_on_single_type2(
+					(TypeId::FUNCTION_TYPE, base_arguments),
+					types,
+					info,
+					filter_type,
+				)
+			} else {
+				crate::utilities::notify!("Cannot get all properties on {:?}", so);
+				Default::default()
+			}
+		}
+		t @ (Type::Or(..) | Type::And(_, _)) => {
 			crate::utilities::notify!("Cannot get all properties on {:?}", t);
 			Default::default()
 		}
@@ -325,9 +349,16 @@ pub fn get_property_key_names_on_a_single_type(
 		Type::Constant(r) => {
 			get_property_key_names_on_a_single_type(r.get_backing_type(), types, environment)
 		}
-		Type::SpecialObject(crate::types::SpecialObject::Function(..))
-		| Type::FunctionReference(_) => {
+		Type::FunctionReference(_) => {
 			get_property_key_names_on_a_single_type(TypeId::FUNCTION_TYPE, types, environment)
+		}
+		Type::SpecialObject(so) => {
+			if let crate::types::SpecialObject::Function(..) = &**so {
+				get_property_key_names_on_a_single_type(TypeId::FUNCTION_TYPE, types, environment)
+			} else {
+				crate::utilities::notify!("Cannot get all propertie keys on {:?}", so);
+				Default::default()
+			}
 		}
 		Type::Narrowed { narrowed_to: to, .. } | Type::AliasTo { to, .. } => {
 			get_property_key_names_on_a_single_type(*to, types, environment)
@@ -343,7 +374,7 @@ pub fn get_property_key_names_on_a_single_type(
 			let backing = crate::types::get_constraint(base, types).unwrap();
 			get_property_key_names_on_a_single_type(backing, types, environment)
 		}
-		t @ (Type::SpecialObject(_) | Type::Or(..) | Type::And(_, _)) => {
+		t @ (Type::Or(..) | Type::And(_, _)) => {
 			crate::utilities::notify!("Cannot get all propertie keys on {:?}", t);
 			Default::default()
 		}

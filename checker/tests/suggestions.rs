@@ -4,7 +4,7 @@ const SIMPLE_DTS: Option<&str> = None;
 #[cfg(feature = "ezno-parser")]
 #[test]
 fn suggestions() {
-	use ezno_checker::{check_project, Diagnostic, TypeCheckOptions};
+	use ezno_checker::{Diagnostic, TypeCheckOptions, check_project};
 	use std::path::{Path, PathBuf};
 
 	let root = "index.ts";
@@ -43,7 +43,6 @@ console.log(obj2.proberly);
 		type_definition_files,
 		&resolver,
 		options,
-		(),
 		None,
 	);
 

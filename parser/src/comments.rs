@@ -38,12 +38,6 @@ impl<T: serde::Serialize> serde::Serialize for WithComment<T> {
 	}
 }
 
-impl<T: PartialEq> PartialEq for WithComment<T> {
-	fn eq(&self, other: &Self) -> bool {
-		self.get_ast_ref() == other.get_ast_ref()
-	}
-}
-
 impl<T> From<T> for WithComment<T> {
 	fn from(item: T) -> Self {
 		Self::None(item)

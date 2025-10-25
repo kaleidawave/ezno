@@ -1,10 +1,13 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
+	Constant, Type, TypeId,
 	context::{CallCheckingBehavior, Environment, InformationChain, LocalInformation},
 	events::Event,
 	features::objects::Proxy,
 	types::{
+		Constructor, GenericChain, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
+		SliceArguments, SpecialObject, TypeStore,
 		calling::{Callable, CallingDiagnostics, ThisValue},
 		generics::{
 			contributions::CovariantContribution, generic_type_arguments::GenericArguments,
@@ -15,10 +18,7 @@ use crate::{
 			BasedOnKey, Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical,
 			PropertyOn,
 		},
-		Constructor, GenericChain, GenericChainLink, ObjectNature, PartiallyAppliedGenerics,
-		SliceArguments, SpecialObject, TypeStore,
 	},
-	Constant, Type, TypeId,
 };
 
 use super::{PropertyKey, PropertyKind, PropertyValue, Publicity};
@@ -167,40 +167,6 @@ pub(crate) fn get_property_unbound(
 		types: &TypeStore,
 	) -> PossibleLogical<PropertyValue> {
 		match types.get_type_by_id(on) {
-			Type::SpecialObject(SpecialObject::Function(function_id, _)) => resolver(
-				(on, on_type_arguments),
-				(publicity, under, under_type_arguments),
-				info_chain,
-				types,
-			)
-			.map(wrap)
-			.or_else(|| {
-				let get_function_from_id = types.get_function_from_id(*function_id);
-				let ty = if let (
-					true,
-					crate::types::functions::FunctionBehavior::Function { prototype, .. }
-					| crate::types::functions::FunctionBehavior::Constructor { prototype, .. },
-				) = (under.is_equal_to("prototype"), &get_function_from_id.behavior)
-				{
-					Some(*prototype)
-				} else if under.is_equal_to("name") {
-					Some(get_function_from_id.behavior.get_name())
-				} else {
-					None
-				};
-				ty.map(PropertyValue::Value).map(Logical::Pure)
-			})
-			.or_else(|| {
-				resolver(
-					(TypeId::FUNCTION_TYPE, on_type_arguments),
-					(publicity, under, under_type_arguments),
-					info_chain,
-					types,
-				)
-				.map(wrap)
-			})
-			.map(LogicalOrValid::Logical)
-			.ok_or(Invalid(on)),
 			Type::FunctionReference(_) => resolver(
 				(TypeId::FUNCTION_TYPE, on_type_arguments),
 				(publicity, under, under_type_arguments),
@@ -496,8 +462,6 @@ pub(crate) fn get_property_unbound(
 					Err(Invalid(on))
 				}
 			}),
-			Type::SpecialObject(SpecialObject::Null) => Err(Invalid(on)),
-			// Type::SpecialObject(SpecialObject::ClassConstructor { .. }) |
 			Type::Class { .. } => resolver(
 				(on, on_type_arguments),
 				(publicity, under, under_type_arguments),
@@ -573,27 +537,64 @@ pub(crate) fn get_property_unbound(
 					types,
 				)
 			}),
-			Type::SpecialObject(SpecialObject::Promise { .. }) => {
-				todo!()
-			}
-			Type::SpecialObject(SpecialObject::Import(..)) => {
-				todo!()
-			}
-			Type::SpecialObject(SpecialObject::Proxy(proxy)) => {
-				Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(*proxy, on)))
-			}
-			Type::SpecialObject(SpecialObject::Generator { .. }) => {
-				todo!()
-			}
-			Type::SpecialObject(SpecialObject::RegularExpression { .. }) => {
-				get_property_on_type_unbound(
+			Type::SpecialObject(special_object) => match &**special_object {
+				SpecialObject::Function(function_id, _) => resolver(
+					(on, on_type_arguments),
+					(publicity, under, under_type_arguments),
+					info_chain,
+					types,
+				)
+				.map(wrap)
+				.or_else(|| {
+					let get_function_from_id = types.get_function_from_id(*function_id);
+					let ty = if let (
+						true,
+						crate::types::functions::FunctionBehavior::Function { prototype, .. }
+						| crate::types::functions::FunctionBehavior::Constructor {
+							prototype, ..
+						},
+					) = (under.is_equal_to("prototype"), &get_function_from_id.behavior)
+					{
+						Some(*prototype)
+					} else if under.is_equal_to("name") {
+						Some(get_function_from_id.behavior.get_name())
+					} else {
+						None
+					};
+					ty.map(PropertyValue::Value).map(Logical::Pure)
+				})
+				.or_else(|| {
+					resolver(
+						(TypeId::FUNCTION_TYPE, on_type_arguments),
+						(publicity, under, under_type_arguments),
+						info_chain,
+						types,
+					)
+					.map(wrap)
+				})
+				.map(LogicalOrValid::Logical)
+				.ok_or(Invalid(on)),
+				SpecialObject::Promise { .. } => {
+					todo!()
+				}
+				SpecialObject::Import(..) => {
+					todo!()
+				}
+				SpecialObject::Null => Err(Invalid(on)),
+				SpecialObject::Proxy(proxy) => {
+					Ok(LogicalOrValid::NeedsCalculation(NeedsCalculation::Proxy(*proxy, on)))
+				}
+				SpecialObject::Generator { .. } => {
+					todo!()
+				}
+				SpecialObject::RegularExpression { .. } => get_property_on_type_unbound(
 					(TypeId::REGEXP_TYPE, None),
 					(publicity, under, under_type_arguments),
 					require_both_logical,
 					info_chain,
 					types,
-				)
-			}
+				),
+			},
 		}
 	}
 
@@ -821,19 +822,6 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 					let ty = types.get_type_by_id(value);
 					// TODO some of these need proper `substitute` I think
 					match ty {
-						Type::SpecialObject(SpecialObject::Function(func, _state)) => {
-							let this_value = if let AccessMode::DoNotBindThis = mode {
-								// Not `ThisValue::Passed`, but not sure about this
-								ThisValue::UseParent
-							} else {
-								ThisValue::Passed(on)
-							};
-							let func = types.register_type(Type::SpecialObject(
-								SpecialObject::Function(*func, this_value),
-							));
-
-							Some((PropertyKind::Direct, func))
-						}
 						Type::FunctionReference(_) => {
 							let ty = if let Some(arguments) =
 								generics.and_then(GenericChainLink::get_value).cloned()
@@ -889,7 +877,23 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 							// } else {
 							// }
 						}
-						Type::SpecialObject(..) | Type::Object(..) | Type::Constant(..) => {
+						Type::SpecialObject(so) => match &**so {
+							SpecialObject::Function(func, _state) => {
+								let this_value = if let AccessMode::DoNotBindThis = mode {
+									// Not `ThisValue::Passed`, but not sure about this
+									ThisValue::UseParent
+								} else {
+									ThisValue::Passed(on)
+								};
+								let func = types.register_type(Type::SpecialObject(Box::new(
+									SpecialObject::Function(*func, this_value),
+								)));
+
+								Some((PropertyKind::Direct, func))
+							}
+							_ => Some((PropertyKind::Direct, value)),
+						},
+						Type::Object(..) | Type::Constant(..) => {
 							Some((PropertyKind::Direct, value))
 						}
 						Type::Class { .. }
@@ -898,9 +902,10 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 						| Type::AliasTo { to: _, name: _, parameters: _ }
 						| Type::Or(_, _) => {
 							crate::utilities::notify!(
-							    "property was {:?} {:?}, which should be NOT be able to be returned from a function",
-							    property, ty
-						    );
+								"property was {:?} {:?}, which should be NOT be able to be returned from a function",
+								property,
+								ty
+							);
 
 							Some((PropertyKind::Direct, value))
 						}
@@ -910,13 +915,13 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 							arguments,
 						}) => {
 							// TODO not great +2 types... need less overhead
-							if let Type::SpecialObject(SpecialObject::Function(f, _p)) =
-								types.get_type_by_id(*sg_on)
+							if let Some(SpecialObject::Function(f, _p)) =
+								types.get_type_by_id(*sg_on).try_into_special_object()
 							{
 								let arguments = arguments.clone();
-								let f = types.register_type(Type::SpecialObject(
+								let f = types.register_type(Type::SpecialObject(Box::new(
 									SpecialObject::Function(*f, ThisValue::Passed(on)),
-								));
+								)));
 								let ty = types.register_type(Type::PartiallyAppliedGenerics(
 									PartiallyAppliedGenerics { on: f, arguments },
 								));
@@ -930,7 +935,7 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 				PropertyValue::GetterAndSetter { getter, setter: _ }
 				| PropertyValue::Getter(getter) => {
 					use crate::types::calling::{
-						application_result_to_return_type, CalledWithNew, CallingInput,
+						CalledWithNew, CallingInput, application_result_to_return_type,
 					};
 
 					let input = CallingInput {
@@ -1010,24 +1015,23 @@ fn resolve_property_on_logical<B: CallCheckingBehavior>(
 			// WIP!
 			{
 				// TODO get_chain_of_info with behavior??
-				if let Some(narrowed_value) = environment.get_narrowed(condition) {
-					if let crate::Decidable::Known(condition) =
+				if let Some(narrowed_value) = environment.get_narrowed(condition)
+					&& let crate::Decidable::Known(condition) =
 						crate::types::is_type_truthy_falsy(narrowed_value, types)
-					{
-						let to_evaluate = if condition { left } else { right };
-						return if let LogicalOrValid::Logical(to_evaluate) = *to_evaluate {
-							resolve_property_on_logical(
-								(to_evaluate, generics),
-								(on, under),
-								environment,
-								types,
-								(behavior, diagnostics),
-								mode,
-							)
-						} else {
-							todo!()
-						};
-					}
+				{
+					let to_evaluate = if condition { left } else { right };
+					return if let LogicalOrValid::Logical(to_evaluate) = *to_evaluate {
+						resolve_property_on_logical(
+							(to_evaluate, generics),
+							(on, under),
+							environment,
+							types,
+							(behavior, diagnostics),
+							mode,
+						)
+					} else {
+						todo!()
+					};
 				}
 			}
 
@@ -1135,7 +1139,7 @@ pub(crate) fn proxy_access<B: CallCheckingBehavior>(
 	types: &mut TypeStore,
 ) -> Option<(PropertyKind, TypeId)> {
 	use crate::types::calling::{
-		application_result_to_return_type, CalledWithNew, CallingInput, SynthesisedArgument,
+		CalledWithNew, CallingInput, SynthesisedArgument, application_result_to_return_type,
 	};
 
 	// TODO pass down

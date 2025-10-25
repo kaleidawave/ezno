@@ -2,6 +2,7 @@ use source_map::{SourceId, Span, SpanWithSource};
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+	CheckingData, Instance, RootContext, TypeId,
 	context::{get_on_ctx, information::ReturnState},
 	diagnostics::{
 		NotInLoopOrCouldNotFindLabel, PropertyKeyRepresentation, TypeCheckError,
@@ -14,23 +15,22 @@ use crate::{
 			AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement, Reference,
 		},
 		modules::Exported,
-		operations::{evaluate_logical_operation_with_expression, MathematicalOrBitwiseOperation},
+		operations::{MathematicalOrBitwiseOperation, evaluate_logical_operation_with_expression},
 		variables::{VariableMutability, VariableOrImport, VariableWithValue},
 	},
-	subtyping::{type_is_subtype, type_is_subtype_object, State, SubTypeResult, SubTypingOptions},
+	subtyping::{State, SubTypeResult, SubTypingOptions, type_is_subtype, type_is_subtype_object},
 	types::{
-		properties::{
-			get_property_key_names_on_a_single_type, AccessMode, PropertyKey, PropertyKind,
-			Publicity,
-		},
 		PolyNature, Type, TypeStore,
+		properties::{
+			AccessMode, PropertyKey, PropertyKind, Publicity,
+			get_property_key_names_on_a_single_type,
+		},
 	},
-	CheckingData, Instance, RootContext, TypeId,
 };
 
 use super::{
-	get_value_of_variable, invocation::CheckThings, AssignmentError, ClosedOverReferencesInScope,
-	Context, ContextType, Environment, GeneralContext, InformationChain,
+	AssignmentError, ClosedOverReferencesInScope, Context, ContextType, Environment,
+	GeneralContext, InformationChain, get_value_of_variable, invocation::CheckThings,
 };
 
 /// For WIP contextual access of certain APIs
@@ -88,7 +88,7 @@ impl ContextType for Syntax<'_> {
 		Some(&self.parent)
 	}
 
-	fn as_syntax(&self) -> Option<&Syntax> {
+	fn as_syntax(&self) -> Option<&Syntax<'_>> {
 		Some(self)
 	}
 
@@ -170,7 +170,7 @@ pub type Label = Option<String>;
 
 #[derive(Clone, Copy)]
 pub enum Returnable<'a, A: crate::ASTImplementation> {
-	Statement(Option<&'a A::MultipleExpression<'a>>, Span),
+	Statement(Option<&'a A::Expression<'a>>, Span),
 	ArrowFunctionBody(&'a A::Expression<'a>),
 }
 
@@ -789,7 +789,7 @@ impl Environment<'_> {
 		self.context_type.requests.extend(requests);
 	}
 
-	pub(crate) fn get_parent(&self) -> GeneralContext {
+	pub(crate) fn get_parent(&self) -> GeneralContext<'_> {
 		match self.context_type.parent {
 			GeneralContext::Syntax(syn) => GeneralContext::Syntax(syn),
 			GeneralContext::Root(rt) => GeneralContext::Root(rt),
@@ -1127,7 +1127,7 @@ impl Environment<'_> {
 
 		let (returned, returned_position) = match expression {
 			Returnable::Statement(Some(expression), returned_position) => (
-				A::synthesise_multiple_expression(expression, expected_type, self, checking_data),
+				A::synthesise_expression(expression, expected_type, self, checking_data),
 				returned_position.with_source(self.get_source()),
 			),
 			Returnable::Statement(None, returned_position) => {
@@ -1307,11 +1307,16 @@ impl Environment<'_> {
 					| Scope::StaticBlock { .. } => {
 						break;
 					}
-					Scope::Iteration { ref label } => {
-						if looking_for_label.is_none() {
-							return Some(falling_through_structures);
-						} else if let Some(label) = label {
-							if label == looking_for_label.unwrap() {
+					Scope::Iteration { label } => {
+						match looking_for_label {
+							Some(looking_for_label) => {
+								if let Some(label) = label
+									&& label == looking_for_label
+								{
+									return Some(falling_through_structures);
+								}
+							}
+							None => {
 								return Some(falling_through_structures);
 							}
 						}
@@ -1368,7 +1373,7 @@ impl Environment<'_> {
 					ty: existing,
 					in_same_context: false,
 				});
-			};
+			}
 		}
 
 		let parameters = parameters.map(|parameters| {
@@ -1485,11 +1490,7 @@ impl Environment<'_> {
 		let alias_ty = types.register_type(ty);
 		let existing_type = self.named_types.insert(name.to_owned(), alias_ty);
 
-		if existing_type.is_none() {
-			Ok(alias_ty)
-		} else {
-			Err(AlreadyExists)
-		}
+		if existing_type.is_none() { Ok(alias_ty) } else { Err(AlreadyExists) }
 	}
 
 	// TODO copy this logic for interface and class

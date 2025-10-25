@@ -3,13 +3,12 @@ use source_map::Span;
 use visitable_derive::Visitable;
 
 use crate::{
-	derive_ASTNode,
+	ASTNode, TypeAnnotation, derive_ASTNode,
 	expressions::{ExpressionOrBlock, MultipleExpression},
-	ASTNode, TypeAnnotation,
 };
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, PartialEq, Clone, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct IsExpression {
 	pub matcher: Box<MultipleExpression>,

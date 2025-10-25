@@ -1,16 +1,16 @@
 use crate::{
-	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
-	extensions::decorators::Decorated, functions::MethodHeader, property_key::PublicOrPrivate,
-	types::type_annotations::TypeAnnotationFunctionParameters, ASTNode,
-	ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span, StatementPosition,
-	TypeAnnotation, TypeParameter, WithComment,
+	ASTNode, ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span,
+	StatementPosition, TypeAnnotation, TypeParameter, WithComment, bracketed_items_from_reader,
+	bracketed_items_to_string, derive_ASTNode, extensions::decorators::Decorated,
+	functions::MethodHeader, property_key::PublicOrPrivate,
+	types::type_annotations::TypeAnnotationFunctionParameters,
 };
 
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct InterfaceDeclaration {
 	pub is_is_declare: bool,
@@ -126,7 +126,7 @@ impl ASTNode for InterfaceDeclaration {
 
 /// For some reason mapped types can have a negated a readonly keyword
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub enum MappedReadonlyKind {
 	Negated,
 	Always,
@@ -135,7 +135,7 @@ pub enum MappedReadonlyKind {
 
 /// This is also used for [`TypeAnnotation::ObjectLiteral`]
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, GetFieldByType)]
+#[derive(Debug, Clone, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum InterfaceMember {
 	Method {
@@ -304,15 +304,23 @@ impl ASTNode for InterfaceMember {
 		} else {
 			let header = MethodHeader::from_reader(reader);
 
+			// We do not use `PropertyKey::from_reader` to handle a case with type annotation
 			let name = if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
-					let (content, quoted) = reader.parse_string_literal()?;
-					let position = start.with_length(content.len() + 2);
-					PropertyKey::StringLiteral(content.to_owned(), quoted, position)
+					let (content, quoted, width) = reader.parse_string_literal()?;
+					let position = start.with_length(width as usize);
+					PropertyKey::StringLiteral(content.into_owned(), quoted, position)
 				} else if reader.starts_with_number() {
 					let (value, length) = reader.parse_number_literal()?;
 					let position = start.with_length(length as usize);
-					PropertyKey::NumberLiteral(value, position)
+					if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
+						PropertyKey::NumberLiteral(value, position)
+					} else {
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::BigIntNotAllowedHere,
+							position,
+						));
+					}
 				} else {
 					use crate::Expression;
 					// "name" is the name of the parameter name for indexing
@@ -497,7 +505,7 @@ impl ASTNode for InterfaceMember {
 				}
 				buf.push('[');
 				buf.push_str(name.as_str());
-				buf.push(':');
+				buf.push_str(": ");
 				indexer_type.to_string_from_buffer(buf, options, local);
 				buf.push_str("]: ");
 				return_type.to_string_from_buffer(buf, options, local);
@@ -513,11 +521,11 @@ impl ASTNode for InterfaceMember {
 					buf.push_str("readonly ");
 				}
 				buf.push_str("new ");
-				if let Some(ref type_parameters) = type_parameters {
+				if let Some(type_parameters) = type_parameters {
 					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
-				if let Some(ref return_type) = return_type {
+				if let Some(return_type) = return_type {
 					buf.push_str(": ");
 					return_type.to_string_from_buffer(buf, options, local);
 				}
@@ -532,11 +540,11 @@ impl ASTNode for InterfaceMember {
 				if *is_readonly {
 					buf.push_str("readonly ");
 				}
-				if let Some(ref type_parameters) = type_parameters {
+				if let Some(type_parameters) = type_parameters {
 					bracketed_items_to_string(type_parameters, ('<', '>'), buf, options, local);
 				}
 				parameters.to_string_from_buffer(buf, options, local);
-				if let Some(ref return_type) = return_type {
+				if let Some(return_type) = return_type {
 					buf.push_str(": ");
 					return_type.to_string_from_buffer(buf, options, local);
 				}

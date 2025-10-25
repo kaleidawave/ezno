@@ -1,13 +1,13 @@
 use super::{ImportExportPart, ImportLocation};
 use crate::{
-	ast::object_literal::ObjectLiteral, bracketed_items_from_reader, derive_ASTNode, ASTNode,
-	ParseResult, VariableIdentifier,
+	ASTNode, ParseResult, VariableIdentifier, ast::object_literal::ObjectLiteral,
+	bracketed_items_from_reader, derive_ASTNode,
 };
 use source_map::Span;
 use visitable_derive::Visitable;
 
 /// Side effects is represented under the Parts variant where the vector is empty
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ImportedItems {
 	Parts(Option<Vec<ImportExportPart<ImportDeclaration>>>),
@@ -22,7 +22,7 @@ impl ImportedItems {
 }
 
 #[apply(derive_ASTNode)]
-#[derive(Debug, Clone, PartialEq, Visitable, get_field_by_type::GetFieldByType)]
+#[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ImportDeclaration {
 	#[cfg(feature = "extras")]
@@ -109,16 +109,14 @@ impl ASTNode for ImportDeclaration {
 				buf.push(' ');
 			}
 			ImportedItems::Parts(ref parts) => {
-				if let Some(parts) = parts {
-					if !parts.is_empty() {
-						if self.default.is_some() {
-							buf.push_str(", ");
-						}
-						super::import_export_parts_to_string_from_buffer(
-							parts, buf, options, local,
-						);
-						options.push_gap_optionally(buf);
+				if let Some(parts) = parts
+					&& !parts.is_empty()
+				{
+					if self.default.is_some() {
+						buf.push_str(", ");
 					}
+					super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
+					options.push_gap_optionally(buf);
 				}
 			}
 		}

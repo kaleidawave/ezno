@@ -3,23 +3,23 @@
 use std::borrow::Cow;
 
 use parser::{
-	jsx::{JSXAttribute, JSXElement, JSXElementChildren, JSXNode, JSXRoot},
 	ASTNode, Expression,
+	jsx::{JSXAttribute, JSXElement, JSXElementChildren, JSXNode, JSXRoot},
 };
 
 use crate::{
+	CheckingData, Constant, Environment, TypeId,
 	context::invocation::CheckThings,
 	diagnostics::TypeCheckError,
 	features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
 	types::{
 		calling::{
-			application_result_to_return_type, Callable, CalledWithNew, CallingContext,
-			CallingInput, SynthesisedArgument,
+			Callable, CalledWithNew, CallingContext, CallingInput, SynthesisedArgument,
+			application_result_to_return_type,
 		},
 		properties::PropertyKey,
 	},
-	CheckingData, Constant, Environment, TypeId,
 };
 
 pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(

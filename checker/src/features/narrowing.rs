@@ -1,11 +1,12 @@
 use crate::{
+	Map, Type, TypeId,
 	context::InformationChain,
 	types::{
-		self, as_logical_and, as_logical_not, as_logical_or,
+		self, Constant, Constructor, PolyNature, TypeOperator, TypeStore, as_logical_and,
+		as_logical_not, as_logical_or,
 		helpers::{get_origin, get_type_as_conditional},
-		properties, Constant, Constructor, PolyNature, TypeOperator, TypeStore,
+		properties,
 	},
-	Map, Type, TypeId,
 };
 
 use super::operations::{CanonicalEqualityAndInequality, MathematicalOrBitwiseOperation};
@@ -157,7 +158,7 @@ pub fn narrow_based_on_expression(
 
 					let result = if negate {
 						// TODO wip
-						let narrowed_to = if get_type_as_conditional(lhs, types).is_some() {
+						if get_type_as_conditional(lhs, types).is_some() {
 							let mut result = Vec::new();
 							build_union_from_filter(
 								lhs,
@@ -175,8 +176,7 @@ pub fn narrow_based_on_expression(
 								rhs,
 								types,
 							)
-						};
-						narrowed_to
+						}
 					} else {
 						rhs
 					};
@@ -622,11 +622,7 @@ impl Filter<'_> {
 	}
 
 	pub(crate) fn from_boolean_cast(like: bool) -> Filter<'static> {
-		if like {
-			NOT_FALSY
-		} else {
-			FALSY
-		}
+		if like { NOT_FALSY } else { FALSY }
 	}
 }
 

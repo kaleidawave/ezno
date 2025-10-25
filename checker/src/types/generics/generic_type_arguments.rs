@@ -2,10 +2,10 @@
 //! TODO Some of these are a bit overkill and don't need wrapping objects **AND THEY BREAK FINALIZE THINGS REQUIRE CLONING**
 
 use crate::{
+	TypeId,
 	context::InformationChain,
 	features::functions::ClosureId,
 	types::{SubstitutionArguments, TypeRestrictions, TypeStore},
-	TypeId,
 };
 
 use std::fmt::Debug;

@@ -93,7 +93,7 @@ impl PropertyOn {
 		info: &impl crate::context::InformationChain,
 		types: &mut crate::TypeStore,
 	) -> Option<TypeId> {
-		use crate::types::{get_constraint, properties, PartiallyAppliedGenerics, Type};
+		use crate::types::{PartiallyAppliedGenerics, Type, get_constraint, properties};
 		let filter = get_constraint(self.key, types).unwrap_or(self.key);
 
 		crate::utilities::notify!("filter={:?}", types.get_type_by_id(filter));

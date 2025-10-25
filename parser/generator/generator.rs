@@ -24,11 +24,9 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 	let mut marker_items = Vec::new();
 	parse_token_stream(item.into_iter(), &mut string_to_parse, &mut marker_items);
 
-	// TODO can you get new lines in macro?
-	let line_starts = ezno_parser::source_map::LineStarts::new("");
 	let options = ezno_parser::ParseOptions { interpolation_points: true, ..Default::default() };
 	let parse_result =
-		ezno_parser::lex_and_parse_script::<T>(line_starts, options, &string_to_parse, None);
+		<T as ezno_parser::ASTNode>::from_string_with_options(string_to_parse, options, None);
 
 	let node = match parse_result {
 		Ok((node, _state)) => node,

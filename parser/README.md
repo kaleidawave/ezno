@@ -2,7 +2,7 @@
 
 Contains "string to AST" parser, AST definitions, AST back to text/string form methods and hooks for traversing/visiting AST. Used in `ezno-checker` and the Ezno toolchain.
 
-![parser lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno-parser/badge)
+![parser lines of code](https://project-information-kaleidawave.val.run/project/ezno-parser/badge)
 [![crates.io badge](https://img.shields.io/crates/v/ezno-parser?style=flat-square)](https://crates.io/crates/ezno-parser)
 [![docs.rs badge](https://img.shields.io/docsrs/ezno-parser?style=flat-square)](https://docs.rs/ezno-parser/latest)
 

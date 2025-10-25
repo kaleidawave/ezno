@@ -1,13 +1,13 @@
 use source_map::SpanWithSource;
 
 use crate::{
+	FunctionId, TypeId,
 	context::LocalInformation,
 	types::{
+		TypeStore,
 		calling::ThisValue,
 		properties::{PropertyKey, PropertyValue, Publicity},
-		TypeStore,
 	},
-	FunctionId, TypeId,
 };
 
 /// Helper for building objects easy

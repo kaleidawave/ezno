@@ -1,7 +1,8 @@
 use crate::{
+	BlockLike, BlockLikeMut, LocalToStringInformation, ParseResult, StatementOrDeclaration,
+	VisitOptions,
 	block::{statements_and_declarations_from_reader, statements_and_declarations_to_string},
-	derive_ASTNode, BlockLike, BlockLikeMut, LocalToStringInformation, ParseResult,
-	StatementOrDeclaration, VisitOptions,
+	derive_ASTNode,
 };
 
 use super::{ASTNode, Span};
@@ -12,12 +13,6 @@ pub struct Module {
 	pub hashbang_comment: Option<String>,
 	pub items: Vec<StatementOrDeclaration>,
 	pub span: Span,
-}
-
-impl PartialEq for Module {
-	fn eq(&self, other: &Self) -> bool {
-		self.items == other.items
-	}
 }
 
 impl ASTNode for Module {
@@ -130,9 +125,9 @@ impl Module {
 
 		let iter_mut = self.items.iter_mut();
 		if options.reverse_statements {
-			iter_mut.for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
-		} else {
 			iter_mut.rev().for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
+		} else {
+			iter_mut.for_each(|item| item.visit_mut(visitors, data, options, &mut chain));
 		}
 	}
 }

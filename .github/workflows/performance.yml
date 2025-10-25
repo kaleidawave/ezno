@@ -1,50 +1,16 @@
-name: Performance and size
+name: performance
+run-name: Performance on ${{ github.ref_name }}
 
-on:
-  workflow_dispatch:
-    inputs:
-      paths: 
-        default: "[]"
-        type: string
-        description: Some binaries to build and compare with
+on: workflow_dispatch
 
-env:
-  CARGO_TERM_COLOR: always
+env: { CARGO_TERM_COLOR: always }
 
 jobs:
-  TEMP:
-    runs-on: ubuntu-latest
-    if: false
-
-    strategy:
-      matrix: 
-        ref: ${{ fromJson(inputs.paths) }} 
-      fail-fast: true
-
-    steps:
-    - uses: actions/checkout@v4
-      id: checkout
-      with:
-        ref: ${{ matrix.ref }}
-    - uses: dtolnay/rust-toolchain@stable
-    
-    - name: Build binary
-      run: cargo build --release
-      shell: bash
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: binary-${{ runner.os }}${{ runner.arch }}-TEMP-${{ matrix.ref }}
-        path: target/release/ezno
-        retention-days: 30
-
   run-benchmarks:
     runs-on: ubuntu-latest
-    needs: TEMP
     if: ${{ always() }}
 
-    env:
-      GH_TOKEN: ${{ github.token }}
+    env: { GH_TOKEN: '${{ github.token }}' }
 
     steps:
       - id: checkout
@@ -61,6 +27,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: kaleidawave/release-downloader@improvements
+        env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
         with:
           # TODO benchmark tool
           items: kaleidawave/experiments@assets[shell-language|spectra|sde],sharkdp/hyperfine@v1.19.0
@@ -68,7 +35,16 @@ jobs:
       - name: Install valgrind
         id: install-valgrind
         continue-on-error: true
-        run: sudo apt-get install valgrind
+        run: |
+          # See <https://github.com/actions/runner-images/issues/10977#issuecomment-2810713336>
+          # Skip installing pacakge docs {makes the man-db trigger much faster) 
+          # (I disabled `/doc` and `/info` too, just in case.)
+          sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null << 'EOF'
+          path-exclude /usr/share/doc/*
+          path-exclude /usr/share/man/*
+          path-exclude /usr/share/info/*
+          EOF
+          sudo apt-get install valgrind
 
       # TODO is there a way to cache this?
       - name: Build latest version of demo.tsx
@@ -128,7 +104,7 @@ jobs:
           append $to "<details><summary>Input</summary>\n"
           append $to "```tsx\n$content\n```\n</details>"
           
-      - name: Print diagnostics and statistics
+      - name: Run checker performance on file
         id: performance
         continue-on-error: true
         shell: shell-language {0}
@@ -138,16 +114,16 @@ jobs:
           for files "binaries/**/*" each
             let out = run "./$file" check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
-            let diagnostics = rbefore $out "---" then trim
+            # let diagnostics = rbefore $out "---" then trim
             let statistics = rafter $out "---" then trim
 
             # append $to "<details><summary>Diagnostics</summary>\n"
             # append $to "```\n$diagnostics\n```\n</details>\n"
 
-            append $to "\n<details><summary>Statistics for $file check demo.tsx</summary>\n"
+            append $to "<details><summary>Statistics for $file check demo.tsx</summary>\n"
             append $to "```\n$statistics\n```\n</details>\n"
 
-      - name: Run checker performance on large file
+      - name: Run checker performance on file 10
         shell: shell-language {0}
         run: |
           let to = env GITHUB_STEP_SUMMARY
@@ -167,8 +143,7 @@ jobs:
           
             let statistics = rafter $out "---" then trim
             append $to "```\n$statistics\n```\n"
-
-          append $to "</details>\n"
+            append $to "</details>\n"
 
       - name: Valgrind and Callgrind statistics
         shell: shell-language {0}

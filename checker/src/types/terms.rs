@@ -32,7 +32,7 @@ impl Constant {
 
 	/// **AS OF THE JS IMPLEMENTATION**
 	#[must_use]
-	pub fn as_js_string(&self) -> Cow<str> {
+	pub fn as_js_string(&self) -> Cow<'_, str> {
 		match self {
 			Constant::Number(value) => Cow::Owned(value.to_string()),
 			Constant::String(value) => Cow::Borrowed(value),

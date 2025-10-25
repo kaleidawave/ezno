@@ -14,6 +14,7 @@ pub use root::RootContext;
 use source_map::SpanWithSource;
 
 use crate::{
+	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 	context::environment::ExpectedReturnType,
 	diagnostics::{
 		CannotRedeclareVariable, TypeCheckError, TypeStringRepresentation, VariableUsedInTDZ,
@@ -26,7 +27,6 @@ use crate::{
 		variables::{VariableMutability, VariableOrImport},
 	},
 	types::{FunctionType, PolyNature, Type, TypeId, TypeStore},
-	CheckingData, DiagnosticsContainer, FunctionId, TypeMappings, VariableId,
 };
 
 use self::environment::{DynamicBoundaryKind, FunctionScope};
@@ -36,8 +36,8 @@ pub use information::{InformationChain, LocalInformation};
 
 use std::{
 	collections::{
-		hash_map::{self, Entry},
 		HashMap, HashSet,
+		hash_map::{self, Entry},
 	},
 	hash::Hash,
 	iter::{self},
@@ -124,7 +124,7 @@ pub trait ContextType: Sized {
 
 	fn get_parent(&self) -> Option<&GeneralContext<'_>>;
 
-	fn as_syntax(&self) -> Option<&Syntax>;
+	fn as_syntax(&self) -> Option<&Syntax<'_>>;
 
 	fn get_closed_over_references_mut(&mut self) -> Option<&mut ClosedOverReferencesInScope>;
 }
@@ -147,6 +147,7 @@ pub struct Names {
 	pub(crate) named_types: HashMap<String, TypeId>,
 
 	/// For debugging only
+	#[allow(clippy::struct_field_names)]
 	pub(crate) variable_names: HashMap<VariableId, String>,
 }
 
@@ -154,6 +155,7 @@ pub struct Names {
 pub struct Context<T: ContextType> {
 	// pub(crate) context_id: ContextId,
 	pub context_id: ContextId,
+	#[allow(clippy::struct_field_names)]
 	pub(crate) context_type: T,
 
 	pub(crate) variables: HashMap<String, VariableOrImport>,
@@ -248,11 +250,7 @@ impl<T: ContextType> Context<T> {
 			}
 		}
 
-		if existing_that_can_be_rewritten {
-			Err(CannotRedeclareVariable { name })
-		} else {
-			Ok(())
-		}
+		if existing_that_can_be_rewritten { Err(CannotRedeclareVariable { name }) } else { Ok(()) }
 	}
 
 	pub fn register_variable_handle_error(
@@ -264,10 +262,10 @@ impl<T: ContextType> Context<T> {
 		type_mappings: &mut TypeMappings,
 		record_event: bool,
 	) {
-		if argument.allow_reregistration {
-			if let Some(existing) = self.variables.get(name) {
-				type_mappings.var_aliases.insert(declared_at.start, existing.get_id());
-			}
+		if argument.allow_reregistration
+			&& let Some(existing) = self.variables.get(name)
+		{
+			type_mappings.var_aliases.insert(declared_at.start, existing.get_id());
 		}
 
 		if let Some(reassignment_constraint) = argument.space {
@@ -342,12 +340,12 @@ impl<T: ContextType> Context<T> {
 			// 	get_on_ctx!(&ctx.info.variable_current_value)
 			// )
 			// .unwrap();
-			if let GeneralContext::Syntax(syn) = ctx {
-				if !syn.info.events.is_empty() {
-					writeln!(buf, "{indent}> Events:").unwrap();
-					for event in &syn.info.events {
-						writeln!(buf, "{indent}   {event:?}").unwrap();
-					}
+			if let GeneralContext::Syntax(syn) = ctx
+				&& !syn.info.events.is_empty()
+			{
+				writeln!(buf, "{indent}> Events:").unwrap();
+				for event in &syn.info.events {
+					writeln!(buf, "{indent}   {event:?}").unwrap();
 				}
 			}
 		}
@@ -462,14 +460,13 @@ impl<T: ContextType> Context<T> {
 			let is_dynamic_boundary =
 				self.context_type.as_syntax().and_then(|scope| scope.scope.is_dynamic_boundary());
 
-			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary {
-				if !self
+			if let Some(DynamicBoundaryKind::Loop) = is_dynamic_boundary
+				&& !self
 					.get_chain_of_info()
 					.any(|info| info.variable_current_value.contains_key(&found_var.get_id()))
-				{
-					// Cannot use yet in loop
-					return None;
-				}
+			{
+				// Cannot use yet in loop
+				return None;
 			}
 
 			let record_as_free = (is_dynamic_boundary.is_some() && parent_boundary.is_none())
@@ -514,7 +511,7 @@ impl<T: ContextType> Context<T> {
 		}
 	}
 
-	pub fn as_general_context(&self) -> GeneralContext {
+	pub fn as_general_context(&self) -> GeneralContext<'_> {
 		T::as_general_context(self)
 	}
 
@@ -736,13 +733,9 @@ impl<T: ContextType> Context<T> {
 	/// Returns a iterator of parents. Starting with the current one
 	///
 	/// TODO should be private
-	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext> + '_ {
+	pub(crate) fn parents_iter(&self) -> impl Iterator<Item = GeneralContext<'_>> + '_ {
 		iter::successors(Some(self.as_general_context()), |env| {
-			if let GeneralContext::Syntax(syn) = env {
-				Some(syn.get_parent())
-			} else {
-				None
-			}
+			if let GeneralContext::Syntax(syn) = env { Some(syn.get_parent()) } else { None }
 		})
 	}
 
@@ -827,8 +820,8 @@ impl<T: ContextType> Context<T> {
 			vacant.insert(variable);
 
 			// TODO unsure ...
-			let ty = if let Type::SpecialObject(SpecialObject::Function(..)) =
-				types.get_type_by_id(variable_ty)
+			let ty = if let Some(SpecialObject::Function(..)) =
+				types.get_type_by_id(variable_ty).try_into_special_object()
 			{
 				variable_ty
 			} else {
@@ -1018,7 +1011,7 @@ pub(crate) fn get_value_of_variable(
 	types: &TypeStore,
 ) -> Option<TypeId> {
 	for fact in info.get_chain_of_info() {
-		let res = if let Some(closures) = closures {
+		let current_value = if let Some(closures) = closures {
 			closures.get_fact_from_closure(fact, |closure| {
 				// crate::utilities::notify!("Looking in {:?} for {:?}", closure, on);
 				fact.closure_current_values.get(&(closure, RootReference::Variable(on))).copied()
@@ -1027,12 +1020,13 @@ pub(crate) fn get_value_of_variable(
 			None
 		};
 
-		let res = res.or_else(|| fact.variable_current_value.get(&on).copied());
+		let current_value = current_value.or_else(|| fact.variable_current_value.get(&on).copied());
 
-		// TODO in remaining info, don't loop again
-		if let Some(res) = res {
-			let narrowed = info.get_narrowed_or_object(res, types);
-			return Some(narrowed.unwrap_or(res));
+		if let Some(current_value) = current_value {
+			// info = property on context
+			let narrowed = info.get_narrowed_or_object(current_value, types);
+			let value = if let Some(narrowed) = narrowed { narrowed } else { current_value };
+			return Some(value);
 		}
 	}
 	None

@@ -1,28 +1,29 @@
 use std::borrow::Cow;
 
 use parser::{
-	declarations::VariableDeclarationItem, ASTNode, ArrayDestructuringField, Expression,
-	ObjectDestructuringField, SpreadDestructuringField, VariableField, VariableIdentifier,
+	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
+	SpreadDestructuringField, VariableField, VariableIdentifier,
+	statements_and_declarations::variables::VariableDeclarationItem,
 };
 
 use super::expressions::synthesise_expression;
 use crate::{
+	CheckingData, Environment, TypeId,
 	context::{Context, ContextType, VariableRegisterArguments},
 	diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation},
 	features::{
 		self,
-		variables::{get_new_register_argument_under, VariableMutability, VariableOrImport},
+		variables::{VariableMutability, VariableOrImport, get_new_register_argument_under},
 	},
 	synthesis::parser_property_key_to_checker_property_key,
 	types::{
 		helpers::get_larger_type,
 		printing,
 		properties::{
-			get_properties_on_single_type, get_property_key_names_on_a_single_type, PropertyKey,
-			Publicity,
+			PropertyKey, Publicity, get_properties_on_single_type,
+			get_property_key_names_on_a_single_type,
 		},
 	},
-	CheckingData, Environment, TypeId,
 };
 
 pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(
@@ -108,7 +109,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 				match field.get_ast_ref() {
 					ObjectDestructuringField::Name(variable, _type, ..) => {
 						let name = match variable {
-							VariableIdentifier::Standard(ref name, _) => name,
+							VariableIdentifier::Standard(name, _) => name,
 							VariableIdentifier::Marker(_, _) => "?",
 						};
 						if let Some(ref mut taken_members) = taken_members {
@@ -177,10 +178,10 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 						true,
 						TypeId::ANY_TYPE,
 					) {
-						if let PropertyKey::String(ref s) = key {
-							if taken_members.contains(s) {
-								continue;
-							}
+						if let PropertyKey::String(ref s) = key
+							&& taken_members.contains(s)
+						{
+							continue;
 						}
 						rest.push((publicity, key, property));
 					}
@@ -218,11 +219,8 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 /// TODO `U::as_option_expr()`
 ///
 /// TODO no idea how arrays and objects are checked here
-pub(super) fn synthesise_variable_declaration_item<
-	T: crate::ReadFromFS,
-	U: parser::ast::variable::DeclarationExpression + 'static,
->(
-	variable_declaration: &VariableDeclarationItem<U>,
+pub(super) fn synthesise_variable_declaration_item<T: crate::ReadFromFS>(
+	variable_declaration: &VariableDeclarationItem,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	exported: Option<VariableMutability>,
@@ -239,9 +237,7 @@ pub(super) fn synthesise_variable_declaration_item<
 	// let name =
 	// 	types.new_constant_type(crate::Constant::String(name_object.to_owned()));
 
-	let value_ty = if let Some(expression) =
-		U::as_option_expression_ref(&variable_declaration.expression)
-	{
+	let value_ty = if let Some(ref expression) = variable_declaration.expression {
 		let expected: TypeId =
 			var_ty_and_pos.as_ref().map_or(TypeId::ANY_TYPE, |(var_ty, _)| *var_ty);
 
@@ -340,7 +336,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 					environment.context_type.scope
 				{
 					let name = match name {
-						VariableIdentifier::Standard(ref name, _) => name.to_owned(),
+						VariableIdentifier::Standard(name, _) => name.to_owned(),
 						VariableIdentifier::Marker(_, _) => "?".to_owned(),
 					};
 					exported.named.insert(name, (id, mutability));
@@ -363,7 +359,13 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 			// if let Some(spread) = spread {
 			// }
 		}
-		VariableField::Object { members, spread, position } => {
+		VariableField::Object { members, spread, position, .. } => {
+			if let VariableField::Object { class_name: Some(_), .. } = item {
+				checking_data.raise_unimplemented_error(
+					"Object destructuring + class name",
+					position.with_source(environment.get_source()),
+				);
+			}
 			for member in members {
 				match member.get_ast_ref() {
 					ObjectDestructuringField::Name(name, _, default_value, _) => {

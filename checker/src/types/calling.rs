@@ -1,40 +1,41 @@
 use source_map::{BaseSpan, Nullable, SpanWithSource};
 
 use crate::{
-	context::{invocation::CheckThings, CallCheckingBehavior, Environment, InformationChain},
+	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
+	context::{CallCheckingBehavior, Environment, InformationChain, invocation::CheckThings},
 	diagnostics::{
 		InfoDiagnostic, TypeCheckError, TypeCheckWarning, TypeStringRepresentation,
 		VariableUsedInTDZ,
 	},
 	events::{
-		application::ApplicationInput, apply_events, ApplicationResult, Event, RootReference,
+		ApplicationResult, Event, RootReference, application::ApplicationInput, apply_events,
 	},
 	features::{
 		constant_functions::{
-			call_constant_function, CallSiteTypeArguments, ConstantFunctionError, ConstantOutput,
+			CallSiteTypeArguments, ConstantFunctionError, ConstantOutput, call_constant_function,
 		},
 		objects::{ObjectBuilder, SpecialObject},
 	},
 	subtyping::{
-		type_is_subtype, type_is_subtype_with_generics, State, SubTypeResult, SubTypingMode,
-		SubTypingOptions,
+		State, SubTypeResult, SubTypingMode, SubTypingOptions, type_is_subtype,
+		type_is_subtype_with_generics,
 	},
 	types::{
+		GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
 		functions::{FunctionBehavior, FunctionEffect, FunctionType},
 		generics::substitution::SubstitutionArguments,
 		helpers::get_structure_arguments_based_on_object_constraint,
 		logical::{Invalid, Logical, LogicalOrValid, NeedsCalculation, PossibleLogical},
 		properties::AccessMode,
-		substitute, GenericChainLink, ObjectNature, PartiallyAppliedGenerics, Type,
+		substitute,
 	},
-	FunctionId, GenericTypeParameters, ReadFromFS, SpecialExpressions, TypeId,
 };
 
 use super::{
+	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
 	generics::{contributions::Contributions, generic_type_arguments::GenericArguments},
 	get_constraint,
 	properties::PropertyKey,
-	Constructor, GenericChain, PolyNature, TypeRestrictions, TypeStore,
 };
 
 /// Other information to do with calling
@@ -139,11 +140,7 @@ pub struct SynthesisedArgument {
 
 impl SynthesisedArgument {
 	pub fn non_spread_type(&self) -> Result<TypeId, ()> {
-		if self.spread {
-			Err(())
-		} else {
-			Ok(self.value)
-		}
+		if self.spread { Err(()) } else { Ok(self.value) }
 	}
 }
 
@@ -347,7 +344,9 @@ pub enum Callable {
 
 impl Callable {
 	pub(crate) fn from_type(ty: TypeId, types: &TypeStore) -> Self {
-		if let Type::SpecialObject(SpecialObject::Function(func_id, _)) = types.get_type_by_id(ty) {
+		if let Some(SpecialObject::Function(func_id, _)) =
+			types.get_type_by_id(ty).try_into_special_object()
+		{
 			Callable::Fixed(*func_id, ThisValue::UseParent)
 		} else {
 			crate::utilities::notify!("Here!!");
@@ -363,9 +362,9 @@ impl Callable {
 
 	pub(crate) fn into_type(self, types: &mut TypeStore) -> TypeId {
 		match self {
-			Callable::Fixed(id, this_value) => {
-				types.register_type(Type::SpecialObject(SpecialObject::Function(id, this_value)))
-			}
+			Callable::Fixed(id, this_value) => types.register_type(Type::SpecialObject(Box::new(
+				SpecialObject::Function(id, this_value),
+			))),
 			Callable::Type(ty) => ty,
 		}
 	}
@@ -374,8 +373,8 @@ impl Callable {
 		match self {
 			Callable::Fixed(id, _this_value) => types.get_function_from_id(id).return_type,
 			Callable::Type(ty) => {
-				if let Type::SpecialObject(SpecialObject::Function(id, _)) =
-					types.get_type_by_id(ty)
+				if let Some(SpecialObject::Function(id, _)) =
+					types.get_type_by_id(ty).try_into_special_object()
 				{
 					types.get_function_from_id(*id).return_type
 				} else {
@@ -394,8 +393,8 @@ impl Callable {
 				.get_parameter_type_at_index(0)
 				.map_or(TypeId::ERROR_TYPE, |(ty, _)| ty),
 			Callable::Type(ty) => {
-				if let Type::SpecialObject(SpecialObject::Function(id, _)) =
-					types.get_type_by_id(ty)
+				if let Some(SpecialObject::Function(id, _)) =
+					types.get_type_by_id(ty).try_into_special_object()
 				{
 					types
 						.get_function_from_id(*id)
@@ -513,13 +512,13 @@ fn get_logical_callable_from_type(
 			};
 			Ok(Logical::Pure(function).into())
 		}
-		Type::SpecialObject(SpecialObject::Function(f, t)) => {
-			let this_value = on.unwrap_or(*t);
-			let from = Some(from.unwrap_or(ty));
-			Ok(Logical::Pure(FunctionLike { from, function: *f, this_value }).into())
-		}
-		Type::SpecialObject(so) => match so {
-			crate::features::objects::SpecialObject::Proxy { .. } => todo!(),
+		Type::SpecialObject(so) => match &**so {
+			SpecialObject::Function(f, t) => {
+				let this_value = on.unwrap_or(*t);
+				let from = Some(from.unwrap_or(ty));
+				Ok(Logical::Pure(FunctionLike { from, function: *f, this_value }).into())
+			}
+			SpecialObject::Proxy { .. } => todo!(),
 			_ => Err(Invalid(ty)),
 		},
 		Type::PartiallyAppliedGenerics(generic) => {
@@ -592,7 +591,7 @@ fn call_logical<B: CallCheckingBehavior>(
 				// TODO clone
 				let function_type = function_type.clone();
 
-				if let FunctionEffect::Constant { identifier: ref const_fn_ident, .. } =
+				if let FunctionEffect::Constant { identifier: const_fn_ident, .. } =
 					&function_type.effect
 				{
 					let has_dependent_argument =
@@ -975,16 +974,18 @@ fn mark_possible_mutation(
 			// All dependent anyway
 			crate::utilities::notify!("TODO if any properties set etc");
 		}
-		Type::SpecialObject(SpecialObject::Function(_, _)) => {
-			crate::utilities::notify!("TODO record that function could be called");
-		}
 		Type::Object(ObjectNature::RealDeal) => {
 			top_environment.possibly_mutated_objects.insert(argument.value, parameter_type);
 			crate::utilities::notify!("TODO record methods could be called here as well");
 		}
-		Type::SpecialObject(_) => {
-			crate::utilities::notify!("TODO record stuff if mutable");
-		}
+		Type::SpecialObject(so) => match &**so {
+			SpecialObject::Function(_, _) => {
+				crate::utilities::notify!("TODO record that function could be called");
+			}
+			_ => {
+				crate::utilities::notify!("TODO record stuff if mutable");
+			}
+		},
 	}
 }
 
@@ -1207,25 +1208,15 @@ impl FunctionType {
 
 					// Adjust call sites. (because they aren't currently passed down)
 					for d in &mut diagnostics.errors[current_errors..] {
-						if let FunctionCallingError::VariableUsedInTDZ {
-							call_site: ref mut c,
-							..
-						}
-						| FunctionCallingError::SetPropertyConstraint {
-							call_site: ref mut c,
-							..
-						} = d
+						if let FunctionCallingError::VariableUsedInTDZ { call_site, .. }
+						| FunctionCallingError::SetPropertyConstraint { call_site, .. } = d
 						{
-							*c = input.call_site;
+							*call_site = input.call_site;
 						}
 					}
 					for d in &mut diagnostics.warnings[current_warnings..] {
-						if let TypeCheckWarning::ConditionalExceptionInvoked {
-							call_site: ref mut c,
-							..
-						} = d
-						{
-							*c = input.call_site;
+						if let TypeCheckWarning::ConditionalExceptionInvoked { call_site, .. } = d {
+							*call_site = input.call_site;
 						}
 					}
 
@@ -1889,7 +1880,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 				} else {
 					todo!();
 					// crate::utilities::notify!("Generic parameter with no aliasing restriction, I think this fine on internals");
-				};
+				}
 
 				(param.type_id, (ty, position))
 			})
@@ -1916,7 +1907,7 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 
 						None
 					}
-					(Some(ref function_type_parameters), Some(call_site_type_arguments)) => {
+					(Some(function_type_parameters), Some(call_site_type_arguments)) => {
 						let expected_parameters_length = function_type_parameters.0.len();
 						let provided_parameters_length = call_site_type_arguments.len();
 						if provided_parameters_length > expected_parameters_length {
@@ -2017,9 +2008,9 @@ fn synthesise_argument_expressions_wrt_parameters<T: ReadFromFS, A: crate::ASTIm
 									*fixed_to
 								} else {
 									crate::utilities::notify!(
-									"Parameter is not `PolyNature::Parameter` when pairing arguments? Got {:?}",
-									ty
-								);
+										"Parameter is not `PolyNature::Parameter` when pairing arguments? Got {:?}",
+										ty
+									);
 									parameter_type
 								};
 

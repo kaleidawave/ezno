@@ -2,18 +2,18 @@
 
 use source_map::{Span, SpanWithSource};
 
-use crate::context::{environment::ContextLocation, AssignmentError, VariableRegisterArguments};
+use crate::context::{AssignmentError, VariableRegisterArguments, environment::ContextLocation};
 use crate::diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation};
-use crate::subtyping::{type_is_subtype_object, SubTypeResult};
+use crate::subtyping::{SubTypeResult, type_is_subtype_object};
 use crate::{
+	CheckingData, VariableId,
 	types::{
+		TypeId,
 		logical::{Logical, LogicalOrValid},
 		properties::{
-			get_property_key_names_on_a_single_type, get_property_unbound, PropertyKey, Publicity,
+			PropertyKey, Publicity, get_property_key_names_on_a_single_type, get_property_unbound,
 		},
-		TypeId,
 	},
-	CheckingData, VariableId,
 };
 use crate::{Environment, Instance};
 use std::fmt::Debug;

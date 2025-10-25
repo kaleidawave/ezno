@@ -1,9 +1,9 @@
 use source_map::{Nullable, SpanWithSource};
 
 use crate::{
-	subtyping::{type_is_subtype_with_generics, State, SubTypeResult},
-	types::{GenericChain, PartiallyAppliedGenerics, PropertyKey, TypeRestrictions, TypeStore},
 	Environment, TypeId,
+	subtyping::{State, SubTypeResult, type_is_subtype_with_generics},
+	types::{GenericChain, PartiallyAppliedGenerics, PropertyKey, TypeRestrictions, TypeStore},
 };
 
 use super::generic_type_arguments::GenericArguments;

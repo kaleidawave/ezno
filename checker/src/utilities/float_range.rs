@@ -11,11 +11,7 @@ use InclusiveExclusive::{Exclusive, Inclusive};
 impl InclusiveExclusive {
 	#[must_use]
 	pub fn mix(self, other: Self) -> Self {
-		if let (Inclusive, Inclusive) = (self, other) {
-			Inclusive
-		} else {
-			Exclusive
-		}
+		if let (Inclusive, Inclusive) = (self, other) { Inclusive } else { Exclusive }
 	}
 
 	#[must_use]
@@ -249,27 +245,39 @@ mod tests {
 
 	#[test]
 	fn overlaps() {
-		assert!(FloatRange { floor: e(0.), ceiling: e(4.) }
-			.overlaps(FloatRange { floor: e(2.), ceiling: e(5.) }));
+		assert!(
+			FloatRange { floor: e(0.), ceiling: e(4.) }
+				.overlaps(FloatRange { floor: e(2.), ceiling: e(5.) })
+		);
 
-		assert!(!FloatRange { floor: e(0.), ceiling: e(1.) }
-			.overlaps(FloatRange { floor: e(2.), ceiling: e(5.) }));
+		assert!(
+			!FloatRange { floor: e(0.), ceiling: e(1.) }
+				.overlaps(FloatRange { floor: e(2.), ceiling: e(5.) })
+		);
 	}
 
 	#[test]
 	fn above() {
-		assert!(FloatRange { floor: e(8.), ceiling: e(10.) }
-			.above(FloatRange { floor: e(6.), ceiling: e(7.) }));
-		assert!(!FloatRange { floor: e(0.), ceiling: e(1.) }
-			.above(FloatRange { floor: e(0.), ceiling: e(5.) }));
+		assert!(
+			FloatRange { floor: e(8.), ceiling: e(10.) }
+				.above(FloatRange { floor: e(6.), ceiling: e(7.) })
+		);
+		assert!(
+			!FloatRange { floor: e(0.), ceiling: e(1.) }
+				.above(FloatRange { floor: e(0.), ceiling: e(5.) })
+		);
 	}
 
 	#[test]
 	fn below() {
-		assert!(FloatRange { floor: e(0.), ceiling: e(4.) }
-			.below(FloatRange { floor: e(6.), ceiling: e(7.) }));
-		assert!(!FloatRange { floor: e(0.), ceiling: e(1.) }
-			.below(FloatRange { floor: e(0.), ceiling: e(5.) }));
+		assert!(
+			FloatRange { floor: e(0.), ceiling: e(4.) }
+				.below(FloatRange { floor: e(6.), ceiling: e(7.) })
+		);
+		assert!(
+			!FloatRange { floor: e(0.), ceiling: e(1.) }
+				.below(FloatRange { floor: e(0.), ceiling: e(5.) })
+		);
 	}
 
 	#[test]

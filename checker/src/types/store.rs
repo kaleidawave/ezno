@@ -3,18 +3,18 @@ use std::collections::{HashMap, HashSet};
 use source_map::{Nullable, Span, SpanWithSource};
 
 use crate::{
-	features::{functions::ClosureId, objects::SpecialObject, regexp::RegExp},
 	Constant, Environment, FunctionId, Map as SmallMap, TypeId, VariableId,
+	features::{functions::ClosureId, objects::SpecialObject, regexp::RegExp},
 };
 
 use super::{
+	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, PolyNature, Type,
+	TypeExtends,
 	functions::{FunctionBehavior, FunctionType},
 	generics::generic_type_arguments::GenericArguments,
 	get_constraint,
 	logical::{Logical, LogicalOrValid},
 	properties::PropertyKey,
-	Constructor, LookUpGeneric, LookUpGenericMap, PartiallyAppliedGenerics, PolyNature, Type,
-	TypeExtends,
 };
 
 /// Holds all the types. Eventually may be split across modules
@@ -55,7 +55,7 @@ impl Default for TypeStore {
 			Type::Class { name: "string".to_owned(), type_parameters: None },
 			// sure?
 			Type::Constant(Constant::Undefined),
-			Type::SpecialObject(SpecialObject::Null),
+			Type::SpecialObject(Box::new(SpecialObject::Null)),
 			// `void` type. Has special subtyping in returns
 			Type::AliasTo { to: TypeId::UNDEFINED_TYPE, name: "void".into(), parameters: None },
 			Type::Class { name: "Array".to_owned(), type_parameters: Some(vec![TypeId::T_TYPE]) },
@@ -231,8 +231,8 @@ impl TypeStore {
 		// Reuse existing ids rather than creating new types sometimes
 		match constant {
 			Constant::String(s) if s.is_empty() => TypeId::EMPTY_STRING,
-			Constant::Number(number) if number == 0f64 => TypeId::ZERO,
-			Constant::Number(number) if number == 1f64 => TypeId::ONE,
+			Constant::Number(0.0) => TypeId::ZERO,
+			Constant::Number(1.0) => TypeId::ONE,
 			Constant::Number(number) if number == f64::NEG_INFINITY => TypeId::NEG_INFINITY,
 			Constant::Number(number) if number == f64::INFINITY => TypeId::INFINITY,
 			Constant::Number(number) if number.is_nan() => TypeId::NAN,
@@ -448,7 +448,10 @@ impl TypeStore {
 	pub fn new_function_type(&mut self, function_type: FunctionType) -> TypeId {
 		let id = function_type.id;
 		self.functions.insert(id, function_type);
-		self.register_type(Type::SpecialObject(SpecialObject::Function(id, Default::default())))
+		self.register_type(Type::SpecialObject(Box::new(SpecialObject::Function(
+			id,
+			Default::default(),
+		))))
 	}
 
 	pub fn new_hoisted_function_type(&mut self, function_type: FunctionType) -> TypeId {
@@ -464,7 +467,7 @@ impl TypeStore {
 		indexer: TypeId,
 		environment: &Environment,
 	) -> TypeId {
-		use super::properties::{get_property_unbound, AccessMode, Publicity};
+		use super::properties::{AccessMode, Publicity, get_property_unbound};
 		if get_constraint(indexee, self).is_some() {
 			let under = PropertyKey::from_type(indexer, self);
 			let ty = Type::Constructor(Constructor::Property {
@@ -506,7 +509,7 @@ impl TypeStore {
 		_position: &Span,
 	) -> Result<TypeId, String> {
 		let regexp = RegExp::new(pattern, flags)?;
-		let ty = Type::SpecialObject(SpecialObject::RegularExpression(regexp));
+		let ty = Type::SpecialObject(Box::new(SpecialObject::RegularExpression(regexp)));
 		Ok(self.register_type(ty))
 	}
 
@@ -641,10 +644,10 @@ impl TypeStore {
 	pub(crate) fn new_class_constructor_type(&mut self, constructor: FunctionType) -> TypeId {
 		let id = constructor.id;
 		self.functions.insert(id, constructor);
-		self.register_type(Type::SpecialObject(SpecialObject::Function(
+		self.register_type(Type::SpecialObject(Box::new(SpecialObject::Function(
 			id,
 			crate::types::calling::ThisValue::UseParent,
-		)))
+		))))
 	}
 
 	pub(crate) fn create_this_object(&mut self) -> TypeId {

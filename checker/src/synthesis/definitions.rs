@@ -1,15 +1,12 @@
-use parser::{
-	ast::{export::Exportable, ExportDeclaration},
-	ASTNode, Declaration, Decorated, Expression, StatementOrDeclaration,
-};
+use parser::{ASTNode, Expression};
 use source_map::SourceId;
 
 use super::classes::synthesise_class_declaration;
 
 use crate::{
+	TypeId,
 	context::{Environment, LocalInformation, Names, RootContext},
 	types::InternalFunctionEffect,
-	TypeId,
 };
 
 /// Interprets a definition module (.d.ts) and produces a [Environment]. Consumes the [`TypeDefinitionModule`]
@@ -23,16 +20,12 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 	let mut environment = root.new_lexical_environment(crate::Scope::DefinitionModule { source });
 	super::hoisting::hoist_statements(&definition.items, &mut environment, checking_data);
 
+	// Left over classes
 	for item in &definition.items {
-		if let StatementOrDeclaration::Declaration(
-			Declaration::Class(Decorated { on: class, .. })
-			| Declaration::Export(Decorated {
-				on: ExportDeclaration::Item { exported: Exportable::Class(class), position: _ },
-				..
-			}),
-		) = item
-		{
+		if let parser::StatementOrDeclaration::Class(item) = item {
 			use super::StatementOrExpressionVariable;
+
+			let class = &item.on.item;
 
 			let class_type = *checking_data
 				.local_type_mappings
@@ -66,31 +59,33 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 	decorators.iter().find_map(|decorator| {
 		if decorator.name.len() == 1 {
 			let decorator_name = decorator.name.first().map(String::as_str)?;
-			if matches!(decorator_name, "Constant" | "InputOutput") {
-				let (identifier, may_throw) =
-					if let Some(arguments) = decorator.arguments.as_ref() {
-						let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
-							arguments.first()
-						{
-							identifier.clone()
-						} else {
-							panic!("first argument to constant or input output should be string literal");
-						};
-						let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
-							arguments.get(1)
-						{
-							Some(
-								environment
-									.get_type_from_name(identifier)
-									.expect("could not find thrown type"),
-							)
-						} else {
-							None
-						};
-						(identifier, may_throw)
+			if let "Constant" | "InputOutput" = decorator_name {
+				let (identifier, may_throw) = if let Some(arguments) = decorator.arguments.as_ref()
+				{
+					let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
+						arguments.first()
+					{
+						identifier.clone()
 					} else {
-						(function_name.to_owned(), None)
+						panic!(
+							"first argument to constant or input output should be string literal"
+						);
 					};
+					let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
+						arguments.get(1)
+					{
+						Some(
+							environment
+								.get_type_from_name(identifier)
+								.expect("could not find thrown type"),
+						)
+					} else {
+						None
+					};
+					(identifier, may_throw)
+				} else {
+					(function_name.to_owned(), None)
+				};
 				Some(match decorator_name {
 					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
 					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },

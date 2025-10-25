@@ -3,30 +3,30 @@ use std::{borrow::Cow, collections::hash_map::Entry};
 use source_map::{Nullable, SourceId, SpanWithSource};
 
 use crate::{
+	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Map,
+	ReadFromFS, Scope, Type, TypeId, VariableId,
 	context::{
-		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
-		information::{merge_info, LocalInformation},
 		ContextType, Syntax,
+		environment::{ContextLocation, ExpectedReturnType, FunctionScope},
+		information::{LocalInformation, merge_info},
 	},
 	diagnostics::{TypeCheckError, TypeStringRepresentation},
 	events::RootReference,
 	features::{create_closed_over_references, objects::ObjectBuilder},
-	subtyping::{type_is_subtype_object, SubTypeResult},
+	subtyping::{SubTypeResult, type_is_subtype_object},
 	types::{
-		self,
+		self, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
+		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
+		SynthesisedRestParameter, TypeStore,
 		calling::Callable,
 		classes::ClassValue,
 		functions::{FunctionBehavior, SynthesisedParameters},
 		generics::GenericTypeParameters,
 		logical::{Logical, LogicalOrValid},
 		printing::print_type,
-		properties::{get_property_unbound, PropertyKey, PropertyValue, Publicity},
-		substitute, Constructor, FunctionEffect, FunctionType, InternalFunctionEffect,
-		PartiallyAppliedGenerics, PolyNature, SubstitutionArguments, SynthesisedParameter,
-		SynthesisedRestParameter, TypeStore,
+		properties::{PropertyKey, PropertyValue, Publicity, get_property_unbound},
+		substitute,
 	},
-	ASTImplementation, CheckingData, Constant, Environment, FunctionId, GeneralContext, Map,
-	ReadFromFS, Scope, Type, TypeId, VariableId,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -663,8 +663,8 @@ where
 		// `this` changes stuff
 		if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
 			match scope {
-				FunctionScope::ArrowFunction { ref mut free_this_type, .. }
-				| FunctionScope::MethodFunction { ref mut free_this_type, .. } => {
+				FunctionScope::ArrowFunction { free_this_type, .. }
+				| FunctionScope::MethodFunction { free_this_type, .. } => {
 					let type_id = if let Some(tc) = this_constraint {
 						checking_data.types.register_type(Type::RootPolyType(
 							PolyNature::FreeVariable {
@@ -681,7 +681,7 @@ where
 					}
 					*free_this_type = type_id;
 				}
-				FunctionScope::Function { ref mut this_type, .. } => {
+				FunctionScope::Function { this_type, .. } => {
 					// TODO temp to reduce types
 
 					// TODO this could be done conditionally to create less objects, but also doesn't introduce any bad side effects so
@@ -743,11 +743,7 @@ where
 
 					*this_type = new_conditional_type;
 				}
-				FunctionScope::Constructor {
-					extends: _,
-					type_of_super: _,
-					ref mut this_object_type,
-				} => {
+				FunctionScope::Constructor { extends: _, type_of_super: _, this_object_type } => {
 					crate::utilities::notify!("Setting 'this' type here");
 					if let Some((prototype, properties)) = constructor {
 						let this_constructed_object = function_environment.info.new_object(
@@ -801,18 +797,16 @@ where
 
 		{
 			// Add expected return type
-			if let Scope::Function(ref mut scope) = function_environment.context_type.scope {
-				if !matches!(scope, FunctionScope::Constructor { .. }) {
-					if let (expect @ None, Some(ReturnType(return_type_annotation, pos))) =
-						(scope.get_expected_return_type_mut(), return_type_annotation)
-					{
-						*expect = Some(ExpectedReturnType::FromReturnAnnotation(
-							return_type_annotation,
-							// TODO lol
-							pos.without_source(),
-						));
-					}
-				}
+			if let Scope::Function(ref mut scope) = function_environment.context_type.scope
+				&& !matches!(scope, FunctionScope::Constructor { .. })
+				&& let (expect @ None, Some(ReturnType(return_type_annotation, pos))) =
+					(scope.get_expected_return_type_mut(), return_type_annotation)
+			{
+				*expect = Some(ExpectedReturnType::FromReturnAnnotation(
+					return_type_annotation,
+					// TODO lol
+					pos.without_source(),
+				));
 			}
 		}
 
@@ -845,47 +839,47 @@ where
 			let returned = info.state.get_returned(&mut checking_data.types);
 
 			// TODO temp fix for predicates. This should be really be done in `environment.throw` ()?
-			if let Some(ReturnType(expected, _)) = return_type_annotation {
-				if crate::types::type_is_assert_is_type(expected, &checking_data.types).is_ok() {
-					let mut state = crate::subtyping::State {
-						already_checked: Default::default(),
-						mode: Default::default(),
-						contributions: Default::default(),
-						others: crate::subtyping::SubTypingOptions::default(),
-						// TODO don't think there is much case in constraining it here
-						object_constraints: None,
-					};
+			if let Some(ReturnType(expected, _)) = return_type_annotation
+				&& crate::types::type_is_assert_is_type(expected, &checking_data.types).is_ok()
+			{
+				let mut state = crate::subtyping::State {
+					already_checked: Default::default(),
+					mode: Default::default(),
+					contributions: Default::default(),
+					others: crate::subtyping::SubTypingOptions::default(),
+					// TODO don't think there is much case in constraining it here
+					object_constraints: None,
+				};
 
-					let result = crate::subtyping::type_is_subtype(
-						expected,
-						returned,
-						&mut state,
-						base_environment,
-						&checking_data.types,
+				let result = crate::subtyping::type_is_subtype(
+					expected,
+					returned,
+					&mut state,
+					base_environment,
+					&checking_data.types,
+				);
+
+				if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
+					checking_data.diagnostics_container.add_error(
+						TypeCheckError::ReturnedTypeDoesNotMatch {
+							expected_return_type: TypeStringRepresentation::from_type_id(
+								expected,
+								base_environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							returned_type: TypeStringRepresentation::from_type_id(
+								returned,
+								base_environment,
+								&checking_data.types,
+								checking_data.options.debug_types,
+							),
+							annotation_position: position,
+							returned_position: function
+								.get_position()
+								.with_source(base_environment.get_source()),
+						},
 					);
-
-					if let crate::subtyping::SubTypeResult::IsNotSubType(_) = result {
-						checking_data.diagnostics_container.add_error(
-							TypeCheckError::ReturnedTypeDoesNotMatch {
-								expected_return_type: TypeStringRepresentation::from_type_id(
-									expected,
-									base_environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								returned_type: TypeStringRepresentation::from_type_id(
-									returned,
-									base_environment,
-									&checking_data.types,
-									checking_data.options.debug_types,
-								),
-								annotation_position: position,
-								returned_position: function
-									.get_position()
-									.with_source(base_environment.get_source()),
-							},
-						);
-					}
 				}
 			}
 

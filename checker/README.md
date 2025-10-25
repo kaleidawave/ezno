@@ -1,6 +1,6 @@
 # Ezno's Checker
 
-![checker lines of code](https://kaleidawave-projectinformation.web.val.run/project/ezno-checker/badge)
+![checker lines of code](https://project-information-kaleidawave.val.run/project/ezno-checker/badge)
 [![crates.io badge](https://img.shields.io/crates/v/ezno-checker?style=flat-square)](https://crates.io/crates/ezno-checker)
 [![docs.rs badge](https://img.shields.io/docsrs/ezno-checker?style=flat-square)](https://docs.rs/ezno-checker/latest)
 

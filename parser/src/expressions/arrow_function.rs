@@ -1,13 +1,13 @@
 use visitable_derive::Visitable;
 
 use crate::{
+	ASTNode, Block, Expression, FunctionBase, ParseResult, Span, VariableField, VariableIdentifier,
 	derive_ASTNode,
 	functions::HeadingAndPosition,
 	functions::{FunctionBased, FunctionParameters, Parameter},
-	ASTNode, Block, Expression, FunctionBase, ParseResult, Span, VariableField, VariableIdentifier,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
@@ -80,16 +80,19 @@ impl FunctionBased for ArrowFunctionBase {
 		local: crate::LocalToStringInformation,
 	) {
 		// Use shorthand if one parameter with no declared type
-		if let ([Parameter { name, type_annotation, .. }], None) =
+		if let ([Parameter { name, type_annotation, additionally, .. }], None) =
 			(parameters.parameters.as_slice(), &parameters.rest_parameter)
 		{
 			let is_printing_type_annotation =
 				options.include_type_annotations && type_annotation.is_some();
-			if !is_printing_type_annotation {
-				if let VariableField::Name(name, ..) = name.get_ast_ref() {
-					name.to_string_from_buffer(buf, options, local);
-					return;
-				}
+			if !is_printing_type_annotation
+				&& !matches!(
+					additionally,
+					Some(crate::functions::ParameterData::WithDefaultValue(_))
+				) && let VariableField::Name(name, ..) = name.get_ast_ref()
+			{
+				name.to_string_from_buffer(buf, options, local);
+				return;
 			}
 		}
 		parameters.to_string_from_buffer(buf, options, local);
@@ -164,7 +167,7 @@ impl ArrowFunction {
 }
 
 /// For [`ArrowFunction`] and [`crate::MatchArm`] bodies
-#[derive(Debug, Clone, PartialEq, Visitable)]
+#[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ExpressionOrBlock {
 	Expression(Box<Expression>),

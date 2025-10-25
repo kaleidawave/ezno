@@ -61,11 +61,7 @@ where
 
 	#[must_use]
 	pub fn into_some(self) -> Option<Self> {
-		if self.0.is_empty() {
-			None
-		} else {
-			Some(self)
-		}
+		if self.0.is_empty() { None } else { Some(self) }
 	}
 
 	#[must_use]

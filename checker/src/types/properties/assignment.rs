@@ -1,19 +1,19 @@
-use super::{get_property_unbound, Descriptor, PropertyKey, PropertyValue, Publicity};
+use super::{Descriptor, PropertyKey, PropertyValue, Publicity, get_property_unbound};
 
 use crate::{
-	context::{information::ObjectProtectionState, CallCheckingBehavior},
+	Environment, Type, TypeId,
+	context::{CallCheckingBehavior, information::ObjectProtectionState},
 	diagnostics::{PropertyKeyRepresentation, TypeStringRepresentation},
 	events::Event,
 	features::objects::Proxy,
 	subtyping::{State, SubTypeResult},
 	types::{
+		Constructor, GenericChain, PartiallyAppliedGenerics, TypeStore,
 		calling::{CallingDiagnostics, CallingOutput, SynthesisedArgument},
 		get_constraint,
 		helpers::tuple_like,
 		logical::{BasedOnKey, Logical, LogicalOrValid, NeedsCalculation},
-		Constructor, GenericChain, PartiallyAppliedGenerics, TypeStore,
 	},
-	Environment, Type, TypeId,
 };
 
 use source_map::SpanWithSource;
@@ -606,7 +606,7 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 	types: &mut TypeStore,
 ) -> SetPropertyResult {
 	use crate::types::calling::{CalledWithNew, CallingInput, SynthesisedArgument};
-	use crate::types::properties::{get_property, AccessMode};
+	use crate::types::properties::{AccessMode, get_property};
 
 	let property_key = PropertyKey::String(std::borrow::Cow::Borrowed("set"));
 	let result = get_property(
@@ -647,7 +647,9 @@ pub(crate) fn proxy_assign<B: CallCheckingBehavior>(
 		if let Ok(_res) = result {
 			Ok(())
 		} else {
-			crate::utilities::notify!("TODO Proxy.set failed but returning Ok() (as difference captured in CallingDiagnostics)");
+			crate::utilities::notify!(
+				"TODO Proxy.set failed but returning Ok() (as difference captured in CallingDiagnostics)"
+			);
 			Ok(())
 		}
 	} else {
