@@ -7,6 +7,7 @@ pub enum Context {
 	Octal,
 }
 
+#[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type NumberRepresentation = f64;
 
 /// Parses a number to a f64 value and returns the width
