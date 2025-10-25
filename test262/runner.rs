@@ -3,7 +3,7 @@ use std::fs::{create_dir, read_dir, read_to_string};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const ADD_TO_DB: bool = false;
+const ADD_TO_DB: bool = true;
 
 #[allow(unused_mut)]
 fn main() {
@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS results (
     pass        INTEGER NOT NULL,
     parser_out  TEXT
 );".trim_start();
+
 	connection.execute(query).unwrap();
 
 	let query = "INSERT INTO results VALUES (
@@ -48,7 +49,7 @@ CREATE TABLE IF NOT EXISTS results (
 		eprintln!("stuck on {path}", path = other.lock().unwrap().display());
 	});
 
-	visit_dirs(path, &mut move |path| {
+	visit_dirs(path, &mut |path| {
 		if let Some(path) = path.file_name().and_then(std::ffi::OsStr::to_str) {
 			if path.contains("_FIXTURE") {
 				return;

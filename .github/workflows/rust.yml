@@ -118,11 +118,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with: { filters: "parser: ['parser/**']" }
 
       - run: bash run.sh
+        if: ${{ steps.changes.outputs.parser == 'true' }}
         working-directory: test262
-
+        
       - uses: actions/upload-artifact@v4
+        if: ${{ steps.changes.outputs.parser == 'true' }}
         with:
           name: test262-results
           path: test262/out
