@@ -164,12 +164,26 @@ pub fn parse_number(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()>
 }
 
 fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()> {
-	fn is_not_number_character(chr: char) -> bool {
-		let is_number_character = matches!(chr, '0'..='9' | '.' | '_');
-		!is_number_character
+	fn number_of_number_characters(current: &str) -> usize {
+		let mut after_decimal = false;
+		for (idx, byte) in current.bytes().enumerate() {
+			if let b'.' = byte {
+				if after_decimal {
+					return idx;
+				} else {
+					after_decimal = true;
+				}
+			} else {
+				let is_valid = byte.is_ascii_digit() || byte == b'_';
+				if !is_valid {
+					return idx;
+				}
+			}
+		}
+		current.len()
 	}
 
-	let mut count = current.find(is_not_number_character).unwrap_or(current.len());
+	let mut count = number_of_number_characters(current);
 	if current[count..].starts_with(['e', 'E']) {
 		count += 1;
 		if current[count..].starts_with(['-', '+']) {
@@ -241,6 +255,9 @@ mod tests {
 		assert_eq!(parse_number("1_000_000"), Ok((f(1000000f64), 9)));
 		assert_eq!(parse_number("0"), Ok((f(0f64), 1)));
 		assert_eq!(parse_number("0;"), Ok((f(0f64), 1)));
+		assert_eq!(parse_number("0..toString()"), Ok((f(0f64), 2)));
+		assert_eq!(parse_number("1..toString()"), Ok((f(1f64), 2)));
+		assert_eq!(parse_number("10.2._5"), Ok((f(10.2f64), 4)));
 	}
 
 	#[test]
