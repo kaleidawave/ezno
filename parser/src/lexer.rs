@@ -17,6 +17,7 @@ pub struct Lexer<'a> {
 	// last: u32,
 	pub(crate) head: u32,
 	script: &'a str,
+	offset: u32,
 
 	options: ParseOptions,
 	state: ParsingState,
@@ -26,14 +27,15 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
 	// (crate)
 	#[must_use]
-	pub fn new(script: &'a str, _offset: Option<u32>, options: ParseOptions) -> Self {
+	pub fn new(script: &'a str, offset: u32, options: ParseOptions) -> Self {
 		if script.len() > u32::MAX as usize {
 			todo!()
 			// return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
 		}
-		// TODO offset.unwrap_or_default(),
+
 		let state = ParsingState::default();
-		Lexer { options, state, script, head: 0 }
+		let head = 0;
+		Lexer { options, state, script, head, offset }
 	}
 
 	#[must_use]
@@ -183,7 +185,7 @@ impl<'a> Lexer<'a> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(chr) {
-			let start = source_map::Start(self.head);
+			let start = source_map::Start(self.offset + self.head);
 			self.head += chr.len_utf8() as u32;
 			Ok(start)
 		} else {
@@ -201,7 +203,7 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		if current.starts_with(chr) {
 			self.head += chr.len_utf8() as u32;
-			Ok(source_map::End(self.head))
+			Ok(source_map::End(self.offset + self.head))
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
 			let reason = ParseErrors::UnexpectedCharacter {
@@ -232,7 +234,7 @@ impl<'a> Lexer<'a> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(expected) {
-			let start = source_map::Start(self.head);
+			let start = source_map::Start(self.offset + self.head);
 			self.head += expected.len() as u32;
 			Ok(start)
 		} else {
@@ -327,12 +329,12 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub fn get_start(&self) -> source_map::Start {
-		source_map::Start(self.head)
+		source_map::Start(self.offset + self.head)
 	}
 
 	#[must_use]
 	pub fn get_end(&self) -> source_map::End {
-		source_map::End(self.head)
+		source_map::End(self.offset + self.head)
 	}
 
 	pub fn advance(&mut self, count: u32) {

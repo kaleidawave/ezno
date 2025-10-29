@@ -123,7 +123,8 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 			keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
 			partial_points: Default::default(),
 		};
-		let mut reader = crate::Lexer::new(&script, offset, options);
+
+		let mut reader = crate::Lexer::new(&script, offset.unwrap_or_default(), options);
 
 		let result = Self::from_reader(&mut reader).map(|ok| (ok, state))?;
 

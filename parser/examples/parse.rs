@@ -92,11 +92,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut fs = Files::default();
 
 	let to_string_options = if print_output || pretty {
+		let comments = if pretty { Comments::All } else { Comments::None };
 		Some(ToStringOptions {
 			expect_markers: true,
 			include_type_annotations: parse_options.type_annotations,
 			pretty,
-			comments: if pretty { Comments::All } else { Comments::None },
+			comments,
 			// 60 is temp
 			max_line_length: if pretty { 60 } else { u8::MAX },
 			..Default::default()
@@ -146,11 +147,12 @@ fn parse_path(
 	parse_options.jsx.enable_jsx = extension.contains('x');
 
 	let on = source.clone();
+	let offset = None;
 
-	// Run in thread as stack is large and can oveflow
+	// Run in thread as stack is large and can overflow
 	let result = std::thread::Builder::new()
 		.stack_size(EIGHT_MEGA_BYTES)
-		.spawn(move || Module::from_string_with_options(on, parse_options, None))
+		.spawn(move || Module::from_string_with_options(on, parse_options, offset))
 		.unwrap()
 		.join()
 		.unwrap();
