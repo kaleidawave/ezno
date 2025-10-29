@@ -1,13 +1,16 @@
 use std::borrow::Cow;
 use std::fs::{create_dir, read_dir, read_to_string};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 const ADD_TO_DB: bool = true;
 
+const ROOT: &str = env!("CARGO_MANIFEST_DIR");
+
 #[allow(unused_mut)]
 fn main() {
-	let path: &Path = &PathBuf::from("./test262/test");
+	let root = Path::new(ROOT);
+	let tests_dir = root.join("test262/test");
 
 	let mut completed = 0;
 	let mut successful = 0;
@@ -15,11 +18,15 @@ fn main() {
 	let mut yaml_parsing = Duration::default();
 	let mut parsing = Duration::default();
 
-	let _ = create_dir("out");
-	let connection = sqlite::open("out/results.db").unwrap();
+	let db_file = root.join("out/results.db");
+	let _ = create_dir(db_file.parent().unwrap());
+	let connection = sqlite::open(&db_file).unwrap();
+
+	// clean up existing results
+	connection.execute("DROP TABLE IF EXISTS results;").unwrap();
 
 	let query = "
-CREATE TABLE IF NOT EXISTS results (
+CREATE TABLE results (
     path        TEXT PRIMARY KEY,
     info        TEXT,
     description TEXT,
@@ -41,15 +48,15 @@ CREATE TABLE IF NOT EXISTS results (
 
 	let now = Instant::now();
 
-	let mut current: std::sync::Arc<std::sync::Mutex<PathBuf>> = std::sync::Arc::default();
+	// let mut current: std::sync::Arc<std::sync::Mutex<PathBuf>> = std::sync::Arc::default();
 
-	let other = current.clone();
-	let _ = std::thread::spawn(move || {
-		std::thread::sleep(Duration::from_secs(14));
-		eprintln!("stuck on {path}", path = other.lock().unwrap().display());
-	});
+	// let other = current.clone();
+	// let _ = std::thread::spawn(move || {
+	// 	std::thread::sleep(Duration::from_secs(14));
+	// 	eprintln!("stuck on {path}", path = other.lock().unwrap().display());
+	// });
 
-	visit_dirs(path, &mut |path| {
+	visit_dirs(&tests_dir, &mut |path| {
 		if let Some(path) = path.file_name().and_then(std::ffi::OsStr::to_str) {
 			if path.contains("_FIXTURE") {
 				return;
@@ -76,9 +83,9 @@ CREATE TABLE IF NOT EXISTS results (
 
 			let metadata = &remaining[..end];
 
-			{
-				*current.lock().unwrap() = path.to_path_buf();
-			}
+			// {
+			// 	*current.lock().unwrap() = path.to_path_buf();
+			// }
 
 			let end = end + "---*/".len();
 			let code = &remaining[end..];
@@ -104,7 +111,6 @@ CREATE TABLE IF NOT EXISTS results (
 					// TODO negative.type, locale
 					if ADD_TO_DB {
 						match key {
-							
 							&[Slice("info")] => {
 								info = value.raw_string_value();
 							}
@@ -147,9 +153,10 @@ CREATE TABLE IF NOT EXISTS results (
 			// }
 
 			let now = std::time::Instant::now();
+			let options = Default::default();
 			let result = <ezno_parser::Module as ezno_parser::ASTNode>::from_string_with_options(
 				code.into(),
-				Default::default(),
+				options,
 				None,
 			);
 			parsing += now.elapsed();
@@ -198,6 +205,12 @@ CREATE TABLE IF NOT EXISTS results (
 		}
 	});
 
+	if completed == 0 {
+		panic!("no tests under {tests_dir}. check test262 is cloned", tests_dir=tests_dir.display());
+	}
+
+	eprintln!();
+	eprintln!("--- Results ---");
 	eprintln!(
 		"Completed {completed} tests in {duration:?} (yaml_parsing={yaml_parsing:?}, parsing={parsing:?}). {successful} successful passes. {errors} fails",
 		errors = completed - successful,
