@@ -1,10 +1,8 @@
-use crate::{
-	ASTNode, ParseResult, Span, derive_ASTNode,
-};
+use crate::{ASTNode, ParseResult, Span, derive_ASTNode};
 
 use crate::expressions::{Expression, ObjectLiteral};
-use crate::{VariableIdentifier, TypeAnnotation};
 use crate::type_annotations::TypeAnnotationFunctionParameters;
+use crate::{TypeAnnotation, VariableIdentifier};
 
 use super::{ImportExportPart, ImportLocation};
 

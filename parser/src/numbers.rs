@@ -170,9 +170,8 @@ fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), (
 			if let b'.' = byte {
 				if after_decimal {
 					return idx;
-				} else {
-					after_decimal = true;
 				}
+				after_decimal = true;
 			} else {
 				let is_valid = byte.is_ascii_digit() || byte == b'_';
 				if !is_valid {

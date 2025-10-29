@@ -253,7 +253,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							from,
 							type_definitions_only,
 							position,
-							with: _with
+							with: _with,
 						} => {
 							let parts = parts.iter().filter_map(part_to_name_pair);
 
