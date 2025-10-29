@@ -614,12 +614,27 @@ impl<'a> Lexer<'a> {
 
 	/// Returns content and flags. Flags can be empty
 	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, &'a str), ParseError> {
+		fn valid_regexp_flag(chr: char) -> bool {
+			// TODO specify via reader.get_options()
+			const EXTRA_REGEX_FLAGS: bool = true;
+
+			if let 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y' = chr {
+				true
+			} else if let 'v' = chr
+				&& EXTRA_REGEX_FLAGS
+			{
+				true
+			} else {
+				false
+			}
+		}
+
 		let mut escaped = false;
 		let mut in_set = false;
 		self.skip();
 		let current = self.get_current();
 		let mut chars = current.char_indices();
-		assert!(chars.next().is_some_and(|(_idx, chr)| chr == '/'));
+		debug_assert!(chars.next().is_some_and(|(_idx, chr)| chr == '/'));
 		let start = self.get_start();
 
 		let mut regex_content = 1;
@@ -670,8 +685,7 @@ impl<'a> Lexer<'a> {
 
 		let regex_flags = &current[regex_end..first_non_char];
 
-		let invalid_flag =
-			regex_flags.chars().any(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'));
+		let invalid_flag = regex_flags.contains(|chr: char| !valid_regexp_flag(chr));
 		if invalid_flag {
 			Err(ParseError::new(
 				ParseErrors::InvalidRegexFlag,
