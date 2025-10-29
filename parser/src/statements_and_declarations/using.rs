@@ -22,7 +22,7 @@ impl crate::ASTNode for UsingDeclaration {
 		let start = reader.expect_keyword("using")?;
 		let mut bindings = Vec::new();
 		loop {
-			let identifier = reader.parse_identifier("using binding", false)?.to_owned();
+			let identifier = reader.parse_identifier("using binding", false)?.into_owned();
 			reader.expect_operator("=")?;
 			let expression = Expression::from_reader(reader)?;
 			bindings.push((identifier, expression));

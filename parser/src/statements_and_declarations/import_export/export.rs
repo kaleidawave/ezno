@@ -1,7 +1,10 @@
 use crate::{
-	ASTNode, Expression, ParseResult, Span, TypeAnnotation, VariableIdentifier, derive_ASTNode,
-	type_annotations::TypeAnnotationFunctionParameters,
+	ASTNode, ParseResult, Span, derive_ASTNode,
 };
+
+use crate::expressions::{Expression, ObjectLiteral};
+use crate::{VariableIdentifier, TypeAnnotation};
+use crate::type_annotations::TypeAnnotationFunctionParameters;
 
 use super::{ImportExportPart, ImportLocation};
 
@@ -64,11 +67,17 @@ pub enum ExportDeclaration {
 	/// `export { ... }`
 	Parts(Vec<ImportExportPart<ExportDeclaration>>, Span),
 	/// `export * as x from "..."`
-	ImportToExportAll { r#as: Option<VariableIdentifier>, from: ImportLocation, position: Span },
+	ImportToExportAll {
+		r#as: Option<VariableIdentifier>,
+		from: ImportLocation,
+		with: Option<ObjectLiteral>,
+		position: Span,
+	},
 	/// `export { ... } from "..."`
 	ImportToExportParts {
 		parts: Vec<ImportExportPart<super::import::ImportDeclaration>>,
 		from: ImportLocation,
+		with: Option<ObjectLiteral>,
 		type_definitions_only: bool,
 		position: Span,
 	},
@@ -145,7 +154,12 @@ impl ASTNode for ExportDeclaration {
 			let end = reader.get_end();
 			let position = start.union(end);
 
-			Ok(ExportDeclaration::ImportToExportAll { r#as, from, position })
+			let with = reader
+				.is_operator_advance("with")
+				.then(|| ObjectLiteral::from_reader(reader))
+				.transpose()?;
+
+			Ok(ExportDeclaration::ImportToExportAll { r#as, from, position, with })
 		} else if reader.is_operator("{") || reader.is_keyword("type") {
 			let type_definitions_only = reader.is_keyword_advance("type");
 			if reader.after_brackets().starts_with("from") {
@@ -158,10 +172,17 @@ impl ASTNode for ExportDeclaration {
 
 				let from = ImportLocation::from_reader(reader)?;
 				let position = start.union(reader.get_end());
+
+				let with = reader
+					.is_operator_advance("with")
+					.then(|| ObjectLiteral::from_reader(reader))
+					.transpose()?;
+
 				Ok(ExportDeclaration::ImportToExportParts {
 					parts,
 					from,
 					type_definitions_only,
+					with,
 					position,
 				})
 			} else {
@@ -192,21 +213,28 @@ impl ASTNode for ExportDeclaration {
 			ExportDeclaration::Parts(parts, _) => {
 				super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
 			}
-			ExportDeclaration::ImportToExportAll { r#as, from, position: _ } => {
+			ExportDeclaration::ImportToExportAll { r#as, from, with, position: _ } => {
 				buf.push_str("* ");
 				if let Some(r#as) = r#as {
 					buf.push_str("as ");
 					r#as.to_string_from_buffer(buf, options, local);
 					buf.push(' ');
 				}
-				buf.push_str("from \"");
+				buf.push_str("from");
+				options.push_gap_optionally(buf);
+				buf.push('"');
 				from.to_string_from_buffer(buf);
 				buf.push('"');
+				if let Some(with) = with {
+					buf.push_str("with ");
+					with.to_string_from_buffer(buf, options, local);
+				}
 			}
 			ExportDeclaration::ImportToExportParts {
 				parts,
 				from,
 				type_definitions_only,
+				with,
 				position: _,
 			} => {
 				if *type_definitions_only {
@@ -214,9 +242,16 @@ impl ASTNode for ExportDeclaration {
 				}
 				super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
 				options.push_gap_optionally(buf);
-				buf.push_str("from \"");
+				buf.push_str("from");
+				options.push_gap_optionally(buf);
+				buf.push('"');
 				from.to_string_from_buffer(buf);
 				buf.push('"');
+
+				if let Some(with) = with {
+					buf.push_str("with ");
+					with.to_string_from_buffer(buf, options, local);
+				}
 			}
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("default ");

@@ -124,6 +124,10 @@ impl ASTNode for ImportDeclaration {
 			buf.push_str("from");
 			options.push_gap_optionally(buf);
 		}
+		if let Some(ref with) = self.with {
+			buf.push_str("with ");
+			with.to_string_from_buffer(buf, options, local);
+		}
 		self.from.to_string_from_buffer(buf);
 	}
 }

@@ -65,15 +65,17 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {
 			reader.skip();
+
+			// TODO temp fix
+			while reader.is_operator_advance(";") {}
+
 			if reader.starts_with('}') {
 				break;
 			}
+
 			let value = Decorated::<ClassMember>::from_reader(reader)?;
 			if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
 				reader.expect_semi_colon()?;
-			} else {
-				// Skip anyway
-				let _ = reader.is_operator_advance(";");
 			}
 			members.push(value);
 		}

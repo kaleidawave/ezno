@@ -325,14 +325,13 @@ impl ASTNode for InterfaceMember {
 					use crate::Expression;
 					// "name" is the name of the parameter name for indexing
 					let start = reader.get_start();
-					let name = reader.parse_identifier("interface parameter name", false)?;
+					let name =
+						reader.parse_identifier("interface parameter name", false)?.into_owned();
 
 					// Catch for computed symbol: e.g. `[Symbol.instanceOf()]`, rather than indexer
 					if reader.is_operator(".") {
-						let top = Expression::VariableReference(
-							name.into(),
-							start.with_length(name.len()),
-						);
+						let position = start.with_length(name.len());
+						let top = Expression::VariableReference(name, position);
 						let expression =
 							Expression::from_reader_after_first_expression(reader, 0, top)?;
 						let end = reader.expect(']')?;
@@ -343,11 +342,12 @@ impl ASTNode for InterfaceMember {
 						reader.expect(']')?;
 						reader.expect(':')?;
 						let return_type = TypeAnnotation::from_reader(reader)?;
+						let position = start.union(return_type.get_position());
 						return Ok(InterfaceMember::Indexer {
-							name: name.to_owned(),
+							name,
 							is_readonly,
 							indexer_type,
-							position: start.union(return_type.get_position()),
+							position,
 							return_type,
 						});
 					} else if reader.is_keyword_advance("in") && header.is_no_modifiers() {
@@ -385,7 +385,7 @@ impl ASTNode for InterfaceMember {
 						};
 
 						return Ok(InterfaceMember::Rule {
-							parameter: name.to_owned(),
+							parameter: name,
 							optionality,
 							is_readonly,
 							matching_type: Box::new(matching_type),
@@ -406,10 +406,11 @@ impl ASTNode for InterfaceMember {
 				}
 			} else {
 				let start = reader.get_start();
-				let name = reader.parse_identifier("interface parameter name", false)?;
+				let name = reader.parse_identifier("interface parameter name", false)?.into_owned();
 				// TODO...?
 				let privacy = PublicOrPrivate::Public;
-				PropertyKey::Identifier(name.to_owned(), start.with_length(name.len()), privacy)
+				let position = start.with_length(name.len());
+				PropertyKey::Identifier(name, position, privacy)
 			};
 
 			let type_parameters = reader

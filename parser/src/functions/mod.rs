@@ -545,9 +545,12 @@ impl MethodHeader {
 	}
 
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
+		// , '*'
 		if reader.after_identifier().starts_with(['<', '(', '}', ',', ':']) {
 			MethodHeader::default()
-		} else if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
+		} else if let Some(kind) = reader.is_one_of_keywords(&["get", "set"]) {
+			// TODO if after == *. then break
+			reader.advance(3);
 			match kind {
 				"get" => MethodHeader::Get,
 				"set" => MethodHeader::Set,

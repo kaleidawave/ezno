@@ -49,7 +49,7 @@ impl ASTNode for JSXElement {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('<')?;
-		let tag_name = reader.parse_identifier("JSX element name", false)?.to_owned();
+		let tag_name = reader.parse_identifier("JSX element name", false)?.into_owned();
 		let mut attributes = Vec::new();
 		// TODO spread attributes
 		// Kind of weird / not clear conditions for breaking out of while loop
@@ -161,12 +161,12 @@ impl ASTNode for JSXElement {
 				})?
 				.to_owned();
 
-			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?;
+			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?.into_owned();
 			if tag_name != closing_tag_name {
 				return Err(ParseError::new(
 					crate::ParseErrors::ClosingTagDoesNotMatch {
 						tag_name: &tag_name,
-						closing_tag_name,
+						closing_tag_name: &closing_tag_name,
 					},
 					start.with_length(closing_tag_name.len() + 2),
 				));
@@ -188,7 +188,7 @@ impl ASTNode for JSXElement {
 				return Err(ParseError::new(
 					crate::ParseErrors::ClosingTagDoesNotMatch {
 						tag_name: &tag_name,
-						closing_tag_name,
+						closing_tag_name: &closing_tag_name,
 					},
 					start.with_length(closing_tag_name.len() + 2),
 				));
@@ -275,7 +275,7 @@ impl ASTNode for JSXAttribute {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		let key = reader.parse_identifier("JSX element attribute", false)?.to_owned();
+		let key = reader.parse_identifier("JSX element attribute", false)?.into_owned();
 		if reader.is_operator_advance("=") {
 			let start = reader.get_start();
 			if reader.get_options().jsx.attributes_as_expressions || reader.is_operator_advance("{")

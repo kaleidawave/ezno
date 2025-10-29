@@ -36,8 +36,8 @@ pub fn parse_string(current: &str) -> Result<(Cow<'_, str>, Quoted, u32), String
 			let immediate = &current[idx + 1..];
 			let chr = immediate.chars().next();
 			if let Some(chr) = chr {
-				let after = &immediate[chr.len_utf8()..];
-				let result = escape_character(chr, after, buf.to_mut());
+				let on = &immediate[chr.len_utf8()..];
+				let result = escape_character(chr, on, buf.to_mut());
 				match result {
 					Ok(offset) => {
 						// Skip others
@@ -78,27 +78,27 @@ impl Quoted {
 	}
 }
 
+fn parse_hex(on: &str) -> Result<u32, ()> {
+	let mut value = 0u32;
+	for byte in on.bytes() {
+		value <<= 4; // log2(16) = 4
+		let code = match byte {
+			b'0'..=b'9' => u32::from(byte - b'0'),
+			b'a'..=b'f' => u32::from(byte - b'a') + 10,
+			b'A'..=b'F' => u32::from(byte - b'A') + 10,
+			byte => {
+				eprintln!("bad char {byte:?}!");
+				return Err(());
+			}
+		};
+		value |= code;
+	}
+	Ok(value)
+}
+
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences>
 /// `Ok(true) = skip_next`
 pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usize, ()> {
-	fn parse_hex(on: &str) -> Result<u32, ()> {
-		let mut value = 0u32;
-		for byte in on.bytes() {
-			value <<= 4; // log2(16) = 4
-			let code = match byte {
-				b'0'..=b'9' => u32::from(byte - b'0'),
-				b'a'..=b'f' => u32::from(byte - b'a') + 10,
-				b'A'..=b'F' => u32::from(byte - b'A') + 10,
-				byte => {
-					eprintln!("bad char {byte:?}!");
-					return Err(());
-				}
-			};
-			value |= code;
-		}
-		Ok(value)
-	}
-
 	match chr {
 		'\'' | '\"' | '`' | '\\' => {
 			buf.push(chr);
@@ -158,53 +158,66 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 		}
 		// Unicode escape sequences
 		'u' => {
-			if let Some(after) = after.strip_prefix('{') {
-				if let Some((inner, _)) = after.split_once('}') {
-					// TODO I think this can be multiple characters
-					let code = parse_hex(inner)?;
-					if let Some(chr) = char::from_u32(code) {
-						buf.push(chr);
-						Ok(3 + inner.len())
-					} else {
-						eprintln!("bad code {inner:?}");
-						Err(())
-					}
-				} else {
-					Err(())
-				}
-			} else if let Some(inner) = after.get(0..4) {
-				// TODO no early return here
-				let higher = parse_hex(inner)?;
-				// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
-				let surrogate = after.get(4..10).and_then(|after| after.strip_prefix("\\u"));
-				let (code, count) = if let Some(inner) = surrogate {
-					// TODO no early return here
-					let lower = parse_hex(inner)?;
-					if lower < 0xDC00 || higher < 0xD800 {
-						return Err(());
-					}
-					// 10000_16 + (H − D800_16) × 400_16 + (L − DC00_16)
-					let code = 0x10000 + 0x400 * (higher - 0xD800) + (lower - 0xDC00);
-					(code, 11)
-				} else {
-					(higher, 5)
-				};
-				if let Some(chr) = char::from_u32(code) {
-					buf.push(chr);
-					Ok(count)
-				} else {
-					buf.push('\u{FFFD}');
-					eprintln!("TODO warning here {inner:?}");
-					Ok(count)
-				}
-			} else {
-				Err(())
-			}
+			let (chr, width) = parse_unicode_escape_sequence(after)?;
+			buf.push(chr);
+			Ok(1 + width)
 		}
 		chr => {
 			eprintln!("unexpected escape {chr:?}");
 			Ok(0)
 		}
+	}
+}
+
+/// For string and (some reason) identifiers.
+/// Parses from after `u` character
+pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), ()> {
+	if let Some(on) = on.strip_prefix('{') {
+		if let Some((inner, _)) = on.split_once('}') {
+			// TODO I think this can be multiple characters
+			let code = parse_hex(inner)?;
+			if let Some(chr) = char::from_u32(code) {
+				Ok((chr, 2 + inner.len()))
+			} else {
+				eprintln!("bad code {inner:?}");
+				Err(())
+			}
+		} else {
+			Err(())
+		}
+	} else if let Some(lead) = on.get(0..4) {
+		// TODO no early return here
+		let lead = parse_hex(lead)?;
+		// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
+		let surrogate = on.get(4..10).and_then(|on| on.strip_prefix("\\u"));
+		let (code, count) = if let Some(trail) = surrogate {
+			// TODO no early return here
+			let trail = parse_hex(trail)?;
+			if (0xD800..=0xDBFF).contains(&lead) && (0xDC00..=0xDFFF).contains(&trail) {
+				// https://tc39.es/ecma262/#sec-utf16decodesurrogatepair
+				// "Let cp be (lead - 0xD800) × 0x400 + (trail - 0xDC00) + 0x10000"
+				let code = (lead - 0xD800) * 0x400 + (trail - 0xDC00) + 0x10000;
+				(code, 10)
+			} else {
+				// FUTURE not sure? "a" => single?
+				// "A code unit that is not a leading surrogate and not a trailing surrogate is interpreted as a
+				// code point with the same value"
+				// and
+				// "A code unit that is a leading surrogate or trailing surrogate, but is not part of a surrogate
+				// pair, is interpreted as a code point with the same value."
+				(lead, 4)
+			}
+		} else {
+			(lead, 4)
+		};
+		if let Some(chr) = char::from_u32(code) {
+			Ok((chr, count))
+		} else {
+			eprintln!("TODO warning here {lead:?}");
+			Ok(('\u{FFFD}', count))
+		}
+	} else {
+		Err(())
 	}
 }
 

@@ -149,7 +149,7 @@ impl ASTNode for StatementOrDeclaration {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		if reader.after_identifier().starts_with(':') {
 			let start = reader.get_start();
-			let name = reader.parse_identifier("statement label", true)?.to_owned();
+			let name = reader.parse_identifier("statement label", true)?.into_owned();
 			let _ = reader.expect(':')?;
 			let statement = Statement::from_reader(reader).map(Box::new)?;
 			if statement.0.requires_semi_colon() {
@@ -244,6 +244,11 @@ impl ASTNode for StatementOrDeclaration {
 					.map(Exportable::exported)
 					.map(Box::new)
 					.map(StatementOrDeclaration::Variable)
+			} else if after.starts_with("var") {
+				reader.advance(export_len);
+				VarVariableStatement::from_reader(reader)
+					.map(Exportable::exported)
+					.map(StatementOrDeclaration::VarVariable)
 			} else if crate::lexer::utilities::is_function_header(after) {
 				reader.advance(export_len);
 				let function = StatementFunction::from_reader(reader).map(Exportable::exported)?;
@@ -399,22 +404,16 @@ impl ASTNode for StatementOrDeclaration {
 				Ok(StatementOrDeclaration::Break(None, start.with_length("break".len())))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier("break identifier", true)?;
-				Ok(StatementOrDeclaration::Break(
-					Some(label.to_owned()),
-					start.union(reader.get_end()),
-				))
+				let label = reader.parse_identifier("break identifier", true)?.into_owned();
+				Ok(StatementOrDeclaration::Break(Some(label), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("continue") {
 			if reader.is_semi_colon() {
 				Ok(StatementOrDeclaration::Continue(None, start.with_length("continue".len())))
 			} else {
 				let start = reader.get_start();
-				let label = reader.parse_identifier("continue identifier", true)?;
-				Ok(StatementOrDeclaration::Continue(
-					Some(label.to_owned()),
-					start.union(reader.get_end()),
-				))
+				let label = reader.parse_identifier("continue identifier", true)?.into_owned();
+				Ok(StatementOrDeclaration::Continue(Some(label), start.union(reader.get_end())))
 			}
 		} else if reader.is_keyword_advance("throw") {
 			let expression = MultipleExpression::from_reader(reader)?;

@@ -6,22 +6,23 @@ pub mod template_literal;
 
 use crate::{
 	ExpressionPosition, ListItem, Marker, ParseErrors, ParseResult, Quoted, are_nodes_over_length,
-	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode, functions,
-	statements_and_declarations::ClassDeclaration,
+	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode, functions
 };
 
 use crate::numbers::{BigInt, NumberRepresentation};
+use crate::statements_and_declarations::ClassDeclaration;
 
-use self::{
+pub use self::{
 	assignments::{LHSOfAssignment, VariableOrPropertyAccess},
-	object_literal::ObjectLiteral,
-	operators::{
+	object_literal::ObjectLiteral
+};
+
+use self::operators::{
 		ARROW_FUNCTION_PRECEDENCE, COMMA_PRECEDENCE, CONDITIONAL_TERNARY_PRECEDENCE,
 		CONSTRUCTOR_PRECEDENCE, CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE,
 		IncrementOrDecrement, MEMBER_ACCESS_PRECEDENCE, Operator,
 		PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, YIELD_OPERATORS_PRECEDENCE,
-	},
-};
+	};
 
 use super::jsx::JSXRoot;
 use super::{ASTNode, Block, FunctionBase, ParseError, Span, TypeAnnotation};
@@ -346,7 +347,7 @@ impl Expression {
 						.map(Expression::ArrowFunction);
 				}
 			} else if reader.is_operator_advance("#") {
-				let property_name = reader.parse_identifier("property name", false)?.to_owned();
+				let property_name = reader.parse_identifier("property name", false)?.into_owned();
 				let _ = reader.expect_keyword("in")?;
 				let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
 				let position = start.union(rhs.get_position());
@@ -465,7 +466,8 @@ impl Expression {
 					let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
 					SuperReference::Call { arguments }
 				} else if reader.is_operator_advance(".") {
-					let property = reader.parse_identifier("property identifier", true)?.to_owned();
+					let property =
+						reader.parse_identifier("property identifier", true)?.into_owned();
 					// TODO PropertyReference::Standard { property, is_private }
 					SuperReference::PropertyAccess(PropertyLike::Fixed(property))
 				} else if reader.is_operator_advance("[") {
@@ -562,7 +564,7 @@ impl Expression {
 							.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 					{
 						let identifier =
-							crate::VariableIdentifier::Standard(name.to_owned(), position);
+							crate::VariableIdentifier::Standard(name.into_owned(), position);
 						let is_async = false;
 						return ArrowFunction::from_reader_with_first_parameter(
 							reader, is_async, identifier,
@@ -570,7 +572,7 @@ impl Expression {
 						.map(Box::new)
 						.map(Expression::ArrowFunction);
 					}
-					Expression::VariableReference(name.to_owned(), position)
+					Expression::VariableReference(name.into_owned(), position)
 				}
 				// if let Ok(name) = name {
 				// } else {
@@ -962,7 +964,8 @@ impl Expression {
 						reader.skip();
 						// reader.skip_including_comments();
 						let is_private = reader.is_operator_advance("#");
-						let property = reader.parse_identifier("property name", false)?.to_owned();
+						let property =
+							reader.parse_identifier("property name", false)?.into_owned();
 						PropertyReference::Standard { property, is_private }
 					};
 					let position = top.get_position().union(reader.get_end());

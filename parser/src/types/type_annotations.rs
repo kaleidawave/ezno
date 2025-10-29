@@ -132,7 +132,7 @@ impl ASTNode for AnnotationWithBinder {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let name = if reader.after_identifier().starts_with(':') {
-			let name = reader.parse_identifier("type annotation binder", false)?.to_owned();
+			let name = reader.parse_identifier("type annotation binder", false)?.into_owned();
 			let _ = reader.expect(':')?;
 			Some(name)
 		} else {
@@ -545,7 +545,7 @@ impl TypeAnnotation {
 		} else if reader.is_keyword_advance("false") {
 			TypeAnnotation::BooleanLiteral(false, start.with_length(5))
 		} else if reader.is_keyword_advance("infer") {
-			let name = reader.parse_identifier("infer name", false)?;
+			let name = reader.parse_identifier("infer name", false)?.into_owned();
 			let (position, extends) = if reader.is_keyword_advance("extends") {
 				let extends =
 					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
@@ -554,7 +554,7 @@ impl TypeAnnotation {
 				let position = start.with_length(name.len());
 				(position, None)
 			};
-			TypeAnnotation::Infer { name: name.to_owned(), extends, position }
+			TypeAnnotation::Infer { name, extends, position }
 		} else if reader.is_keyword_advance("asserts") {
 			let predicate = TypeAnnotation::from_reader_with_precedence(reader, parent_kind)?;
 			let position = start.union(predicate.get_position());
@@ -696,9 +696,8 @@ impl TypeAnnotation {
 			let position = start.union(reader.get_end());
 			Self::TemplateLiteral { parts, final_part, position }
 		} else {
-			let name = reader.parse_identifier("type name", false)?;
+			let name = reader.parse_identifier("type name", false)?.into_owned();
 			let position = start.with_length(name.len());
-			let name = name.to_owned();
 
 			let name = TypeName::from_raw(name);
 
@@ -907,7 +906,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			let start = reader.get_start();
 
 			if reader.is_operator_advance("...") {
-				let name = reader.parse_identifier("spread parameter name", true)?.to_owned();
+				let name = reader.parse_identifier("spread parameter name", true)?.into_owned();
 				// // TODO is this a good feature
 				// let name = if reader.after_identifier().starts_with(":") {
 				// 	Some(WithComment::<VariableField>::from_reader(reader)?)

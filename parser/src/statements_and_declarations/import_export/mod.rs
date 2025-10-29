@@ -181,13 +181,14 @@ impl ImportExportName {
 			Ok((ImportExportName::Quoted(content.into_owned(), quoted), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
-			Ok((ImportExportName::Reference("default".into()), start.with_length("default".len())))
+			let position = start.with_length("default".len());
+			Ok((ImportExportName::Reference("default".into()), position))
 		} else if reader.is_operator(",") {
 			let position = start.with_length(0);
 			let marker = reader.new_partial_point_marker(position);
 			Ok((ImportExportName::Marker(marker), position))
 		} else {
-			let identifier = reader.parse_identifier("import or export alias", false)?.to_owned();
+			let identifier = reader.parse_identifier("import or export alias", false)?.into_owned();
 			if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
 				let position = start.with_length(0);
 				Ok((ImportExportName::Marker(reader.new_partial_point_marker(position)), position))

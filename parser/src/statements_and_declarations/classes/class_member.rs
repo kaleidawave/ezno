@@ -104,7 +104,7 @@ impl ASTNode for ClassMember {
 		// Special index type annotation. And needed for computed keys
 		if reader.starts_with('[') && reader.after_identifier_offset(1).starts_with(':') {
 			reader.advance(1);
-			let name = reader.parse_identifier("class indexer", false)?.to_owned();
+			let name = reader.parse_identifier("class indexer", false)?.into_owned();
 			reader.expect(':')?;
 			let indexer_type = TypeAnnotation::from_reader(reader)?;
 			reader.expect(']')?;

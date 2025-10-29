@@ -36,7 +36,8 @@ impl ASTNode for VariableIdentifier {
 			let span = start.with_length(0);
 			Ok(Self::Marker(reader.new_partial_point_marker(span), span))
 		} else {
-			let identifier = reader.parse_identifier("variable identifier", true)?;
+			let enforce = false;
+			let identifier = reader.parse_identifier("variable identifier", enforce)?;
 			let position = start.with_length(identifier.len());
 			// TODO
 			if identifier == "let" {
@@ -47,7 +48,7 @@ impl ASTNode for VariableIdentifier {
 				let span = start.with_length(0);
 				Ok(Self::Marker(reader.new_partial_point_marker(span), span))
 			} else {
-				Ok(Self::Standard(identifier.to_owned(), position))
+				Ok(Self::Standard(identifier.into_owned(), position))
 			}
 		}
 	}
@@ -142,7 +143,7 @@ impl ASTNode for VariableField {
 				let _ = reader.expect('{')?;
 				let (members, spread) = bracketed_items_from_reader(reader, "}")?;
 				return Ok(Self::Object {
-					class_name: Some(class_name.to_owned()),
+					class_name: Some(class_name.into_owned()),
 					members,
 					spread,
 					position: start.union(reader.get_end()),

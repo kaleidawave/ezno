@@ -340,140 +340,78 @@ impl<'a> Lexer<'a> {
 		self.head += count;
 	}
 
+	// TODO
+	// pub fn starts_with_identifier(&self) -> bool {
+	// 	fn valid_start_character(chr: char) -> bool {
+	// 		unicode_ident::is_xid_start(chr) || matches!(chr, '\\' | '_' | '$' | '#')
+	// 	}
+
+	// 	self.skip();
+	// 	self.get_current().starts_with(valid_start_character)
+	// }
+
 	pub fn parse_identifier(
 		&mut self,
 		location: &'static str,
 		check_reserved: bool,
-	) -> Result<&'a str, ParseError> {
-		enum State {
-			Standard,
-			StartOfUnicode,
-			UnicodeEscape(u8),
-			UnicodeBracedEscape { first_bracket: bool },
+	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+		fn valid_start_character(chr: char) -> bool {
+			unicode_ident::is_xid_start(chr) || matches!(chr, '\\' | '_' | '$')
+		}
+
+		fn valid_continue_character(chr: char) -> bool {
+			unicode_ident::is_xid_continue(chr) || chr == '$'
 		}
 
 		self.skip();
-		let current = self.get_current();
 		let start = self.get_start();
-		let mut iter = current.char_indices();
-		let mut state = State::Standard;
-		if let Some((_, chr)) = iter.next() {
-			if let '\\' = chr {
-				state = State::StartOfUnicode;
-			} else {
-				// Note `is_alphabetic` here
-				let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
-				if !first_is_valid {
-					return Err(ParseError::new(
-						ParseErrors::ExpectedIdentifier { location },
-						start.with_length(chr.len_utf8()),
-					));
-				}
-			}
-		} else {
+		let current = self.get_current();
+
+		if !current.starts_with(valid_start_character) {
 			return Err(ParseError::new(
 				ParseErrors::ExpectedIdentifier { location },
-				start.with_length(0),
+				start.with_length(1),
 			));
 		}
 
-		for (idx, chr) in iter {
-			match state {
-				State::UnicodeEscape(steps) => {
-					if !matches!(chr, '0'..='9' | 'A'..='F') {
-						return Err(ParseError::new(
-							ParseErrors::InvalidUnicodeCodePointInIdentifier,
-							start.with_length(idx + chr.len_utf8()),
-						));
-					}
-					if steps == 1 {
-						state = State::Standard;
-					} else {
-						state = State::UnicodeEscape(steps - 1);
-					}
-				}
-				State::UnicodeBracedEscape { ref mut first_bracket } => {
-					if *first_bracket {
-						if chr == '}' {
-							state = State::Standard;
-						} else if !matches!(chr, '0'..='9' | 'A'..='F') {
-							return Err(ParseError::new(
-								ParseErrors::InvalidUnicodeCodePointInIdentifier,
-								start.with_length(idx + chr.len_utf8()),
-							));
-						}
-					} else if chr == '{' {
-						*first_bracket = true;
+		let mut last = 0;
+		let mut value = std::borrow::Cow::Borrowed("");
+		for (idx, matched) in current.match_indices(|c: char| !valid_continue_character(c)) {
+			if idx < last {
+				continue;
+			}
+			if matched == "\\" {
+				if let Some(after) = &current[idx + 1..].strip_prefix('u') {
+					if let Ok((chr, width)) = crate::strings::parse_unicode_escape_sequence(after) {
+						value.to_mut().push(chr);
+						last = idx + 2 + width;
 					} else {
 						return Err(ParseError::new(
-							ParseErrors::InvalidUnicodeCodePointInIdentifier,
-							start.with_length(idx + chr.len_utf8()),
+							ParseErrors::ExpectedIdentifier { location },
+							start.with_length(idx),
 						));
 					}
+				} else {
+					return Err(ParseError::new(
+						ParseErrors::ExpectedIdentifier { location },
+						start.with_length(idx),
+					));
 				}
-				State::StartOfUnicode => {
-					if let 'u' = chr {
-						let next_char = current[(idx + 1)..].chars().next();
-						state = if let Some('{') = next_char {
-							State::UnicodeBracedEscape { first_bracket: false }
-						} else if let Some('0'..='9' | 'A'..='F') = next_char {
-							State::UnicodeEscape(4)
-						} else {
-							return Err(ParseError::new(
-								ParseErrors::InvalidUnicodeCodePointInIdentifier,
-								start.with_length(idx + chr.len_utf8()),
-							));
-						};
-					} else {
-						return Err(ParseError::new(
-							ParseErrors::InvalidUnicodeCodePointInIdentifier,
-							start.with_length(idx + chr.len_utf8()),
-						));
-					}
-				}
-				State::Standard => {
-					if let '\\' = chr {
-						state = State::StartOfUnicode;
-					} else {
-						// Note `is_alphanumeric` here
-						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
-						// Expanded type names can contains '.'
-						let valid_type_name = location == "type name" && chr == '.';
-						if !is_valid && !valid_type_name {
-							let value = &current[..idx];
-							let is_invalid = check_reserved
-								&& !crate::lexer::utilities::is_valid_variable_identifier(value);
-							let result = if is_invalid {
-								Err(ParseError::new(
-									ParseErrors::ReservedIdentifier,
-									start.with_length(value.len()),
-								))
-							} else {
-								self.head += idx as u32;
-								Ok(value)
-							};
-							return result;
-						}
-					}
-				}
+			} else {
+				value += &current[last..idx];
+				last = idx;
+				break;
 			}
 		}
-
-		if !matches!(state, State::Standard) {
-			return Err(ParseError::new(
-				ParseErrors::InvalidUnicodeCodePointInIdentifier,
-				start.with_length(current.len()),
-			));
+		if last == 0 {
+			value += current;
+			last = current.len();
 		}
-
-		// If left over
-		let is_invalid =
-			check_reserved && !crate::lexer::utilities::is_valid_variable_identifier(current);
-		if is_invalid {
-			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(current.len())))
+		self.advance(last as u32);
+		if check_reserved && !crate::lexer::utilities::is_valid_variable_identifier(&value) {
+			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(value.len())))
 		} else {
-			self.head += current.len() as u32;
-			Ok(current)
+			Ok(value)
 		}
 	}
 
