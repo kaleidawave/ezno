@@ -448,8 +448,9 @@ impl ASTNode for StatementOrDeclaration {
 			let marker_id = reader.new_partial_point_marker(position);
 			Ok(StatementOrDeclaration::Marker(marker_id, position))
 		} else {
+			// TODO what about markers here?
 			#[cfg(feature = "extras")]
-			if reader.is_keyword("from") {
+			if reader.is_keyword("from") && reader.after_identifier().starts_with(['"', '\'']) {
 				return ImportDeclaration::from_reader_reversed(reader)
 					.map(Box::new)
 					.map(StatementOrDeclaration::Import);

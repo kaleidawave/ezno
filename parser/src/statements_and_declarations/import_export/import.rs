@@ -178,7 +178,7 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 	reader.expect_keyword("import")?;
 
 	#[cfg(feature = "extras")]
-	let is_deferred = reader.is_operator_advance("deferred");
+	let is_deferred = reader.is_operator_advance("defer");
 
 	let is_type_annotation_import_only = reader.is_operator_advance("type");
 

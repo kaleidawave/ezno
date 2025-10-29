@@ -14,7 +14,6 @@ pub struct ParsingState {
 }
 
 pub struct Lexer<'a> {
-	// last: u32,
 	pub(crate) head: u32,
 	script: &'a str,
 	offset: u32,
@@ -285,9 +284,12 @@ impl<'a> Lexer<'a> {
 	/// TODO `.` if not number etc.
 	#[must_use]
 	pub fn starts_with_expression_delimiter(&self) -> bool {
-		let current = self.get_current();
-		IntoIterator::into_iter(["=", ",", ":", "?", "]", ")", "}", ";"])
-			.any(|expression_delimiter| current.starts_with(expression_delimiter))
+		let current = self.get_current().trim_start();
+		if let Some('=' | ',' | ':' | '?' | ']' | ')' | '}' | ';') | None = current.chars().next() {
+			true
+		} else {
+			false
+		}
 	}
 
 	#[must_use]

@@ -403,10 +403,17 @@ impl Expression {
 					slice => unreachable!("{slice:?}"),
 				};
 
-				let operand =
-					Expression::from_reader_with_precedence(reader, operator.precedence())?;
-				let position = start.union(operand.get_position());
-				Expression::UnaryOperation { operator, operand: Box::new(operand), position }
+				if let UnaryOperator::Await = operator
+					&& reader.starts_with_expression_delimiter()
+				{
+					let position = start.with_length(5);
+					Expression::VariableReference("await".to_owned(), position)
+				} else {
+					let operand =
+						Expression::from_reader_with_precedence(reader, operator.precedence())?;
+					let position = start.union(operand.get_position());
+					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
+				}
 			} else if reader.is_keyword_advance("yield") {
 				let yielded = if reader.starts_with_expression_delimiter() {
 					None
@@ -483,34 +490,41 @@ impl Expression {
 				Expression::SuperExpression(inner, start.union(reader.get_end()))
 			} else if reader.is_keyword_advance("import") {
 				if reader.is_operator_advance(".") {
-					let mut expr = None;
 					#[cfg(feature = "extras")]
-					{
-						let is_source = reader.is_keyword_advance("source");
-						// TODO
-						let _is_defer = reader.is_keyword_advance("defer");
-						if is_source {
-							reader.expect('(')?;
-							let location =
-								crate::statements_and_declarations::import_export::ImportLocation::from_reader(
-									reader,
-								)?;
-							reader.expect(')')?;
-							let position = start.union(reader.get_end());
-							expr = Some(Expression::Import(ImportExpression::ImportSource {
-								location,
-								position,
-							}));
-						}
+					if reader.is_keyword_advance("source") {
+						reader.expect('(')?;
+						let path = Box::new(Expression::from_reader(reader)?);
+						reader.expect(')')?;
+						let position = start.union(reader.get_end());
+						Expression::Import(ImportExpression::ImportSource {
+							path,
+							position,
+						})
+					} else if reader.is_keyword_advance("defer") {
+						reader.expect('(')?;
+						let path = Box::new(Expression::from_reader(reader)?);
+						reader.expect(')')?;
+						let position = start.union(reader.get_end());
+						Expression::Import(ImportExpression::ImportDefer { path, position })
+					} else if reader.is_keyword_advance("meta") {
+						let position = start.union(reader.get_end());
+						Expression::Import(ImportExpression::ImportMeta(position))
+					} else {
+						return Err(crate::lexer::utilities::expected_one_of_items(
+							reader,
+							&["source", "defer", "meta"],
+						));
 					}
 
-					if let Some(expr) = expr {
-						expr
+					#[cfg(not(feature = "extras"))]
+					if reader.is_keyword_advance("meta") {
+						let position = start.union(reader.get_end());
+						Expression::Import(ImportExpression::ImportMeta(position))
 					} else {
-						let _ = reader.expect_keyword("meta")?;
-						Expression::Import(ImportExpression::ImportMeta(
-							start.union(reader.get_end()),
-						))
+						return Err(crate::lexer::utilities::expected_one_of_items(
+							reader,
+							&["source", "defer", "meta"],
+						));
 					}
 				} else if reader.is_operator_advance("(") {
 					let path = Expression::from_reader(reader)?;
@@ -518,7 +532,8 @@ impl Expression {
 					//     state.constant_imports.push(path.clone());
 					// }
 
-					let options = if reader.is_operator_advance(",") {
+					// TODO may cause issue?
+					let options = if reader.is_operator_advance(",") && !reader.is_operator(")") {
 						Some(Box::new(Expression::from_reader(reader)?))
 					} else {
 						None
@@ -623,7 +638,7 @@ impl Expression {
 			"??" => AfterFirst::BinaryOperator(BinaryOperator::NullCoalescing),
 			"??=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::NullCoalescing),
 			"&&" => AfterFirst::BinaryOperator(BinaryOperator::LogicalAnd),
-			"&&=" => AfterFirst::BinaryOperator(BinaryOperator::LogicalAnd),
+			"&&=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::LogicalAnd),
 			"||" => AfterFirst::BinaryOperator(BinaryOperator::LogicalOr),
 			"||=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::LogicalOr),
 			"&" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseAnd),
@@ -1480,9 +1495,9 @@ impl Expression {
 				buf.push_str("import.meta");
 			}
 			#[cfg(feature = "extras")]
-			Self::Import(ImportExpression::ImportSource { location, .. }) => {
+			Self::Import(ImportExpression::ImportSource { path, .. }) => {
 				buf.push_str("import.source(");
-				location.to_string_from_buffer(buf);
+				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
 			#[cfg(feature = "extras")]
@@ -2037,7 +2052,7 @@ pub enum ImportExpression {
 	/// [Proposal](https://github.com/tc39/proposal-source-phase-imports)
 	#[cfg(feature = "extras")]
 	ImportSource {
-		location: crate::statements_and_declarations::import_export::ImportLocation,
+		path: Box<Expression>,
 		position: Span,
 	},
 	/// [Proposal](https://github.com/tc39/proposal-defer-import-eval)

@@ -87,7 +87,7 @@ fn parse_hex(on: &str) -> Result<u32, ()> {
 			b'a'..=b'f' => u32::from(byte - b'a') + 10,
 			b'A'..=b'F' => u32::from(byte - b'A') + 10,
 			byte => {
-				eprintln!("bad char {byte:?}!");
+				eprintln!("bad hex char {chr:?}!", chr = char::from(byte));
 				return Err(());
 			}
 		};
@@ -190,7 +190,9 @@ pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), ()> {
 		let lead = parse_hex(lead)?;
 		// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
 		let surrogate = on.get(4..10).and_then(|on| on.strip_prefix("\\u"));
-		let (code, count) = if let Some(trail) = surrogate {
+		let (code, count) = if let Some(trail) = surrogate
+			&& !trail.starts_with('{')
+		{
 			// TODO no early return here
 			let trail = parse_hex(trail)?;
 			if (0xD800..=0xDBFF).contains(&lead) && (0xDC00..=0xDFFF).contains(&trail) {

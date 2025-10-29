@@ -5,7 +5,7 @@ use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{Marker, ParseError, ParseErrors, Quoted, derive_ASTNode};
+use crate::{Marker, Quoted, derive_ASTNode};
 
 pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
 	const PREFIX: bool;
@@ -19,13 +19,15 @@ impl ImportOrExport for export::ExportDeclaration {
 	const PREFIX: bool = false;
 }
 
+/// These are actually separate, but we will allow it
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 #[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportExportPart<T: ImportOrExport> {
 	pub just_type: bool,
-	pub name: crate::VariableIdentifier,
+	/// Strings here are against specification for imports
+	pub name: ImportExportName,
 	pub alias: Option<ImportExportName>,
 	pub position: Span,
 	#[visit_skip_field]
@@ -52,10 +54,11 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 		let just_type = reader.is_keyword_advance("type");
 
 		if U::PREFIX {
-			let (alias, position) = ImportExportName::from_reader(reader)?;
+			let (name, position) = ImportExportName::from_reader(reader)?;
 			if reader.is_keyword_advance("as") {
-				let name = crate::VariableIdentifier::from_reader(reader)?;
-				let position = position.union(name.get_position());
+				let alias = name;
+				let (name, end) = ImportExportName::from_reader(reader)?;
+				let position = position.union(end);
 				Ok(Self {
 					just_type,
 					name,
@@ -63,19 +66,11 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 					position,
 					_marker: Default::default(),
 				})
-			} else if let ImportExportName::Reference(name) = alias {
-				let name = crate::VariableIdentifier::Standard(name, position);
-				Ok(Self { just_type, name, alias: None, position, _marker: Default::default() })
 			} else {
-				let (found, position) = crate::lexer::utilities::next_item(reader);
-				Err(ParseError::new(
-					ParseErrors::ExpectedKeyword { expected: "as", found },
-					position,
-				))
+				Ok(Self { just_type, name, alias: None, position, _marker: Default::default() })
 			}
 		} else {
-			let name = crate::VariableIdentifier::from_reader(reader)?;
-			let mut position = name.get_position();
+			let (name, mut position) = ImportExportName::from_reader(reader)?;
 			let alias = if reader.is_keyword_advance("as") {
 				let (alias, end) = ImportExportName::from_reader(reader)?;
 				position = position.union(end);
@@ -126,7 +121,7 @@ fn import_export_parts_to_string_from_buffer<T: source_map::ToString, U: ImportO
 	options.push_gap_optionally(buf);
 	if options.pretty {
 		let mut parts: Vec<&ImportExportPart<U>> = parts.iter().collect();
-		parts.sort_unstable_by_key(|part| part.name.as_option_str().unwrap_or_default());
+		parts.sort_unstable_by_key(|part| part.name.as_str());
 		for (at_end, part) in parts.iter().endiate() {
 			part.to_string_from_buffer(buf, options, local);
 			if !at_end {
@@ -158,6 +153,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 }
 
 /// TODO `default` should have its own variant?
+/// ModuleExportName
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
@@ -213,6 +209,13 @@ impl ImportExportName {
 				buf.push(q.as_char());
 			}
 			ImportExportName::Marker(_) => {}
+		}
+	}
+
+	pub(crate) fn as_str(&self) -> &str {
+		match self {
+			Self::Reference(on) | Self::Quoted(on, _) => on,
+			Self::Marker(..) => "",
 		}
 	}
 }
