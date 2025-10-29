@@ -7,6 +7,13 @@ pub enum Context {
 	Octal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ParsedNumberLiteral<'a> {
+	Number(f64),
+	/// FUTURE could be some other type
+	BigInt(&'a str),
+}
+
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type NumberRepresentation = f64;
 
@@ -148,18 +155,12 @@ pub fn parse_number(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()>
 					Ok((ParsedNumberLiteral::Number(value), count))
 				}
 			}
+			Some('n') => Ok((ParsedNumberLiteral::BigInt("0"), 2)),
 			Some(_) | None => Ok((ParsedNumberLiteral::Number(0f64), 1)),
 		}
 	} else {
 		parse_no_specifier(current)
 	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ParsedNumberLiteral<'a> {
-	Number(f64),
-	/// FUTURE could be some other type
-	BigInt(&'a str),
 }
 
 fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()> {
@@ -179,7 +180,7 @@ fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), (
 	}
 	let source = &current[..count];
 
-	if current[count..].ends_with('n') {
+	if current[count..].starts_with('n') {
 		// TODO do we need to check decimals and exponents here
 		Ok((ParsedNumberLiteral::BigInt(source), count as u32 + 1))
 	} else {
@@ -291,6 +292,7 @@ mod tests {
 
 	#[test]
 	fn big_ints() {
+		assert_eq!(parse_number("10n + "), Ok((n("10"), 3)));
 		assert_eq!(parse_number("9007199254740991n"), Ok((n("9007199254740991"), 17)));
 		assert_eq!(parse_number("0x1fffffffffffffn"), Ok((n("0x1fffffffffffff"), 17)));
 		assert_eq!(parse_number("0o377777777777777777n"), Ok((n("0o377777777777777777"), 21)));

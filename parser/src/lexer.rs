@@ -573,8 +573,8 @@ impl<'a> Lexer<'a> {
 	pub fn parse_number_literal(
 		&mut self,
 	) -> Result<(crate::numbers::ParsedNumberLiteral<'a>, u32), ParseError> {
-		let value = self.get_current();
-		let result = crate::numbers::parse_number(value);
+		let current = self.get_current();
+		let result = crate::numbers::parse_number(current);
 		match result {
 			Ok((value, count)) => {
 				self.advance(count);
