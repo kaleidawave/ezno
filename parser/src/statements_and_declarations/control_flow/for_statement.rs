@@ -1,15 +1,14 @@
-use crate::{
-	ParseError, ParseErrors, WithComment,
-	ast::MultipleExpression,
-	block::BlockOrSingleStatement,
-	derive_ASTNode,
-	statements_and_declarations::variables::{
-		VarVariableStatement, VariableDeclaration, VariableField, VariableKeyword,
-	},
+use crate::expressions::{LHSOfAssignment, MultipleExpression};
+use crate::statements_and_declarations::using::UsingDeclaration;
+use crate::statements_and_declarations::variables::{
+	VarVariableStatement, VariableDeclaration, VariableField, VariableKeyword,
 };
-use visitable_derive::Visitable;
+use crate::{
+	ASTNode, Expression, ParseError, ParseErrors, ParseResult, Span, block::BlockOrSingleStatement,
+	derive_ASTNode,
+};
 
-use crate::{ASTNode, Expression, ParseResult, Span};
+use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -61,7 +60,7 @@ impl ASTNode for ForLoopStatement {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[apply(derive_ASTNode)]
 pub enum VariableKeywordOrUsing {
 	Const,
@@ -74,24 +73,41 @@ pub enum VariableKeywordOrUsing {
 #[apply(derive_ASTNode)]
 pub enum ForLoopStatementInitialiser {
 	VariableDeclaration(VariableDeclaration),
-	UsingDeclaration(super::super::using::UsingDeclaration),
-	VarStatement(VarVariableStatement),
+	UsingDeclaration(UsingDeclaration),
+	VarVariableStatement(VarVariableStatement),
 	Expression(Box<MultipleExpression>),
+}
+
+#[derive(Debug, Clone, Visitable)]
+#[apply(derive_ASTNode)]
+pub enum VariableOrAssignable {
+	Variable(VariableKeyword, VariableField, Option<crate::TypeAnnotation>),
+	Assignable(LHSOfAssignment),
+}
+
+#[derive(Debug, Clone, Visitable)]
+#[apply(derive_ASTNode)]
+pub enum VariableUsingOrAssignable {
+	Variable(VariableKeyword, VariableField, Option<crate::TypeAnnotation>),
+	Using {
+		is_await: bool,
+		// TODO variable identifier type
+		name: String,
+	},
+	Assignable(LHSOfAssignment),
 }
 
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ForLoopCondition {
 	ForOf {
-		keyword: Option<VariableKeywordOrUsing>,
-		variable: WithComment<VariableField>,
-		of: Box<Expression>,
 		is_await: bool,
+		lhs: VariableUsingOrAssignable,
+		of: Box<Expression>,
 		position: Span,
 	},
 	ForIn {
-		keyword: Option<VariableKeyword>,
-		variable: WithComment<VariableField>,
+		lhs: VariableOrAssignable,
 		/// Yes `of` is single expression, `in` is multiple
 		r#in: Box<MultipleExpression>,
 		position: Span,
@@ -114,72 +130,11 @@ impl ASTNode for ForLoopCondition {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.expect('(')?;
-		reader.skip();
-
-		let start = reader.get_start();
-
-		// Figure out if after variable declaration there exists "in" or "of", or something assignment like
-		// TODO temp `after_variable_start` implementation
-		let after_stuff = reader.after_variable_start();
-
-		let condition = if after_stuff.starts_with("in") {
-			let keyword = if reader.is_keyword_advance("const") {
-				Some(VariableKeyword::Const)
-			} else if reader.is_keyword_advance("let") {
-				Some(VariableKeyword::Let)
-			} else if reader.is_keyword_advance("var") {
-				Some(VariableKeyword::Var)
-			} else {
-				None
-			};
-
-			let variable = WithComment::<VariableField>::from_reader(reader)?;
-
-			let _ = reader.expect_keyword("in")?;
-
-			let r#in = MultipleExpression::from_reader(reader).map(Box::new)?;
-			let position = start.union(r#in.get_position());
-			Self::ForIn { variable, keyword, r#in, position }
-		} else if after_stuff.starts_with("of") {
-			let keyword = if reader.is_keyword_advance("const") {
-				Some(VariableKeywordOrUsing::Const)
-			} else if reader.is_keyword_advance("let") {
-				Some(VariableKeywordOrUsing::Let)
-			} else if reader.is_keyword_advance("var") {
-				Some(VariableKeywordOrUsing::Var)
-			} else if reader.is_keyword_advance("using") {
-				Some(VariableKeywordOrUsing::Using)
-			} else {
-				None
-			};
-
-			let variable = WithComment::<VariableField>::from_reader(reader)?;
-
-			let _ = reader.expect_keyword("of")?;
-
-			let of = Expression::from_reader(reader).map(Box::new)?;
-			let position = start.union(of.get_position());
-
-			// Not great `is_await`, set from above
-			Self::ForOf { variable, keyword, of, position, is_await: false }
-		} else {
-			let initialiser = if reader.is_one_of_keywords(&["const", "let"]).is_some() {
-				let declaration = VariableDeclaration::from_reader(reader)?;
-				Some(ForLoopStatementInitialiser::VariableDeclaration(declaration))
-			} else if reader.is_keyword("var") {
-				let stmt = VarVariableStatement::from_reader(reader)?;
-				Some(ForLoopStatementInitialiser::VarStatement(stmt))
-			} else if reader.is_keyword("using") {
-				let stmt = super::super::using::UsingDeclaration::from_reader(reader)?;
-				Some(ForLoopStatementInitialiser::UsingDeclaration(stmt))
-			} else if reader.is_operator(";") {
-				None
-			} else {
-				let expr = MultipleExpression::from_reader(reader).map(Box::new)?;
-				Some(ForLoopStatementInitialiser::Expression(expr))
-			};
-
+		fn parse_statements(
+			reader: &mut crate::Lexer,
+			initialiser: Option<ForLoopStatementInitialiser>,
+			start: source_map::Start,
+		) -> ParseResult<ForLoopCondition> {
 			let _semi_colon_one = reader.expect(';')?;
 			let condition = if reader.is_operator(";") {
 				None
@@ -194,7 +149,196 @@ impl ASTNode for ForLoopCondition {
 			};
 
 			let position = start.union(reader.get_end());
-			Self::Statements { initialiser, condition, afterthought, position }
+			Ok(ForLoopCondition::Statements { initialiser, condition, afterthought, position })
+		}
+
+		fn parse_using(
+			reader: &mut crate::Lexer,
+			is_await: bool,
+			start: source_map::Start,
+		) -> ParseResult<ForLoopCondition> {
+			let name = reader.parse_identifier("using name", true)?.into_owned();
+			if reader.is_keyword_advance("of") {
+				let lhs = VariableUsingOrAssignable::Using { name, is_await };
+				let of = Box::new(Expression::from_reader(reader)?);
+				let position = start.union(reader.get_end());
+				Ok(ForLoopCondition::ForOf { is_await: false, lhs, of, position })
+			} else {
+				reader.expect_operator("=")?;
+				let expression = Expression::from_reader(reader)?;
+				let mut bindings = vec![(name, expression)];
+				while reader.is_operator_advance(",") {
+					let name = reader.parse_identifier("using name", true)?.into_owned();
+					reader.expect_operator("=")?;
+					let expression = Expression::from_reader(reader)?;
+					bindings.push((name, expression));
+				}
+				let position = start.union(reader.get_end());
+				let declaration = UsingDeclaration { is_await, bindings, position };
+				let initialiser = Some(ForLoopStatementInitialiser::UsingDeclaration(declaration));
+				parse_statements(reader, initialiser, start)
+			}
+		}
+
+		fn parse_let_const_var(
+			reader: &mut crate::Lexer,
+			kind: VariableKeyword,
+			start: source_map::Start,
+		) -> ParseResult<ForLoopCondition> {
+			let name = VariableField::from_reader(reader)?;
+			let type_annotation = if reader.is_operator_advance(":") {
+				let annotation = crate::TypeAnnotation::from_reader(reader)?;
+				crate::lexer::utilities::assert_type_annotations(
+					reader,
+					annotation.get_position(),
+				)?;
+				Some(annotation)
+			} else {
+				None
+			};
+			if reader.is_keyword_advance("of") {
+				let lhs = VariableUsingOrAssignable::Variable(kind, name, type_annotation);
+				let of = Box::new(Expression::from_reader(reader)?);
+				let position = start.union(reader.get_end());
+				Ok(ForLoopCondition::ForOf { is_await: false, lhs, of, position })
+			} else if reader.is_keyword_advance("in") {
+				let lhs = VariableOrAssignable::Variable(kind, name, type_annotation);
+				let r#in = Box::new(MultipleExpression::from_reader(reader)?);
+				let position = start.union(reader.get_end());
+				Ok(ForLoopCondition::ForIn { lhs, r#in, position })
+			} else {
+				let expression = if reader.is_operator_advance("=") {
+					Some(Expression::from_reader(reader)?)
+				} else {
+					None
+				};
+				let position = start.union(reader.get_end());
+				let mut declarations = vec![crate::variables::VariableDeclarationItem {
+					name: crate::WithComment::None(name),
+					type_annotation,
+					expression,
+					position,
+				}];
+
+				while reader.is_operator_advance(",") {
+					let value = crate::variables::VariableDeclarationItem::from_reader(reader)?;
+
+					if value.expression.is_none() {
+						if let VariableKeyword::Const = kind {
+							return Err(crate::ParseError::new(
+								crate::ParseErrors::ConstDeclarationRequiresValue,
+								value.name.get_ast_ref().get_position(),
+							));
+						}
+						if !matches!(value.name.get_ast_ref(), VariableField::Name(_)) {
+							return Err(crate::ParseError::new(
+								crate::ParseErrors::DestructuringRequiresValue,
+								value.name.get_ast_ref().get_position(),
+							));
+						}
+					}
+
+					declarations.push(value);
+					if !reader.is_operator_advance(",") {
+						break;
+					}
+				}
+				match kind {
+					VariableKeyword::Let => {
+						let variable_declaration = VariableDeclaration {
+							kind: crate::variables::VariableDeclarationKeyword::Let,
+							declarations,
+							position,
+						};
+						let initialiser = Some(ForLoopStatementInitialiser::VariableDeclaration(
+							variable_declaration,
+						));
+						parse_statements(reader, initialiser, start)
+					}
+					VariableKeyword::Const => {
+						let variable_declaration = VariableDeclaration {
+							kind: crate::variables::VariableDeclarationKeyword::Let,
+							declarations,
+							position,
+						};
+						let initialiser = Some(ForLoopStatementInitialiser::VariableDeclaration(
+							variable_declaration,
+						));
+						parse_statements(reader, initialiser, start)
+					}
+					VariableKeyword::Var => {
+						let variable_statement = VarVariableStatement { declarations, position };
+						let initialiser = Some(ForLoopStatementInitialiser::VarVariableStatement(
+							variable_statement,
+						));
+						parse_statements(reader, initialiser, start)
+					}
+				}
+			}
+		}
+
+		reader.expect('(')?;
+		reader.skip();
+
+		let start = reader.get_start();
+
+		// TODO copy using+await to statment parsing
+		let condition = if reader.is_keyword_advance("using") {
+			parse_using(reader, false, start)?
+		} else if reader.is_keyword_advance("await") {
+			reader.skip();
+			if reader.is_keyword_advance("using") {
+				parse_using(reader, true, start)?
+			} else {
+				let expression = crate::expressions::parse_after_await(reader, start)?;
+				let expression = MultipleExpression::from_first_expression(reader, expression)?;
+				let initialiser =
+					Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
+				parse_statements(reader, initialiser, start)?
+			}
+		} else if reader.is_keyword_advance("let") {
+			parse_let_const_var(reader, VariableKeyword::Let, start)?
+		} else if reader.is_keyword_advance("var") {
+			parse_let_const_var(reader, VariableKeyword::Let, start)?
+		} else if reader.is_keyword_advance("const") {
+			parse_let_const_var(reader, VariableKeyword::Let, start)?
+		} else if reader.is_operator(";") {
+			parse_statements(reader, None, start)?
+		} else {
+			let expression = Expression::from_reader(reader)?;
+			match expression {
+				Expression::SpecialOperators(
+					crate::expressions::SpecialOperators::Of { lhs, rhs },
+					position,
+				) => {
+					let lhs = LHSOfAssignment::try_from(*lhs)?;
+					let lhs = VariableUsingOrAssignable::Assignable(lhs);
+					let of = rhs;
+					Self::ForOf { is_await: false, lhs, of, position }
+				}
+				Expression::SpecialOperators(
+					crate::expressions::SpecialOperators::In { lhs, rhs },
+					_,
+				) => {
+					let lhs = match lhs {
+						crate::expressions::InExpressionLHS::PrivateProperty(_) => {
+							todo!("error")
+						}
+						crate::expressions::InExpressionLHS::Expression(expression) => *expression,
+					};
+					let lhs = LHSOfAssignment::try_from(lhs)?;
+					let lhs = VariableOrAssignable::Assignable(lhs);
+					let r#in = Box::new(MultipleExpression::from_first_expression(reader, *rhs)?);
+					let position = start.union(reader.get_end());
+					Self::ForIn { lhs, r#in, position }
+				}
+				expression => {
+					let expression = MultipleExpression::from_first_expression(reader, expression)?;
+					let initialiser =
+						Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
+					parse_statements(reader, initialiser, start)?
+				}
+			}
 		};
 		reader.expect(')')?;
 		Ok(condition)
@@ -208,26 +352,49 @@ impl ASTNode for ForLoopCondition {
 	) {
 		buf.push('(');
 		match self {
-			Self::ForOf { keyword, variable, of, position: _, is_await: _ } => {
-				if let Some(keyword) = keyword {
-					let keyword = match keyword {
-						VariableKeywordOrUsing::Const => "const ",
-						VariableKeywordOrUsing::Let => "let ",
-						VariableKeywordOrUsing::Var => "var ",
-						VariableKeywordOrUsing::Using => "using ",
-					};
-					buf.push_str(keyword);
+			// `is_await` is printed in the parent of this
+			Self::ForOf { lhs, of, is_await: _, position: _ } => {
+				match lhs {
+					VariableUsingOrAssignable::Variable(kw, field, type_annotation) => {
+						buf.push_str(kw.as_str());
+						field.to_string_from_buffer(buf, options, local);
+						if let (true, Some(type_annotation)) =
+							(options.include_type_annotations, &type_annotation)
+						{
+							buf.push_str(": ");
+							type_annotation.to_string_from_buffer(buf, options, local);
+						}
+					}
+					VariableUsingOrAssignable::Using { is_await, name } => {
+						if *is_await {
+							buf.push_str("await ");
+						}
+						buf.push_str(&name);
+					}
+					VariableUsingOrAssignable::Assignable(lhs) => {
+						lhs.to_string_from_buffer(buf, options, local)
+					}
 				}
-				variable.to_string_from_buffer(buf, options, local);
 				// TODO whitespace here if variable is array of object destructuring
 				buf.push_str(" of ");
 				of.to_string_from_buffer(buf, options, local);
 			}
-			Self::ForIn { keyword, variable, r#in, position: _ } => {
-				if let Some(keyword) = keyword {
-					buf.push_str(keyword.as_str());
+			Self::ForIn { lhs, r#in, position: _ } => {
+				match lhs {
+					VariableOrAssignable::Variable(kw, field, type_annotation) => {
+						buf.push_str(kw.as_str());
+						field.to_string_from_buffer(buf, options, local);
+						if let (true, Some(type_annotation)) =
+							(options.include_type_annotations, &type_annotation)
+						{
+							buf.push_str(": ");
+							type_annotation.to_string_from_buffer(buf, options, local);
+						}
+					}
+					VariableOrAssignable::Assignable(lhs) => {
+						lhs.to_string_from_buffer(buf, options, local)
+					}
 				}
-				variable.to_string_from_buffer(buf, options, local);
 				// TODO whitespace here if variable is array of object destructuring
 				buf.push_str(" in ");
 				r#in.to_string_from_buffer(buf, options, local);
@@ -315,7 +482,7 @@ fn initialiser_to_string<T: source_map::ToString>(
 		ForLoopStatementInitialiser::Expression(expr) => {
 			expr.to_string_from_buffer(buf, options, local);
 		}
-		ForLoopStatementInitialiser::VarStatement(stmt) => {
+		ForLoopStatementInitialiser::VarVariableStatement(stmt) => {
 			stmt.to_string_from_buffer(buf, options, local);
 		}
 	}

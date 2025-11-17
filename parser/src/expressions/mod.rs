@@ -496,10 +496,7 @@ impl Expression {
 						let path = Box::new(Expression::from_reader(reader)?);
 						reader.expect(')')?;
 						let position = start.union(reader.get_end());
-						Expression::Import(ImportExpression::ImportSource {
-							path,
-							position,
-						})
+						Expression::Import(ImportExpression::ImportSource { path, position })
 					} else if reader.is_keyword_advance("defer") {
 						reader.expect('(')?;
 						let path = Box::new(Expression::from_reader(reader)?);
@@ -674,6 +671,8 @@ impl Expression {
 			"?" => AfterFirst::ConditionalTernary,
 			"instanceof" => AfterFirst::InstanceOf,
 			"in" => AfterFirst::In,
+			// used in for-loop parsing
+			"of" => AfterFirst::Of,
 		)]
 		#[cfg_attr(feature = "full-typescript", automaton_mappings(
 			"!" => AfterFirst::NonNullAssertion,
@@ -703,6 +702,7 @@ impl Expression {
 			Satisfies,
 			Is,
 			In,
+			Of,
 			InstanceOf,
 			Exit,
 		}
@@ -763,21 +763,6 @@ impl Expression {
 
 			match next {
 				c @ (AfterFirst::SingleLineComment | AfterFirst::MultiLineComment) => {
-					// Lol this is how it works
-					// if return_precedence == 15 {
-					// 	return Ok(top);
-					// }
-					// let after = reader.after_comment_literals();
-					// let expresion_level_comment = after
-					// 	.starts_with(|chr: char| !chr.is_alphanumeric())
-					// 	|| after.starts_with("in")
-					// 	|| after.starts_with("instanceof")
-					// 	|| after.starts_with("as")
-					// 	|| after.starts_with("satisfies")
-					// 	|| after.starts_with("is")
-					// 	|| after.is_empty();
-
-					// if expresion_level_comment {
 					let is_multiline = matches!(c, AfterFirst::MultiLineComment);
 					reader.advance(2);
 					let content = reader.parse_comment_literal(is_multiline)?.to_owned();
@@ -789,9 +774,6 @@ impl Expression {
 						on: Box::new(top),
 						prefix: false,
 					};
-					// } else {
-					// 	return Ok(top);
-					// }
 				}
 				AfterFirst::UnaryPostfixAssignmentOperator(operator) => {
 					if operator
@@ -1129,12 +1111,21 @@ impl Expression {
 						return Ok(top);
 					}
 					reader.advance(2);
+					// TODO in for loop this could be multiple expression
 					let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
 					let position = top.get_position().union(rhs.get_position());
 					let operation = SpecialOperators::In {
 						lhs: InExpressionLHS::Expression(Box::new(top)),
 						rhs: Box::new(rhs),
 					};
+					top = Self::SpecialOperators(operation, position);
+				}
+				// used for-loop parsing
+				AfterFirst::Of => {
+					reader.advance(2);
+					let rhs = Expression::from_reader(reader)?;
+					let position = top.get_position().union(rhs.get_position());
+					let operation = SpecialOperators::Of { lhs: Box::new(top), rhs: Box::new(rhs) };
 					top = Self::SpecialOperators(operation, position);
 				}
 				AfterFirst::InstanceOf => {
@@ -1345,6 +1336,10 @@ impl Expression {
 						local,
 						local2.with_precedence(self_precedence),
 					);
+				}
+				// used in for-loop parsing
+				SpecialOperators::Of { .. } => {
+					unreachable!();
 				}
 				SpecialOperators::InstanceOf { lhs, rhs } => {
 					lhs.to_string_using_precedence(
@@ -1840,6 +1835,17 @@ impl ExpressionToStringArgument {
 	}
 }
 
+/// because of `await using`
+pub(crate) fn parse_after_await(
+	reader: &mut crate::Lexer,
+	start: source_map::Start,
+) -> ParseResult<Expression> {
+	let operator = UnaryOperator::Await;
+	let operand = Box::new(Expression::from_reader_with_precedence(reader, operator.precedence())?);
+	let position = start.union(operand.get_position());
+	Ok(Expression::UnaryOperation { operator, operand, position })
+}
+
 /// Represents expressions that can be the comma operator. Has a special new type to discern the places
 /// where this is allowed
 #[apply(derive_ASTNode)]
@@ -1875,6 +1881,25 @@ impl MultipleExpression {
 		} else {
 			self.0
 		}
+	}
+
+	pub(crate) fn from_first_expression(
+		reader: &mut crate::Lexer,
+		mut top: Expression,
+	) -> ParseResult<Self> {
+		while reader.is_operator_advance(",") {
+			let rhs = Expression::from_reader_with_precedence(
+				reader,
+				BinaryOperator::Comma.precedence(),
+			)?;
+			top = Expression::BinaryOperation {
+				position: top.get_position().union(rhs.get_position()),
+				lhs: Box::new(top),
+				operator: BinaryOperator::Comma,
+				rhs: Box::new(rhs),
+			};
+		}
+		Ok(Self(top))
 	}
 }
 
@@ -1999,6 +2024,11 @@ pub enum SpecialOperators {
 	Yield {
 		// .0 = 'is_delegated'
 		yielded: Option<(bool, Box<Expression>)>,
+	},
+	// for for-loop parsing
+	Of {
+		lhs: Box<Expression>,
+		rhs: Box<Expression>,
 	},
 	#[cfg(feature = "extras")]
 	Is {

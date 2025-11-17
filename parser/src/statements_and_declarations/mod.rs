@@ -362,6 +362,7 @@ impl ASTNode for StatementOrDeclaration {
 			|| (reader.is_keyword("await")
 				&& reader.get_current()[5..].trim_start().starts_with("using "))
 		{
+			// TODO comments here
 			UsingDeclaration::from_reader(reader).map(Into::into)
 		} else if reader.is_keyword("if") {
 			IfStatement::from_reader(reader).map(Box::new).map(Into::into)

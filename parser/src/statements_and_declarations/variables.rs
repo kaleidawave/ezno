@@ -151,7 +151,6 @@ impl ASTNode for VariableDeclaration {
 		reader.skip();
 		let start = reader.get_start();
 		if let Some(kind) = VariableDeclarationKeyword::from_reader(reader) {
-			// state.append_keyword_at_pos(start.0, TSXKeyword::Let);
 			let mut declarations = Vec::new();
 			loop {
 				reader.skip();

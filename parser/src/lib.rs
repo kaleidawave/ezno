@@ -38,7 +38,7 @@ pub use modules::Module;
 pub use options::*;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
-pub use statements_and_declarations::{Statement, StatementOrDeclaration};
+pub use statements_and_declarations::{Statement, StatementOrDeclaration, control_flow, variables};
 pub use strings::Quoted;
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
@@ -486,6 +486,7 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 
 /// Re-exports or generator and general use
 pub mod ast {
+	// TODO improve
 	pub use crate::{
 		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
 		StatementPosition, VariableField, VariableIdentifier, WithComment,
