@@ -1077,6 +1077,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					&mut checking_data.types,
 				))
 			}
+			SpecialOperators::Of { .. } => {
+				unreachable!();
+			}
 			SpecialOperators::InstanceOf { lhs, rhs } => {
 				let lhs = synthesise_expression(lhs, environment, checking_data, expecting);
 				let rhs = synthesise_expression(rhs, environment, checking_data, expecting);

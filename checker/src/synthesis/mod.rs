@@ -189,7 +189,7 @@ impl crate::ASTImplementation for EznoParser {
 					stmt.get_position().with_source(environment.get_source()),
 				);
 			}
-			ForLoopStatementInitialiser::VarStatement(stmt) => {
+			ForLoopStatementInitialiser::VarVariableStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
 					"var in for statement initiliser",
 					stmt.get_position().with_source(environment.get_source()),

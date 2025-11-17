@@ -778,15 +778,19 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 pub(super) fn part_to_name_pair<T: ImportOrExport>(
 	item: &ImportExportPart<T>,
 ) -> Option<NamePair<'_>> {
-	if let VariableIdentifier::Standard(ref name, position) = item.name {
-		let value = match &item.alias {
-			Some(ImportExportName::Reference(item) | ImportExportName::Quoted(item, _)) => item,
+	if let ImportExportName::Reference(name) | ImportExportName::Quoted(name, _) = &item.name {
+		let name = name.as_str();
+		let value: &str = match &item.alias {
+			Some(ImportExportName::Reference(item) | ImportExportName::Quoted(item, _)) => {
+				item.as_str()
+			}
 			Some(ImportExportName::Marker(_)) => {
 				// TODO I think okay
 				return None;
 			}
 			None => name,
 		};
+		let position = item.position.clone();
 		if T::PREFIX {
 			Some(NamePair { value, r#as: name, position })
 		} else {
