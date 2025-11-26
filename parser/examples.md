@@ -26,39 +26,31 @@ true;
 ```
 
 ```
-Module {
-    hashbang_comment: None,
-    items: [
-        Expression(
-            MultipleExpression(
-                NumberLiteral(
-                    Number(
-                        5.6,
-                    ),
-                    0..3,
-                ),
-            ),
+Expression(
+    MultipleExpression(
+        NumberLiteral(
+            5.6,
+            0..3,
         ),
-        Expression(
-            MultipleExpression(
-                StringLiteral(
-                    "test",
-                    Single,
-                    5..11,
-                ),
-            ),
+    ),
+)
+Expression(
+    MultipleExpression(
+        StringLiteral(
+            "test",
+            Single,
+            5..11,
         ),
-        Expression(
-            MultipleExpression(
-                BooleanLiteral(
-                    true,
-                    13..17,
-                ),
-            ),
+    ),
+)
+Expression(
+    MultipleExpression(
+        BooleanLiteral(
+            true,
+            13..17,
         ),
-    ],
-    span: 0..19,
-}
+    ),
+)
 ```
 
 #### Parenthesised
@@ -71,9 +63,7 @@ Module {
 Parenthesised(
     MultipleExpression(
         NumberLiteral(
-            Number(
-                45.0,
-            ),
+            45.0,
             1..3,
         ),
     ),
@@ -92,16 +82,12 @@ Parenthesised(
     MultipleExpression(
         BinaryOperation {
             lhs: NumberLiteral(
-                Number(
-                    45.0,
-                ),
+                45.0,
                 1..3,
             ),
             operator: Comma,
             rhs: NumberLiteral(
-                Number(
-                    2.0,
-                ),
+                2.0,
                 5..6,
             ),
             position: 1..6,
@@ -139,25 +125,19 @@ FunctionCall {
     arguments: [
         Standard(
             NumberLiteral(
-                Number(
-                    5.0,
-                ),
+                5.0,
                 12..13,
             ),
         ),
         Standard(
             NumberLiteral(
-                Number(
-                    6.0,
-                ),
+                6.0,
                 15..16,
             ),
         ),
         Standard(
             NumberLiteral(
-                Number(
-                    7.0,
-                ),
+                7.0,
                 18..19,
             ),
         ),
@@ -246,181 +226,175 @@ let [x, ...y] = null;
 ```
 
 ```
-Module {
-    hashbang_comment: None,
-    items: [
-        Variable(
-            Exportable {
-                is_exported: false,
-                item: VariableDeclaration {
-                    kind: Let,
-                    declarations: [
-                        VariableDeclarationItem {
-                            name: None(
-                                Array {
-                                    members: [
-                                        None(
-                                            Name(
-                                                Name(
-                                                    Standard(
-                                                        "x",
-                                                        5..6,
-                                                    ),
-                                                ),
-                                                None,
-                                                None,
+Variable(
+    Exportable {
+        is_exported: false,
+        item: VariableDeclaration {
+            kind: Let,
+            declarations: [
+                VariableDeclarationItem {
+                    name: None(
+                        Array {
+                            members: [
+                                None(
+                                    Name(
+                                        Name(
+                                            Standard(
+                                                "x",
+                                                5..6,
                                             ),
                                         ),
-                                        None(
-                                            Name(
-                                                Name(
-                                                    Standard(
-                                                        "y",
-                                                        8..9,
-                                                    ),
-                                                ),
-                                                None,
-                                                None,
-                                            ),
-                                        ),
-                                        None(
-                                            Name(
-                                                Name(
-                                                    Standard(
-                                                        "z",
-                                                        11..12,
-                                                    ),
-                                                ),
-                                                None,
-                                                None,
-                                            ),
-                                        ),
-                                    ],
-                                    spread: None,
-                                    position: 4..13,
-                                },
-                            ),
-                            type_annotation: None,
-                            expression: Some(
-                                Null(
-                                    16..20,
+                                        None,
+                                        None,
+                                    ),
                                 ),
-                            ),
-                            position: 4..20,
-                        },
-                    ],
-                    position: 0..20,
-                },
-            },
-        ),
-        Variable(
-            Exportable {
-                is_exported: false,
-                item: VariableDeclaration {
-                    kind: Let,
-                    declarations: [
-                        VariableDeclarationItem {
-                            name: None(
-                                Array {
-                                    members: [
-                                        None(
-                                            Name(
-                                                Name(
-                                                    Standard(
-                                                        "x",
-                                                        27..28,
-                                                    ),
-                                                ),
-                                                None,
-                                                None,
+                                None(
+                                    Name(
+                                        Name(
+                                            Standard(
+                                                "y",
+                                                8..9,
                                             ),
                                         ),
-                                        None(
-                                            None,
-                                        ),
-                                        None(
-                                            Name(
-                                                Name(
-                                                    Standard(
-                                                        "z",
-                                                        30..31,
-                                                    ),
-                                                ),
-                                                None,
-                                                None,
-                                            ),
-                                        ),
-                                    ],
-                                    spread: None,
-                                    position: 26..32,
-                                },
-                            ),
-                            type_annotation: None,
-                            expression: Some(
-                                Null(
-                                    35..39,
+                                        None,
+                                        None,
+                                    ),
                                 ),
-                            ),
-                            position: 26..39,
-                        },
-                    ],
-                    position: 22..39,
-                },
-            },
-        ),
-        Variable(
-            Exportable {
-                is_exported: false,
-                item: VariableDeclaration {
-                    kind: Let,
-                    declarations: [
-                        VariableDeclarationItem {
-                            name: None(
-                                Array {
-                                    members: [
-                                        None(
-                                            Name(
-                                                Name(
-                                                    Standard(
-                                                        "x",
-                                                        46..47,
-                                                    ),
-                                                ),
-                                                None,
-                                                None,
+                                None(
+                                    Name(
+                                        Name(
+                                            Standard(
+                                                "z",
+                                                11..12,
                                             ),
                                         ),
-                                    ],
-                                    spread: Some(
-                                        SpreadDestructuringField(
-                                            Name(
-                                                Standard(
-                                                    "y",
-                                                    52..53,
-                                                ),
+                                        None,
+                                        None,
+                                    ),
+                                ),
+                            ],
+                            spread: None,
+                            position: 4..13,
+                        },
+                    ),
+                    type_annotation: None,
+                    expression: Some(
+                        Null(
+                            16..20,
+                        ),
+                    ),
+                    position: 4..20,
+                },
+            ],
+            position: 0..20,
+        },
+    },
+)
+Variable(
+    Exportable {
+        is_exported: false,
+        item: VariableDeclaration {
+            kind: Let,
+            declarations: [
+                VariableDeclarationItem {
+                    name: None(
+                        Array {
+                            members: [
+                                None(
+                                    Name(
+                                        Name(
+                                            Standard(
+                                                "x",
+                                                27..28,
                                             ),
-                                            49..53,
+                                        ),
+                                        None,
+                                        None,
+                                    ),
+                                ),
+                                None(
+                                    None,
+                                ),
+                                None(
+                                    Name(
+                                        Name(
+                                            Standard(
+                                                "z",
+                                                30..31,
+                                            ),
+                                        ),
+                                        None,
+                                        None,
+                                    ),
+                                ),
+                            ],
+                            spread: None,
+                            position: 26..32,
+                        },
+                    ),
+                    type_annotation: None,
+                    expression: Some(
+                        Null(
+                            35..39,
+                        ),
+                    ),
+                    position: 26..39,
+                },
+            ],
+            position: 22..39,
+        },
+    },
+)
+Variable(
+    Exportable {
+        is_exported: false,
+        item: VariableDeclaration {
+            kind: Let,
+            declarations: [
+                VariableDeclarationItem {
+                    name: None(
+                        Array {
+                            members: [
+                                None(
+                                    Name(
+                                        Name(
+                                            Standard(
+                                                "x",
+                                                46..47,
+                                            ),
+                                        ),
+                                        None,
+                                        None,
+                                    ),
+                                ),
+                            ],
+                            spread: Some(
+                                SpreadDestructuringField(
+                                    Name(
+                                        Standard(
+                                            "y",
+                                            52..53,
                                         ),
                                     ),
-                                    position: 45..54,
-                                },
-                            ),
-                            type_annotation: None,
-                            expression: Some(
-                                Null(
-                                    57..61,
+                                    49..53,
                                 ),
                             ),
-                            position: 45..61,
+                            position: 45..54,
                         },
-                    ],
-                    position: 41..61,
+                    ),
+                    type_annotation: None,
+                    expression: Some(
+                        Null(
+                            57..61,
+                        ),
+                    ),
+                    position: 45..61,
                 },
-            },
-        ),
-    ],
-    span: 0..63,
-}
+            ],
+            position: 41..61,
+        },
+    },
+)
 ```
 
 #### `object`
@@ -431,99 +405,91 @@ let { x = 3 } = null;
 ```
 
 ```
-Module {
-    hashbang_comment: None,
-    items: [
-        Variable(
-            Exportable {
-                is_exported: false,
-                item: VariableDeclaration {
-                    kind: Let,
-                    declarations: [
-                        VariableDeclarationItem {
-                            name: None(
-                                Object {
-                                    class_name: None,
-                                    members: [
-                                        None(
-                                            Name(
-                                                Standard(
-                                                    "x",
-                                                    6..7,
-                                                ),
-                                                None,
-                                                None,
-                                                6..7,
+Variable(
+    Exportable {
+        is_exported: false,
+        item: VariableDeclaration {
+            kind: Let,
+            declarations: [
+                VariableDeclarationItem {
+                    name: None(
+                        Object {
+                            class_name: None,
+                            members: [
+                                None(
+                                    Name(
+                                        Standard(
+                                            "x",
+                                            6..7,
+                                        ),
+                                        None,
+                                        None,
+                                        6..7,
+                                    ),
+                                ),
+                            ],
+                            spread: None,
+                            position: 4..9,
+                        },
+                    ),
+                    type_annotation: None,
+                    expression: Some(
+                        Null(
+                            12..16,
+                        ),
+                    ),
+                    position: 4..16,
+                },
+            ],
+            position: 0..16,
+        },
+    },
+)
+Variable(
+    Exportable {
+        is_exported: false,
+        item: VariableDeclaration {
+            kind: Let,
+            declarations: [
+                VariableDeclarationItem {
+                    name: None(
+                        Object {
+                            class_name: None,
+                            members: [
+                                None(
+                                    Name(
+                                        Standard(
+                                            "x",
+                                            24..25,
+                                        ),
+                                        None,
+                                        Some(
+                                            NumberLiteral(
+                                                3.0,
+                                                28..29,
                                             ),
                                         ),
-                                    ],
-                                    spread: None,
-                                    position: 4..9,
-                                },
-                            ),
-                            type_annotation: None,
-                            expression: Some(
-                                Null(
-                                    12..16,
+                                        24..29,
+                                    ),
                                 ),
-                            ),
-                            position: 4..16,
+                            ],
+                            spread: None,
+                            position: 22..31,
                         },
-                    ],
-                    position: 0..16,
+                    ),
+                    type_annotation: None,
+                    expression: Some(
+                        Null(
+                            34..38,
+                        ),
+                    ),
+                    position: 22..38,
                 },
-            },
-        ),
-        Variable(
-            Exportable {
-                is_exported: false,
-                item: VariableDeclaration {
-                    kind: Let,
-                    declarations: [
-                        VariableDeclarationItem {
-                            name: None(
-                                Object {
-                                    class_name: None,
-                                    members: [
-                                        None(
-                                            Name(
-                                                Standard(
-                                                    "x",
-                                                    24..25,
-                                                ),
-                                                None,
-                                                Some(
-                                                    NumberLiteral(
-                                                        Number(
-                                                            3.0,
-                                                        ),
-                                                        28..29,
-                                                    ),
-                                                ),
-                                                24..29,
-                                            ),
-                                        ),
-                                    ],
-                                    spread: None,
-                                    position: 22..31,
-                                },
-                            ),
-                            type_annotation: None,
-                            expression: Some(
-                                Null(
-                                    34..38,
-                                ),
-                            ),
-                            position: 22..38,
-                        },
-                    ],
-                    position: 18..38,
-                },
-            },
-        ),
-    ],
-    span: 0..40,
-}
+            ],
+            position: 18..38,
+        },
+    },
+)
 ```
 
 ### For loops
@@ -538,6 +504,8 @@ Module {
 
 #### Advanced: string escape new line sequence
 
+> Not sure if positions are okay?
+
 ```typescript
 "abc\
 def"
@@ -547,11 +515,13 @@ def"
 StringLiteral(
     "abcdef",
     Double,
-    0..8,
+    0..10,
 )
 ```
 
 #### Advanced: string escape with character
+
+> Not sure if positions are okay?
 
 ```typescript
 "abc\ndef"
@@ -561,7 +531,7 @@ StringLiteral(
 StringLiteral(
     "abc\ndef",
     Double,
-    0..9,
+    0..10,
 )
 ```
 
@@ -633,44 +603,80 @@ JSXRoot(
 #### `using`
 
 ```typescript
-using name1 = value1, name2 = value2;
+using name1 = value1, name2 = value2
+using name3: IDisposable = value3 
+await using name4 = value4 
 ```
 
 ```
-Module {
-    hashbang_comment: None,
-    items: [
-        UsingDeclaration(
-            UsingDeclaration {
-                is_await: false,
-                bindings: [
-                    (
-                        "name1",
-                        VariableReference(
-                            "value1",
-                            14..20,
-                        ),
-                    ),
-                    (
-                        "name2",
-                        VariableReference(
-                            "value2",
-                            30..36,
-                        ),
-                    ),
-                ],
-                position: 0..36,
+UsingDeclaration(
+    UsingDeclaration {
+        is_await: false,
+        bindings: [
+            UsingBinding {
+                name: "name1",
+                annotation: None,
+                value: VariableReference(
+                    "value1",
+                    14..20,
+                ),
             },
-        ),
-        AestheticSemiColon(
-            36..37,
-        ),
-    ],
-    span: 0..38,
-}
+            UsingBinding {
+                name: "name2",
+                annotation: None,
+                value: VariableReference(
+                    "value2",
+                    30..36,
+                ),
+            },
+        ],
+        position: 0..37,
+    },
+)
+UsingDeclaration(
+    UsingDeclaration {
+        is_await: false,
+        bindings: [
+            UsingBinding {
+                name: "name3",
+                annotation: Some(
+                    Name(
+                        TypeName(
+                            "IDisposable",
+                        ),
+                        50..61,
+                    ),
+                ),
+                value: VariableReference(
+                    "value3",
+                    64..70,
+                ),
+            },
+        ],
+        position: 37..72,
+    },
+)
+UsingDeclaration(
+    UsingDeclaration {
+        is_await: true,
+        bindings: [
+            UsingBinding {
+                name: "name4",
+                annotation: None,
+                value: VariableReference(
+                    "value4",
+                    92..98,
+                ),
+            },
+        ],
+        position: 78..99,
+    },
+)
 ```
 
 #### `using` in for loop
+
+> #TODO more
 
 ```typescript
 for (using resource of resources) { }
@@ -680,33 +686,137 @@ for (using resource of resources) { }
 ForLoop(
     ForLoopStatement {
         condition: ForOf {
-            keyword: Some(
-                Using,
-            ),
-            variable: None(
-                Name(
-                    Standard(
-                        "resource",
-                        11..19,
-                    ),
-                ),
-            ),
+            is_await: false,
+            lhs: Using {
+                is_await: false,
+                annotation: None,
+                name: "resource",
+            },
             of: VariableReference(
                 "resources",
                 23..32,
             ),
-            is_await: false,
             position: 5..32,
         },
-        inner: Braced(
-            Block(
-                [],
-                34..37,
-            ),
-        ),
+        inner: Braced(*empty*),
         position: 0..37,
     },
 )
+```
+
+### Edge cases
+
+#### `satisfies` with
+
+> Any expression-level postfix type syntax for that point
+
+```typescript
+x satisfies string && y;
+x satisfies string & { length: 2 }; 
+```
+
+```
+Expression(
+    MultipleExpression(
+        BinaryOperation {
+            lhs: SpecialOperators(
+                Satisfies {
+                    value: VariableReference(
+                        "x",
+                        0..1,
+                    ),
+                    type_annotation: CommonName(
+                        String,
+                        12..18,
+                    ),
+                },
+                0..18,
+            ),
+            operator: LogicalAnd,
+            rhs: VariableReference(
+                "y",
+                22..23,
+            ),
+            position: 0..23,
+        },
+    ),
+)
+Expression(
+    MultipleExpression(
+        SpecialOperators(
+            Satisfies {
+                value: VariableReference(
+                    "x",
+                    25..26,
+                ),
+                type_annotation: Intersection(
+                    [
+                        CommonName(
+                            String,
+                            37..43,
+                        ),
+                        ObjectLiteral(
+                            [
+                                None(
+                                    Decorated {
+                                        decorators: [],
+                                        on: Property {
+                                            name: Identifier(
+                                                "length",
+                                                48..54,
+                                                Public,
+                                            ),
+                                            type_annotation: NumberLiteral(
+                                                2.0,
+                                                56..57,
+                                            ),
+                                            is_readonly: false,
+                                            is_optional: false,
+                                            position: 48..57,
+                                        },
+                                        position: 48..57,
+                                    },
+                                ),
+                            ],
+                            46..59,
+                        ),
+                    ],
+                    37..59,
+                ),
+            },
+            25..59,
+        ),
+    ),
+)
+```
+
+#### LHS of assignment as any expression
+
+> Only a parse error under `"use strict"`
+
+```typescript
+func()++;
+```
+
+```
+UnaryPostfixAssignmentOperation {
+    operand: Neither(
+        FunctionCall {
+            function: VariableReference(
+                "func",
+                0..4,
+            ),
+            type_arguments: None,
+            arguments: [],
+            is_optional: false,
+            position: 0..6,
+        },
+    ),
+    operator: UnaryPostfixAssignmentOperator(
+        Increment,
+    ),
+    position: 0..8,
+}
 ```
 
 ### Partial syntax
@@ -739,9 +849,7 @@ Variable(
                     type_annotation: None,
                     expression: Some(
                         NumberLiteral(
-                            Number(
-                                2.0,
-                            ),
+                            2.0,
                             8..9,
                         ),
                     ),

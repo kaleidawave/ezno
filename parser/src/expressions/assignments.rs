@@ -31,6 +31,9 @@ pub enum VariableOrPropertyAccess {
 		position: Span,
 	},
 	PropertyOnSuper(PropertyLike, Span),
+	/// Allowed under strict mode
+	/// For bad property assignment
+	Neither(Box<Expression>),
 	#[cfg(feature = "full-typescript")]
 	NonNullAssertion(Box<VariableOrPropertyAccess>, Span),
 }
@@ -83,6 +86,9 @@ impl ASTNode for VariableOrPropertyAccess {
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
+			VariableOrPropertyAccess::Neither(expression) => {
+				expression.to_string_from_buffer(buf, options, local);
+			}
 			VariableOrPropertyAccess::PropertyOnSuper(PropertyLike::Fixed(name), _) => {
 				buf.push_str("super.");
 				buf.push_str(name);
@@ -106,7 +112,7 @@ impl ASTNode for VariableOrPropertyAccess {
 impl TryFrom<Expression> for VariableOrPropertyAccess {
 	type Error = ParseError;
 
-	fn try_from(expression: Expression) -> Result<Self, Self::Error> {
+	fn try_from(expression: Expression) -> ParseResult<Self> {
 		match expression {
 			Expression::VariableReference(name, position) => Ok(Self::Variable(name, position)),
 			Expression::PropertyAccess { parent, position, property, is_optional } => {
@@ -131,10 +137,10 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 				position,
 			) => TryFrom::try_from(*on)
 				.map(|value| Self::NonNullAssertion(Box::new(value), position)),
-			expression => Err(ParseError::new(
-				crate::ParseErrors::InvalidLHSAssignment,
-				expression.get_position(),
-			)),
+			expression => {
+				// TODO
+				Ok(Self::Neither(Box::new(expression)))
+			}
 		}
 	}
 }
@@ -154,6 +160,7 @@ impl From<VariableOrPropertyAccess> for Expression {
 			VariableOrPropertyAccess::PropertyOnSuper(property, position) => {
 				Expression::SuperExpression(SuperReference::PropertyAccess(property), position)
 			}
+			VariableOrPropertyAccess::Neither(expression) => *expression,
 			#[cfg(feature = "full-typescript")]
 			VariableOrPropertyAccess::NonNullAssertion(on, position) => Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
@@ -168,7 +175,8 @@ impl VariableOrPropertyAccess {
 	pub fn get_parent(&self) -> Option<&Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..)
-			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
+			| VariableOrPropertyAccess::PropertyOnSuper(..)
+			| VariableOrPropertyAccess::Neither(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]
@@ -179,7 +187,8 @@ impl VariableOrPropertyAccess {
 	pub fn get_parent_mut(&mut self) -> Option<&mut Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..)
-			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
+			| VariableOrPropertyAccess::PropertyOnSuper(..)
+			| VariableOrPropertyAccess::Neither(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]

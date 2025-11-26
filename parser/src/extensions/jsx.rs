@@ -152,6 +152,7 @@ impl ASTNode for JSXElement {
 				position: start.union(reader.get_end()),
 			});
 		} else if html_tag_contains_literal_content(&tag_name) {
+			dbg!(reader.get_current());
 			// TODO could embedded parser?
 			let content = reader
 				.parse_until("</")
@@ -479,6 +480,7 @@ impl ASTNode for JSXNode {
 			Ok(JSXNode::InterpolatedExpression(Box::new(expression), position))
 		} else if reader.starts_with_slice("<!--") {
 			reader.advance("<!--".len() as u32);
+			dbg!(reader.get_current());
 			let content = reader
 				.parse_until("-->")
 				.map_err(|()| {
@@ -493,6 +495,7 @@ impl ASTNode for JSXNode {
 			let element = JSXElement::from_reader(reader)?;
 			Ok(JSXNode::Element(element))
 		} else {
+			dbg!(reader.get_current());
 			let (content, _) = reader.parse_until_one_of_no_advance(&["<", "{"]).map_err(|()| {
 				let (_found, position) = crate::lexer::utilities::next_item(reader);
 				ParseError::new(crate::ParseErrors::UnexpectedEnd, position)

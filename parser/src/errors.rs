@@ -101,6 +101,7 @@ pub enum ParseErrors<'a> {
 	TaggedTemplateCannotBeUsedWithOptionalChain,
 	ExpectedExpression,
 	DuplicateParameterName,
+	CannotUsePrivatePropertyHere,
 }
 
 impl Display for ParseErrors<'_> {
@@ -240,6 +241,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::BigIntNotAllowedHere => {
 				write!(f, "Big integer literal not allowed here")
+			}
+			ParseErrors::CannotUsePrivatePropertyHere => {
+				write!(f, "Cannot use private property here")
 			}
 		}
 	}

@@ -1,5 +1,6 @@
 use derive_enum_from_into::EnumFrom;
 use iterator_endiate::EndiateIteratorExt;
+use std::fmt;
 
 use crate::{
 	ASTNode, ParseResult, Span, Statement, StatementOrDeclaration, VisitOptions, Visitable,
@@ -79,12 +80,22 @@ impl Block {
 	}
 }
 
-/// For ifs and other statements bodies
-#[derive(Debug, Clone, EnumFrom)]
+/// For `if`s and other statements bodies
+#[derive(Clone, EnumFrom)]
 #[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),
+}
+
+impl fmt::Debug for BlockOrSingleStatement {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+		match self {
+			Self::Braced(block) if block.0.is_empty() => f.write_str("Braced(*empty*)"),
+			Self::Braced(block) => f.debug_tuple("Braced").field(block).finish(),
+			Self::SingleStatement(stmt) => f.debug_tuple("SingleStatement").field(stmt).finish(),
+		}
+	}
 }
 
 impl ASTNode for BlockOrSingleStatement {

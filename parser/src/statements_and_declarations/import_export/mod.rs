@@ -153,7 +153,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 }
 
 /// TODO `default` should have its own variant?
-/// ModuleExportName
+/// `ModuleExportName`
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {

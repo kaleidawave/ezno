@@ -1,6 +1,14 @@
-use crate::{Expression, Span, derive_ASTNode};
+use crate::{Expression, Span, TypeAnnotation, derive_ASTNode};
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, Clone, Visitable)]
+pub struct UsingBinding {
+	pub name: String,
+	pub annotation: Option<TypeAnnotation>,
+	pub value: Expression,
+}
 
 /// [See](https://github.com/tc39/proposal-explicit-resource-management?tab=readme-ov-file#syntax)
 #[apply(derive_ASTNode)]
@@ -8,7 +16,7 @@ use visitable_derive::Visitable;
 #[get_field_by_type_target(Span)]
 pub struct UsingDeclaration {
 	pub is_await: bool,
-	pub bindings: Vec<(String, Expression)>,
+	pub bindings: Vec<UsingBinding>,
 	pub position: Span,
 }
 
@@ -22,10 +30,16 @@ impl crate::ASTNode for UsingDeclaration {
 		let start = reader.expect_keyword("using")?;
 		let mut bindings = Vec::new();
 		loop {
-			let identifier = reader.parse_identifier("using binding", false)?.into_owned();
+			let name = reader.parse_identifier("using name", false)?.into_owned();
+			let annotation = if reader.is_operator_advance(":") {
+				Some(TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
 			reader.expect_operator("=")?;
-			let expression = Expression::from_reader(reader)?;
-			bindings.push((identifier, expression));
+			let value = Expression::from_reader(reader)?;
+			let binding = UsingBinding { name, annotation, value };
+			bindings.push(binding);
 			if !reader.is_operator_advance(",") {
 				break;
 			}
@@ -44,16 +58,22 @@ impl crate::ASTNode for UsingDeclaration {
 			buf.push_str("await ");
 		}
 		buf.push_str("using ");
-		for (not_at_end, (name, expression)) in self.bindings.iter().nendiate() {
+		for (not_at_end, binding) in self.bindings.iter().nendiate() {
 			if not_at_end {
 				buf.push_str(",");
 				options.push_gap_optionally(buf);
 			}
-			buf.push_str(name);
+			buf.push_str(&binding.name);
+			if let Some(ref annotation) = binding.annotation
+				&& options.include_type_annotations
+			{
+				buf.push_str(":");
+				annotation.to_string_from_buffer(buf, options, local);
+			}
 			options.push_gap_optionally(buf);
 			buf.push_str("=");
 			options.push_gap_optionally(buf);
-			expression.to_string_from_buffer(buf, options, local);
+			binding.value.to_string_from_buffer(buf, options, local);
 		}
 	}
 }

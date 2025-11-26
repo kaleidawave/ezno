@@ -1,5 +1,5 @@
 use crate::expressions::{LHSOfAssignment, MultipleExpression};
-use crate::statements_and_declarations::using::UsingDeclaration;
+use crate::statements_and_declarations::using::{UsingBinding, UsingDeclaration};
 use crate::statements_and_declarations::variables::{
 	VarVariableStatement, VariableDeclaration, VariableField, VariableKeyword,
 };
@@ -89,11 +89,7 @@ pub enum VariableOrAssignable {
 #[apply(derive_ASTNode)]
 pub enum VariableUsingOrAssignable {
 	Variable(VariableKeyword, VariableField, Option<crate::TypeAnnotation>),
-	Using {
-		is_await: bool,
-		// TODO variable identifier type
-		name: String,
-	},
+	Using { is_await: bool, annotation: Option<crate::TypeAnnotation>, name: String },
 	Assignable(LHSOfAssignment),
 }
 
@@ -158,20 +154,32 @@ impl ASTNode for ForLoopCondition {
 			start: source_map::Start,
 		) -> ParseResult<ForLoopCondition> {
 			let name = reader.parse_identifier("using name", true)?.into_owned();
+			let annotation = if reader.is_operator_advance(":") {
+				Some(crate::TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
 			if reader.is_keyword_advance("of") {
-				let lhs = VariableUsingOrAssignable::Using { name, is_await };
+				let lhs = VariableUsingOrAssignable::Using { name, is_await, annotation };
 				let of = Box::new(Expression::from_reader(reader)?);
 				let position = start.union(reader.get_end());
 				Ok(ForLoopCondition::ForOf { is_await: false, lhs, of, position })
 			} else {
 				reader.expect_operator("=")?;
-				let expression = Expression::from_reader(reader)?;
-				let mut bindings = vec![(name, expression)];
+				let value = Expression::from_reader(reader)?;
+				let binding = UsingBinding { name, annotation, value };
+				let mut bindings = vec![binding];
 				while reader.is_operator_advance(",") {
-					let name = reader.parse_identifier("using name", true)?.into_owned();
+					let name = reader.parse_identifier("using name", false)?.into_owned();
+					let annotation = if reader.is_operator_advance(":") {
+						Some(crate::TypeAnnotation::from_reader(reader)?)
+					} else {
+						None
+					};
 					reader.expect_operator("=")?;
-					let expression = Expression::from_reader(reader)?;
-					bindings.push((name, expression));
+					let value = Expression::from_reader(reader)?;
+					let binding = UsingBinding { name, annotation, value };
+					bindings.push(binding);
 				}
 				let position = start.union(reader.get_end());
 				let declaration = UsingDeclaration { is_await, bindings, position };
@@ -257,7 +265,7 @@ impl ASTNode for ForLoopCondition {
 					}
 					VariableKeyword::Const => {
 						let variable_declaration = VariableDeclaration {
-							kind: crate::variables::VariableDeclarationKeyword::Let,
+							kind: crate::variables::VariableDeclarationKeyword::Const,
 							declarations,
 							position,
 						};
@@ -299,9 +307,9 @@ impl ASTNode for ForLoopCondition {
 		} else if reader.is_keyword_advance("let") {
 			parse_let_const_var(reader, VariableKeyword::Let, start)?
 		} else if reader.is_keyword_advance("var") {
-			parse_let_const_var(reader, VariableKeyword::Let, start)?
+			parse_let_const_var(reader, VariableKeyword::Var, start)?
 		} else if reader.is_keyword_advance("const") {
-			parse_let_const_var(reader, VariableKeyword::Let, start)?
+			parse_let_const_var(reader, VariableKeyword::Const, start)?
 		} else if reader.is_operator(";") {
 			parse_statements(reader, None, start)?
 		} else {
@@ -322,7 +330,10 @@ impl ASTNode for ForLoopCondition {
 				) => {
 					let lhs = match lhs {
 						crate::expressions::InExpressionLHS::PrivateProperty(_) => {
-							todo!("error")
+							return Err(crate::ParseError::new(
+								crate::ParseErrors::CannotUsePrivatePropertyHere,
+								start.with_length(1),
+							));
 						}
 						crate::expressions::InExpressionLHS::Expression(expression) => *expression,
 					};
@@ -358,21 +369,27 @@ impl ASTNode for ForLoopCondition {
 					VariableUsingOrAssignable::Variable(kw, field, type_annotation) => {
 						buf.push_str(kw.as_str());
 						field.to_string_from_buffer(buf, options, local);
-						if let (true, Some(type_annotation)) =
-							(options.include_type_annotations, &type_annotation)
+						if let Some(type_annotation) = type_annotation
+							&& options.include_type_annotations
 						{
 							buf.push_str(": ");
 							type_annotation.to_string_from_buffer(buf, options, local);
 						}
 					}
-					VariableUsingOrAssignable::Using { is_await, name } => {
+					VariableUsingOrAssignable::Using { is_await, annotation, name } => {
 						if *is_await {
 							buf.push_str("await ");
 						}
-						buf.push_str(&name);
+						buf.push_str(name);
+						if let Some(type_annotation) = annotation
+							&& options.include_type_annotations
+						{
+							buf.push_str(": ");
+							type_annotation.to_string_from_buffer(buf, options, local);
+						}
 					}
 					VariableUsingOrAssignable::Assignable(lhs) => {
-						lhs.to_string_from_buffer(buf, options, local)
+						lhs.to_string_from_buffer(buf, options, local);
 					}
 				}
 				// TODO whitespace here if variable is array of object destructuring
@@ -392,7 +409,7 @@ impl ASTNode for ForLoopCondition {
 						}
 					}
 					VariableOrAssignable::Assignable(lhs) => {
-						lhs.to_string_from_buffer(buf, options, local)
+						lhs.to_string_from_buffer(buf, options, local);
 					}
 				}
 				// TODO whitespace here if variable is array of object destructuring

@@ -34,7 +34,7 @@ impl<'a> Lexer<'a> {
 
 		let state = ParsingState::default();
 		let head = 0;
-		Lexer { options, state, script, head, offset }
+		Lexer { head, script, offset, options, state }
 	}
 
 	#[must_use]
@@ -283,6 +283,7 @@ impl<'a> Lexer<'a> {
 	/// Can't do `-` and `+` because they are valid expression prefixed
 	/// TODO `.` if not number etc.
 	#[must_use]
+	#[allow(clippy::match_like_matches_macro)]
 	pub fn starts_with_expression_delimiter(&self) -> bool {
 		let current = self.get_current().trim_start();
 		if let Some('=' | ',' | ':' | '?' | ']' | ')' | '}' | ';') | None = current.chars().next() {
@@ -883,6 +884,11 @@ pub(crate) mod utilities {
 		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
 	}
 
+	pub fn is_identifier_continutation(chr: char) -> bool {
+		// TODO `\\` for unicode identifiers
+		unicode_ident::is_xid_continue(chr) || chr == '$' || chr == '\\'
+	}
+
 	pub fn is_reserved_word(identifier: &str) -> bool {
 		matches!(
 			identifier,
@@ -946,21 +952,24 @@ pub(crate) mod utilities {
 		&on[idx..]
 	}
 
+	fn is_keyword(on: &str, word: &str) -> bool {
+		if let Some((lhs, rhs)) = on.split_at_checked(word.len()) {
+			lhs == word && !rhs.starts_with(is_identifier_continutation)
+		} else {
+			false
+		}
+	}
+
 	pub fn is_function_header(slice: &str) -> bool {
 		let slice = slice.trim_start();
 		// TODO
 		let extras = true;
-		slice.starts_with("async ")
-			|| {
-				slice.starts_with("function")
-					&& !slice["function".len()..].chars().next().is_some_and(is_valid_identifier)
-			} || (extras && {
-			// TODO + after is "function"
-			slice.starts_with("generator ")
-				|| slice.starts_with("worker ")
-				|| slice.starts_with("server ")
-				|| slice.starts_with("test ")
-		})
+		is_keyword(slice, "async")
+			|| is_keyword(slice, "function")
+			// TODO WIP
+			|| extras && slice.starts_with("generator ")
+			|| extras && slice.starts_with("worker ")
+			|| extras && slice.starts_with("serve ")
 	}
 
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
