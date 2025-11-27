@@ -252,7 +252,7 @@ impl Operator for BinaryAssignmentOperator {
 	}
 
 	fn precedence(&self) -> u8 {
-		ASSIGNMENT_PRECEDENCE
+		super::precedence::ASSIGNMENT_PRECEDENCE
 	}
 
 	fn associativity_direction(&self) -> AssociativityDirection {
@@ -349,17 +349,3 @@ impl TryFrom<BinaryOperator> for BinaryAssignmentOperator {
 		}
 	}
 }
-
-// Operator precedences that aren't registered under operator trait
-pub(crate) const COMMA_PRECEDENCE: u8 = 1;
-pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
-pub(crate) const ARROW_FUNCTION_PRECEDENCE: u8 = 2;
-pub(crate) const ASSIGNMENT_PRECEDENCE: u8 = 2;
-pub(crate) const YIELD_OPERATORS_PRECEDENCE: u8 = 2;
-pub(crate) const RELATION_PRECEDENCE: u8 = 10;
-pub(crate) const CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE: u8 = 17;
-pub(crate) const MEMBER_ACCESS_PRECEDENCE: u8 = 18;
-pub(crate) const INDEX_PRECEDENCE: u8 = 18;
-pub(crate) const FUNCTION_CALL_PRECEDENCE: u8 = 18;
-pub(crate) const CONSTRUCTOR_PRECEDENCE: u8 = 18;
-pub(crate) const PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE: u8 = 19;

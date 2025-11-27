@@ -167,7 +167,7 @@ impl ASTNode for StatementOrDeclaration {
 		// then need to throw a parse error
 		let decorators = decorators_from_reader(reader)?;
 
-		// TODO can use finite automaton here
+		// TODO
 
 		let is_const = reader.is_keyword("const");
 		if is_const && reader.get_current()["const".len()..].trim_start().starts_with("enum ") {
@@ -358,12 +358,20 @@ impl ASTNode for StatementOrDeclaration {
 					&["let", "const", "var", "class", "type", "async", "function", "namespace"],
 				))
 			}
-		} else if reader.is_keyword("using")
-			|| (reader.is_keyword("await")
-				&& reader.get_current()[5..].trim_start().starts_with("using "))
-		{
-			// TODO comments here
-			UsingDeclaration::from_reader(reader).map(Into::into)
+		} else if reader.is_keyword_advance("using") {
+			UsingDeclaration::from_reader(reader).map(StatementOrDeclaration::UsingDeclaration)
+		} else if reader.is_keyword_advance("await") {
+			reader.skip();
+			if reader.is_keyword("using") {
+				let mut declaration = UsingDeclaration::from_reader(reader)?;
+				declaration.position.start = start.0;
+				declaration.is_await = true;
+				Ok(StatementOrDeclaration::UsingDeclaration(declaration))
+			} else {
+				let expression = crate::expressions::parse_after_await(reader, start)?;
+				let expression = MultipleExpression::from_first_expression(reader, expression)?;
+				Ok(StatementOrDeclaration::Expression(expression))
+			}
 		} else if reader.is_keyword("if") {
 			IfStatement::from_reader(reader).map(Box::new).map(Into::into)
 		} else if reader.is_keyword("for") {

@@ -345,27 +345,17 @@ impl<'a> Lexer<'a> {
 		self.head += count;
 	}
 
-	// TODO
-	// pub fn starts_with_identifier(&self) -> bool {
-	// 	fn valid_start_character(chr: char) -> bool {
-	// 		unicode_ident::is_xid_start(chr) || matches!(chr, '\\' | '_' | '$' | '#')
-	// 	}
-
-	// 	self.skip();
-	// 	self.get_current().starts_with(valid_start_character)
-	// }
-
 	pub fn parse_identifier(
 		&mut self,
 		location: &'static str,
 		check_reserved: bool,
 	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
 		fn valid_start_character(chr: char) -> bool {
-			unicode_ident::is_xid_start(chr) || matches!(chr, '\\' | '_' | '$')
+			unicode_id_start::is_id_start(chr) || matches!(chr, '\\' | '_' | '$')
 		}
 
 		fn valid_continue_character(chr: char) -> bool {
-			unicode_ident::is_xid_continue(chr) || chr == '$'
+			unicode_id_start::is_id_continue(chr) || chr == '$'
 		}
 
 		self.skip();
@@ -892,7 +882,7 @@ pub(crate) mod utilities {
 
 	pub fn is_identifier_continutation(chr: char) -> bool {
 		// TODO `\\` for unicode identifiers
-		unicode_ident::is_xid_continue(chr) || chr == '$' || chr == '\\'
+		unicode_id_start::is_id_continue(chr) || chr == '$' || chr == '\\'
 	}
 
 	pub fn is_reserved_word(identifier: &str) -> bool {

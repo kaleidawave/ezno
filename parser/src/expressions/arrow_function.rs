@@ -133,6 +133,12 @@ impl FunctionBased for ArrowFunctionBase {
 }
 
 impl ArrowFunction {
+	/// Given an `is_async` and an `identifier`, parses the rest of the arrow function
+	///
+	/// ```typescript
+	/// *is_async* *identifier* =>
+	/// //                      ^ expects reader just before `=>` symbol
+	/// ```
 	pub(crate) fn from_reader_with_first_parameter(
 		reader: &mut crate::Lexer,
 		is_async: bool,

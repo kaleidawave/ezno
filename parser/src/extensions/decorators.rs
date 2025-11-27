@@ -1,50 +1,32 @@
 use get_field_by_type::GetFieldByType;
-use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
 
 use crate::{ASTNode, Expression, ParseResult, Visitable, derive_ASTNode};
 
+/// The [decorators](https://github.com/tc39/proposal-decorators) proposal.
+///
+/// Decorators are expressions. Also allowing `@(x + 2)`
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
-pub struct Decorator {
-	pub name: Vec<String>,
-	pub arguments: Option<Vec<Expression>>,
-	pub position: Span,
-}
+pub struct Decorator(pub Expression);
 
 impl ASTNode for Decorator {
 	fn get_position(&self) -> Span {
-		self.position
+		self.0.get_position()
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let start = reader.get_start();
+		// TODO modify position? or new
+		let _start = reader.get_start();
 		reader.expect('@')?;
-		let mut name = vec![reader.parse_identifier("decorator name", false)?.into_owned()];
-		while reader.is_operator_advance(".") {
-			name.push(reader.parse_identifier("decorator name", false)?.into_owned());
-		}
-
-		let arguments = if reader.starts_with('(') {
-			let mut arguments = Vec::<_>::new();
-			// TODO could we use parse_bracketed
-			loop {
-				if reader.starts_with(')') {
-					break;
-				}
-				arguments.push(Expression::from_reader(reader)?);
-				if !reader.is_operator_advance(",") {
-					break;
-				}
-			}
-			let _ = reader.expect(')')?;
-			Some(arguments)
-		} else {
-			None
-		};
-		let position = start.union(reader.get_end());
-		Ok(Self { name, arguments, position })
+		dbg!(reader.get_current());
+		let expression = Expression::from_reader_with_precedence(
+			reader,
+			crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE,
+		)?;
+		// TODO check valid here
+		Ok(Self(expression))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -55,28 +37,12 @@ impl ASTNode for Decorator {
 	) {
 		if options.include_decorators {
 			buf.push('@');
-			for (not_at_end, value) in self.name.iter().nendiate() {
-				buf.push_str(value);
-				if not_at_end {
-					buf.push('.');
-				}
-			}
-			if let Some(arguments) = &self.arguments {
-				buf.push('(');
-				for (at_end, argument) in arguments.iter().endiate() {
-					argument.to_string_from_buffer(buf, options, local);
-					if !at_end {
-						buf.push(',');
-						options.push_gap_optionally(buf);
-					}
-				}
-				buf.push(')');
-			}
+			self.0.to_string_from_buffer(buf, options, local)
 		}
 	}
 }
 
-/// TODO under cfg if don't want this could just be `type Decorated<T> = T;`
+/// FUTURE under cfg if the user does not want the decorators feature, this definition could be swapped out with `type Decorated<T> = T;`
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -114,8 +80,10 @@ impl<U: ASTNode> Decorated<U> {
 	}
 
 	pub fn new(decorators: Vec<Decorator>, on: U) -> Self {
-		let position =
-			decorators.first().map_or(on.get_position(), |d| d.position).union(on.get_position());
+		let position = decorators
+			.first()
+			.map_or(on.get_position(), |d| d.get_position())
+			.union(on.get_position());
 		Self { decorators, on, position }
 	}
 

@@ -114,12 +114,17 @@ parse_print_ast = "cargo run -p ezno-parser --example parse ./private/toparse/aa
 # ft means 'from target' (existing build)
 parse_print_ast_ft = "./target/debug/examples/parse.exe ./private/toparse/aaa.tsx"
 run_parser_tests = "cargo test -p ezno-parser --no-fail-fast --tests"
-run_parser_specification = "spectra test parser/examples.md 'cargo run -q -p ezno-parser --example parse -- --rpc --interactive'"
-run_parser_specification_ft = "spectra test parser/examples.md './target/debug/examples/parse --rpc --interactive'"
-run_parser_specification_extras_dry_run_ft = "spectra test parser/private_extras.md './target/debug/examples/parse --rpc --interactive' --dry-run"
+run_parser_specification = "spectra test parser/documentation/examples.md 'cargo run -q -p ezno-parser --example parse -- --rpc --interactive'"
+run_parser_specification_dry_run = "spectra test parser/documentation/examples.md 'cargo run -q -p ezno-parser --example parse -- --rpc --interactive' --dry-run"
+run_parser_specification_ft = "spectra test parser/documentation/examples.md './target/debug/examples/parse --rpc --interactive'"
+run_parser_specification_extras_dry_run_ft = "spectra test parser/documentation/private_extras.md './target/debug/examples/parse --rpc --interactive' --dry-run"
 
 run_test262 = "cargo run --manifest-path test262/Cargo.toml"
-investigate_test262 = "sqlite-tool test262/out/results.db sample --where 'parser_out LIKE \\'%LHS%\\''"
+test262_statistics = "sqlite-tool statistics test262/out/results.db results percentage --grouping parser_out"
+
+# TODO templating here
+investigate_test262 = "sqlite-tool sample test262/out/results.db results --where 'parser_out LIKE \\'Expected%\\'' --pick 5"
+save_test262 = "sqlite-tool sample test262/out/results.db results --where 'parser_out LIKE \\'Expected%\\'' --pick 5 --write-to-file private/toparse/aaa.tsx --field code"
 
 # [profile.dev]
 # debug = false

@@ -164,6 +164,10 @@ pub fn parse_number(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()>
 }
 
 fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()> {
+	fn is_ascii_digit_or_numerical_seperator(c: char) -> bool {
+		c.is_ascii_digit() || matches!(c, '_')
+	}
+
 	fn number_of_number_characters(current: &str) -> usize {
 		let mut after_decimal = false;
 		for (idx, byte) in current.bytes().enumerate() {
@@ -173,6 +177,7 @@ fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), (
 				}
 				after_decimal = true;
 			} else {
+				// cannot use `is_ascii_digit_or_numerical_seperator` because we have a byte...
 				let is_valid = byte.is_ascii_digit() || byte == b'_';
 				if !is_valid {
 					return idx;
@@ -189,7 +194,9 @@ fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), (
 			count += 1;
 		}
 		let after = &current[count..];
-		count += after.find(|c: char| !c.is_ascii_digit()).unwrap_or(after.len());
+		count += after
+			.find(|chr: char| !is_ascii_digit_or_numerical_seperator(chr))
+			.unwrap_or(after.len());
 	}
 	let source = &current[..count];
 
@@ -267,6 +274,7 @@ mod tests {
 
 		assert_eq!(parse_number("4.2e+500"), Ok((f(f64::INFINITY), 8)));
 		assert_eq!(parse_number("4.2e-4000"), Ok((f(0f64), 9)));
+		assert_eq!(parse_number("1.0e-1_0"), Ok((f(1e-10f64), 8)));
 	}
 
 	#[test]

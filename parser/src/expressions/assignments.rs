@@ -45,7 +45,7 @@ impl ASTNode for VariableOrPropertyAccess {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// I think this is correct
-		let precedence = super::operators::INDEX_PRECEDENCE - 1;
+		let precedence = super::precedence::INDEX_PRECEDENCE - 1;
 		Expression::from_reader_with_precedence(reader, precedence)?.try_into()
 	}
 

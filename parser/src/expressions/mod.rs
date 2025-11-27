@@ -2,6 +2,7 @@ pub mod arrow_function;
 pub mod assignments;
 pub mod object_literal;
 pub mod operators;
+pub mod precedence;
 pub mod template_literal;
 
 use crate::{
@@ -17,15 +18,21 @@ pub use self::{
 	object_literal::ObjectLiteral,
 };
 
-use self::operators::{
-	ARROW_FUNCTION_PRECEDENCE, COMMA_PRECEDENCE, CONDITIONAL_TERNARY_PRECEDENCE,
-	CONSTRUCTOR_PRECEDENCE, CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, INDEX_PRECEDENCE,
-	IncrementOrDecrement, MEMBER_ACCESS_PRECEDENCE, Operator,
-	PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, YIELD_OPERATORS_PRECEDENCE,
+use self::precedence::{
+	ARROW_FUNCTION_PRECEDENCE, ASSIGNMENT_PRECEDENCE, COMMA_PRECEDENCE,
+	CONDITIONAL_TERNARY_PRECEDENCE, CONSTRUCTOR_PRECEDENCE,
+	CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE, FUNCTION_CALL_PRECEDENCE, INDEX_PRECEDENCE,
+	MEMBER_ACCESS_PRECEDENCE, PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE, RELATION_PRECEDENCE,
+	YIELD_OPERATORS_PRECEDENCE,
 };
 
 use super::jsx::JSXRoot;
 use super::{ASTNode, Block, FunctionBase, ParseError, Span, TypeAnnotation};
+
+use self::operators::{
+	AssociativityDirection, BinaryAssignmentOperator, BinaryOperator, IncrementOrDecrement,
+	Operator, UnaryOperator, UnaryPostfixAssignmentOperator, UnaryPrefixAssignmentOperator,
+};
 
 #[cfg(feature = "extras")]
 use crate::extensions::is_expression::IsExpression;
@@ -36,12 +43,6 @@ use visitable_derive::Visitable;
 
 pub use arrow_function::{ArrowFunction, ExpressionOrBlock};
 pub use template_literal::TemplateLiteral;
-
-use operators::{
-	ASSIGNMENT_PRECEDENCE, AssociativityDirection, BinaryAssignmentOperator, BinaryOperator,
-	FUNCTION_CALL_PRECEDENCE, RELATION_PRECEDENCE, UnaryOperator, UnaryPostfixAssignmentOperator,
-	UnaryPrefixAssignmentOperator,
-};
 
 pub type ExpressionFunctionBase = functions::GeneralFunctionBase<ExpressionPosition>;
 pub type ExpressionFunction = FunctionBase<ExpressionFunctionBase>;
@@ -415,6 +416,19 @@ impl Expression {
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
 			} else if reader.is_keyword_advance("yield") {
+				if reader.is_operator("=>") {
+					let is_async = false;
+					let identifier = crate::VariableIdentifier::Standard(
+						"yield".to_owned(),
+						start.union(reader.get_end()),
+					);
+					return ArrowFunction::from_reader_with_first_parameter(
+						reader, is_async, identifier,
+					)
+					.map(Box::new)
+					.map(Expression::ArrowFunction);
+				}
+
 				let yielded = if reader.starts_with_expression_delimiter() {
 					None
 				} else {
@@ -494,12 +508,14 @@ impl Expression {
 					if reader.is_keyword_advance("source") {
 						reader.expect('(')?;
 						let path = Box::new(Expression::from_reader(reader)?);
+						let _ = reader.is_operator_advance(",");
 						reader.expect(')')?;
 						let position = start.union(reader.get_end());
 						Expression::Import(ImportExpression::ImportSource { path, position })
 					} else if reader.is_keyword_advance("defer") {
 						reader.expect('(')?;
 						let path = Box::new(Expression::from_reader(reader)?);
+						let _ = reader.is_operator_advance(",");
 						reader.expect(')')?;
 						let position = start.union(reader.get_end());
 						Expression::Import(ImportExpression::ImportDefer { path, position })
@@ -535,6 +551,7 @@ impl Expression {
 					} else {
 						None
 					};
+					let _ = reader.is_operator_advance(",");
 					let end = reader.expect(')')?;
 					let inner = ImportExpression::DynamicImport {
 						path: Box::new(path),
@@ -584,6 +601,7 @@ impl Expression {
 						.map(Box::new)
 						.map(Expression::ArrowFunction);
 					}
+
 					Expression::VariableReference(name.into_owned(), position)
 				}
 				// if let Ok(name) = name {

@@ -63,7 +63,8 @@ CREATE TABLE results (
 			}
 		}
 
-		if let Some("js") = path.extension().and_then(std::ffi::OsStr::to_str) {
+		let extension = path.extension().and_then(std::ffi::OsStr::to_str);
+		if let Some("js") = extension {
 			let Ok(source) = read_to_string(path) else {
 				eprintln!("Could not read {path}", path = path.display());
 				return;
@@ -200,7 +201,7 @@ CREATE TABLE results (
 			if completed % 1000 == 0 {
 				eprintln!("Completed {completed} tests");
 			}
-		} else {
+		} else if extension != ".DS_Store" {
 			eprintln!("Not a test file: {path}", path = path.display());
 		}
 	});
