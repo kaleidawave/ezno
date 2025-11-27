@@ -543,9 +543,15 @@ impl<'a> Lexer<'a> {
 		let value = self.get_current();
 		let result = crate::strings::parse_string(value);
 		match result {
-			Ok((value, quoted, count)) => {
-				self.advance(count);
-				Ok((value, quoted, count))
+			Ok(crate::strings::ParseStringOutput {
+				value,
+				quoted,
+				source_length,
+				unknown_escapes: _,
+			}) => {
+				// TODO add unknown escapes to warnings (or errors on strict mode)
+				self.advance(source_length);
+				Ok((value, quoted, source_length))
 			}
 			Err(_) => {
 				// TODO ...
