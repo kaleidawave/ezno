@@ -197,7 +197,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					let behavior = if member
 						.decorators
 						.iter()
-						.any(|a| a.name.first().cloned().as_deref() == Some("DoNotIncludeThis"))
+						.any(|dec| matches!(&dec.0, parser::Expression::VariableReference(name, _) if  name == "DoNotIncludeThis"))
 					{
 						crate::types::functions::FunctionBehavior::ArrowFunction {
 							is_async: header.is_async(),

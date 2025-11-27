@@ -57,13 +57,14 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 	environment: &Environment,
 ) -> Option<InternalFunctionEffect> {
 	decorators.iter().find_map(|decorator| {
-		if decorator.name.len() == 1 {
-			let decorator_name = decorator.name.first().map(String::as_str)?;
-			if let "Constant" | "InputOutput" = decorator_name {
-				let (identifier, may_throw) = if let Some(arguments) = decorator.arguments.as_ref()
-				{
-					let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
-						arguments.first()
+		if let Expression::FunctionCall { function, arguments, .. } = &decorator.0
+			&& let Expression::VariableReference(name, _) = &**function
+		{
+			if let "Constant" | "InputOutput" = name.as_str() {
+				let (identifier, may_throw) = if !arguments.is_empty() {
+					let identifier = if let Some(parser::expressions::FunctionArgument::Standard(
+						Expression::StringLiteral(identifier, _, _),
+					)) = arguments.first()
 					{
 						identifier.clone()
 					} else {
@@ -71,28 +72,33 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 							"first argument to constant or input output should be string literal"
 						);
 					};
-					let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
-						arguments.get(1)
+
+					let may_throw = if let Some(parser::expressions::FunctionArgument::Standard(
+						Expression::VariableReference(identifier, _),
+					)) = arguments.get(1)
 					{
 						Some(
 							environment
-								.get_type_from_name(identifier)
+								.get_type_from_name(&identifier)
 								.expect("could not find thrown type"),
 						)
 					} else {
 						None
 					};
+
 					(identifier, may_throw)
 				} else {
 					(function_name.to_owned(), None)
 				};
-				Some(match decorator_name {
+
+				let effect = match name.as_str() {
 					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
 					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },
 					_ => unreachable!(),
-				})
+				};
+				Some(effect)
 			} else {
-				crate::utilities::notify!("Unknown decorator {:?}", decorator_name);
+				crate::utilities::notify!("Unknown decorator {:?}", name);
 				None
 			}
 		} else {
@@ -103,7 +109,12 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 
 pub(crate) fn _decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
 	decorators.iter().find_map(|dec| {
-		matches!(dec.name.first().map(String::as_str), Some("Server" | "Client"))
-			.then(|| dec.name.first().unwrap().to_owned())
+		if let Expression::VariableReference(name, _) = &dec.0
+			&& matches!(name.as_str(), "Server" | "Client")
+		{
+			Some(name.to_owned())
+		} else {
+			None
+		}
 	})
 }

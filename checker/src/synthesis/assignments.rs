@@ -276,5 +276,8 @@ pub(crate) fn synthesise_access_to_reference<T: crate::ReadFromFS>(
 		VariableOrPropertyAccess::PropertyOnSuper(_, _) => {
 			todo!()
 		}
+		VariableOrPropertyAccess::Neither(_) => {
+			todo!()
+		}
 	}
 }

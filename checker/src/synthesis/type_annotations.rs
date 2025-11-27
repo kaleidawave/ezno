@@ -627,8 +627,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			TypeId::ANY_TYPE
 		}
 		// TODO these are all work in progress
-		TypeAnnotation::Decorated(decorator, inner, _) => {
-			crate::utilities::notify!("Unknown decorator skipping {:#?}", decorator.name);
+		TypeAnnotation::Decorated(_decorator, inner, _) => {
+			// crate::utilities::notify!("Unknown decorator skipping {:#?}", decorator.name);
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral { parts, final_part, .. } => {
