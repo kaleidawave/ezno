@@ -29,7 +29,7 @@ impl IntoAST<Expression> for &str {
 	fn into_ast(self) -> Expression {
 		Expression::StringLiteral(
 			self.to_owned(),
-			crate::Quoted::Double,
+			crate::Quoting::Double,
 			source_map::Nullable::NULL,
 		)
 	}

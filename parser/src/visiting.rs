@@ -235,7 +235,7 @@ mod ast {
 		crate::types::declare_variable::DeclareVariableDeclaration,
 		crate::VariableIdentifier,
 		crate::PropertyReference,
-		crate::Quoted,
+		crate::Quoting,
 		crate::statements_and_declarations::import_export::ImportExportName,
 		crate::statements_and_declarations::import_export::ImportLocation,
 		crate::statements_and_declarations::variables::VariableKeyword,

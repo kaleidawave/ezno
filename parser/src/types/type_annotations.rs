@@ -1,5 +1,5 @@
 use crate::{
-	ASTNode, Decorator, ListItem, Marker, ParseError, ParseResult, Quoted, Span, VariableField,
+	ASTNode, Decorator, ListItem, Marker, ParseError, ParseResult, Quoting, Span, VariableField,
 	WithComment,
 	ast::VariableOrPropertyAccess,
 	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
@@ -26,7 +26,7 @@ pub enum TypeAnnotation {
 	/// Intersection e.g. `c & d`
 	Intersection(Vec<TypeAnnotation>, Span),
 	/// String literal e.g. `"foo"`
-	StringLiteral(String, Quoted, Span),
+	StringLiteral(String, Quoting, Span),
 	/// Number literal e.g. `45`
 	NumberLiteral(NumberRepresentation, Span),
 	/// Big integer literal e.g. `100n`
@@ -328,10 +328,10 @@ impl ASTNode for TypeAnnotation {
 			Self::BigIntLiteral(value, _) => {
 				buf.push_str(&value.source);
 			}
-			Self::StringLiteral(expression, quoted, _) => {
-				buf.push(quoted.as_char());
+			Self::StringLiteral(expression, quoting, _) => {
+				buf.push(quoting.as_char());
 				buf.push_str(expression.as_str());
-				buf.push(quoted.as_char());
+				buf.push(quoting.as_char());
 			}
 			Self::Union(union_members, _) => {
 				for (at_end, member) in union_members.iter().endiate() {
@@ -638,9 +638,9 @@ impl TypeAnnotation {
 				}
 			}
 		} else if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoted, width) = reader.parse_string_literal()?;
+			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
-			Self::StringLiteral(content.into_owned(), quoted, position)
+			Self::StringLiteral(content.into_owned(), quoting, position)
 		} else if reader.starts_with('@') {
 			let decorator = Decorator::from_reader(reader)?;
 			// TODO ...

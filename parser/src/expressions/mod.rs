@@ -6,7 +6,7 @@ pub mod precedence;
 pub mod template_literal;
 
 use crate::{
-	ExpressionPosition, ListItem, Marker, ParseErrors, ParseResult, Quoted, are_nodes_over_length,
+	ExpressionPosition, ListItem, Marker, ParseErrors, ParseResult, Quoting, are_nodes_over_length,
 	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode, functions,
 };
 
@@ -60,7 +60,7 @@ pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
 	BigIntLiteral(BigInt, Span),
-	StringLiteral(String, Quoted, Span),
+	StringLiteral(String, Quoting, Span),
 	BooleanLiteral(bool, Span),
 	RegexLiteral {
 		pattern: String,
@@ -238,9 +238,9 @@ impl Expression {
 		let start = reader.get_start();
 		let first_expression = {
 			if reader.starts_with_string_delimeter() {
-				let (content, quoted, width) = reader.parse_string_literal()?;
+				let (content, quoting, width) = reader.parse_string_literal()?;
 				let position = start.with_length(width as usize);
-				Expression::StringLiteral(content.into_owned(), quoted, position)
+				Expression::StringLiteral(content.into_owned(), quoting, position)
 			} else if reader.starts_with_number() {
 				let (value, length) = reader.parse_number_literal()?;
 				let position = start.with_length(length as usize);
@@ -1243,10 +1243,10 @@ impl Expression {
 				buf.push_str(&num.source);
 				buf.push('n');
 			}
-			Self::StringLiteral(string, quoted, _) => {
-				buf.push(quoted.as_char());
+			Self::StringLiteral(string, quoting, _) => {
+				buf.push(quoting.as_char());
 				buf.push_str(string);
-				buf.push(quoted.as_char());
+				buf.push(quoting.as_char());
 			}
 			Self::BooleanLiteral(expression, _) => {
 				buf.push_str(if *expression { "true" } else { "false" });

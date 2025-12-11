@@ -529,19 +529,19 @@ impl<'a> Lexer<'a> {
 	#[allow(clippy::single_match_else)]
 	pub fn parse_string_literal(
 		&mut self,
-	) -> Result<(std::borrow::Cow<'a, str>, crate::strings::Quoted, u32), ParseError> {
+	) -> Result<(std::borrow::Cow<'a, str>, crate::strings::Quoting, u32), ParseError> {
 		let value = self.get_current();
 		let result = crate::strings::parse_string(value);
 		match result {
 			Ok(crate::strings::ParseStringOutput {
 				value,
-				quoted,
+				quoting,
 				source_length,
 				unknown_escapes: _,
 			}) => {
 				// TODO add unknown escapes to warnings (or errors on strict mode)
 				self.advance(source_length);
-				Ok((value, quoted, source_length))
+				Ok((value, quoting, source_length))
 			}
 			Err(_) => {
 				// TODO ...
@@ -667,12 +667,12 @@ impl<'a> Lexer<'a> {
 	// TODO also can exit if there is `=` or `:` and = 0 in some examples
 	#[must_use]
 	pub fn after_brackets(&self) -> &'a str {
-		use crate::Quoted;
+		use crate::Quoting;
 
 		enum State {
 			None,
 			Comment,
-			StringLiteral { escaped: bool, quoted: crate::Quoted },
+			StringLiteral { escaped: bool, quoting: crate::Quoting },
 			// TemplateLiteral { escaped: bool },
 			// RegexLiteral { escaped: bool },
 			MultilineComment,
@@ -715,9 +715,9 @@ impl<'a> Lexer<'a> {
 							return current[(idx + 1)..].trim_start();
 						}
 					} else if let '"' = chr {
-						state = State::StringLiteral { escaped: false, quoted: Quoted::Double };
+						state = State::StringLiteral { escaped: false, quoting: Quoting::Double };
 					} else if let '\'' = chr {
-						state = State::StringLiteral { escaped: false, quoted: Quoted::Single };
+						state = State::StringLiteral { escaped: false, quoting: Quoting::Single };
 					} else if let '/' = chr {
 						if current[idx..].starts_with("/*") {
 							state = State::MultilineComment;
@@ -726,14 +726,14 @@ impl<'a> Lexer<'a> {
 						}
 					}
 				}
-				State::StringLiteral { ref mut escaped, quoted } => {
+				State::StringLiteral { ref mut escaped, quoting } => {
 					if *escaped {
 						*escaped = false;
 						continue;
 					}
 					if let '\\' = chr {
 						*escaped = true;
-					} else if let (Quoted::Double, '"') | (Quoted::Single, '\'') = (quoted, chr) {
+					} else if let (Quoting::Double, '"') | (Quoting::Single, '\'') = (quoting, chr) {
 						state = State::None;
 					}
 				}

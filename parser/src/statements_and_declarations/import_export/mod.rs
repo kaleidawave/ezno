@@ -5,7 +5,7 @@ use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{Marker, Quoted, derive_ASTNode};
+use crate::{Marker, Quoting, derive_ASTNode};
 
 pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
 	const PREFIX: bool;
@@ -158,7 +158,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
-	Quoted(String, Quoted),
+	Quoting(String, Quoting),
 	/// For typing here
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
@@ -172,9 +172,9 @@ impl ImportExportName {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
-			let (content, quoted, width) = reader.parse_string_literal()?;
+			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
-			Ok((ImportExportName::Quoted(content.into_owned(), quoted), position))
+			Ok((ImportExportName::Quoting(content.into_owned(), quoting), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
 			let position = start.with_length("default".len());
@@ -203,7 +203,7 @@ impl ImportExportName {
 	) {
 		match self {
 			ImportExportName::Reference(alias) => buf.push_str(alias),
-			ImportExportName::Quoted(alias, q) => {
+			ImportExportName::Quoting(alias, q) => {
 				buf.push(q.as_char());
 				buf.push_str(alias);
 				buf.push(q.as_char());
@@ -214,7 +214,7 @@ impl ImportExportName {
 
 	pub(crate) fn as_str(&self) -> &str {
 		match self {
-			Self::Reference(on) | Self::Quoted(on, _) => on,
+			Self::Reference(on) | Self::Quoting(on, _) => on,
 			Self::Marker(..) => "",
 		}
 	}
@@ -223,7 +223,7 @@ impl ImportExportName {
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone)]
 pub enum ImportLocation {
-	Quoted(String, Quoted),
+	Quoting(String, Quoting),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
 		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportLocation>"))] Marker<Self>,
@@ -260,16 +260,16 @@ impl ImportLocation {
 		reader.skip();
 
 		let _start = reader.get_start();
-		let (content, quoted, _width) = reader.parse_string_literal()?;
-		Ok(ImportLocation::Quoted(content.into_owned(), quoted))
+		let (content, quoting, _width) = reader.parse_string_literal()?;
+		Ok(ImportLocation::Quoting(content.into_owned(), quoting))
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
 		match self {
-			ImportLocation::Quoted(inner, quoted) => {
-				buf.push(quoted.as_char());
+			ImportLocation::Quoting(inner, quoting) => {
+				buf.push(quoting.as_char());
 				buf.push_str(inner);
-				buf.push(quoted.as_char());
+				buf.push(quoting.as_char());
 			}
 			ImportLocation::Marker(_) => {}
 		}
@@ -278,6 +278,6 @@ impl ImportLocation {
 	/// Can be `None` if self is a marker point
 	#[must_use]
 	pub fn get_path(&self) -> Option<&str> {
-		if let Self::Quoted(name, _) = self { Some(name) } else { None }
+		if let Self::Quoting(name, _) = self { Some(name) } else { None }
 	}
 }

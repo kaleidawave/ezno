@@ -118,10 +118,9 @@ impl ASTNode for JSXElement {
 								JSXAttribute::Dynamic(key, Box::new(expression), start.union(end))
 							}
 						} else if reader.starts_with_string_delimeter() {
-							// TODO _quoted
-							let (content, _quoted, width) = reader.parse_string_literal()?;
+							let (content, quoting, width) = reader.parse_string_literal()?;
 							let position = start.with_length(width as usize);
-							JSXAttribute::Static(key, content.into_owned(), position)
+							JSXAttribute::Static(key, content.into_owned(), quoting, position)
 						} else {
 							let (_found, position) = crate::lexer::utilities::next_item(reader);
 							return Err(ParseError::new(
@@ -255,7 +254,7 @@ impl ASTNode for JSXElement {
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum JSXAttribute {
-	Static(String, String, Span),
+	Static(String, String, crate::strings::Quoting, Span),
 	Dynamic(String, Box<Expression>, Span),
 	Boolean(String, Span),
 	Spread(Expression, Span),
@@ -290,10 +289,9 @@ impl ASTNode for JSXAttribute {
 					Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
 				}
 			} else if reader.starts_with_string_delimeter() {
-				// TODO _quoted
-				let (content, _quoted, width) = reader.parse_string_literal()?;
+				let (content, quoting, width) = reader.parse_string_literal()?;
 				let position = start.with_length(width as usize);
-				Ok(JSXAttribute::Static(key, content.into_owned(), position))
+				Ok(JSXAttribute::Static(key, content.into_owned(), quoting, position))
 			} else {
 				let (_found, position) = crate::lexer::utilities::next_item(reader);
 				Err(ParseError::new(ParseErrors::ExpectedJSXAttribute, position))
@@ -312,12 +310,12 @@ impl ASTNode for JSXAttribute {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
-			JSXAttribute::Static(key, expression, _) => {
+			JSXAttribute::Static(key, value, quoting, _) => {
 				buf.push_str(key.as_str());
 				buf.push('=');
-				buf.push('"');
-				buf.push_str(expression.as_str());
-				buf.push('"');
+				buf.push(quoting.as_char());
+				buf.push_str(value.as_str());
+				buf.push(quoting.as_char());
 			}
 			JSXAttribute::Dynamic(key, expression, _) => {
 				buf.push_str(key.as_str());

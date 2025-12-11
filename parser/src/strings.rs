@@ -1,5 +1,32 @@
 use std::borrow::Cow;
 
+/// What surrounds string content
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[apply(crate::derive_ASTNode!)]
+pub enum Quoting {
+	Single,
+	Double,
+}
+
+impl Quoting {
+	#[must_use]
+	pub fn as_char(self) -> char {
+		match self {
+			Quoting::Single => '\'',
+			Quoting::Double => '"',
+		}
+	}
+
+	#[must_use]
+	pub fn from_char(chr: char) -> Result<Self, char> {
+		match chr {
+			'\'' => Ok(Quoting::Single),
+			'"' => Ok(Quoting::Double),
+			chr => Err(chr),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StringError {
 	EmptyBuffer,
@@ -13,7 +40,7 @@ pub enum StringError {
 pub struct ParseStringOutput<'a> {
 	/// may have been transformed
 	pub value: Cow<'a, str>,
-	pub quoted: Quoted,
+	pub quoting: Quoting,
 	/// used to advance read head
 	pub source_length: u32,
 	/// relative offsets of unknown escapes
@@ -21,10 +48,10 @@ pub struct ParseStringOutput<'a> {
 }
 
 pub fn parse_string<'a>(current: &'a str) -> Result<ParseStringOutput<'a>, StringError> {
-	let (delimeter, quoted) = if current.starts_with('"') {
-		('"', Quoted::Double)
+	let (delimeter, quoting) = if current.starts_with('"') {
+		('"', Quoting::Double)
 	} else if current.starts_with('\'') {
-		('\'', Quoted::Single)
+		('\'', Quoting::Single)
 	} else if let Some(first) = current.chars().next() {
 		return Err(StringError::InvalidStart(first));
 	} else {
@@ -51,7 +78,7 @@ pub fn parse_string<'a>(current: &'a str) -> Result<ParseStringOutput<'a>, Strin
 		if let "\"" | "'" = matched {
 			let output = ParseStringOutput {
 				value: buf,
-				quoted,
+				quoting,
 				source_length: idx as u32 + 2,
 				unknown_escapes,
 			};
@@ -81,33 +108,6 @@ pub fn parse_string<'a>(current: &'a str) -> Result<ParseStringOutput<'a>, Strin
 	}
 
 	Err(StringError::NoDelimeter)
-}
-
-// What surrounds a string
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[apply(crate::derive_ASTNode!)]
-pub enum Quoted {
-	Single,
-	Double,
-}
-
-impl Quoted {
-	#[must_use]
-	pub fn as_char(self) -> char {
-		match self {
-			Quoted::Single => '\'',
-			Quoted::Double => '"',
-		}
-	}
-
-	#[must_use]
-	pub fn from_char(chr: char) -> Result<Self, char> {
-		match chr {
-			'\'' => Ok(Quoted::Single),
-			'"' => Ok(Quoted::Double),
-			chr => Err(chr),
-		}
-	}
 }
 
 fn parse_hex(on: &str) -> Result<u32, &str> {
@@ -274,21 +274,21 @@ pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), EscapeEr
 mod tests {
 	use super::{
 		ParseStringOutput,
-		Quoted::{self, Double, Single},
+		Quoting::{self, Double, Single},
 		parse_string,
 	};
 
-	fn pso<'a>(on: &'a str, quoted: Quoted, source_length: usize) -> ParseStringOutput<'a> {
+	fn pso<'a>(on: &'a str, quoting: Quoting, source_length: usize) -> ParseStringOutput<'a> {
 		ParseStringOutput {
 			value: std::borrow::Cow::Borrowed(on),
-			quoted,
+			quoting,
 			source_length: source_length as u32,
 			unknown_escapes: Vec::default(),
 		}
 	}
 
 	#[test]
-	fn quoted() {
+	fn Quoting() {
 		assert_eq!(parse_string("'Hello World'"), Ok(pso("Hello World", Single, 13)));
 		assert_eq!(parse_string("'Hello World'.length"), Ok(pso("Hello World", Single, 13)));
 

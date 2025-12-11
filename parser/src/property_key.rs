@@ -1,5 +1,5 @@
 use crate::{
-	Quoted, derive_ASTNode,
+	Quoting, derive_ASTNode,
 	visiting::{Chain, VisitOptions, Visitable},
 };
 use get_field_by_type::GetFieldByType;
@@ -84,7 +84,7 @@ impl PropertyKeyKind for PublicOrPrivate {
 #[get_field_by_type_target(Span)]
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Identifier(String, Span, T),
-	StringLiteral(String, Quoted, Span),
+	StringLiteral(String, Quoting, Span),
 	NumberLiteral(NumberRepresentation, Span),
 	/// Includes anything in the `[...]` maybe a symbol
 	Computed(Box<Expression>, Span),
@@ -125,9 +125,9 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoted, width) = reader.parse_string_literal()?;
+			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
-			Ok(Self::StringLiteral(content.into_owned(), quoted, position))
+			Ok(Self::StringLiteral(content.into_owned(), quoting, position))
 		} else if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
@@ -155,10 +155,10 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		match self {
 			Self::Identifier(ident, _pos, _) => buf.push_str(ident.as_str()),
 			Self::NumberLiteral(number, _) => buf.push_str(&number.to_string()),
-			Self::StringLiteral(string, quoted, _) => {
-				buf.push(quoted.as_char());
+			Self::StringLiteral(string, quoting, _) => {
+				buf.push(quoting.as_char());
 				buf.push_str(string.as_str());
-				buf.push(quoted.as_char());
+				buf.push(quoting.as_char());
 			}
 			Self::Computed(expression, _) => {
 				buf.push('[');

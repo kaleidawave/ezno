@@ -39,7 +39,7 @@ pub use options::*;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
 pub use statements_and_declarations::{Statement, StatementOrDeclaration, control_flow, variables};
-pub use strings::Quoted;
+pub use strings::Quoting;
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
 	type_declarations::{self, TypeParameter},

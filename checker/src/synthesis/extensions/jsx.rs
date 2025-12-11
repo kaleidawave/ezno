@@ -485,10 +485,10 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 ) -> (PropertyKey<'static>, TypeId) {
 	let (key, value) = match attribute {
 		// TODO check property exists ...?
-		JSXAttribute::Static(name, value, _attribute_id) => {
+		JSXAttribute::Static(name, value, _, _) => {
 			(name, checking_data.types.new_constant_type(crate::Constant::String(value.clone())))
 		}
-		JSXAttribute::Dynamic(name, expression, _attribute_id) => {
+		JSXAttribute::Dynamic(name, expression, _) => {
 			if let Expression::ExpressionFunction(_) = &**expression {
 				// TODO temp context
 				environment.context_type.location = Some("client".to_owned());

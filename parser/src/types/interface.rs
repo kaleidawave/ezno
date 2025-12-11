@@ -307,9 +307,9 @@ impl ASTNode for InterfaceMember {
 			// We do not use `PropertyKey::from_reader` to handle a case with type annotation
 			let name = if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
-					let (content, quoted, width) = reader.parse_string_literal()?;
+					let (content, quoting, width) = reader.parse_string_literal()?;
 					let position = start.with_length(width as usize);
-					PropertyKey::StringLiteral(content.into_owned(), quoted, position)
+					PropertyKey::StringLiteral(content.into_owned(), quoting, position)
 				} else if reader.starts_with_number() {
 					let (value, length) = reader.parse_number_literal()?;
 					let position = start.with_length(length as usize);
