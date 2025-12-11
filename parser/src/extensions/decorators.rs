@@ -4,6 +4,29 @@ use visitable_derive::Visitable;
 
 use crate::{ASTNode, Expression, ParseResult, Visitable, derive_ASTNode};
 
+/// Parse a list of decorators
+pub(crate) fn possible_decorators_from_reader(
+	reader: &mut crate::Lexer,
+) -> ParseResult<Vec<Decorator>> {
+	let mut decorators = Vec::new();
+	while reader.is_operator("@") {
+		decorators.push(Decorator::from_reader(reader)?);
+	}
+	Ok(decorators)
+}
+
+pub(crate) fn warn_if_possible_decorators_unused(
+	on: &'static str,
+	decorators: Vec<Decorator>,
+) -> ParseResult<()> {
+	if decorators.is_empty() {
+		Ok(())
+	} else {
+		let reason = crate::ParseErrors::DecoratorsNotAllowed { on };
+		Err(crate::ParseError::new(reason, decorators.first().unwrap().get_position()))
+	}
+}
+
 /// The [decorators](https://github.com/tc39/proposal-decorators) proposal.
 ///
 /// Decorators are expressions. Also allowing `@(x + 2)`
@@ -58,7 +81,7 @@ impl<N: ASTNode> ASTNode for Decorated<N> {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let decorators = decorators_from_reader(reader)?;
+		let decorators = possible_decorators_from_reader(reader)?;
 		N::from_reader(reader).map(|on| Self::new(decorators, on))
 	}
 
@@ -103,14 +126,6 @@ impl<U: ASTNode> Decorated<U> {
 			}
 		}
 	}
-}
-
-pub(crate) fn decorators_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<Decorator>> {
-	let mut decorators = Vec::new();
-	while reader.starts_with('@') {
-		decorators.push(Decorator::from_reader(reader)?);
-	}
-	Ok(decorators)
 }
 
 impl<T: Visitable> Visitable for Decorated<T> {

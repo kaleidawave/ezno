@@ -29,7 +29,7 @@ pub struct ParseOptions {
 	pub type_annotations: TypeAnnotationOption,
 	pub comments: CommentsOption,
 	/// None => Disabled
-	pub jsx: Option<JSXOptions>,
+	pub jsx: Option<JSX>,
 	pub decorators: bool,
 	// ---
 	pub extras: Extras,
@@ -89,7 +89,7 @@ pub struct Features {
 #[allow(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
-pub struct JSXOptions {
+pub struct JSX {
 	/// Allow custom characters in JSX attributes
 	pub special_jsx_attributes: bool,
 	/// JSX with modifications
@@ -99,27 +99,27 @@ pub struct JSXOptions {
 	pub attributes_as_expressions: bool,
 }
 
+impl JSX {
+	#[must_use]
+	pub fn all() -> Self {
+		Self { special_jsx_attributes: true, top_level_html: true, attributes_as_expressions: true }
+	}
+}
+
 impl ParseOptions {
 	#[must_use]
 	pub fn all() -> Self {
 		Self {
 			type_annotations: TypeAnnotationOption::Allowed,
 			comments: CommentsOption::All,
-			jsx: Some(JSXOptions {
+			jsx: Some(JSX {
 				special_jsx_attributes: true,
 				top_level_html: true,
 				attributes_as_expressions: true,
 			}),
 			decorators: true,
-			extras: Extras {
-				is_expressions: true,
-				enum_members_as_data_types: true,
-				extra_operators: true,
-				destructuring_type_annotation: true,
-				custom_function_headers: true,
-				reversed_imports: true,
-				additional_type_annotations: true,
-			},
+			extras: Extras::all(),
+			// just syntax all not feature all
 			features: Features::default(),
 		}
 	}

@@ -81,6 +81,9 @@ pub enum ParseErrors<'a> {
 	NonStandardSyntaxUsedWithoutEnabled {
 		syntax: &'static str,
 	},
+	DecoratorsNotAllowed {
+		on: &'static str,
+	},
 	ExpectedRule,
 	ExpectedJSXAttribute,
 	ExpectedStatement,
@@ -144,6 +147,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::UnexpectedEnd => {
 				write!(f, "Unexpected end")
+			}
+			ParseErrors::DecoratorsNotAllowed { on } => {
+				write!(f, "Decorator not allowed on {on}")
 			}
 			ParseErrors::ClosingTagDoesNotMatch { tag_name: expected, closing_tag_name: found } => {
 				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")

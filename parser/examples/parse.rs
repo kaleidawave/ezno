@@ -142,7 +142,7 @@ fn parse_path(
 	let jsx = if let Some(jsx_options) = parse_options.jsx {
 		Some(jsx_options)
 	} else if path_str.ends_with('x') {
-		Some(options::JSXOptions::default())
+		Some(options::JSX::default())
 	} else {
 		None
 	};
@@ -297,10 +297,34 @@ fn run_interactive() {
 		}
 
 		if line == "end" {
-			let output = String::from_utf8_lossy(&buf);
+			let output = String::from_utf8(std::mem::take(&mut buf)).unwrap();
+			let mut parse_options = options::ParseOptions::default();
 
-			let parse_options = options::ParseOptions::all();
-			let module = Module::from_string_with_options(output.into_owned(), parse_options, None);
+			let output: String = if let Some(rest) = output.strip_prefix("---") {
+				let (options, rest) = rest.split_once("\n---").unwrap();
+				for option in options.split(',') {
+					match option.trim() {
+						"partial" => {
+							parse_options.features.partial_syntax = true;
+						}
+						"extras" => {
+							parse_options.extras = options::Extras::all();
+							parse_options.jsx = Some(options::JSX::all());
+						}
+						"jsx" => {
+							parse_options.jsx = Some(options::JSX::default());
+						}
+						option => {
+							eprintln!("unexpected {option:?}");
+						}
+					}
+				}
+				rest.trim_start().to_owned()
+			} else {
+				output
+			};
+
+			let module = Module::from_string_with_options(output.clone(), parse_options, None);
 
 			// TODO could remove things here
 			match module {
@@ -326,7 +350,6 @@ fn run_interactive() {
 			}
 
 			println!("end");
-			buf.clear();
 			continue;
 		}
 

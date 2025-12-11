@@ -249,21 +249,18 @@ impl ASTNode for JSXAttribute {
 
 			if let "=" = delimiter {
 				let start = reader.get_start();
-				let attributes_as_expressions =
-					reader.get_options().jsx.unwrap().attributes_as_expressions;
-				if attributes_as_expressions || reader.is_operator_advance("{") {
+				if reader.is_operator_advance("{") {
+					let expression = Expression::from_reader(reader)?;
+					let end = reader.expect('}')?;
+					Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
+				} else if reader.get_options().jsx.unwrap().attributes_as_expressions {
 					// Precedence important, we want to break before >
 					let expression = Expression::from_reader_with_precedence(
 						reader,
 						crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE,
 					)?;
-					if attributes_as_expressions {
-						let end = reader.get_end();
-						Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
-					} else {
-						let end = reader.expect('}')?;
-						Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
-					}
+					let end = reader.get_end();
+					Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
 				} else if reader.starts_with_string_delimeter() {
 					let (content, quoting, width) = reader.parse_string_literal()?;
 					let position = start.with_length(width as usize);
