@@ -427,7 +427,9 @@ impl ASTNode for FunctionHeader {
 		let is_async = reader.is_keyword_advance("async");
 
 		#[cfg(feature = "extras")]
-		if reader.get_options().custom_function_headers && reader.is_keyword_advance("generator") {
+		if reader.get_options().extras.custom_function_headers
+			&& reader.is_keyword_advance("generator")
+		{
 			let location = parse_location(reader);
 			let _ = reader.expect_keyword("function")?;
 			return Ok(Self::ChadFunctionHeader {
@@ -438,7 +440,7 @@ impl ASTNode for FunctionHeader {
 		}
 
 		#[cfg(feature = "extras")]
-		let location = if reader.get_options().custom_function_headers {
+		let location = if reader.get_options().extras.custom_function_headers {
 			parse_location(reader)
 		} else {
 			None
@@ -622,7 +624,9 @@ impl ASTNode for FunctionBody {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// If type annotations. Allow elided bodies for function overloading
 		reader.skip_including_comments();
-		let body = if reader.is_operator("{") || !reader.get_options().type_annotations {
+		let body = if reader.is_operator("{")
+			|| !reader.get_options().type_annotations.type_annotations()
+		{
 			Some(Block::from_reader(reader)?)
 		} else {
 			None

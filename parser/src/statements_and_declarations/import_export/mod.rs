@@ -158,7 +158,7 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
-	Quoting(String, Quoting),
+	Quoted(String, Quoting),
 	/// For typing here
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
@@ -174,7 +174,7 @@ impl ImportExportName {
 		if reader.starts_with_string_delimeter() {
 			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
-			Ok((ImportExportName::Quoting(content.into_owned(), quoting), position))
+			Ok((ImportExportName::Quoted(content.into_owned(), quoting), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
 			let position = start.with_length("default".len());
@@ -185,7 +185,9 @@ impl ImportExportName {
 			Ok((ImportExportName::Marker(marker), position))
 		} else {
 			let identifier = reader.parse_identifier("import or export alias", false)?.into_owned();
-			if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
+			if reader.get_options().features.interpolation_points
+				&& identifier == crate::marker::MARKER
+			{
 				let position = start.with_length(0);
 				Ok((ImportExportName::Marker(reader.new_partial_point_marker(position)), position))
 			} else {
@@ -203,7 +205,7 @@ impl ImportExportName {
 	) {
 		match self {
 			ImportExportName::Reference(alias) => buf.push_str(alias),
-			ImportExportName::Quoting(alias, q) => {
+			ImportExportName::Quoted(alias, q) => {
 				buf.push(q.as_char());
 				buf.push_str(alias);
 				buf.push(q.as_char());
@@ -214,7 +216,7 @@ impl ImportExportName {
 
 	pub(crate) fn as_str(&self) -> &str {
 		match self {
-			Self::Reference(on) | Self::Quoting(on, _) => on,
+			Self::Reference(on) | Self::Quoted(on, _) => on,
 			Self::Marker(..) => "",
 		}
 	}
@@ -233,7 +235,7 @@ pub enum ImportLocation {
 impl ImportLocation {
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		// let _existing = r#"if let (true, Some(start), Some(Token(peek, at))) =
-		// 	(options.partial_syntax, start, reader.peek())
+		// 	(options.features.partial_syntax, start, reader.peek())
 		// {
 		// 	let next_is_not_location_like = peek.is_statement_or_declaration_start()
 		// 		&& state
@@ -247,7 +249,7 @@ impl ImportLocation {
 		// 		));
 		// 	}
 		// }
-		// else if options.interpolation_points
+		// else if options.features.interpolation_points
 		// 	&& matches!(&token.0, TSXToken::Identifier(i) if i == crate::marker::MARKER)
 		// {
 		// Ok((Self::Marker(state.new_partial_point_marker(token.1)), source_map::End(token.1 .0)))

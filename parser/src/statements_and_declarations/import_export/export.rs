@@ -102,7 +102,7 @@ impl ASTNode for ExportDeclaration {
 		let start = reader.expect_keyword("export")?;
 		reader.skip();
 		if reader.is_keyword_advance("default") {
-			let edge_case = reader.get_options().type_definition_module
+			let edge_case = reader.get_options().type_annotations.is_definition_file()
 				&& crate::lexer::utilities::is_function_header(reader.get_current());
 			// Always have == .d.ts file here
 			// Unfortuantly have to do quite a bit of parsing here

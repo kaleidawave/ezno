@@ -5,9 +5,7 @@ use codespan_reporting::term::{
 	self, Config,
 	termcolor::{ColorChoice, StandardStream},
 };
-use ezno_parser::{
-	ASTNode, Comments, Module, ParseError, ParseOptions, ParsingState, SourceId, ToStringOptions,
-};
+use ezno_parser::{ASTNode, Module, ParseError, ParsingState, SourceId, options};
 use source_map::FileSystem;
 
 type Files = source_map::MapFileStore<source_map::WithPathMap>;
@@ -25,12 +23,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let path = first_argument.ok_or("expected path argument")?;
 
-	let mut parse_options = ParseOptions::default();
-	let mut to_string_options = ToStringOptions {
+	let mut parse_options = options::ParseOptions::default();
+	let mut to_string_options = options::ToStringOptions {
 		expect_markers: true,
 		include_type_annotations: true,
 		pretty: false,
-		comments: Comments::None,
+		comments: options::CommentsOption::None,
 		// 60 is temp
 		max_line_length: u8::MAX,
 		..Default::default()
@@ -46,41 +44,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	for argument in arguments {
 		match argument.as_str() {
 			"--no-comments" => {
-				parse_options.comments = Comments::None;
-				to_string_options.comments = Comments::None;
+				parse_options.comments = options::CommentsOption::None;
+				to_string_options.comments = options::CommentsOption::None;
 			}
 			"--doc-comments" => {
-				parse_options.comments = Comments::JustDocumentation;
+				parse_options.comments = options::CommentsOption::JustDocumentation;
 			}
 			"--keywords" => {
-				parse_options.record_keyword_positions = true;
+				parse_options.features.record_keyword_positions = true;
 			}
 			"--extras" => {
-				parse_options.custom_function_headers = true;
-				parse_options.destructuring_type_annotation = true;
-				parse_options.jsx.enable_jsx = true;
-				parse_options.is_expressions = true;
-				parse_options.jsx.special_jsx_attributes = true;
-				parse_options.extra_operators = true;
-				parse_options.reversed_imports = true;
+				parse_options = options::ParseOptions::all();
 			}
 			"--pretty" => {
-				parse_options.retain_blank_lines = true;
+				parse_options.features.retain_blank_lines = true;
 				to_string_options.pretty = true;
 				to_string_options.max_line_length = 60;
-				to_string_options.comments = Comments::All;
+				to_string_options.comments = options::CommentsOption::All;
 			}
 			"--partial" => {
-				parse_options.partial_syntax = true;
+				parse_options.features.partial_syntax = true;
 			}
 			"--no-type-annotations" => {
-				parse_options.type_annotations = false;
+				parse_options.type_annotations = options::TypeAnnotationOption::AsErrors;
 			}
 			"--type-definition-module" => {
-				parse_options.type_definition_module = true;
-			}
-			"--top-level-html" => {
-				parse_options.jsx.top_level_html = true;
+				parse_options.type_annotations = options::TypeAnnotationOption::Definitions;
 			}
 			"--source-map" => {
 				print_source_maps = true;
@@ -127,11 +116,11 @@ fn parse_path(
 	path: &Path,
 	timings: bool,
 	parse_imports: bool,
-	parse_options: &ParseOptions,
+	parse_options: &options::ParseOptions,
 	print_ast: bool,
 	print_source_maps: bool,
 	split: bool,
-	to_string_options: &Option<ToStringOptions>,
+	to_string_options: &Option<options::ToStringOptions>,
 	fs: &mut Files,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let source = std::fs::read_to_string(path)?;
@@ -139,16 +128,26 @@ fn parse_path(
 
 	eprintln!("parsing {path:?} ({bytes:?} bytes)", path = path.display(), bytes = source.len());
 
-	let extension: &str = path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or_default();
+	let path_str: &str = path.to_str().unwrap_or_default();
 
-	let type_annotations = extension.contains("ts");
-	let type_definition_module = path.to_str().is_some_and(|path| path.contains(".d.ts"));
+	// Corrections for simplicity
+	let type_annotations = if path_str.ends_with(".d.ts") {
+		options::TypeAnnotationOption::Definitions
+	} else if path_str.ends_with(".ts") {
+		options::TypeAnnotationOption::Allowed
+	} else {
+		parse_options.type_annotations
+	};
 
-	let mut parse_options =
-		ParseOptions { type_annotations, type_definition_module, ..*parse_options };
+	let jsx = if let Some(jsx_options) = parse_options.jsx {
+		Some(jsx_options)
+	} else if path_str.ends_with('x') {
+		Some(options::JSXOptions::default())
+	} else {
+		None
+	};
 
-	// TODO bad mutation
-	parse_options.jsx.enable_jsx = extension.contains('x');
+	let parse_options = options::ParseOptions { type_annotations, jsx, ..*parse_options };
 
 	if split {
 		for content in source.split("\n---") {
@@ -211,10 +210,10 @@ fn parse_source(
 	source: &str,
 	source_id: SourceId,
 	timings: bool,
-	parse_options: ParseOptions,
+	parse_options: options::ParseOptions,
 	print_ast: bool,
 	print_source_maps: bool,
-	to_string_options: &Option<ToStringOptions>,
+	to_string_options: &Option<options::ToStringOptions>,
 	fs: &Files,
 	offset: Option<u32>,
 ) -> Result<(Module, ParsingState), Box<dyn std::error::Error>> {
@@ -259,7 +258,7 @@ fn parse_source(
 				}
 			}
 
-			if parse_options.record_keyword_positions {
+			if parse_options.features.record_keyword_positions {
 				println!("{:?}", state.keyword_positions.as_ref());
 			}
 
@@ -300,7 +299,7 @@ fn run_interactive() {
 		if line == "end" {
 			let output = String::from_utf8_lossy(&buf);
 
-			let parse_options = ParseOptions::all_features();
+			let parse_options = options::ParseOptions::all();
 			let module = Module::from_string_with_options(output.into_owned(), parse_options, None);
 
 			// TODO could remove things here

@@ -20,12 +20,11 @@ impl ASTNode for Decorator {
 		// TODO modify position? or new
 		let _start = reader.get_start();
 		reader.expect('@')?;
-		dbg!(reader.get_current());
 		let expression = Expression::from_reader_with_precedence(
 			reader,
-			crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE,
+			crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE - 1,
 		)?;
-		// TODO check valid here
+		// TODO check valid here?
 		Ok(Self(expression))
 	}
 

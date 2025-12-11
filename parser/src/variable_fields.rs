@@ -30,7 +30,7 @@ impl ASTNode for VariableIdentifier {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		if reader.get_options().partial_syntax
+		if reader.get_options().features.partial_syntax
 			&& (reader.starts_with('=') || reader.starts_with(','))
 		{
 			let span = start.with_length(0);
@@ -42,7 +42,7 @@ impl ASTNode for VariableIdentifier {
 			// TODO
 			if identifier == "let" {
 				Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(3)))
-			} else if reader.get_options().interpolation_points
+			} else if reader.get_options().features.interpolation_points
 				&& identifier == crate::marker::MARKER
 			{
 				let span = start.with_length(0);
@@ -134,7 +134,7 @@ impl ASTNode for VariableField {
 			Ok(Self::Array { members, spread, position: start.union(reader.get_end()) })
 		} else {
 			#[cfg(feature = "extras")]
-			if reader.get_options().destructuring_type_annotation
+			if reader.get_options().extras.destructuring_type_annotation
 				&& reader.after_identifier().starts_with('{')
 			{
 				let start = reader.get_start();
@@ -226,7 +226,9 @@ impl DestructuringFieldInto for VariableField {
 	type TypeAnnotation = Option<crate::TypeAnnotation>;
 
 	fn type_annotation_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self::TypeAnnotation> {
-		if reader.get_options().destructuring_type_annotation && reader.is_operator_advance(":") {
+		if reader.get_options().extras.destructuring_type_annotation
+			&& reader.is_operator_advance(":")
+		{
 			crate::TypeAnnotation::from_reader(reader).map(Some)
 		} else {
 			Ok(None)

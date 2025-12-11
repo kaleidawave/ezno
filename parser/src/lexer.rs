@@ -51,7 +51,7 @@ impl<'a> Lexer<'a> {
 	/// Just used for specific things, not all annotations
 	#[must_use]
 	pub fn parse_type_annotations(&self) -> bool {
-		self.options.type_annotations
+		self.options.type_annotations.type_annotations()
 	}
 
 	// TODO want to remove where public
@@ -733,7 +733,8 @@ impl<'a> Lexer<'a> {
 					}
 					if let '\\' = chr {
 						*escaped = true;
-					} else if let (Quoting::Double, '"') | (Quoting::Single, '\'') = (quoting, chr) {
+					} else if let (Quoting::Double, '"') | (Quoting::Single, '\'') = (quoting, chr)
+					{
 						state = State::None;
 					}
 				}
@@ -852,7 +853,9 @@ pub(crate) mod utilities {
 		let after_brackets = trim_whitespace_not_newlines(reader.after_brackets());
 		if after_brackets.starts_with("=>") {
 			(true, None)
-		} else if reader.options.type_annotations && after_brackets.starts_with(':') {
+		} else if reader.options.type_annotations.type_annotations()
+			&& after_brackets.starts_with(':')
+		{
 			// TODO WIP implementation
 			let save_point = reader.head;
 			let after = reader.left_to_parse() - after_brackets.len() as u32;
@@ -973,7 +976,7 @@ pub(crate) mod utilities {
 		reader: &super::Lexer,
 		position: crate::Span,
 	) -> crate::ParseResult<()> {
-		if reader.get_options().type_annotations {
+		if reader.get_options().type_annotations.type_annotations() {
 			Ok(())
 		} else {
 			Err(crate::ParseError::new(crate::ParseErrors::TypeAnnotationUsed, position))

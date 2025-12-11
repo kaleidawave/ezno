@@ -120,7 +120,10 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 			line_starts,
 			length_of_source,
 			constant_imports: Default::default(),
-			keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
+			keyword_positions: options
+				.features
+				.record_keyword_positions
+				.then_some(KeywordPositions::new()),
 			partial_points: Default::default(),
 		};
 

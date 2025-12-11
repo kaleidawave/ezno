@@ -107,7 +107,8 @@ impl ASTNode for EnumMember {
 		let value = if reader.is_operator_advance("=") {
 			let expression = Expression::from_reader(reader).map(Box::new)?;
 			EnumMemberValue::Value(expression)
-		} else if reader.get_options().enum_members_as_data_types && reader.is_operator_advance("{")
+		} else if reader.get_options().extras.enum_members_as_data_types
+			&& reader.is_operator_advance("{")
 		{
 			let mut members: Vec<crate::Decorated<ClassMember>> = Vec::new();
 			loop {

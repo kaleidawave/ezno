@@ -105,7 +105,7 @@ pub enum StatementOrDeclaration {
 	Break(Option<String>, Span),
 	/// e.g `throw ...`
 	Throw(ThrowStatement),
-	// Comments
+	// CommentsOption
 	Comment(String, Span),
 	MultiLineComment(String, Span),
 	Labelled {
@@ -358,7 +358,7 @@ impl ASTNode for StatementOrDeclaration {
 					&["let", "const", "var", "class", "type", "async", "function", "namespace"],
 				))
 			}
-		} else if reader.is_keyword_advance("using") {
+		} else if reader.is_keyword("using") {
 			UsingDeclaration::from_reader(reader).map(StatementOrDeclaration::UsingDeclaration)
 		} else if reader.is_keyword_advance("await") {
 			reader.skip();
@@ -446,11 +446,13 @@ impl ASTNode for StatementOrDeclaration {
 			} else {
 				Ok(StatementOrDeclaration::Empty(position))
 			}
-		} else if reader.get_options().partial_syntax && reader.starts_with_expression_delimiter() {
+		} else if reader.get_options().features.partial_syntax
+			&& reader.starts_with_expression_delimiter()
+		{
 			// Prevents cycic recursion
 			let (_found, position) = crate::lexer::utilities::next_item(reader);
 			Err(ParseError::new(ParseErrors::ExpectedExpression, position))
-		} else if reader.get_options().interpolation_points
+		} else if reader.get_options().features.interpolation_points
 			&& reader.is_keyword_advance(crate::marker::MARKER)
 		{
 			let position = start.with_length(0);

@@ -1,10 +1,8 @@
 > TODO move to specification
 
-## Examples
+## Expressions
 
-### Expressions
-
-#### References
+### References
 
 ```ts
 x
@@ -17,7 +15,7 @@ VariableReference(
 )
 ```
 
-#### Literals
+### Literals
 
 ```ts
 5.6;
@@ -53,7 +51,7 @@ Expression(
 )
 ```
 
-#### Parenthesised
+### Parenthesised
 
 ```ts
 (45)
@@ -71,7 +69,7 @@ Parenthesised(
 )
 ```
 
-#### Multiple
+### Multiple
 
 ```ts
 (45, 2)
@@ -97,11 +95,11 @@ Parenthesised(
 )
 ```
 
-#### Operators
+### Operators
 
 <!-- TODO -->
 
-#### Function argument
+### Function argument
 
 ```ts
 console.log(5, 6, 7);
@@ -147,7 +145,7 @@ FunctionCall {
 }
 ```
 
-#### Spread function argument
+### Spread function argument
 
 ```ts
 console.table(...a);
@@ -182,9 +180,9 @@ FunctionCall {
 }
 ```
 
-### Variable fields
+## Variable fields
 
-#### `name`
+### `name`
 
 ```ts
 let x;
@@ -217,7 +215,7 @@ Variable(
 )
 ```
 
-#### `array`
+### `array`
 
 ```ts
 let [x, y, z] = null;
@@ -397,7 +395,7 @@ Variable(
 )
 ```
 
-#### `object`
+### `object`
 
 ```ts
 let { x } = null;
@@ -492,17 +490,17 @@ Variable(
 )
 ```
 
-### For loops
+## For loops
 
 <!-- TODO -->
 
-### Type annotations
+## Type annotations
 
 <!-- TODO -->
 
-### Strings
+## Strings
 
-#### Advanced: string escape new line sequence
+### Advanced: string escape new line sequence
 
 > Not sure if positions are okay?
 
@@ -519,7 +517,7 @@ StringLiteral(
 )
 ```
 
-#### Advanced: string escape with character
+### Advanced: string escape with character
 
 > Not sure if positions are okay?
 
@@ -535,7 +533,7 @@ StringLiteral(
 )
 ```
 
-#### Template literal string 
+### Template literal string 
 
 ```typescript
 `x ${a} b`
@@ -558,347 +556,6 @@ TemplateLiteral(
         ],
         final_part: " b",
         position: 0..10,
-    },
-)
-```
-
-### Extras
-
-#### JSX
-
-> TODO script etc, top level HTML option etc
-
-```tsx
-<h1 title="Example text">Hello World</h1>
-```
-
-```
-JSXRoot(
-    Element(
-        JSXElement {
-            tag_name: "h1",
-            attributes: [
-                Static(
-                    "title",
-                    "Example text",
-                    10..24,
-                ),
-            ],
-            children: Children(
-                [
-                    TextNode(
-                        "Hello World",
-                        25..36,
-                    ),
-                ],
-            ),
-            position: 0..41,
-        },
-    ),
-)
-```
-
-### [Resource management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using)
-
-#### `using`
-
-```typescript
-using name1 = value1, name2 = value2
-using name3: IDisposable = value3 
-await using name4 = value4 
-```
-
-```
-UsingDeclaration(
-    UsingDeclaration {
-        is_await: false,
-        bindings: [
-            UsingBinding {
-                name: "name1",
-                annotation: None,
-                value: VariableReference(
-                    "value1",
-                    14..20,
-                ),
-            },
-            UsingBinding {
-                name: "name2",
-                annotation: None,
-                value: VariableReference(
-                    "value2",
-                    30..36,
-                ),
-            },
-        ],
-        position: 0..37,
-    },
-)
-UsingDeclaration(
-    UsingDeclaration {
-        is_await: false,
-        bindings: [
-            UsingBinding {
-                name: "name3",
-                annotation: Some(
-                    Name(
-                        TypeName(
-                            "IDisposable",
-                        ),
-                        50..61,
-                    ),
-                ),
-                value: VariableReference(
-                    "value3",
-                    64..70,
-                ),
-            },
-        ],
-        position: 37..72,
-    },
-)
-UsingDeclaration(
-    UsingDeclaration {
-        is_await: true,
-        bindings: [
-            UsingBinding {
-                name: "name4",
-                annotation: None,
-                value: VariableReference(
-                    "value4",
-                    92..98,
-                ),
-            },
-        ],
-        position: 78..99,
-    },
-)
-```
-
-#### `using` in for loop
-
-> #TODO more
-
-```typescript
-for (using resource of resources) { }
-```
-
-```
-ForLoop(
-    ForLoopStatement {
-        condition: ForOf {
-            is_await: false,
-            lhs: Using {
-                is_await: false,
-                annotation: None,
-                name: "resource",
-            },
-            of: VariableReference(
-                "resources",
-                23..32,
-            ),
-            position: 5..32,
-        },
-        inner: Braced(*empty*),
-        position: 0..37,
-    },
-)
-```
-
-### Edge cases
-
-#### `satisfies` with
-
-> Any expression-level postfix type syntax for that point
-
-```typescript
-x satisfies string && y;
-x satisfies string & { length: 2 }; 
-```
-
-```
-Expression(
-    MultipleExpression(
-        BinaryOperation {
-            lhs: SpecialOperators(
-                Satisfies {
-                    value: VariableReference(
-                        "x",
-                        0..1,
-                    ),
-                    type_annotation: CommonName(
-                        String,
-                        12..18,
-                    ),
-                },
-                0..18,
-            ),
-            operator: LogicalAnd,
-            rhs: VariableReference(
-                "y",
-                22..23,
-            ),
-            position: 0..23,
-        },
-    ),
-)
-Expression(
-    MultipleExpression(
-        SpecialOperators(
-            Satisfies {
-                value: VariableReference(
-                    "x",
-                    25..26,
-                ),
-                type_annotation: Intersection(
-                    [
-                        CommonName(
-                            String,
-                            37..43,
-                        ),
-                        ObjectLiteral(
-                            [
-                                None(
-                                    Decorated {
-                                        decorators: [],
-                                        on: Property {
-                                            name: Identifier(
-                                                "length",
-                                                48..54,
-                                                Public,
-                                            ),
-                                            type_annotation: NumberLiteral(
-                                                2.0,
-                                                56..57,
-                                            ),
-                                            is_readonly: false,
-                                            is_optional: false,
-                                            position: 48..57,
-                                        },
-                                        position: 48..57,
-                                    },
-                                ),
-                            ],
-                            46..59,
-                        ),
-                    ],
-                    37..59,
-                ),
-            },
-            25..59,
-        ),
-    ),
-)
-```
-
-#### LHS of assignment as any expression
-
-> Only a parse error under `"use strict"`
-
-```typescript
-func()++;
-```
-
-```
-UnaryPostfixAssignmentOperation {
-    operand: Neither(
-        FunctionCall {
-            function: VariableReference(
-                "func",
-                0..4,
-            ),
-            type_arguments: None,
-            arguments: [],
-            is_optional: false,
-            position: 0..6,
-        },
-    ),
-    operator: UnaryPostfixAssignmentOperator(
-        Increment,
-    ),
-    position: 0..8,
-}
-```
-
-### Partial syntax
-
-#### Missing variable name
-
-```typescript
-const = 2;
-```
-
-```
-Variable(
-    Exportable {
-        is_exported: false,
-        item: VariableDeclaration {
-            kind: Const,
-            declarations: [
-                VariableDeclarationItem {
-                    name: None(
-                        Name(
-                            Marker(
-                                Marker(
-                                    0,
-                                    PhantomData<ezno_parser::variable_fields::VariableIdentifier>,
-                                ),
-                                6..6,
-                            ),
-                        ),
-                    ),
-                    type_annotation: None,
-                    expression: Some(
-                        NumberLiteral(
-                            2.0,
-                            8..9,
-                        ),
-                    ),
-                    position: 6..9,
-                },
-            ],
-            position: 0..9,
-        },
-    },
-)
-```
-
-#### Missing variable value
-
-```typescript
-const variable = ;
-```
-
-```
-Variable(
-    Exportable {
-        is_exported: false,
-        item: VariableDeclaration {
-            kind: Const,
-            declarations: [
-                VariableDeclarationItem {
-                    name: None(
-                        Name(
-                            Standard(
-                                "variable",
-                                6..14,
-                            ),
-                        ),
-                    ),
-                    type_annotation: None,
-                    expression: Some(
-                        Marker {
-                            marker_id: Marker(
-                                0,
-                                PhantomData<ezno_parser::expressions::Expression>,
-                            ),
-                            position: 16..17,
-                        },
-                    ),
-                    position: 6..17,
-                },
-            ],
-            position: 0..17,
-        },
     },
 )
 ```

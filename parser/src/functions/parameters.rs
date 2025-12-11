@@ -34,6 +34,7 @@ impl ParameterVisibility for Option<crate::types::Visibility> {
 		if let Some(Some(keyword)) = reader
 			.get_options()
 			.type_annotations
+			.type_annotations()
 			.then(|| reader.is_one_of_keywords_advance(&["private", "public", "protected"]))
 		{
 			Some(match keyword {
@@ -199,7 +200,7 @@ where
 				let name = SpreadParameterName::from_reader(reader)?;
 				let name_position = name.get_position();
 
-				if !reader.get_options().skip_validation {
+				if reader.get_options().features.run_validation {
 					let mut duplicate = None;
 					#[cfg(feature = "extras")]
 					{
@@ -303,7 +304,7 @@ where
 
 				let position = name.get_position().union(end_position);
 
-				if !reader.get_options().skip_validation {
+				if reader.get_options().features.run_validation {
 					let mut duplicate = None;
 					name.get_ast_ref().visit_names(&mut |name| {
 						if duplicate.is_none() {

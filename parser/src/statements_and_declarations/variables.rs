@@ -281,7 +281,7 @@ impl ASTNode for VarVariableStatement {
 			start.union(last.get_position())
 		} else {
 			let position = start.with_length(3);
-			if reader.get_options().partial_syntax {
+			if reader.get_options().features.partial_syntax {
 				position
 			} else {
 				return Err(ParseError::new(crate::ParseErrors::ExpectedDeclaration, position));

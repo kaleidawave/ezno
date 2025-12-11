@@ -217,7 +217,7 @@ impl Expression {
 		reader: &mut crate::Lexer,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
-		if reader.get_options().partial_syntax {
+		if reader.get_options().features.partial_syntax {
 			let start = reader.get_start();
 			reader.skip();
 			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
@@ -312,7 +312,7 @@ impl Expression {
 				{
 					let arrow_function = ArrowFunction::from_reader(reader).map(Box::new)?;
 					return Ok(Expression::ArrowFunction(arrow_function));
-				} else if reader.get_options().jsx.enable_jsx {
+				} else if reader.get_options().jsx.is_some() {
 					JSXRoot::from_reader(reader).map(Box::new).map(Expression::JSXRoot)?
 				} else {
 					let (_found, position) = crate::lexer::utilities::next_item(reader);
@@ -569,7 +569,7 @@ impl Expression {
 				}
 			} else {
 				#[cfg(feature = "extras")]
-				if reader.get_options().is_expressions
+				if reader.get_options().extras.is_expressions
 					&& reader.is_keyword("is")
 					&& reader.after_brackets().starts_with('{')
 				{
@@ -579,7 +579,9 @@ impl Expression {
 
 				let name = reader.parse_identifier("variable reference expression", true)?;
 
-				if reader.get_options().interpolation_points && name == crate::marker::MARKER {
+				if reader.get_options().features.interpolation_points
+					&& name == crate::marker::MARKER
+				{
 					let position = start.with_length(0);
 					let marker_id = reader.new_partial_point_marker(position);
 					Expression::Marker { marker_id, position }
@@ -824,7 +826,7 @@ impl Expression {
 					let operator_len = operator.to_str().len();
 					reader.advance(operator_len as u32);
 
-					if !reader.get_options().extra_operators && operator.is_non_standard() {
+					if !reader.get_options().extras.extra_operators && operator.is_non_standard() {
 						let position =
 							source_map::Start(reader.get_end().0).with_length(operator_len);
 						return Err(ParseError::new(
@@ -968,6 +970,7 @@ impl Expression {
 
 					let property = if let Some(Some(length)) = reader
 						.get_options()
+						.features
 						.partial_syntax
 						.then(|| crate::lexer::utilities::get_not_identifier_length(reader))
 					{
@@ -999,7 +1002,7 @@ impl Expression {
 					// TODO
 					reader.advance(1);
 					#[cfg(feature = "extras")]
-					if reader.get_options().type_annotations {
+					if reader.get_options().type_annotations.type_annotations() {
 						// if options.type_annotations
 						let position = top.get_position().union(reader.get_end());
 						top = Self::SpecialOperators(
@@ -1088,7 +1091,7 @@ impl Expression {
 						}
 						#[cfg(feature = "extras")]
 						AfterFirst::Is => {
-							if !reader.get_options().is_expressions {
+							if !reader.get_options().extras.is_expressions {
 								let (_found, position) = crate::lexer::utilities::next_item(reader);
 								return Err(ParseError::new(
 									ParseErrors::ExpectedExpression,

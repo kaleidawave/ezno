@@ -1,4 +1,7 @@
-use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
+use ezno_parser::{
+	ASTNode, Module,
+	options::{Features, ParseOptions, ToStringOptions},
+};
 
 fn main() {
 	let input = r#"
@@ -27,11 +30,11 @@ function x(a: { something: string, another: number, third: "yes" }, b: Array<{ e
 }
 "#;
 
-	let module = Module::from_string(
-		input.to_owned(),
-		ParseOptions { retain_blank_lines: true, ..Default::default() },
-	)
-	.unwrap();
+	let parse_options = ParseOptions {
+		features: Features { retain_blank_lines: true, ..Default::default() },
+		..Default::default()
+	};
+	let module = Module::from_string(input.to_owned(), parse_options).unwrap();
 
 	let output = module.to_string(&ToStringOptions {
 		include_type_annotations: true,

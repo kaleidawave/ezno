@@ -494,7 +494,7 @@ impl TypeAnnotation {
 		reader: &mut crate::Lexer,
 		parent_kind: TypeOperatorKind,
 	) -> ParseResult<Self> {
-		if reader.get_options().partial_syntax {
+		if reader.get_options().features.partial_syntax {
 			let start = reader.get_start();
 			reader.skip();
 			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
@@ -612,7 +612,7 @@ impl TypeAnnotation {
 			reader.expect_keyword("symbol")?;
 			reader.skip();
 			#[cfg(feature = "extras")]
-			let name = if reader.get_options().extra_type_annotations
+			let name = if reader.get_options().extras.additional_type_annotations
 				&& reader.starts_with_string_delimeter()
 			{
 				let (name, ..) = reader.parse_string_literal()?;
@@ -708,7 +708,9 @@ impl TypeAnnotation {
 				Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
 			} else {
 				#[cfg(feature = "extras")]
-				if reader.get_options().extra_type_annotations && reader.is_operator_advance("{") {
+				if reader.get_options().extras.additional_type_annotations
+					&& reader.is_operator_advance("{")
+				{
 					let (binders, _) = bracketed_items_from_reader(reader, "}")?;
 					let end = reader.get_end();
 					Self::NameWithProperties(name, binders, start.union(end))
@@ -828,7 +830,7 @@ impl TypeAnnotation {
 		}
 
 		// TODO is this worthwhile syntax or a good feature?
-		if reader.is_operator("=>") && reader.get_options().extra_type_annotations {
+		if reader.is_operator("=>") && reader.get_options().extras.additional_type_annotations {
 			if let TypeOperatorKind::Query
 			| TypeOperatorKind::Function
 			| TypeOperatorKind::ReturnType
