@@ -18,6 +18,7 @@ pub use self::{
 	object_literal::ObjectLiteral,
 };
 
+// TODO can we remove this
 use self::precedence::{
 	ARROW_FUNCTION_PRECEDENCE, ASSIGNMENT_PRECEDENCE, COMMA_PRECEDENCE,
 	CONDITIONAL_TERNARY_PRECEDENCE, CONSTRUCTOR_PRECEDENCE,
@@ -26,8 +27,8 @@ use self::precedence::{
 	YIELD_OPERATORS_PRECEDENCE,
 };
 
-use super::jsx::JSXRoot;
-use super::{ASTNode, Block, FunctionBase, ParseError, Span, TypeAnnotation};
+use crate::extensions::jsx::JSXRoot;
+use crate::{ASTNode, Block, FunctionBase, ParseError, Span, TypeAnnotation};
 
 use self::operators::{
 	AssociativityDirection, BinaryAssignmentOperator, BinaryOperator, IncrementOrDecrement,
@@ -68,6 +69,7 @@ pub enum Expression {
 		flags: String,
 		position: Span,
 	},
+	Null(Span),
 	// Structures
 	ArrayLiteral(Vec<ArrayElement>, Span),
 	ObjectLiteral(ObjectLiteral),
@@ -93,7 +95,6 @@ pub enum Expression {
 		rhs: Box<Expression>,
 		position: Span,
 	},
-	/// Modified assignment cannot have destructured thingies
 	BinaryAssignmentOperation {
 		lhs: VariableOrPropertyAccess,
 		operator: BinaryAssignmentOperator,
@@ -154,9 +155,8 @@ pub enum Expression {
 	// Functions
 	ArrowFunction(Box<ArrowFunction>),
 	ExpressionFunction(Box<ExpressionFunction>),
-	/// Yes classes can exist in expr position :?
+	/// Yes classes can exist in expression position :?
 	ClassExpression(Box<ClassDeclaration<ExpressionPosition>>),
-	Null(Span),
 	Comment {
 		content: String,
 		on: Box<Expression>,
@@ -188,6 +188,25 @@ pub enum PropertyReference {
 	Marker(Marker<PropertyReference>),
 }
 
+// TODO #x == is private
+impl std::cmp::PartialEq<str> for PropertyReference {
+	fn eq(&self, other: &str) -> bool {
+		if let Some(other) = other.strip_prefix('#') {
+			if let Self::Standard { property, is_private: true } = self {
+				property == other
+			} else {
+				false
+			}
+		} else {
+			if let Self::Standard { property, is_private: false } = self {
+				property == other
+			} else {
+				false
+			}
+		}
+	}
+}
+
 impl ASTNode for Expression {
 	fn get_position(&self) -> Span {
 		*GetFieldByType::get(self)
@@ -203,12 +222,8 @@ impl ASTNode for Expression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		self.to_string_using_precedence(
-			buf,
-			options,
-			local,
-			ExpressionToStringArgument { on_left: false, return_precedence: u8::MAX },
-		);
+		let argument = ExpressionToStringArgument { on_left: false, return_precedence: u8::MAX };
+		self.to_string_using_precedence(buf, options, local, argument);
 	}
 }
 
@@ -282,12 +297,10 @@ impl Expression {
 					position,
 				}
 			} else if reader.is_operator_advance("[") {
-				// TODO let is_assignment = reader.after_brackets().starts_with("=");
 				let (items, _) = bracketed_items_from_reader::<ArrayElement>(reader, "]")?;
 				let end = reader.get_end();
 				Expression::ArrayLiteral(items, start.union(end))
 			} else if reader.starts_with('{') {
-				// TODO let is_assignment = reader.after_brackets().starts_with("=");
 				ObjectLiteral::from_reader(reader).map(Expression::ObjectLiteral)?
 			} else if reader.starts_with('(') {
 				// TODO reuse `_return_annotation`
@@ -416,6 +429,7 @@ impl Expression {
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
 			} else if reader.is_keyword_advance("yield") {
+				// Fix for arrow functions
 				if reader.is_operator("=>") {
 					let is_async = false;
 					let identifier = crate::VariableIdentifier::Standard(
@@ -691,8 +705,8 @@ impl Expression {
 			"?" => AfterFirst::ConditionalTernary,
 			"instanceof" => AfterFirst::InstanceOf,
 			"in" => AfterFirst::In,
-			// used in for-loop parsing
-			"of" => AfterFirst::Of,
+			// ":" => AfterFirst::Colon,
+			// "=>" => AfterFirst::ArrowFunction,
 		)]
 		#[cfg_attr(feature = "full-typescript", automaton_mappings(
 			"!" => AfterFirst::NonNullAssertion,
@@ -713,17 +727,25 @@ impl Expression {
 			BinaryAssignmentOperator(BinaryAssignmentOperator),
 			Assign,
 			TemplateLiteralStart,
-			FunctionCall { optional: bool },
-			PropertyAccess { optional: bool },
-			Index { optional: bool },
+			FunctionCall {
+				optional: bool,
+			},
+			PropertyAccess {
+				optional: bool,
+			},
+			Index {
+				optional: bool,
+			},
 			NonNullAssertion,
 			ConditionalTernary,
 			As,
 			Satisfies,
 			Is,
 			In,
-			Of,
 			InstanceOf,
+			// Colon,
+			// ArrowFunction,
+			/// Used as trick to exit early
 			Exit,
 		}
 
@@ -749,32 +771,46 @@ impl Expression {
 		}
 
 		let mut top = first_expression;
-		// TODO expression delimiter
 		while !reader.is_finished() {
 			// Do this before `.skip` call as `<` needs to be immediate
-			if reader.parse_type_annotations()
-				&& reader.starts_with('<')
-				&& reader.after_brackets().starts_with('(')
-			{
-				if AssociativityDirection::LeftToRight
-					.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
-				{
-					return Ok(top);
+			if reader.parse_type_annotations() && reader.starts_with('<') {
+				enum Break<T> {
+					Break,
+					Value(T),
 				}
-				reader.advance("<".len() as u32);
-				let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
-				reader.expect('(')?;
-				let type_arguments = Some(type_arguments);
-				let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
-				let position = top.get_position().union(reader.get_end());
-				top = Expression::FunctionCall {
-					function: Box::new(top),
-					type_arguments,
-					arguments,
-					position,
-					is_optional: false,
-				};
-				continue;
+
+				let result: ParseResult<Break<_>> =
+					reader.try_parse(|reader: &mut crate::Lexer<'_>| {
+						if AssociativityDirection::LeftToRight
+							.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
+						{
+							return Ok(Break::Break);
+						}
+						reader.advance("<".len() as u32);
+						let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
+						reader.expect('(')?;
+						let type_arguments = Some(type_arguments);
+						let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
+						Ok(Break::Value((type_arguments, arguments)))
+					});
+
+				match result {
+					Ok(Break::Value((type_arguments, arguments))) => {
+						let position = top.get_position().union(reader.get_end());
+						top = Expression::FunctionCall {
+							function: Box::new(top),
+							type_arguments,
+							arguments,
+							position,
+							is_optional: false,
+						};
+						continue;
+					}
+					Ok(Break::Break) => {
+						return Ok(top);
+					}
+					_ => {}
+				}
 			}
 
 			reader.skip();
@@ -1011,6 +1047,19 @@ impl Expression {
 						);
 					}
 				}
+				// AfterFirst::Colon => {
+				// 	TODO
+				// 	reader.advance(1);
+				// 	let ty = TypeAnnotation::from_reader(reader)?;
+				// 	let position = top.get_position().union(reader.get_end());
+				// 	top = Self::SpecialOperators(
+				// 		SpecialOperators::WithTypeAnnotation {
+				// 			value: Box::new(top),
+				// 			type_annotation: Box::new(ty),
+				// 		},
+				// 		position,
+				// 	);
+				// }
 				AfterFirst::ConditionalTernary => {
 					if AssociativityDirection::RightToLeft
 						.should_return(return_precedence, CONDITIONAL_TERNARY_PRECEDENCE)
@@ -1139,14 +1188,6 @@ impl Expression {
 						lhs: InExpressionLHS::Expression(Box::new(top)),
 						rhs: Box::new(rhs),
 					};
-					top = Self::SpecialOperators(operation, position);
-				}
-				// used for-loop parsing
-				AfterFirst::Of => {
-					reader.advance(2);
-					let rhs = Expression::from_reader(reader)?;
-					let position = top.get_position().union(rhs.get_position());
-					let operation = SpecialOperators::Of { lhs: Box::new(top), rhs: Box::new(rhs) };
 					top = Self::SpecialOperators(operation, position);
 				}
 				AfterFirst::InstanceOf => {
@@ -1327,10 +1368,17 @@ impl Expression {
 				);
 			}
 			Self::SpecialOperators(special, _) => match special {
-				SpecialOperators::Satisfies { value, type_annotation, .. } => {
+				SpecialOperators::Satisfies { value, type_annotation } => {
 					value.to_string_from_buffer(buf, options, local);
 					if options.include_type_annotations {
 						buf.push_str(" satisfies ");
+						type_annotation.to_string_from_buffer(buf, options, local);
+					}
+				}
+				SpecialOperators::WithTypeAnnotation { value, type_annotation } => {
+					value.to_string_from_buffer(buf, options, local);
+					if options.include_type_annotations {
+						buf.push_str(": ");
 						type_annotation.to_string_from_buffer(buf, options, local);
 					}
 				}
@@ -1357,10 +1405,6 @@ impl Expression {
 						local,
 						local2.with_precedence(self_precedence),
 					);
-				}
-				// used in for-loop parsing
-				SpecialOperators::Of { .. } => {
-					unreachable!();
 				}
 				SpecialOperators::InstanceOf { lhs, rhs } => {
 					lhs.to_string_using_precedence(
@@ -2034,6 +2078,11 @@ pub enum SpecialOperators {
 		value: Box<Expression>,
 		type_annotation: Box<TypeAnnotation>,
 	},
+	/// For Flow and arrow function parsing
+	WithTypeAnnotation {
+		value: Box<Expression>,
+		type_annotation: Box<TypeAnnotation>,
+	},
 	In {
 		lhs: InExpressionLHS,
 		rhs: Box<Expression>,
@@ -2045,11 +2094,6 @@ pub enum SpecialOperators {
 	Yield {
 		// .0 = 'is_delegated'
 		yielded: Option<(bool, Box<Expression>)>,
-	},
-	// for for-loop parsing
-	Of {
-		lhs: Box<Expression>,
-		rhs: Box<Expression>,
 	},
 	#[cfg(feature = "extras")]
 	Is {
@@ -2065,6 +2109,7 @@ pub enum SpecialOperators {
 	},
 }
 
+/// The RHS of `as`. Either `*expr* as *type*` or `*expr* as const`
 #[cfg(feature = "full-typescript")]
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable)]
@@ -2073,6 +2118,7 @@ pub enum TypeOrConst {
 	Const(Span),
 }
 
+/// The LHS of `in`. Either `#*name* in *expr*` or `*expr* in *expr*`
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable)]
 pub enum InExpressionLHS {
@@ -2080,7 +2126,7 @@ pub enum InExpressionLHS {
 	Expression(Box<Expression>),
 }
 
-/// "super" cannot be used alone
+/// "super" cannot be used alone. Either `super.*name*` or `super(*args*)
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable)]
 pub enum SuperReference {
@@ -2088,6 +2134,7 @@ pub enum SuperReference {
 	PropertyAccess(PropertyLike),
 }
 
+/// The RHS of property access / index. Either `*expr*.*name*` or `*expr*.[*expr*]`
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable)]
 pub enum PropertyLike {
@@ -2127,11 +2174,16 @@ pub enum FunctionArgument {
 	Comment { content: String, is_multiline: bool, position: Span },
 }
 
+// #[apply(derive_ASTNode)]
+// #[derive(Debug, Clone, Visitable)]
+// pub struct FunctionArgument(Expression);
+
 impl ListItem for FunctionArgument {
 	type LAST = ();
 }
 
 impl ASTNode for FunctionArgument {
+	// self.0.get_position()
 	fn get_position(&self) -> Span {
 		match self {
 			FunctionArgument::Comment { position, .. } | FunctionArgument::Spread(_, position) => {

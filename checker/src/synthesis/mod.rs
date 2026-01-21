@@ -145,6 +145,7 @@ impl crate::ASTImplementation for EznoParser {
 		extra_syntax: bool,
 		parse_comments: bool,
 		lsp_mode: bool,
+		is_jsx: bool,
 	) -> Self::ParseOptions {
 		parser::ParseOptions {
 			comments: if parse_comments {
@@ -164,6 +165,7 @@ impl crate::ASTImplementation for EznoParser {
 				run_validation: false,
 				..Default::default()
 			},
+			jsx: if is_jsx { Some(Default::default()) } else { None },
 			extras: if extra_syntax {
 				parser::options::Extras::all()
 			} else {

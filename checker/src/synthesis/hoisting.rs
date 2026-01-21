@@ -1,28 +1,27 @@
-use std::iter;
+use parser::extensions::decorators::Decorated;
+use parser::statements_and_declarations::variables::{
+	VariableDeclaration, VariableDeclarationKeyword,
+};
+use parser::statements_and_declarations::{
+	DeclareVariableDeclaration, ExportDeclaration, StatementOrDeclaration,
+	import::ImportedItems,
+	import_export::{ImportExportName, ImportExportPart, ImportOrExport},
+};
+use parser::{ASTNode, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier};
 
-use parser::{
-	ASTNode, Decorated, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier,
-	statements_and_declarations::{
-		DeclareVariableDeclaration, ExportDeclaration, StatementOrDeclaration,
-		import::ImportedItems,
-		import_export::{ImportExportName, ImportExportPart, ImportOrExport},
-		variables::{VariableDeclaration, VariableDeclarationKeyword},
-	},
+use crate::context::{Environment, VariableRegisterArguments, environment::DeclareInterfaceResult};
+use crate::{
+	CheckingData, ReadFromFS, TypeId, diagnostics::TypeCheckError,
+	synthesis::type_annotations::get_annotation_from_declaration,
 };
 
-use crate::{
-	CheckingData, ReadFromFS, TypeId,
-	context::{Environment, VariableRegisterArguments, environment::DeclareInterfaceResult},
-	diagnostics::TypeCheckError,
-	features::{
-		functions::{
-			SynthesisableFunction, synthesise_declare_statement_function,
-			synthesise_hoisted_statement_function,
-		},
-		modules::{ImportKind, NamePair, import_items},
-		variables::VariableMutability,
-	},
-	synthesis::type_annotations::get_annotation_from_declaration,
+use crate::features::functions::{
+	SynthesisableFunction, synthesise_declare_statement_function,
+	synthesise_hoisted_statement_function,
+};
+use crate::features::{
+	modules::{ImportKind, NamePair, import_items},
+	variables::VariableMutability,
 };
 
 use super::{
@@ -236,7 +235,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								None => ImportKind::Everything,
 							};
 
-							import_items::<iter::Empty<_>, _, _>(
+							import_items::<std::iter::Empty<_>, _, _>(
 								environment,
 								from.get_path().unwrap(),
 								*position,

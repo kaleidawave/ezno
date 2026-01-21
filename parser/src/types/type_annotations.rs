@@ -1,12 +1,13 @@
 use crate::{
-	ASTNode, Decorator, ListItem, Marker, ParseError, ParseResult, Quoting, Span, VariableField,
-	WithComment,
+	ASTNode, ListItem, Marker, ParseError, ParseResult, Quoting, Span, VariableField, WithComment,
 	ast::VariableOrPropertyAccess,
 	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
 	extensions::decorators::Decorated,
 	numbers::{BigInt, NumberRepresentation},
 };
 use iterator_endiate::EndiateIteratorExt;
+
+use crate::extensions::decorators::Decorator;
 
 use super::{interface::InterfaceMember, type_declarations::TypeParameter};
 
@@ -707,19 +708,19 @@ impl TypeAnnotation {
 				let end = reader.get_end();
 				Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
 			} else {
-				#[cfg(feature = "extras")]
-				if reader.get_options().extras.additional_type_annotations
-					&& reader.is_operator_advance("{")
-				{
-					let (binders, _) = bracketed_items_from_reader(reader, "}")?;
-					let end = reader.get_end();
-					Self::NameWithProperties(name, binders, start.union(end))
-				} else {
-					Self::Name(name, position)
-				}
-
-				#[cfg(not(feature = "extras"))]
+				// #[cfg(feature = "extras")]
+				// if reader.get_options().extras.additional_type_annotations
+				// 	&& reader.is_operator_advance("{")
+				// {
+				// 	let (binders, _) = bracketed_items_from_reader(reader, "}")?;
+				// 	let end = reader.get_end();
+				// 	Self::NameWithProperties(name, binders, start.union(end))
+				// } else {
+				// }
 				Self::Name(name, position)
+
+				// #[cfg(not(feature = "extras"))]
+				// Self::Name(name, position)
 			}
 		};
 

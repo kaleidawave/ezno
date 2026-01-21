@@ -1,3 +1,4 @@
+use parser::extensions::decorators::Decorator;
 use parser::{ASTNode, Expression};
 use source_map::SourceId;
 
@@ -52,7 +53,7 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 }
 
 pub(crate) fn get_internal_function_effect_from_decorators(
-	decorators: &[parser::Decorator],
+	decorators: &[Decorator],
 	function_name: &str,
 	environment: &Environment,
 ) -> Option<InternalFunctionEffect> {
@@ -107,7 +108,7 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 	})
 }
 
-pub(crate) fn _decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
+pub(crate) fn _decorators_to_context(decorators: &[Decorator]) -> Option<String> {
 	decorators.iter().find_map(|dec| {
 		if let Expression::VariableReference(name, _) = &dec.0
 			&& matches!(name.as_str(), "Server" | "Client")

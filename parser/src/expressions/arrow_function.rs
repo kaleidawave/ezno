@@ -11,6 +11,7 @@ use crate::{
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
+
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsAsync = bool;
 

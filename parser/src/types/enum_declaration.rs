@@ -1,6 +1,6 @@
-use crate::{
-	ASTNode, Expression, derive_ASTNode, statements_and_declarations::classes::ClassMember,
-};
+use crate::extensions::decorators::Decorated;
+use crate::statements_and_declarations::classes::ClassMember;
+use crate::{ASTNode, Expression, derive_ASTNode};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
@@ -83,7 +83,7 @@ impl ASTNode for EnumDeclaration {
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum EnumMemberValue {
-	ClassMembers(Vec<crate::Decorated<ClassMember>>),
+	ClassMembers(Vec<Decorated<ClassMember>>),
 	Value(Box<Expression>),
 	None,
 }
@@ -110,13 +110,13 @@ impl ASTNode for EnumMember {
 		} else if reader.get_options().extras.enum_members_as_data_types
 			&& reader.is_operator_advance("{")
 		{
-			let mut members: Vec<crate::Decorated<ClassMember>> = Vec::new();
+			let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 			loop {
 				reader.skip();
 				if reader.starts_with('}') {
 					break;
 				}
-				let value = crate::Decorated::<ClassMember>::from_reader(reader)?;
+				let value = Decorated::<ClassMember>::from_reader(reader)?;
 				if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
 					reader.expect_semi_colon()?;
 				}

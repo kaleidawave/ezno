@@ -9,6 +9,7 @@ use visitable_derive::Visitable;
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub enum JSXRoot {
+	Document(JSXElement, Span),
 	Element(JSXElement),
 	Fragment(JSXFragment),
 }
@@ -347,14 +348,20 @@ impl ASTNode for JSXFragment {
 
 impl ASTNode for JSXRoot {
 	fn get_position(&self) -> Span {
-		match self {
-			JSXRoot::Element(element) => element.get_position(),
-			JSXRoot::Fragment(fragment) => fragment.get_position(),
-		}
+		*GetFieldByType::get(self)
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		if reader.starts_with_slice("<>") {
+		reader.skip();
+		if let Some(start) = reader.get_current().get(0..15)
+			&& start.eq_ignore_ascii_case("<!DOCTYPE html>")
+		{
+			let start = reader.get_start();
+			reader.advance(15);
+			let element = JSXElement::from_reader(reader)?;
+			let pos = start.union(element.get_position());
+			Ok(JSXRoot::Document(element, pos))
+		} else if reader.starts_with_slice("<>") {
 			JSXFragment::from_reader(reader).map(JSXRoot::Fragment)
 		} else {
 			JSXElement::from_reader(reader).map(JSXRoot::Element)
@@ -368,6 +375,10 @@ impl ASTNode for JSXRoot {
 		local: crate::LocalToStringInformation,
 	) {
 		match self {
+			JSXRoot::Document(element, _) => {
+				buf.push_str("<!DOCTYPE html>");
+				element.to_string_from_buffer(buf, options, local)
+			}
 			JSXRoot::Element(element) => element.to_string_from_buffer(buf, options, local),
 			JSXRoot::Fragment(fragment) => fragment.to_string_from_buffer(buf, options, local),
 		}

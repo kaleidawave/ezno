@@ -1,6 +1,5 @@
-use parser::{
-	Decorated, PropertyKey as ParserPropertyKey, WithComment, types::interface::InterfaceMember,
-};
+use parser::extensions::decorators::Decorated;
+use parser::{PropertyKey as ParserPropertyKey, WithComment, types::interface::InterfaceMember};
 use source_map::SpanWithSource;
 
 use crate::{
@@ -8,12 +7,13 @@ use crate::{
 	context::{Context, Environment},
 	features::functions::GetterSetter,
 	synthesis::parser_property_key_to_checker_property_key,
-	types::{
-		FunctionType, Type,
-		calling::Callable,
-		helpers::references_key_of,
-		properties::{Descriptor, PropertyKey, PropertyValue, Publicity},
-	},
+};
+
+use crate::types::{
+	FunctionType, Type,
+	calling::Callable,
+	helpers::references_key_of,
+	properties::{Descriptor, PropertyKey, PropertyValue, Publicity},
 };
 
 use super::{
@@ -221,7 +221,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 
 					let function = synthesise_function_annotation(
 						type_parameters.as_deref(),
-						parameters,
+						&parameters,
 						return_type.as_ref(),
 						environment,
 						checking_data,
@@ -230,7 +230,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					);
 
 					interface_register_behavior.register(
-						InterfaceKey::ClassProperty(name),
+						InterfaceKey::ClassProperty(&name),
 						(
 							InterfaceValue::Function(Box::new(function), getter),
 							IsDefined::from_optionality(*is_optional),
@@ -249,10 +249,10 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => {
 					let value =
-						synthesise_type_annotation(type_annotation, environment, checking_data);
+						synthesise_type_annotation(&type_annotation, environment, checking_data);
 
 					interface_register_behavior.register(
-						InterfaceKey::ClassProperty(name),
+						InterfaceKey::ClassProperty(&name),
 						(
 							InterfaceValue::Value(value),
 							IsDefined::from_optionality(*is_optional),
@@ -271,8 +271,9 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 					position,
 				} => {
 					// TODO think this is okay
-					let key = synthesise_type_annotation(indexer_type, environment, checking_data);
-					let value = synthesise_type_annotation(return_type, environment, checking_data);
+					let key = synthesise_type_annotation(&indexer_type, environment, checking_data);
+					let value =
+						synthesise_type_annotation(&return_type, environment, checking_data);
 
 					let value = InterfaceValue::Value(value);
 
@@ -319,7 +320,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 				} => {
 					// For mapped types: https://www.typescriptlang.org/docs/handbook/2/mapped-types.html
 					let matching_type =
-						synthesise_type_annotation(matching_type, environment, checking_data);
+						synthesise_type_annotation(&matching_type, environment, checking_data);
 
 					let (key, value) = {
 						// TODO special scope here
@@ -334,7 +335,11 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						sub_environment.named_types.insert(parameter.clone(), parameter_type);
 
 						let key = if let Some(as_type) = as_type {
-							synthesise_type_annotation(as_type, &mut sub_environment, checking_data)
+							synthesise_type_annotation(
+								&as_type,
+								&mut sub_environment,
+								checking_data,
+							)
 						} else {
 							parameter_type
 						};
@@ -342,7 +347,7 @@ pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterface
 						// crate::utilities::notify!("output_type {:?}", output_type);
 
 						let value = synthesise_type_annotation(
-							output_type,
+							&output_type,
 							&mut sub_environment,
 							checking_data,
 						);

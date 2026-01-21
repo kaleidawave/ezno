@@ -1036,7 +1036,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					Instance::RValue(to_cast)
 				}
 			}
-			SpecialOperators::Satisfies { value, type_annotation, .. } => {
+			// FUTURE `WithTypeAnnotation`?
+			SpecialOperators::Satisfies { value, type_annotation, .. }
+			| SpecialOperators::WithTypeAnnotation { value, type_annotation } => {
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
 
@@ -1076,9 +1078,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					environment,
 					&mut checking_data.types,
 				))
-			}
-			SpecialOperators::Of { .. } => {
-				unreachable!();
 			}
 			SpecialOperators::InstanceOf { lhs, rhs } => {
 				let lhs = synthesise_expression(lhs, environment, checking_data, expecting);

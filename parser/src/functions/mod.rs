@@ -383,7 +383,7 @@ pub enum FunctionLocationModifier {
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionHeader {
-	VirginFunctionHeader {
+	BasicFunctionHeader {
 		is_async: bool,
 		#[cfg(feature = "extras")]
 		location: Option<FunctionLocationModifier>,
@@ -403,7 +403,7 @@ pub enum FunctionHeader {
 impl ASTNode for FunctionHeader {
 	fn get_position(&self) -> Span {
 		match self {
-			FunctionHeader::VirginFunctionHeader { position, .. } => *position,
+			FunctionHeader::BasicFunctionHeader { position, .. } => *position,
 			#[cfg(feature = "extras")]
 			FunctionHeader::ChadFunctionHeader { position, .. } => *position,
 		}
@@ -447,7 +447,7 @@ impl ASTNode for FunctionHeader {
 		};
 		let _ = reader.expect_keyword("function")?;
 		let is_generator = reader.is_operator_advance("*");
-		Ok(Self::VirginFunctionHeader {
+		Ok(Self::BasicFunctionHeader {
 			is_async,
 			is_generator,
 			position: start.union(reader.get_end()),
@@ -478,7 +478,7 @@ impl FunctionHeader {
 	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		match self {
-			FunctionHeader::VirginFunctionHeader { is_generator, .. } => *is_generator,
+			FunctionHeader::BasicFunctionHeader { is_generator, .. } => *is_generator,
 			#[cfg(feature = "extras")]
 			FunctionHeader::ChadFunctionHeader { .. } => true,
 		}
@@ -487,7 +487,7 @@ impl FunctionHeader {
 	#[must_use]
 	pub fn is_async(&self) -> bool {
 		match self {
-			FunctionHeader::VirginFunctionHeader { is_async, .. } => *is_async,
+			FunctionHeader::BasicFunctionHeader { is_async, .. } => *is_async,
 			#[cfg(feature = "extras")]
 			FunctionHeader::ChadFunctionHeader { is_async, .. } => *is_async,
 		}
@@ -497,14 +497,14 @@ impl FunctionHeader {
 	#[must_use]
 	pub fn get_location(&self) -> Option<&FunctionLocationModifier> {
 		match self {
-			FunctionHeader::VirginFunctionHeader { location, .. }
+			FunctionHeader::BasicFunctionHeader { location, .. }
 			| FunctionHeader::ChadFunctionHeader { location, .. } => location.as_ref(),
 		}
 	}
 
 	#[must_use]
 	pub fn empty() -> Self {
-		Self::VirginFunctionHeader {
+		Self::BasicFunctionHeader {
 			is_async: false,
 			#[cfg(feature = "extras")]
 			location: None,

@@ -314,42 +314,30 @@ impl ASTNode for ForLoopCondition {
 			parse_statements(reader, None, start)?
 		} else {
 			let expression = Expression::from_reader(reader)?;
-			match expression {
-				Expression::SpecialOperators(
-					crate::expressions::SpecialOperators::Of { lhs, rhs },
-					position,
-				) => {
-					let lhs = LHSOfAssignment::try_from(*lhs)?;
-					let lhs = VariableUsingOrAssignable::Assignable(lhs);
-					let of = rhs;
-					Self::ForOf { is_await: false, lhs, of, position }
-				}
-				Expression::SpecialOperators(
-					crate::expressions::SpecialOperators::In { lhs, rhs },
-					_,
-				) => {
-					let lhs = match lhs {
-						crate::expressions::InExpressionLHS::PrivateProperty(_) => {
-							return Err(crate::ParseError::new(
-								crate::ParseErrors::CannotUsePrivatePropertyHere,
-								start.with_length(1),
-							));
-						}
-						crate::expressions::InExpressionLHS::Expression(expression) => *expression,
-					};
-					let lhs = LHSOfAssignment::try_from(lhs)?;
-					let lhs = VariableOrAssignable::Assignable(lhs);
-					let r#in = Box::new(MultipleExpression::from_first_expression(reader, *rhs)?);
-					let position = start.union(reader.get_end());
-					Self::ForIn { lhs, r#in, position }
-				}
-				expression => {
-					let expression = MultipleExpression::from_first_expression(reader, expression)?;
-					let initialiser =
-						Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
-					parse_statements(reader, initialiser, start)?
-				}
-			}
+			// if let Expression::SpecialOperators(
+			// 	crate::expressions::SpecialOperators::In { lhs, rhs },
+			// 	_,
+			// ) = expression {
+			// 	todo!("parse other items");
+			// 	let lhs = match lhs {
+			// 		crate::expressions::InExpressionLHS::PrivateProperty(_) => {
+			// 			return Err(crate::ParseError::new(
+			// 				crate::ParseErrors::CannotUsePrivatePropertyHere,
+			// 				start.with_length(1),
+			// 			));
+			// 		}
+			// 		crate::expressions::InExpressionLHS::Expression(expression) => *expression,
+			// 	};
+			// 	let lhs = LHSOfAssignment::try_from(lhs)?;
+			// 	let lhs = VariableOrAssignable::Assignable(lhs);
+			// 	let r#in = Box::new(MultipleExpression::from_first_expression(reader, *rhs)?);
+			// 	let position = start.union(reader.get_end());
+			// 	Self::ForIn { lhs, r#in, position }
+			// } else {
+			// }
+			let expression = MultipleExpression::from_first_expression(reader, expression)?;
+			let initialiser = Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
+			parse_statements(reader, initialiser, start)?
 		};
 		reader.expect(')')?;
 		Ok(condition)

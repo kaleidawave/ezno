@@ -6,7 +6,7 @@ mod block;
 mod comments;
 mod errors;
 pub mod expressions;
-mod extensions;
+pub mod extensions;
 pub mod functions;
 pub mod generator_helpers;
 mod lexer;
@@ -26,11 +26,7 @@ pub use comments::WithComment;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
-pub use expressions::{Expression, MultipleExpression, PropertyReference};
-pub use extensions::{
-	decorators::{Decorated, Decorator},
-	is_expression, jsx,
-};
+pub use expressions::{Expression, MultipleExpression, PropertyReference, operators};
 pub use functions::FunctionBody;
 pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
@@ -491,9 +487,10 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 pub mod ast {
 	// TODO improve
 	pub use crate::{
-		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
-		StatementPosition, VariableField, VariableIdentifier, WithComment,
+		Block, ExpressionPosition, PropertyKey, StatementOrDeclaration, StatementPosition,
+		VariableField, VariableIdentifier, WithComment,
 		expressions::*,
+		extensions::decorators::Decorated,
 		extensions::jsx::*,
 		functions::{
 			FunctionBase, FunctionBody, FunctionHeader, FunctionParameters, MethodHeader,
