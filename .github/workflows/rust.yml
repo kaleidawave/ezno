@@ -211,9 +211,7 @@ jobs:
           retention-days: 90
 
   fuzzing_parser:
-    # waiting on https://github.com/rust-fuzz/cargo-fuzz/issues/355
-    if: false 
-    # if : $ {{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
+    if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
 
     needs: validity
     runs-on: ubuntu-latest
@@ -236,7 +234,10 @@ jobs:
       - name: Install cargo-fuzz
         uses: kaleidawave/release-downloader@improvements
         env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
-        with: { items: 'rust-fuzz/cargo-fuzz@0.13.1' }
+        # TODO this is temporary as cargo-fuzz releases are awaiting a fix
+        # https://github.com/rust-fuzz/cargo-fuzz/pull/365
+        # should do versioning etc
+        with: { items: 'kaleidave/experiments/cargo-fuzz@assets[cargo-fuzz-x86_64-unknown-linux]' }
           
       - uses: dorny/paths-filter@v3
         id: changes
@@ -261,9 +262,7 @@ jobs:
           # fi
 
   fuzzing_checker:
-    # waiting on https://github.com/rust-fuzz/cargo-fuzz/issues/355
-    if: false 
-    # if : $ {{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
+    if: ${{ github.ref == 'main' || !github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'fuzz-me') }}
 
     needs: validity
 
@@ -289,7 +288,10 @@ jobs:
       - name: Install cargo-fuzz
         uses: kaleidawave/release-downloader@improvements
         env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
-        with: { items: 'rust-fuzz/cargo-fuzz@0.13.1' }
+        # TODO this is temporary as cargo-fuzz releases are awaiting a fix
+        # https://github.com/rust-fuzz/cargo-fuzz/pull/365
+        # should do versioning etc
+        with: { items: 'kaleidave/experiments/cargo-fuzz@assets[cargo-fuzz-x86_64-unknown-linux]' }
 
       - uses: dorny/paths-filter@v3
         id: changes
@@ -338,8 +340,6 @@ jobs:
   performance:
     runs-on: ubuntu-latest
     needs: validity
-    # TODO temp fix
-    if: ${{ github.ref_name != 'general-fixes' }}
     steps:
       - name: Kick off other workflow if main or a PR with 'compiler-performance' label
         if: github.ref_name == 'main' || contains(github.event.pull_request.labels.*.name, 'compiler-performance')
