@@ -31,18 +31,18 @@ impl ParameterVisibility for () {
 
 impl ParameterVisibility for Option<crate::types::Visibility> {
 	fn from_reader(reader: &mut crate::Lexer) -> Option<crate::types::Visibility> {
-		if let Some(Some(keyword)) = reader
-			.get_options()
-			.type_annotations
-			.type_annotations()
-			.then(|| reader.is_one_of_keywords_advance(&["private", "public", "protected"]))
-		{
-			Some(match keyword {
-				"private" => crate::types::Visibility::Private,
-				"public" => crate::types::Visibility::Public,
-				"protected" => crate::types::Visibility::Protected,
-				_ => unreachable!(),
-			})
+		let type_annotations = reader.parse_type_annotations();
+
+		if type_annotations && reader.get_current().starts_with('p') {
+			if reader.is_operator_advance("private") {
+				Some(crate::types::Visibility::Private)
+			} else if reader.is_operator_advance("public") {
+				Some(crate::types::Visibility::Public)
+			} else if reader.is_operator_advance("protected") {
+				Some(crate::types::Visibility::Protected)
+			} else {
+				None
+			}
 		} else {
 			None
 		}

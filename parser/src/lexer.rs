@@ -98,11 +98,6 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	pub(crate) fn left_to_parse(&self) -> u32 {
-		self.source_size().saturating_sub(self.head)
-	}
-
-	#[must_use]
 	pub(crate) fn last_was_from_new_line(&self) -> u32 {
 		self.state.last_new_lines
 	}
@@ -138,10 +133,7 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		let length = keyword.len();
 		current.starts_with(keyword)
-			&& current[length..]
-				.chars()
-				.next()
-				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
+			&& !current[length..].starts_with(|chr: char| utilities::is_valid_identifier(chr))
 	}
 
 	pub(crate) fn is_keyword_advance(&mut self, keyword: &str) -> bool {
@@ -149,10 +141,7 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		let length = keyword.len();
 		if current.starts_with(keyword)
-			&& current[length..]
-				.chars()
-				.next()
-				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
+			&& !current[length..].starts_with(|chr: char| utilities::is_valid_identifier(chr))
 		{
 			self.state.last_new_lines = 0;
 			self.head += length as u32;
@@ -160,42 +149,6 @@ impl<'a> Lexer<'a> {
 		} else {
 			false
 		}
-	}
-
-	// Does not advance
-	#[must_use]
-	pub(crate) fn is_one_of_keywords<'b>(&self, keywords: &'static [&'b str]) -> Option<&'b str> {
-		let current = self.get_current();
-		for item in keywords {
-			if current.starts_with(item)
-				&& current[item.len()..]
-					.chars()
-					.next()
-					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
-			{
-				return Some(item);
-			}
-		}
-		None
-	}
-
-	pub(crate) fn is_one_of_keywords_advance<'b>(
-		&mut self,
-		keywords: &'static [&'b str],
-	) -> Option<&'b str> {
-		let current = self.get_current();
-		for item in keywords {
-			if current.starts_with(item)
-				&& current[item.len()..]
-					.chars()
-					.next()
-					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
-			{
-				self.head += item.len() as u32;
-				return Some(item);
-			}
-		}
-		None
 	}
 
 	pub(crate) fn expect_start(&mut self, chr: char) -> Result<source_map::Start, ParseError> {
@@ -330,7 +283,7 @@ impl<'a> Lexer<'a> {
 
 	pub(crate) fn is_operator(&mut self, operator: &str) -> bool {
 		self.skip();
-		self.starts_with_slice(operator)
+		self.get_current().starts_with(operator)
 	}
 
 	pub(crate) fn is_operator_advance(&mut self, operator: &str) -> bool {
@@ -528,6 +481,7 @@ impl<'a> Lexer<'a> {
 		self.starts_with('"') || self.starts_with('\'')
 	}
 
+	/// expects current to start with string delimeter
 	#[allow(clippy::single_match_else)]
 	pub(crate) fn parse_string_literal(
 		&mut self,
@@ -670,97 +624,6 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	// TODO also can exit if there is `=` or `:` and = 0 in some examples
-	#[must_use]
-	pub(crate) fn after_brackets(&self) -> &'a str {
-		use crate::Quoting;
-
-		enum State {
-			None,
-			Comment,
-			StringLiteral { escaped: bool, quoting: crate::Quoting },
-			// TemplateLiteral { escaped: bool },
-			// RegexLiteral { escaped: bool },
-			MultilineComment,
-		}
-
-		let current = self.get_current();
-
-		let mut bracket_count: u32 = 0;
-		let mut open_chevrons = 0u64;
-		let mut state = State::None;
-
-		// TODO account for string literals and comments
-		// TODO account for utf16
-		for (idx, chr) in current.char_indices() {
-			match state {
-				State::None => {
-					if let '(' | '{' | '[' | '<' = chr {
-						open_chevrons <<= 1;
-						open_chevrons |= u64::from(chr == '<');
-						bracket_count += 1;
-						// dbg!(chr, bracket_count);
-					} else if let ')' | '}' | ']' | '>' = chr {
-						// TODO WIP
-						let last_was_open_chevron = (open_chevrons & 1) != 0;
-						if let '>' = chr {
-							if !last_was_open_chevron {
-								continue;
-							}
-							// ...
-						} else if last_was_open_chevron {
-							// Extra removal
-							open_chevrons >>= 1;
-							bracket_count = bracket_count.saturating_sub(1);
-						}
-
-						open_chevrons >>= 1;
-						bracket_count = bracket_count.saturating_sub(1);
-						// dbg!(chr, bracket_count, last_was_open_chevron);
-						if bracket_count == 0 {
-							return current[(idx + 1)..].trim_start();
-						}
-					} else if let '"' = chr {
-						state = State::StringLiteral { escaped: false, quoting: Quoting::Double };
-					} else if let '\'' = chr {
-						state = State::StringLiteral { escaped: false, quoting: Quoting::Single };
-					} else if let '/' = chr {
-						if current[idx..].starts_with("/*") {
-							state = State::MultilineComment;
-						} else if current[idx..].starts_with("//") {
-							state = State::Comment;
-						}
-					}
-				}
-				State::StringLiteral { ref mut escaped, quoting } => {
-					if *escaped {
-						*escaped = false;
-						continue;
-					}
-					if let '\\' = chr {
-						*escaped = true;
-					} else if let (Quoting::Double, '"') | (Quoting::Single, '\'') = (quoting, chr)
-					{
-						state = State::None;
-					}
-				}
-				State::Comment => {
-					if let '\n' = chr {
-						state = State::None;
-					}
-				}
-				State::MultilineComment => {
-					if current[idx..].starts_with("*/") {
-						state = State::None;
-					}
-				}
-			}
-		}
-
-		// Return empty slice
-		Default::default()
-	}
-
 	#[must_use]
 	pub(crate) fn after_identifier(&self) -> &'a str {
 		self.after_identifier_offset(0)
@@ -808,37 +671,6 @@ impl<'a> Lexer<'a> {
 }
 
 pub(crate) mod utilities {
-	pub(crate) fn is_arrow_function(
-		reader: &mut super::Lexer,
-	) -> (bool, Option<crate::types::TypeAnnotation>) {
-		let after_brackets = trim_whitespace_not_newlines(reader.after_brackets());
-		if after_brackets.starts_with("=>") {
-			(true, None)
-		} else if reader.options.type_annotations.type_annotations()
-			&& after_brackets.starts_with(':')
-		{
-			// TODO WIP implementation
-			let save_point = reader.head;
-			let after = reader.left_to_parse() - after_brackets.len() as u32;
-			reader.head += after as u32 + 1;
-			// TODO: I hate this!!
-			// Can double allocate for expressions build up bad information
-			let annotation = crate::types::TypeAnnotation::from_reader_with_precedence(
-				reader,
-				crate::types::type_annotations::TypeOperatorKind::ReturnType,
-			);
-			let starts_with_arrow = reader.starts_with_slice("=>");
-			reader.head = save_point;
-			if let (true, Ok(annotation)) = (starts_with_arrow, annotation) {
-				(true, Some(annotation))
-			} else {
-				(false, None)
-			}
-		} else {
-			(false, None)
-		}
-	}
-
 	pub(crate) fn is_valid_identifier(chr: char) -> bool {
 		// TODO `\\` for unicode identifiers
 		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'

@@ -322,7 +322,7 @@ impl ASTNode for StatementOrDeclaration {
 			let start = reader.get_start();
 			reader.advance("declare".len() as u32);
 			reader.skip();
-			if let Some(_keyword) = reader.is_one_of_keywords(&["let", "const", "var"]) {
+			if reader.is_keyword("let") || reader.is_keyword("const") || reader.is_keyword("var") {
 				let mut declare = DeclareVariableDeclaration::from_reader_without_declare(reader)?;
 				// TODO pass these down
 				declare.decorators = possible_decorators;

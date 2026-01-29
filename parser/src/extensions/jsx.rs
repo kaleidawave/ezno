@@ -46,6 +46,8 @@ pub enum JSXNode {
 	TextNode(String, Span),
 	/// Function argument as single comments and `...` is allowed
 	InterpolatedExpression(Box<FunctionArgument>, Span),
+	// for nunjucks, etc
+	UnknownExpression(String, Span),
 	Comment(String, Span),
 	LineBreak,
 }
@@ -385,7 +387,7 @@ impl ASTNode for JSXRoot {
 	}
 }
 
-fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNode>> {
+pub fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JSXNode>> {
 	let mut children = Vec::new();
 	// TODO count new lines etc
 	loop {
@@ -434,6 +436,7 @@ impl ASTNode for JSXNode {
 		match self {
 			JSXNode::TextNode(_, pos)
 			| JSXNode::InterpolatedExpression(_, pos)
+			| JSXNode::UnknownExpression(_, pos)
 			| JSXNode::Comment(_, pos) => *pos,
 			JSXNode::Element(element) => element.get_position(),
 			JSXNode::LineBreak => source_map::Nullable::NULL,
@@ -444,10 +447,41 @@ impl ASTNode for JSXNode {
 		reader.skip();
 		let start = reader.get_start();
 		if reader.is_operator_advance("{") {
-			let expression = FunctionArgument::from_reader(reader)?;
-			let end = reader.expect('}')?;
-			let position = start.union(end);
-			Ok(JSXNode::InterpolatedExpression(Box::new(expression), position))
+			if reader.get_options().jsx.unwrap().accept_unknown_expressions
+				&& reader.get_current().starts_with([':', '#', '%', '/', '{'])
+			{
+				let current = reader.get_current();
+				let mut in_string = false;
+				// Basic walking
+				let mut depth = 1;
+				for (idx, chr) in current.char_indices() {
+					if in_string {
+						if chr == '"' {
+							in_string = false;
+						}
+					} else {
+						if chr == '{' {
+							depth += 1;
+						} else if chr == '}' {
+							depth -= 1;
+							if depth == 0 {
+								reader.advance(idx as u32 + 1);
+								let value = current[..idx].to_owned();
+								return Ok(JSXNode::UnknownExpression(
+									value,
+									start.with_length(idx),
+								));
+							}
+						}
+					}
+				}
+				todo!("error")
+			} else {
+				let expression = FunctionArgument::from_reader(reader)?;
+				let end = reader.expect('}')?;
+				let position = start.union(end);
+				Ok(JSXNode::InterpolatedExpression(Box::new(expression), position))
+			}
 		} else if reader.starts_with_slice("<!--") {
 			reader.advance("<!--".len() as u32);
 			let Ok(content) = reader.parse_until("-->") else {
@@ -484,6 +518,11 @@ impl ASTNode for JSXNode {
 			JSXNode::InterpolatedExpression(expression, _) => {
 				buf.push('{');
 				expression.to_string_from_buffer(buf, options, local.next_level());
+				buf.push('}');
+			}
+			JSXNode::UnknownExpression(expression, _) => {
+				buf.push('{');
+				buf.push_str(&expression);
 				buf.push('}');
 			}
 			JSXNode::LineBreak => {

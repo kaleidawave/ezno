@@ -61,7 +61,8 @@ impl ASTNode for SwitchStatement {
 			let mut items = Vec::new();
 			loop {
 				if reader.is_operator("}")
-					|| reader.is_one_of_keywords(&["case", "default"]).is_some()
+					|| reader.is_keyword("case")
+					|| reader.is_keyword("default")
 				{
 					break;
 				}

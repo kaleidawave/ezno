@@ -97,12 +97,19 @@ pub struct JSX {
 	/// Attribute values are JavaScript expressions (strings are retained, but unquoted items
 	/// become variable references)
 	pub attributes_as_expressions: bool,
+	/// allow interpolations that start with unknown characters
+	pub accept_unknown_expressions: bool,
 }
 
 impl JSX {
 	#[must_use]
 	pub fn all() -> Self {
-		Self { special_jsx_attributes: true, top_level_html: true, attributes_as_expressions: true }
+		Self {
+			special_jsx_attributes: true,
+			top_level_html: true,
+			attributes_as_expressions: true,
+			accept_unknown_expressions: true,
+		}
 	}
 }
 
@@ -112,11 +119,7 @@ impl ParseOptions {
 		Self {
 			type_annotations: TypeAnnotationOption::Allowed,
 			comments: CommentsOption::All,
-			jsx: Some(JSX {
-				special_jsx_attributes: true,
-				top_level_html: true,
-				attributes_as_expressions: true,
-			}),
+			jsx: Some(JSX::all()),
 			decorators: true,
 			extras: Extras::all(),
 			// just syntax all not feature all

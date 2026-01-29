@@ -203,8 +203,7 @@ from "module-name" import defaultExport, * as name;
     "#
 	.trim();
 
-	let module =
-		Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all_features()).unwrap();
+	let module = Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 
@@ -225,8 +224,7 @@ worker function a() {}
     "
 	.trim();
 
-	let module =
-		Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all_features()).unwrap();
+	let module = Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 

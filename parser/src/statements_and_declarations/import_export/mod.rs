@@ -7,6 +7,7 @@ use visitable_derive::Visitable;
 
 use crate::{Marker, Quoting, derive_ASTNode};
 
+/// Import and export parts are very similar but have their parts reversed
 pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
 	const PREFIX: bool;
 }
@@ -32,6 +33,19 @@ pub struct ImportExportPart<T: ImportOrExport> {
 	pub position: Span,
 	#[visit_skip_field]
 	pub _marker: std::marker::PhantomData<T>,
+}
+
+// TODO I think this okay
+impl ImportExportPart<export::ExportDeclaration> {
+	pub fn into_import_form(self) -> ImportExportPart<import::ImportDeclaration> {
+		ImportExportPart {
+			just_type: self.just_type,
+			name: self.name,
+			alias: self.alias,
+			position: self.position,
+			_marker: Default::default(),
+		}
+	}
 }
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
@@ -281,5 +295,11 @@ impl ImportLocation {
 	#[must_use]
 	pub fn get_path(&self) -> Option<&str> {
 		if let Self::Quoting(name, _) = self { Some(name) } else { None }
+	}
+
+	/// Can be `None` if self is a marker point
+	#[must_use]
+	pub fn from_path(path: &str) -> Self {
+		Self::Quoting(path.to_owned(), Quoting::Double)
 	}
 }

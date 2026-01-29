@@ -155,23 +155,21 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 			.transpose()?;
 
 		Ok(ExportDeclaration::ImportToExportAll { r#as, from, position, with })
-	} else if reader.is_operator("{") || reader.is_keyword("type") {
-		let type_definitions_only = reader.is_keyword_advance("type");
-		if reader.after_brackets().starts_with("from") {
-			let out = reader.is_operator_advance("{");
-			debug_assert!(out);
+	} else if reader.is_operator_advance("{") {
+		let type_definitions_only = false;
+		let (parts, _) =
+			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
 
-			let (parts, _) =
-				crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
-			reader.expect_keyword("from")?;
-
+		if reader.is_keyword_advance("from") {
 			let from = ImportLocation::from_reader(reader)?;
-			let position = start.union(reader.get_end());
+
+			let parts: Vec<_> = parts.into_iter().map(ImportExportPart::into_import_form).collect();
 
 			let with = reader
 				.is_operator_advance("with")
 				.then(|| ObjectLiteral::from_reader(reader))
 				.transpose()?;
+			let position = start.union(reader.get_end());
 
 			Ok(ExportDeclaration::ImportToExportParts {
 				parts,
@@ -181,11 +179,34 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 				position,
 			})
 		} else {
-			let out = reader.is_operator_advance("{");
-			debug_assert!(out);
-			// FUTURE warn about type_definitions_only with type
-			let (parts, _) =
-				crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
+			let position = start.union(reader.get_end());
+			Ok(ExportDeclaration::Parts(parts, position))
+		}
+	} else if reader.parse_type_annotations() && reader.is_keyword_advance("type") {
+		reader.expect_operator("{")?;
+		let type_definitions_only = true;
+		let (parts, _) =
+			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
+
+		if reader.is_keyword_advance("from") {
+			let from = ImportLocation::from_reader(reader)?;
+
+			let parts: Vec<_> = parts.into_iter().map(ImportExportPart::into_import_form).collect();
+
+			let with = reader
+				.is_operator_advance("with")
+				.then(|| ObjectLiteral::from_reader(reader))
+				.transpose()?;
+			let position = start.union(reader.get_end());
+
+			Ok(ExportDeclaration::ImportToExportParts {
+				parts,
+				from,
+				type_definitions_only,
+				with,
+				position,
+			})
+		} else {
 			let position = start.union(reader.get_end());
 			Ok(ExportDeclaration::Parts(parts, position))
 		}

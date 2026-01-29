@@ -548,16 +548,13 @@ impl MethodHeader {
 
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
 		// , '*'
-		if reader.after_identifier().starts_with(['<', '(', '}', ',', ':']) {
-			MethodHeader::default()
-		} else if let Some(kind) = reader.is_one_of_keywords(&["get", "set"]) {
-			// TODO if after == *. then break
-			reader.advance(3);
-			match kind {
-				"get" => MethodHeader::Get,
-				"set" => MethodHeader::Set,
-				slice => unreachable!("{slice:?}"),
-			}
+		// if reader.after_identifier().starts_with(['<', '(', '}', ',', ':', '?']) {
+		// 	MethodHeader::default()
+		// } else
+		if reader.is_keyword_advance("get") {
+			MethodHeader::Get
+		} else if reader.is_keyword_advance("set") {
+			MethodHeader::Set
 		} else {
 			reader.skip_including_comments();
 			let is_async = reader.is_keyword_advance("async");

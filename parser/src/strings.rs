@@ -47,6 +47,7 @@ pub struct ParseStringOutput<'a> {
 	pub unknown_escapes: Vec<u32>,
 }
 
+/// expects current to start with string delimeter
 pub fn parse_string<'a>(current: &'a str) -> Result<ParseStringOutput<'a>, StringError> {
 	let (delimeter, quoting) = if current.starts_with('"') {
 		('"', Quoting::Double)

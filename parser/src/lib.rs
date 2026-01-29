@@ -324,7 +324,8 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 		reader.skip();
 		// TODO "implements" is TS syntax (reader options)
 		let is_not_name = reader.is_finished()
-			|| reader.is_one_of_keywords(&["extends", "implements"]).is_some()
+			|| reader.is_keyword("extends")
+			|| reader.is_keyword("implements")
 			|| reader.is_one_of(&["(", "{", "[", "<"]).is_some();
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
@@ -365,6 +366,8 @@ pub trait ListItem: Sized {
 /// Parses items surrounded in `{`, `[`, `(`, etc.
 ///
 /// Supports trailing commas. But **does not create** *empty* like items afterwards
+///
+/// Expects that the start character has been read
 pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 	reader: &mut crate::Lexer,
 	end: &'static str,

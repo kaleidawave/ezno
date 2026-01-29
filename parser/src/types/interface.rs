@@ -1,10 +1,12 @@
 use crate::{
 	ASTNode, ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span,
 	StatementPosition, TypeAnnotation, TypeParameter, WithComment, bracketed_items_from_reader,
-	bracketed_items_to_string, derive_ASTNode, extensions::decorators::Decorated,
-	functions::MethodHeader, property_key::PublicOrPrivate,
-	types::type_annotations::TypeAnnotationFunctionParameters,
+	bracketed_items_to_string, derive_ASTNode, property_key::PublicOrPrivate,
 };
+
+use crate::extensions::decorators::Decorated;
+use crate::functions::{GeneratorSpecifier, MethodHeader};
+use crate::types::type_annotations::TypeAnnotationFunctionParameters;
 
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -200,6 +202,8 @@ impl ASTNode for InterfaceMember {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		reader.skip();
+
 		let start = reader.get_start();
 		let is_readonly = reader.is_keyword_advance("readonly");
 
@@ -223,7 +227,7 @@ impl ASTNode for InterfaceMember {
 				return_type,
 				type_parameters: None,
 			})
-		} else if reader.is_operator("<") {
+		} else if reader.is_operator_advance("<") {
 			// Caller self with generic parameters
 			let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
 			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
@@ -302,10 +306,41 @@ impl ASTNode for InterfaceMember {
 			let position = start.union(reader.get_end());
 			Ok(InterfaceMember::Comment(content, is_multiline, position))
 		} else {
-			let header = MethodHeader::from_reader(reader);
+			let start = reader.get_start();
+			let mut header = MethodHeader::from_reader(reader);
 
 			// We do not use `PropertyKey::from_reader` to handle a case with type annotation
-			let name = if reader.is_operator_advance("[") {
+			let name = if reader.is_operator("<")
+				|| reader.is_operator("(")
+				|| reader.is_operator("?")
+				|| reader.is_operator(":")
+			{
+				let privacy = PublicOrPrivate::Public;
+				let name = match header {
+					MethodHeader::Get => {
+						let position = start.with_length(3);
+						PropertyKey::Identifier("get".to_owned(), position, privacy)
+					}
+					MethodHeader::Set => {
+						let position = start.with_length(3);
+						PropertyKey::Identifier("set".to_owned(), position, privacy)
+					}
+					MethodHeader::Regular { is_async: true, generator: None } => {
+						let position = start.with_length(5);
+						PropertyKey::Identifier("async".to_owned(), position, privacy)
+					}
+					MethodHeader::Regular {
+						is_async: false,
+						generator: Some(GeneratorSpecifier::Keyword),
+					} => {
+						let position = start.with_length(9);
+						PropertyKey::Identifier("generator".to_owned(), position, privacy)
+					}
+					_ => todo!("error"),
+				};
+				header = MethodHeader::default();
+				name
+			} else if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
 					let (content, quoting, width) = reader.parse_string_literal()?;
 					let position = start.with_length(width as usize);
@@ -404,6 +439,21 @@ impl ASTNode for InterfaceMember {
 						});
 					}
 				}
+			} else if reader.starts_with_string_delimeter() {
+				let (value, quoting, length) = reader.parse_string_literal()?;
+				let position = start.with_length(length as usize);
+				PropertyKey::StringLiteral(value.into_owned(), quoting, position)
+			} else if reader.starts_with_number() {
+				let (value, length) = reader.parse_number_literal()?;
+				let position = start.with_length(length as usize);
+				if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
+					PropertyKey::NumberLiteral(value, position)
+				} else {
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::BigIntNotAllowedHere,
+						position,
+					));
+				}
 			} else {
 				let start = reader.get_start();
 				let name = reader.parse_identifier("interface parameter name", false)?.into_owned();
@@ -419,7 +469,7 @@ impl ASTNode for InterfaceMember {
 				.transpose()?
 				.map(|(tp, _)| tp);
 
-			if !header.is_no_modifiers() || reader.is_operator("(") || reader.is_operator("?(") {
+			if reader.is_operator("(") || reader.is_operator("?(") {
 				let is_optional = reader.is_operator_advance("?");
 				// This will eat the first parenthesis, thus not eating above
 				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
@@ -441,12 +491,11 @@ impl ASTNode for InterfaceMember {
 					is_optional,
 					position,
 				})
-			} else if let Some(seperator) = reader.is_one_of_operators(&["?:", ":"]) {
-				// if let Some(header) = header {
+			} else if reader.is_operator(":") || reader.is_operator("?:") {
+				let is_optional = reader.is_operator_advance("?");
 				// 	Err(crate::ParseError::new(ParseErrors::UnexpectedHeader, header.get_position()))
-				// } else {
-				let is_optional = "?:" == seperator;
-				reader.advance(if is_optional { 2 } else { 1 });
+				// } else if type_parameters.is_some() {}
+				reader.advance(1);
 				let type_annotation = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(type_annotation.get_position());
 				Ok(InterfaceMember::Property {

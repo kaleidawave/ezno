@@ -234,39 +234,47 @@ impl CommonTypes {
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone)]
-pub struct TypeName(pub(crate) String);
+pub struct TypeName {
+	pub namespace: Vec<String>,
+	pub name: String,
+}
 
 impl TypeName {
-	pub fn from_parts<'a>(parts: impl Iterator<Item = &'a str>) -> Self {
-		let mut buf = String::new();
-		for part in parts {
-			if !buf.is_empty() {
-				buf.push('.');
-			}
-			buf.push_str(part);
-		}
-		TypeName(buf)
-	}
-	#[must_use]
-	pub fn is_namespace_reference(&self) -> bool {
-		self.0.contains('.')
-	}
+	// pub fn from_parts<'a>(parts: impl Iterator<Item = &'a str>) -> Self {
+	// 	let mut buf = String::new();
+	// 	for part in parts {
+	// 		if !buf.is_empty() {
+	// 			buf.push('.');
+	// 		}
+	// 		buf.push_str(part);
+	// 	}
+	// 	TypeName(buf)
+	// }
 
-	pub fn parts(&self) -> impl Iterator<Item = &str> + '_ {
-		self.0.split('.')
-	}
-	#[must_use]
-	pub fn raw(&self) -> &str {
-		&self.0
-	}
+	// #[must_use]
+	// pub fn is_namespace_reference(&self) -> bool {
+	// 	self.0.contains('.')
+	// }
 
-	#[must_use]
-	pub fn from_raw(on: String) -> Self {
-		Self(on)
-	}
+	// pub fn parts(&self) -> impl Iterator<Item = &str> + '_ {
+	// 	self.0.split('.')
+	// }
+	// #[must_use]
+	// pub fn raw(&self) -> &str {
+	// 	&self.0
+	// }
+
+	// #[must_use]
+	// pub fn from_raw(on: String) -> Self {
+	// 	Self(on)
+	// }
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
-		buf.push_str(&self.0);
+		for part in &self.namespace {
+			buf.push_str(part);
+			buf.push_str(".");
+		}
+		buf.push_str(&self.name);
 	}
 }
 
@@ -485,9 +493,6 @@ pub(crate) enum TypeOperatorKind {
 	ReturnType,
 }
 
-const COMMON_TYPE_NAMES: &[&str] =
-	&["string", "number", "boolean", "any", "null", "undefined", "unknown", "never"];
-
 impl TypeAnnotation {
 	/// Also returns the local the generic arguments ran over
 	/// TODO refactor and tidy a lot of this, precedence rather than config
@@ -509,218 +514,275 @@ impl TypeAnnotation {
 					position,
 				));
 			}
-		} else {
-			reader.skip();
 		}
-
-		// while let Some(Token(TSXToken::Comment(_) | TSXToken::MultiLineComment(_), _)) =
-		// 	reader.peek()
-		// {
-		// 	reader.next();
-		// }
 
 		// Yes leading syntax is allowed sometimes
 		if let TypeOperatorKind::None = parent_kind {
+			reader.skip();
 			let _ = reader.is_operator_advance("|") || reader.is_operator_advance("&");
 		}
 
 		reader.skip();
-
 		let start = reader.get_start();
 
-		let mut reference = if reader.starts_with_number() {
-			let (value, length) = reader.parse_number_literal()?;
-			let position = start.with_length(length as usize);
-			match value {
-				crate::numbers::ParsedNumberLiteral::Number(value) => {
-					TypeAnnotation::NumberLiteral(value, position)
-				}
-				crate::numbers::ParsedNumberLiteral::BigInt(value) => {
-					TypeAnnotation::BigIntLiteral(BigInt { source: value.to_string() }, position)
-				}
-			}
-		} else if reader.is_keyword_advance("this") {
-			TypeAnnotation::This(start.with_length(4))
-		} else if reader.is_keyword_advance("true") {
-			TypeAnnotation::BooleanLiteral(true, start.with_length(4))
-		} else if reader.is_keyword_advance("false") {
-			TypeAnnotation::BooleanLiteral(false, start.with_length(5))
-		} else if reader.is_keyword_advance("infer") {
-			let name = reader.parse_identifier("infer name", false)?.into_owned();
-			let (position, extends) = if reader.is_keyword_advance("extends") {
-				let extends =
-					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
-				(start.union(extends.get_position()), Some(Box::new(extends)))
-			} else {
-				let position = start.with_length(name.len());
-				(position, None)
-			};
-			TypeAnnotation::Infer { name, extends, position }
-		} else if reader.is_keyword_advance("asserts") {
-			let predicate = TypeAnnotation::from_reader_with_precedence(reader, parent_kind)?;
-			let position = start.union(predicate.get_position());
-			TypeAnnotation::Asserts(Box::new(predicate), position)
-		} else if reader.is_keyword_advance("typeof") {
-			let reference = VariableOrPropertyAccess::from_reader(reader)?;
-			let position = start.union(reference.get_position());
-			Self::TypeOf(Box::new(reference), position)
-		} else if reader.is_keyword_advance("readonly") {
-			let readonly_type =
-				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
-			let position = start.union(readonly_type.get_position());
-			TypeAnnotation::Readonly(Box::new(readonly_type), position)
-		} else if reader.is_keyword_advance("keyof") {
-			let key_of_type =
-				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
-			let position = start.union(key_of_type.get_position());
-			TypeAnnotation::KeyOf(Box::new(key_of_type), position)
-		} else if reader.is_keyword_advance("abstract") {
-			let inner_type =
-				TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
-			let position = start.union(inner_type.get_position());
-			TypeAnnotation::Abstract(Box::new(inner_type), position)
-		} else if reader.is_keyword_advance("new") {
-			let type_parameters = if reader.starts_with('<') {
-				let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
-				Some(type_parameters)
-			} else {
-				None
-			};
-			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
-			reader.expect_operator("=>")?;
-			let return_type = Box::new(TypeAnnotation::from_reader(reader)?);
-			let position = start.union(return_type.get_position());
-			TypeAnnotation::ConstructorLiteral {
-				position,
-				parameters: Box::new(parameters),
-				type_parameters,
-				return_type,
-			}
-		} else if let Some(keyword) = reader.is_one_of_keywords_advance(COMMON_TYPE_NAMES) {
-			let name = match keyword {
-				"string" => CommonTypes::String,
-				"number" => CommonTypes::Number,
-				"boolean" => CommonTypes::Boolean,
-				"any" => CommonTypes::Any,
-				"null" => CommonTypes::Null,
-				"undefined" => CommonTypes::Undefined,
-				"unknown" => CommonTypes::Unknown,
-				"never" => CommonTypes::Never,
-				slice => unreachable!("{slice:?}"),
-			};
-			Self::CommonName(name, start.with_length(keyword.len()))
-		} else if reader.is_keyword_advance("unique") {
-			reader.expect_keyword("symbol")?;
-			reader.skip();
-			#[cfg(feature = "extras")]
-			let name = if reader.get_options().extras.additional_type_annotations
-				&& reader.starts_with_string_delimeter()
-			{
-				let (name, ..) = reader.parse_string_literal()?;
-				Some(name.into_owned())
-			} else {
-				None
-			};
-			Self::Symbol {
-				unique: true,
-				position: start.union(reader.get_end()),
-				#[cfg(feature = "extras")]
-				name,
-			}
-		} else if reader.is_operator_advance("-") {
-			let (value, length) = reader.parse_number_literal()?;
-			let position = start.with_length(length as usize);
-			match value {
-				crate::numbers::ParsedNumberLiteral::Number(value) => {
-					TypeAnnotation::NumberLiteral(-value, position)
-				}
-				crate::numbers::ParsedNumberLiteral::BigInt(value) => {
-					TypeAnnotation::BigIntLiteral(BigInt { source: format!("-{value}") }, position)
-				}
-			}
-		} else if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoting, width) = reader.parse_string_literal()?;
-			let position = start.with_length(width as usize);
-			Self::StringLiteral(content.into_owned(), quoting, position)
-		} else if reader.starts_with('@') {
-			let decorator = Decorator::from_reader(reader)?;
-			// TODO ...
-			let this_declaration =
-				Self::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
-			let position = start.union(this_declaration.get_position());
-			Self::Decorated(Box::new(decorator), Box::new(this_declaration), position)
-		} else if reader.is_operator("(") {
-			// Function literal or group
-			let after = reader.after_brackets();
-			let is_arrow_function = after.starts_with("=>");
+		// TODO temp
+		if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
+			let is_multiline = reader.starts_with_slice("/*");
+			reader.advance(2);
+			let _content = reader.parse_comment_literal(is_multiline)?.to_owned();
+		}
 
-			if is_arrow_function {
+		let mut reference = match reader.get_current().as_bytes().first() {
+			_ if reader.starts_with_number() => {
+				let (value, length) = reader.parse_number_literal()?;
+				let position = start.with_length(length as usize);
+				match value {
+					crate::numbers::ParsedNumberLiteral::Number(value) => {
+						TypeAnnotation::NumberLiteral(value, position)
+					}
+					crate::numbers::ParsedNumberLiteral::BigInt(value) => {
+						TypeAnnotation::BigIntLiteral(
+							BigInt { source: value.to_string() },
+							position,
+						)
+					}
+				}
+			}
+			Some(b't') if reader.is_keyword_advance("this") => {
+				TypeAnnotation::This(start.with_length(4))
+			}
+			Some(b't') if reader.is_keyword_advance("true") => {
+				TypeAnnotation::BooleanLiteral(true, start.with_length(4))
+			}
+			Some(b'f') if reader.is_keyword_advance("false") => {
+				TypeAnnotation::BooleanLiteral(false, start.with_length(5))
+			}
+			Some(b'i') if reader.is_keyword_advance("infer") => {
+				let name = reader.parse_identifier("infer name", false)?.into_owned();
+				let (position, extends) = if reader.is_keyword_advance("extends") {
+					let extends = TypeAnnotation::from_reader_with_precedence(
+						reader,
+						TypeOperatorKind::Query,
+					)?;
+					(start.union(extends.get_position()), Some(Box::new(extends)))
+				} else {
+					let position = start.with_length(name.len());
+					(position, None)
+				};
+				TypeAnnotation::Infer { name, extends, position }
+			}
+			Some(b'a') if reader.is_keyword_advance("asserts") => {
+				let predicate = TypeAnnotation::from_reader_with_precedence(reader, parent_kind)?;
+				let position = start.union(predicate.get_position());
+				TypeAnnotation::Asserts(Box::new(predicate), position)
+			}
+			Some(b't') if reader.is_keyword_advance("typeof") => {
+				let reference = VariableOrPropertyAccess::from_reader(reader)?;
+				let position = start.union(reference.get_position());
+				Self::TypeOf(Box::new(reference), position)
+			}
+			Some(b'r') if reader.is_keyword_advance("readonly") => {
+				let readonly_type =
+					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+				let position = start.union(readonly_type.get_position());
+				TypeAnnotation::Readonly(Box::new(readonly_type), position)
+			}
+			Some(b'k') if reader.is_keyword_advance("keyof") => {
+				let key_of_type =
+					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+				let position = start.union(key_of_type.get_position());
+				TypeAnnotation::KeyOf(Box::new(key_of_type), position)
+			}
+			Some(b'a') if reader.is_keyword_advance("abstract") => {
+				let inner_type =
+					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+				let position = start.union(inner_type.get_position());
+				TypeAnnotation::Abstract(Box::new(inner_type), position)
+			}
+			Some(b'n') if reader.is_keyword_advance("new") => {
+				let type_parameters = if reader.is_operator_advance("<") {
+					let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
+					Some(type_parameters)
+				} else {
+					None
+				};
+				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+				reader.expect_operator("=>")?;
+				let return_type = Box::new(TypeAnnotation::from_reader(reader)?);
+				let position = start.union(return_type.get_position());
+				TypeAnnotation::ConstructorLiteral {
+					position,
+					parameters: Box::new(parameters),
+					type_parameters,
+					return_type,
+				}
+			}
+			Some(b's') if reader.is_operator_advance("string") => {
+				Self::CommonName(CommonTypes::String, start.with_length(6))
+			}
+			Some(b'n') if reader.is_keyword_advance("number") => {
+				Self::CommonName(CommonTypes::Number, start.with_length(6))
+			}
+			Some(b'b') if reader.is_keyword_advance("boolean") => {
+				Self::CommonName(CommonTypes::Boolean, start.with_length(7))
+			}
+			Some(b'a') if reader.is_keyword_advance("any") => {
+				Self::CommonName(CommonTypes::Any, start.with_length(3))
+			}
+			Some(b'n') if reader.is_keyword_advance("null") => {
+				Self::CommonName(CommonTypes::Null, start.with_length(4))
+			}
+			Some(b'u') if reader.is_keyword_advance("undefined") => {
+				Self::CommonName(CommonTypes::Undefined, start.with_length(9))
+			}
+			Some(b'u') if reader.is_keyword_advance("unknown") => {
+				Self::CommonName(CommonTypes::Unknown, start.with_length(7))
+			}
+			Some(b'n') if reader.is_keyword_advance("never") => {
+				Self::CommonName(CommonTypes::Never, start.with_length(5))
+			}
+			Some(b'u') if reader.is_keyword_advance("unique") => {
+				reader.expect_keyword("symbol")?;
+				reader.skip();
+
+				#[cfg(feature = "extras")]
+				let name = if reader.get_options().extras.additional_type_annotations
+					&& reader.starts_with_string_delimeter()
+				{
+					let (name, ..) = reader.parse_string_literal()?;
+					Some(name.into_owned())
+				} else {
+					None
+				};
+
+				Self::Symbol {
+					unique: true,
+					position: start.union(reader.get_end()),
+					#[cfg(feature = "extras")]
+					name,
+				}
+			}
+			Some(b'-') if reader.is_operator_advance("-") => {
+				let (value, length) = reader.parse_number_literal()?;
+				let position = start.with_length(length as usize);
+				match value {
+					crate::numbers::ParsedNumberLiteral::Number(value) => {
+						TypeAnnotation::NumberLiteral(-value, position)
+					}
+					crate::numbers::ParsedNumberLiteral::BigInt(value) => {
+						TypeAnnotation::BigIntLiteral(
+							BigInt { source: format!("-{value}") },
+							position,
+						)
+					}
+				}
+			}
+			Some(b'\'' | b'"') => {
+				let (content, quoting, width) = reader.parse_string_literal()?;
+				let position = start.with_length(width as usize);
+				Self::StringLiteral(content.into_owned(), quoting, position)
+			}
+			Some(b'@') => {
+				let decorator = Decorator::from_reader(reader)?;
+				// TODO ...
+				let this_declaration =
+					Self::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
+				let position = start.union(this_declaration.get_position());
+				Self::Decorated(Box::new(decorator), Box::new(this_declaration), position)
+			}
+			Some(b'(') => {
+				let result: ParseResult<(_, _)> =
+					reader.try_parse(|reader: &mut crate::Lexer<'_>| {
+						let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+						reader.expect_operator("=>")?;
+						let return_type = Self::from_reader(reader)?;
+						Ok((parameters, return_type))
+					});
+
+				if let Ok((parameters, return_type)) = result {
+					let position = start.union(return_type.get_position());
+					Self::FunctionLiteral {
+						position,
+						type_parameters: None,
+						parameters: Box::new(parameters),
+						return_type: Box::new(return_type),
+					}
+				} else {
+					reader.advance(1);
+					let type_annotation = Self::from_reader(reader)?;
+					let position = start.union(reader.expect(')')?);
+					Self::ParenthesizedReference(type_annotation.into(), position)
+				}
+			}
+			Some(b'<') => {
+				reader.advance(1);
+				let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
 				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
 				reader.expect_operator("=>")?;
 				let return_type = Self::from_reader(reader)?;
 				Self::FunctionLiteral {
 					position: start.union(return_type.get_position()),
-					type_parameters: None,
+					type_parameters: Some(type_parameters),
 					parameters: Box::new(parameters),
 					return_type: Box::new(return_type),
 				}
-			} else {
+			}
+			Some(b'{') => {
 				reader.advance(1);
-				let type_annotation = Self::from_reader(reader)?;
-				let position = start.union(reader.expect(')')?);
-				Self::ParenthesizedReference(type_annotation.into(), position)
+				let members = crate::types::interface::interface_members_from_reader(reader)?;
+				let position = start.union(reader.expect('}')?);
+				Self::ObjectLiteral(members, position)
 			}
-		} else if reader.is_operator_advance("<") {
-			let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
-			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
-			reader.expect_operator("=>")?;
-			let return_type = Self::from_reader(reader)?;
-			Self::FunctionLiteral {
-				position: start.union(return_type.get_position()),
-				type_parameters: Some(type_parameters),
-				parameters: Box::new(parameters),
-				return_type: Box::new(return_type),
+			Some(b'[') => {
+				reader.advance(1);
+				let (members, _) = bracketed_items_from_reader(reader, "]")?;
+				let position = start.union(reader.get_end());
+				Self::TupleLiteral(members, position)
 			}
-		} else if reader.is_operator_advance("{") {
-			let members = crate::types::interface::interface_members_from_reader(reader)?;
-			let position = start.union(reader.expect('}')?);
-			Self::ObjectLiteral(members, position)
-		} else if reader.is_operator_advance("[") {
-			let (members, _) = bracketed_items_from_reader(reader, "]")?;
-			let position = start.union(reader.get_end());
-			Self::TupleLiteral(members, position)
-		} else if reader.is_operator_advance("`") {
-			let start = reader.get_start();
-			let (parts, final_part) = crate::expressions::template_literal::parse_template_literal::<
-				AnnotationWithBinder,
-			>(reader, start)?;
-			let position = start.union(reader.get_end());
-			Self::TemplateLiteral { parts, final_part, position }
-		} else {
-			let name = reader.parse_identifier("type name", false)?.into_owned();
-			let position = start.with_length(name.len());
+			Some(b'`') => {
+				reader.advance(1);
+				let start = reader.get_start();
+				let (parts, final_part) =
+					crate::expressions::template_literal::parse_template_literal::<
+						AnnotationWithBinder,
+					>(reader, start)?;
+				let position = start.union(reader.get_end());
+				Self::TemplateLiteral { parts, final_part, position }
+			}
+			_ => {
+				let name = reader.parse_identifier("type name", false)?.into_owned();
+				let mut position = start.with_length(name.len());
 
-			let name = TypeName::from_raw(name);
+				reader.skip();
 
-			// Generics arguments:
-			if reader.is_operator_advance("<") {
-				let (generic_arguments, _) = bracketed_items_from_reader(reader, ">")?;
-				let end = reader.get_end();
-				Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
-			} else {
-				// #[cfg(feature = "extras")]
-				// if reader.get_options().extras.additional_type_annotations
-				// 	&& reader.is_operator_advance("{")
-				// {
-				// 	let (binders, _) = bracketed_items_from_reader(reader, "}")?;
-				// 	let end = reader.get_end();
-				// 	Self::NameWithProperties(name, binders, start.union(end))
-				// } else {
-				// }
-				Self::Name(name, position)
+				let mut name = TypeName { namespace: Vec::new(), name };
+				while reader.is_operator_advance(".") {
+					let new_name = reader.parse_identifier("type name", false)?.into_owned();
+					let old = std::mem::replace(&mut name.name, new_name);
+					name.namespace.push(old);
+					position = start.union(reader.get_end());
+				}
 
-				// #[cfg(not(feature = "extras"))]
-				// Self::Name(name, position)
+				// Generics arguments:
+				if reader.is_operator_advance("<") {
+					let (generic_arguments, _) = bracketed_items_from_reader(reader, ">")?;
+					let end = reader.get_end();
+					Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
+				} else {
+					// #[cfg(feature = "extras")]
+					// if reader.get_options().extras.additional_type_annotations
+					// 	&& reader.is_operator_advance("{")
+					// {
+					// 	let (binders, _) = bracketed_items_from_reader(reader, "}")?;
+					// 	let end = reader.get_end();
+					// 	Self::NameWithProperties(name, binders, start.union(end))
+					// } else {
+					// }
+					Self::Name(name, position)
+
+					// #[cfg(not(feature = "extras"))]
+					// Self::Name(name, position)
+				}
 			}
 		};
 
@@ -748,9 +810,8 @@ impl TypeAnnotation {
 					TypeAnnotation::CommonName(name, span) => {
 						Ok((IsItem::Reference(name.name().to_owned()), span))
 					}
-					TypeAnnotation::Name(name, span) if !name.is_namespace_reference() => {
-						let name = name.parts().next().unwrap().to_owned();
-						Ok((IsItem::Reference(name), span))
+					TypeAnnotation::Name(name, span) if name.namespace.is_empty() => {
+						Ok((IsItem::Reference(name.name), span))
 					}
 					TypeAnnotation::This(span) => Ok((IsItem::This, span)),
 					_ => Err(reference),
@@ -810,7 +871,7 @@ impl TypeAnnotation {
 				let precedence = TypeOperatorKind::Intersection;
 				let rhs = Self::from_reader_with_precedence(reader, precedence)?;
 				let position = reference.get_position().union(rhs.get_position());
-				if let TypeAnnotation::Intersection(members, existing) = &mut reference {
+				if let TypeAnnotation::Intersection(ref mut members, ref mut existing) = reference {
 					*existing = position;
 					members.push(rhs);
 				} else {
@@ -819,7 +880,7 @@ impl TypeAnnotation {
 			} else if let "|" = operator {
 				let rhs = Self::from_reader_with_precedence(reader, parent_kind)?;
 				let position = reference.get_position().union(rhs.get_position());
-				if let TypeAnnotation::Union(members, existing) = &mut reference {
+				if let TypeAnnotation::Union(ref mut members, ref mut existing) = reference {
 					*existing = position;
 					members.push(rhs);
 				} else {

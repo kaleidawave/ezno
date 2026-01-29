@@ -471,6 +471,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 		JSXNode::TextNode(text, _) => {
 			checking_data.types.new_constant_type(Constant::String(text.clone()))
 		}
+		JSXNode::UnknownExpression(_, _) => todo!(),
 		JSXNode::LineBreak | JSXNode::Comment(..) => {
 			unreachable!("Should have been skipped higher up");
 		}
