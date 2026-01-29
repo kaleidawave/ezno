@@ -3,8 +3,6 @@ use std::fs::{create_dir, read_dir, read_to_string};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-const ADD_TO_DB: bool = true;
-
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 #[allow(unused_mut)]
@@ -22,29 +20,51 @@ fn main() {
 	let _ = create_dir(db_file.parent().unwrap());
 	let connection = sqlite::open(&db_file).unwrap();
 
-	// clean up existing results
-	connection.execute("DROP TABLE IF EXISTS results;").unwrap();
+	let mut store_results_in_db = false;
+	let mut list_files_with_errors = false;
+	
+	let mut args = std::env::args();
+	while let Some(arg) = args.next() {
+		match arg.as_str() {
+			"--store-results" => {
+				store_results_in_db = true;
+			}
+			"--list-bad-files" => {
+				list_files_with_errors = true;
+			}
+			_ => {
+				panic!("unknown {arg:?}");
+			}
+		}
+	}
 
-	let query = "
-CREATE TABLE results (
-    path        TEXT PRIMARY KEY,
-    info        TEXT,
-    description TEXT,
-    features    TEXT,
-    flags       TEXT,
-    es5id       TEXT,
-    negative    INTEGER NOT NULL,
-    code        TEXT,
-    pass        INTEGER NOT NULL,
-    parser_out  TEXT
-);".trim_start();
+	let mut statement = if store_results_in_db {
+		// clean up existing results
+		connection.execute("DROP TABLE IF EXISTS results;").unwrap();
+	
+		let query = "
+	CREATE TABLE results (
+		path        TEXT PRIMARY KEY,
+		info        TEXT,
+		description TEXT,
+		features    TEXT,
+		flags       TEXT,
+		es5id       TEXT,
+		negative    INTEGER NOT NULL,
+		code        TEXT,
+		pass        INTEGER NOT NULL,
+		parser_out  TEXT
+	);".trim_start();
+	
+		connection.execute(query).unwrap();
 
-	connection.execute(query).unwrap();
-
-	let query = "INSERT INTO results VALUES (
-        :path, :info, :description, :features, :flags, :es5id, :negative, :code, :pass, :parser_out
-    )";
-	let mut statement = connection.prepare(query).unwrap();
+		let query = "INSERT INTO results VALUES (
+			:path, :info, :description, :features, :flags, :es5id, :negative, :code, :pass, :parser_out
+		)";
+		Some(connection.prepare(query).unwrap())
+	} else {
+		None
+	};
 
 	let now = Instant::now();
 
@@ -110,7 +130,7 @@ CREATE TABLE results (
 					}
 
 					// TODO negative.type, locale
-					if ADD_TO_DB {
+					if store_results_in_db {
 						match key {
 							&[Slice("info")] => {
 								info = value.raw_string_value();
@@ -164,8 +184,11 @@ CREATE TABLE results (
 
 			let (matched, reason) = match result {
 				Ok(_) if should_not_parse => {
-					(false, Cow::Borrowed("parsed when should have failed"))
+					(true, Cow::Borrowed("parsed when should have failed"))
 				}
+				// Ok(_) if should_not_parse => {
+				// 	(false, Cow::Borrowed("parsed when should have failed"))
+				// }
 				Err(error) if !should_not_parse => (false, Cow::Owned(error.reason)),
 				_ => {
 					successful += 1;
@@ -175,7 +198,11 @@ CREATE TABLE results (
 				}
 			};
 
-			if ADD_TO_DB {
+			if !matched && list_files_with_errors {
+				eprintln!("{path}", path=path.display());
+			}
+
+			if let Some(ref mut statement) = statement {
 				let values = &[
 					(":path", path.display().to_string().into()),
 					(":info", info.into()),
@@ -201,7 +228,7 @@ CREATE TABLE results (
 			if completed % 1000 == 0 {
 				eprintln!("Completed {completed} tests");
 			}
-		} else if extension != ".DS_Store" {
+		} else if extension.is_some_and(|extension| extension != ".DS_Store") {
 			eprintln!("Not a test file: {path}", path = path.display());
 		}
 	});

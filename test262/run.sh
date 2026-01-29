@@ -8,4 +8,4 @@ else
 fi
 
 # Run tests
-cargo run --bin test262
+cargo run --bin test262 -- --store-results
