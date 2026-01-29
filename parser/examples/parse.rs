@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut timings = false;
 	let mut parse_imports = false;
 	let mut split = false;
+	let mut increase_stack_size = false;
 
 	for argument in arguments {
 		match argument.as_str() {
@@ -89,6 +90,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			"--split" => {
 				split = true;
 			}
+			"--increase-stack-size" => {
+				increase_stack_size = true;
+			}
 			argument => {
 				eprintln!("unknown argument {argument:?}");
 			}
@@ -107,6 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		print_ast,
 		print_source_maps,
 		split,
+		increase_stack_size,
 		&to_string_options,
 		&mut fs,
 	)
@@ -120,6 +125,7 @@ fn parse_path(
 	print_ast: bool,
 	print_source_maps: bool,
 	split: bool,
+	increase_stack_size: bool,
 	to_string_options: &Option<options::ToStringOptions>,
 	fs: &mut Files,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -156,6 +162,7 @@ fn parse_path(
 				content,
 				source_id,
 				timings,
+				increase_stack_size,
 				parse_options,
 				print_ast,
 				print_source_maps,
@@ -170,6 +177,7 @@ fn parse_path(
 			&source,
 			source_id,
 			timings,
+			increase_stack_size,
 			parse_options,
 			print_ast,
 			print_source_maps,
@@ -194,6 +202,7 @@ fn parse_path(
 							print_ast,
 							print_source_maps,
 							split,
+							increase_stack_size,
 							to_string_options,
 							fs,
 						)?;
@@ -210,6 +219,7 @@ fn parse_source(
 	source: &str,
 	source_id: SourceId,
 	timings: bool,
+	increase_stack_size: bool,
 	parse_options: options::ParseOptions,
 	print_ast: bool,
 	print_source_maps: bool,
@@ -217,19 +227,22 @@ fn parse_source(
 	fs: &Files,
 	offset: Option<u32>,
 ) -> Result<(Module, ParsingState), Box<dyn std::error::Error>> {
-	const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
-
 	let now = Instant::now();
-
 	let input = source.to_owned();
 
 	// Run in thread as stack is large and can overflow
-	let result = std::thread::Builder::new()
-		.stack_size(EIGHT_MEGA_BYTES)
-		.spawn(move || Module::from_string_with_options(input, parse_options, offset))
-		.unwrap()
-		.join()
-		.unwrap();
+	let result = if increase_stack_size {
+		const EIGHT_MEGA_BYTES: usize = 8 * 1024 * 1024;
+
+		std::thread::Builder::new()
+			.stack_size(EIGHT_MEGA_BYTES)
+			.spawn(move || Module::from_string_with_options(input, parse_options, offset))
+			.unwrap()
+			.join()
+			.unwrap()
+	} else {
+		Module::from_string_with_options(input, parse_options, offset)
+	};
 
 	match result {
 		Ok((module, state)) => {
