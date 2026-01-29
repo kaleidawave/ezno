@@ -90,15 +90,12 @@ pub fn parse_string<'a>(current: &'a str) -> Result<ParseStringOutput<'a>, Strin
 			if let Some(chr) = chr {
 				let after = &immediate[chr.len_utf8()..];
 				let result = escape_character(chr, after, buf.to_mut());
-				match result {
-					Ok(offset) => {
-						// Skip others
-						last = idx + 1 + offset;
-					}
-					Err(_) => {
-						unknown_escapes.push(idx as u32);
-						last = idx + 1;
-					}
+				if let Ok(offset) = result {
+					// Skip others
+					last = idx + 1 + offset;
+				} else {
+					unknown_escapes.push(idx as u32);
+					last = idx + 1;
 				}
 			} else {
 				return Err(StringError::NoDelimeter);
@@ -289,7 +286,7 @@ mod tests {
 	}
 
 	#[test]
-	fn Quoting() {
+	fn quoting() {
 		assert_eq!(parse_string("'Hello World'"), Ok(pso("Hello World", Single, 13)));
 		assert_eq!(parse_string("'Hello World'.length"), Ok(pso("Hello World", Single, 13)));
 

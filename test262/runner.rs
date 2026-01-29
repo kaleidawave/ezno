@@ -23,7 +23,7 @@ fn main() {
 	let mut store_results_in_db = false;
 	let mut list_files_with_errors = false;
 	
-	let mut args = std::env::args();
+	let mut args = std::env::args().skip(1);
 	while let Some(arg) = args.next() {
 		match arg.as_str() {
 			"--store-results" => {

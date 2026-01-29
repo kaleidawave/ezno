@@ -279,8 +279,7 @@ impl ASTNode for StatementOrDeclaration {
 				let decorated = Decorated::new(possible_decorators, exported);
 				let item = Box::new(decorated);
 				Ok(StatementOrDeclaration::Interface(item))
-			} else if let Some(after) = reader.get_current().strip_prefix("type") {
-				let after = after.trim_start();
+			} else if let Some(after) = reader.get_current().trim_start().strip_prefix("type") {
 				let type_import = if after.starts_with('{') {
 					true
 				} else {
@@ -294,12 +293,9 @@ impl ASTNode for StatementOrDeclaration {
 					!after.starts_with(['=', '<'])
 				};
 				if type_import {
-					ExportDeclaration::from_reader(reader).map(|on| {
-						StatementOrDeclaration::Export(Box::new(Decorated::new(
-							possible_decorators,
-							on,
-						)))
-					})
+					let on = export_declaration_from_reader_after_export_keyword(start, reader)?;
+					let export = Box::new(Decorated::new(possible_decorators, on));
+					Ok(StatementOrDeclaration::Export(export))
 				} else {
 					let alias = TypeAlias::from_reader(reader)?;
 					crate::lexer::utilities::assert_type_annotations(reader, alias.get_position())?;

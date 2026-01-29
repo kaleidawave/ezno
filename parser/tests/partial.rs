@@ -1,5 +1,13 @@
-use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
+use ezno_parser::options::{Features, ParseOptions, ToStringOptions};
+use ezno_parser::{ASTNode, Module};
 use pretty_assertions::assert_eq;
+
+fn partial_options() -> ParseOptions {
+	ParseOptions {
+		features: Features { partial_syntax: true, ..Features::default() },
+		..ParseOptions::default()
+	}
+}
 
 #[test]
 fn declarations() {
@@ -11,22 +19,12 @@ const z = 2
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: true, ..Default::default() },
-	)
-	.unwrap();
+	let module = Module::from_string(input.clone(), partial_options()).unwrap();
 	let _output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(
-		Module::from_string(
-			input.clone(),
-			ParseOptions { partial_syntax: false, ..Default::default() },
-		)
-		.is_err()
-	);
+	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
 
 	// TODO difference in semi colons
 	// assert_eq!(output, input);
@@ -41,22 +39,12 @@ if () {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: true, ..Default::default() },
-	)
-	.unwrap();
+	let module = Module::from_string(input.clone(), partial_options()).unwrap();
 	let output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(
-		Module::from_string(
-			input.clone(),
-			ParseOptions { partial_syntax: false, ..Default::default() },
-		)
-		.is_err()
-	);
+	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
 
 	assert_eq!(output, input);
 }
@@ -72,23 +60,13 @@ function y(c: ) {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: true, ..Default::default() },
-	)
-	.unwrap();
+	let module = Module::from_string(input.clone(), partial_options()).unwrap();
 
 	let output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(
-		Module::from_string(
-			input.clone(),
-			ParseOptions { partial_syntax: false, ..Default::default() },
-		)
-		.is_err()
-	);
+	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
 
 	assert_eq!(output, input);
 }
@@ -97,23 +75,13 @@ function y(c: ) {
 fn property_access() {
 	let input = r"console.log(x., 2)".trim_start().replace("    ", "\t");
 
-	let module = Module::from_string(
-		input.clone(),
-		ParseOptions { partial_syntax: true, ..Default::default() },
-	)
-	.unwrap();
+	let module = Module::from_string(input.clone(), partial_options()).unwrap();
 
 	let output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(
-		Module::from_string(
-			input.clone(),
-			ParseOptions { partial_syntax: false, ..Default::default() },
-		)
-		.is_err()
-	);
+	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
 
 	assert_eq!(output, input);
 }
@@ -123,10 +91,7 @@ fn invalid_syntax() {
 	let sources = [("", true), ("][", false), ("{}}", false), ("))", false)];
 
 	for (source, is_okay) in sources {
-		let result = Module::from_string(
-			source.to_owned(),
-			ParseOptions { partial_syntax: true, ..Default::default() },
-		);
+		let result = Module::from_string(source.to_owned(), partial_options());
 		if is_okay {
 			assert!(result.is_ok());
 		} else {

@@ -579,6 +579,53 @@ impl MethodHeader {
 	pub fn is_no_modifiers(&self) -> bool {
 		matches!(self, Self::Regular { is_async: false, generator: None })
 	}
+
+	/// For fallback cases
+	pub fn into_property_key<T: crate::property_key::PropertyKeyKind>(
+		&mut self,
+		start: source_map::Start,
+	) -> Result<crate::property_key::PropertyKey<T>, ()> {
+		let privacy = T::new_public();
+		match std::mem::take(self) {
+			MethodHeader::Get => {
+				let position = start.with_length(3);
+				Ok(crate::property_key::PropertyKey::Identifier(
+					"get".to_owned(),
+					position,
+					privacy,
+				))
+			}
+			MethodHeader::Set => {
+				let position = start.with_length(3);
+				Ok(crate::property_key::PropertyKey::Identifier(
+					"set".to_owned(),
+					position,
+					privacy,
+				))
+			}
+			MethodHeader::Regular { is_async: true, generator: None } => {
+				let position = start.with_length(5);
+				Ok(crate::property_key::PropertyKey::Identifier(
+					"async".to_owned(),
+					position,
+					privacy,
+				))
+			}
+			#[cfg(feature = "extras")]
+			MethodHeader::Regular {
+				is_async: false,
+				generator: Some(GeneratorSpecifier::Keyword),
+			} => {
+				let position = start.with_length(9);
+				Ok(crate::property_key::PropertyKey::Identifier(
+					"generator".to_owned(),
+					position,
+					privacy,
+				))
+			}
+			MethodHeader::Regular { .. } => Err(()),
+		}
+	}
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]

@@ -237,7 +237,7 @@ jobs:
         # TODO this is temporary as cargo-fuzz releases are awaiting a fix
         # https://github.com/rust-fuzz/cargo-fuzz/pull/365
         # should do versioning etc
-        with: { items: 'kaleidave/experiments/cargo-fuzz@assets[cargo-fuzz-x86_64-unknown-linux]' }
+        with: { items: 'kaleidawave/experiments@assets[cargo-fuzz-x86_64-unknown-linux]' }
           
       - uses: dorny/paths-filter@v3
         id: changes
@@ -291,7 +291,7 @@ jobs:
         # TODO this is temporary as cargo-fuzz releases are awaiting a fix
         # https://github.com/rust-fuzz/cargo-fuzz/pull/365
         # should do versioning etc
-        with: { items: 'kaleidave/experiments/cargo-fuzz@assets[cargo-fuzz-x86_64-unknown-linux]' }
+        with: { items: 'kaleidawave/experiments@assets[cargo-fuzz-x86_64-unknown-linux]' }
 
       - uses: dorny/paths-filter@v3
         id: changes

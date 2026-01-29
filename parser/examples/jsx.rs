@@ -1,4 +1,5 @@
-use ezno_parser::{ASTNode, ToStringOptions, jsx::JSXRoot};
+use ezno_parser::extensions::jsx::JSXRoot;
+use ezno_parser::{ASTNode, ToStringOptions};
 
 fn main() {
 	{

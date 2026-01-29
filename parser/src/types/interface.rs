@@ -5,7 +5,7 @@ use crate::{
 };
 
 use crate::extensions::decorators::Decorated;
-use crate::functions::{GeneratorSpecifier, MethodHeader};
+use crate::functions::MethodHeader;
 use crate::types::type_annotations::TypeAnnotationFunctionParameters;
 
 use get_field_by_type::GetFieldByType;
@@ -315,31 +315,7 @@ impl ASTNode for InterfaceMember {
 				|| reader.is_operator("?")
 				|| reader.is_operator(":")
 			{
-				let privacy = PublicOrPrivate::Public;
-				let name = match header {
-					MethodHeader::Get => {
-						let position = start.with_length(3);
-						PropertyKey::Identifier("get".to_owned(), position, privacy)
-					}
-					MethodHeader::Set => {
-						let position = start.with_length(3);
-						PropertyKey::Identifier("set".to_owned(), position, privacy)
-					}
-					MethodHeader::Regular { is_async: true, generator: None } => {
-						let position = start.with_length(5);
-						PropertyKey::Identifier("async".to_owned(), position, privacy)
-					}
-					MethodHeader::Regular {
-						is_async: false,
-						generator: Some(GeneratorSpecifier::Keyword),
-					} => {
-						let position = start.with_length(9);
-						PropertyKey::Identifier("generator".to_owned(), position, privacy)
-					}
-					_ => todo!("error"),
-				};
-				header = MethodHeader::default();
-				name
+				if let Ok(name) = header.into_property_key(start) { name } else { todo!("error") }
 			} else if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
 					let (content, quoting, width) = reader.parse_string_literal()?;

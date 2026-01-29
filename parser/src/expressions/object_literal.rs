@@ -205,9 +205,16 @@ impl ASTNode for ObjectLiteralMember {
 			return Ok(Self::Spread(expression, position));
 		}
 
-		let header = MethodHeader::from_reader(reader);
-		let key =
-			WithComment::<PropertyKey<crate::property_key::AlwaysPublic>>::from_reader(reader)?;
+		let mut header = MethodHeader::from_reader(reader);
+		let key = if reader.is_operator("<") || reader.is_operator("(") {
+			if let Ok(name) = header.into_property_key(start) {
+				WithComment::None(name)
+			} else {
+				todo!("error")
+			}
+		} else {
+			WithComment::<PropertyKey<crate::property_key::AlwaysPublic>>::from_reader(reader)?
+		};
 
 		if reader.is_operator("(") || reader.is_operator("<") {
 			let method: ObjectLiteralMethod =

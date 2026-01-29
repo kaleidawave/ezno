@@ -250,7 +250,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					.collect();
 
 				let function = Expression::ExpressionFunction(Box::new(ast::ExpressionFunction {
-					header: functions::FunctionHeader::VirginFunctionHeader {
+					header: functions::FunctionHeader::BasicFunctionHeader {
 						is_async: false,
 						location: None,
 						is_generator: false,
