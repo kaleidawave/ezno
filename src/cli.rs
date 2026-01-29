@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::{
 	build::{build, BuildConfig, BuildOutput, FailedBuildOutput},
 	check::{check_and_report, CheckOutput, TypeCheckOptions},
-	reporting::report_diagnostics_to_cli,
+	reporting::{checker_diagnostic_to_codespan_diagnostic, report_diagnostics_to_cli},
 	utilities::{print_to_cli, MaxDiagnostics},
 };
 
@@ -202,7 +202,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			let mut timings = false;
 			let mut compact_diagnostics = false;
 			let mut max_diagnostics = MaxDiagnostics::default();
-			let mut advanced_numbers = false;
+			let mut _advanced_numbers = false;
 			let mut tree_shake = false;
 			let mut source_maps = false;
 			let mut minify = false;
@@ -215,7 +215,7 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 						input = argument.value.unwrap();
 					}
 					"advanced-numbers" => {
-						advanced_numbers = true;
+						_advanced_numbers = true;
 					}
 					"compact-diagnostics" => {
 						compact_diagnostics = true;
@@ -287,6 +287,9 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					for output in artifacts {
 						write_file(output.output_path.as_path(), output.content);
 					}
+					let diagnostics = diagnostics.into_iter().map(|diagnostic| {
+						checker_diagnostic_to_codespan_diagnostic(diagnostic, compact_diagnostics)
+					});
 					report_diagnostics_to_cli(
 						diagnostics,
 						&module_contents,
@@ -298,6 +301,9 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					Ok(())
 				}
 				Err(FailedBuildOutput(CheckOutput { module_contents, diagnostics, .. })) => {
+					let diagnostics = diagnostics.into_iter().map(|diagnostic| {
+						checker_diagnostic_to_codespan_diagnostic(diagnostic, compact_diagnostics)
+					});
 					report_diagnostics_to_cli(
 						diagnostics,
 						&module_contents,
@@ -310,15 +316,13 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 			}
 		}
 		"format" => {
-			let mut inputs = String::default();
-			let mut check = false;
-
-			for argument in arguments {
-				let _argument = argument_result_or_out(argument)?;
-				// match argument.name {}
-			}
-
 			todo!()
+			// let mut inputs = String::default();
+			// let mut check = false;
+			// for argument in arguments {
+			// 	let _argument = argument_result_or_out(argument)?;
+			// 	// match argument.name {}
+			// }
 			// format()
 		}
 		"parse" => {
