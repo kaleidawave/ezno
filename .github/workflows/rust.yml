@@ -74,7 +74,7 @@ jobs:
       - name: Install spectra
         uses: kaleidawave/release-downloader@improvements
         env: { GH_TOKEN: '${{ env.GH_TOKEN }}' }
-        with: { 'items': 'kaleidawave/experiments@assets[spectra]' }
+        with: { items: 'kaleidawave/experiments@assets[spectra]' }
 
       - uses: dorny/paths-filter@v3
         id: changes
