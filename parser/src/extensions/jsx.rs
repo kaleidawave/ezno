@@ -228,7 +228,8 @@ impl ASTNode for JSXAttribute {
 			}
 		} else {
 			// Using this because parse_identifier breaks on things that we want to include here
-			let result = reader.parse_until_one_of_advance(&["=", ">", " ", "\n"]);
+			// TODO parse_until_one_of_no_advance
+			let result = reader.parse_until_one_of_advance(&['=', '>', ' ', '\n']);
 			let (key, delimiter) = match result {
 				Ok((key, delimiter)) => (key.to_owned(), delimiter),
 				Err(()) => {
@@ -450,32 +451,40 @@ impl ASTNode for JSXNode {
 			if reader.get_options().jsx.unwrap().accept_unknown_expressions
 				&& reader.get_current().starts_with([':', '#', '%', '/', '{'])
 			{
-				let current = reader.get_current();
-				let mut in_string = false;
-				// Basic walking
-				let mut depth = 1;
-				for (idx, chr) in current.char_indices() {
-					if in_string {
-						if chr == '"' {
-							in_string = false;
-						}
-					} else {
-						if chr == '{' {
-							depth += 1;
-						} else if chr == '}' {
-							depth -= 1;
-							if depth == 0 {
-								reader.advance(idx as u32 + 1);
-								let value = current[..idx].to_owned();
-								return Ok(JSXNode::UnknownExpression(
-									value,
-									start.with_length(idx),
-								));
+				fn find_equal_brackets(on: &str) -> Result<usize, ()> {
+					let mut in_string = false;
+					// Basic walking
+					let mut depth = 1;
+					for (idx, chr) in on.char_indices() {
+						if in_string {
+							if chr == '"' {
+								in_string = false;
+							}
+						} else {
+							if chr == '{' {
+								depth += 1;
+							} else if chr == '}' {
+								depth -= 1;
+								if depth == 0 {
+									return Ok(idx);
+								}
 							}
 						}
 					}
+					Err(())
 				}
-				todo!("error")
+
+				let current = reader.get_current();
+				match find_equal_brackets(current) {
+					Ok(idx) => {
+						reader.advance(idx as u32 + 1);
+						let value = current[..idx].to_owned();
+						Ok(JSXNode::UnknownExpression(value, start.with_length(idx)))
+					}
+					Err(()) => {
+						todo!("error");
+					}
+				}
 			} else {
 				let expression = FunctionArgument::from_reader(reader)?;
 				let end = reader.expect('}')?;
@@ -495,12 +504,17 @@ impl ASTNode for JSXNode {
 			let element = JSXElement::from_reader(reader)?;
 			Ok(JSXNode::Element(element))
 		} else {
-			let Ok((content, _)) = reader.parse_until_one_of_no_advance(&["<", "{"]) else {
-				let (_found, position) = crate::lexer::utilities::next_item(reader);
-				return Err(ParseError::new(crate::ParseErrors::UnexpectedEnd, position));
-			};
-			let position = start.with_length(content.len());
-			Ok(JSXNode::TextNode(content.trim_start().into(), position))
+			let next = reader.parse_until_one_of_no_advance(&['<', '{']);
+			match next {
+				Ok((content, _)) => {
+					let position = start.with_length(content.len());
+					Ok(JSXNode::TextNode(content.trim_start().into(), position))
+				}
+				Err(_) => {
+					let (_found, position) = crate::lexer::utilities::next_item(reader);
+					return Err(ParseError::new(crate::ParseErrors::UnexpectedEnd, position));
+				}
+			}
 		}
 	}
 

@@ -151,42 +151,7 @@ impl ASTNode for VariableDeclaration {
 		reader.skip();
 		let start = reader.get_start();
 		if let Some(kind) = VariableDeclarationKeyword::from_reader(reader) {
-			let mut declarations = Vec::new();
-			loop {
-				reader.skip();
-				if reader.is_one_of(&["//", "/*"]).is_some() {
-					let is_multiline = reader.starts_with_slice("/*");
-					reader.advance(2);
-					let _content = reader.parse_comment_literal(is_multiline)?;
-					continue;
-				}
-
-				let value = VariableDeclarationItem::from_reader(reader)?;
-
-				if value.expression.is_none() {
-					if let VariableDeclarationKeyword::Const = kind {
-						return Err(crate::ParseError::new(
-							crate::ParseErrors::ConstDeclarationRequiresValue,
-							value.name.get_ast_ref().get_position(),
-						));
-					}
-					if !matches!(value.name.get_ast_ref(), VariableField::Name(_)) {
-						return Err(crate::ParseError::new(
-							crate::ParseErrors::DestructuringRequiresValue,
-							value.name.get_ast_ref().get_position(),
-						));
-					}
-				}
-
-				declarations.push(value);
-				if !reader.is_operator_advance(",") {
-					break;
-				}
-			}
-
-			let position = start.union(reader.get_end());
-
-			Ok(VariableDeclaration { kind, declarations, position })
+			Self::parse_declarations_after_kind((start, kind), reader)
 		} else {
 			Err(crate::lexer::utilities::expected_one_of_items(reader, &["const", "let"]))
 		}
@@ -220,6 +185,42 @@ impl VariableDeclaration {
 	#[must_use]
 	pub fn is_constant(&self) -> bool {
 		matches!(self.kind, VariableDeclarationKeyword::Const)
+	}
+
+	pub(crate) fn parse_declarations_after_kind(
+		(start, kind): (source_map::Start, VariableDeclarationKeyword),
+		reader: &mut crate::Lexer,
+	) -> ParseResult<Self> {
+		let mut declarations = Vec::new();
+		loop {
+			reader.skip_including_comments()?;
+
+			let value = VariableDeclarationItem::from_reader(reader)?;
+
+			if value.expression.is_none() {
+				if let VariableDeclarationKeyword::Const = kind {
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::ConstDeclarationRequiresValue,
+						value.name.get_ast_ref().get_position(),
+					));
+				}
+				if !matches!(value.name.get_ast_ref(), VariableField::Name(_)) {
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::DestructuringRequiresValue,
+						value.name.get_ast_ref().get_position(),
+					));
+				}
+			}
+
+			declarations.push(value);
+			if !reader.is_operator_advance(",") {
+				break;
+			}
+		}
+
+		let position = start.union(reader.get_end());
+
+		Ok(VariableDeclaration { kind, declarations, position })
 	}
 }
 

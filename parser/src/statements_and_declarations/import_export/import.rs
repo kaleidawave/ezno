@@ -185,11 +185,8 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 	// TODO temp
 
 	reader.skip();
-	let is_identifier = reader
-		.get_current()
-		.chars()
-		.next()
-		.is_some_and(crate::lexer::utilities::is_valid_identifier);
+	let is_identifier =
+		reader.get_current().starts_with(crate::lexer::utilities::is_identifier_continutation);
 
 	let default = if is_identifier {
 		let default_identifier = VariableIdentifier::from_reader(reader)?;

@@ -291,10 +291,9 @@ impl ASTNode for ForLoopCondition {
 		let start = reader.get_start();
 
 		// TODO copy using+await to statment parsing
-		let condition = if reader.is_keyword_advance("using") {
+		let condition = if reader.is_immediate_keyword_advance("using") {
 			parse_using(reader, false, start)?
-		} else if reader.is_keyword_advance("await") {
-			reader.skip();
+		} else if reader.is_immediate_keyword_advance("await") {
 			if reader.is_keyword_advance("using") {
 				parse_using(reader, true, start)?
 			} else {
@@ -304,11 +303,11 @@ impl ASTNode for ForLoopCondition {
 					Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
 				parse_statements(reader, initialiser, start)?
 			}
-		} else if reader.is_keyword_advance("let") {
+		} else if reader.is_immediate_keyword_advance("let") {
 			parse_let_const_var(reader, VariableKeyword::Let, start)?
-		} else if reader.is_keyword_advance("var") {
+		} else if reader.is_immediate_keyword_advance("var") {
 			parse_let_const_var(reader, VariableKeyword::Var, start)?
-		} else if reader.is_keyword_advance("const") {
+		} else if reader.is_immediate_keyword_advance("const") {
 			parse_let_const_var(reader, VariableKeyword::Const, start)?
 		} else if reader.is_operator(";") {
 			parse_statements(reader, None, start)?

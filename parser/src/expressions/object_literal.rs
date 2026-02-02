@@ -206,9 +206,17 @@ impl ASTNode for ObjectLiteralMember {
 		}
 
 		let mut header = MethodHeader::from_reader(reader);
-		let key = if reader.is_operator("<") || reader.is_operator("(") {
-			if let Ok(name) = header.into_property_key(start) {
-				WithComment::None(name)
+		reader.skip();
+		let key = if reader.get_current().starts_with(['<', '(', ':', '}']) {
+			if let Ok(name) = header.into_property_key() {
+				let position = start.with_length(name.len());
+				let privacy = crate::property_key::AlwaysPublic;
+				let key = crate::property_key::PropertyKey::Identifier(
+					name.to_owned(),
+					position,
+					privacy,
+				);
+				WithComment::None(key)
 			} else {
 				todo!("error")
 			}
@@ -216,13 +224,12 @@ impl ASTNode for ObjectLiteralMember {
 			WithComment::<PropertyKey<crate::property_key::AlwaysPublic>>::from_reader(reader)?
 		};
 
-		if reader.is_operator("(") || reader.is_operator("<") {
+		if reader.get_current().starts_with(['(', '<']) {
 			let method: ObjectLiteralMethod =
 				FunctionBase::from_reader_with_header_and_name(reader, header, key)?;
-
 			Ok(Self::Method(Box::new(method)))
 		} else if header.is_no_modifiers() {
-			if reader.is_operator(",") || reader.is_operator("}") {
+			if reader.get_current().starts_with([',', '}']) {
 				if let PropertyKey::Identifier(name, position, _) = key.get_ast() {
 					Ok(Self::Shorthand(name, position))
 				} else {
@@ -233,7 +240,7 @@ impl ASTNode for ObjectLiteralMember {
 					))
 				}
 			} else {
-				// TODO remove
+				// FUTURE currently for `{ x = 2 } = {}` but means that `console.log({ x = 2 })`, is a false positive
 				let assignment = if reader.is_operator_advance("=") {
 					true
 				} else {

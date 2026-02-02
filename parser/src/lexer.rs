@@ -58,6 +58,7 @@ impl<'a> Lexer<'a> {
 			Ok(node) => {
 				// TODO merge more state
 				self.head = forked.head;
+				self.state.last_new_lines = forked.state.last_new_lines;
 				Ok(node)
 			}
 			Err(err) => Err(err),
@@ -108,6 +109,7 @@ impl<'a> Lexer<'a> {
 			let start = self.head;
 			self.state.last_new_lines = 0;
 
+			// TODO double here
 			for (idx, chr) in current.char_indices() {
 				if !chr.is_whitespace() {
 					self.head = start + idx as u32;
@@ -123,28 +125,106 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub(crate) fn skip_including_comments(&mut self) {
-		// TODO
-		self.skip();
+	pub(crate) fn skip_including_comments(&mut self) -> Result<(), ParseError> {
+		let current = self.get_current();
+		// TODO or comment
+		if current.starts_with(char::is_whitespace) {
+			let start = self.head;
+			self.state.last_new_lines = 0;
+
+			for (idx, chr) in current.char_indices() {
+				let rest = &current[idx..];
+				if rest.starts_with("//") {
+					let rest = &rest[2..];
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.head += 2 + idx as u32;
+					let _comment = &rest[..idx];
+				} else if rest.starts_with("/*") {
+					let rest = &rest[2..];
+					let Some(idx) = rest.find("*/") else {
+						todo!();
+						// return ParseError::new(ParseErrors::UnexpectedEnd, position)
+					};
+					self.head += 4 + idx as u32;
+					let _comment = &rest[..idx];
+				} else if rest.starts_with("<!--") {
+					// TODO last was new line?
+					let rest = &rest[4..];
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.head += 4 + idx as u32;
+					let _comment = &rest[..idx];
+				} else if rest.starts_with("-->") {
+					// TODO last was new line?
+					let rest = &rest[3..];
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.head += 3 + idx as u32;
+					let _comment = &rest[..idx];
+				} else if !chr.is_whitespace() {
+					self.head = start + idx as u32;
+					return Ok(());
+				}
+				if let '\n' = chr {
+					self.state.last_new_lines += 1;
+				}
+			}
+
+			// Else if
+			self.head += current.len() as u32;
+		}
+		Ok(())
 	}
 
 	pub(crate) fn is_keyword(&mut self, keyword: &str) -> bool {
 		self.skip();
 		let current = self.get_current();
-		let length = keyword.len();
-		current.starts_with(keyword)
-			&& !current[length..].starts_with(|chr: char| utilities::is_valid_identifier(chr))
+		if let Some(rest) = current.strip_prefix(keyword) {
+			!rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
+		} else {
+			false
+		}
+	}
+
+	pub(crate) fn is_immediate_keyword(&self, keyword: &str) -> bool {
+		let current = self.get_current();
+		if let Some(rest) = current.strip_prefix(keyword) {
+			!rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
+		} else {
+			false
+		}
 	}
 
 	pub(crate) fn is_keyword_advance(&mut self, keyword: &str) -> bool {
 		self.skip();
 		let current = self.get_current();
-		let length = keyword.len();
-		if current.starts_with(keyword)
-			&& !current[length..].starts_with(|chr: char| utilities::is_valid_identifier(chr))
+		if let Some(rest) = current.strip_prefix(keyword)
+			&& !rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
 		{
 			self.state.last_new_lines = 0;
-			self.head += length as u32;
+			self.head += keyword.len() as u32;
+			true
+		} else {
+			false
+		}
+	}
+
+	pub(crate) fn is_immediate_keyword_advance(&mut self, keyword: &str) -> bool {
+		let current = self.get_current();
+		if let Some(rest) = current.strip_prefix(keyword)
+			&& !rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
+		{
+			self.state.last_new_lines = 0;
+			self.head += keyword.len() as u32;
+			true
+		} else {
+			false
+		}
+	}
+
+	pub(crate) fn is_immediate_operator_advance(&mut self, operator: &str) -> bool {
+		let current = self.get_current();
+		if current.starts_with(operator) {
+			self.state.last_new_lines = 0;
+			self.head += operator.len() as u32;
 			true
 		} else {
 			false
@@ -270,7 +350,7 @@ impl<'a> Lexer<'a> {
 			for prefix in statement_or_declaration_prefixes {
 				// Starts with prefix and is not other identifer
 				let not_identifer = current.starts_with(prefix)
-					&& !current[prefix.len()..].starts_with(utilities::is_valid_identifier);
+					&& !current[prefix.len()..].starts_with(utilities::is_identifier_start);
 				if not_identifer {
 					return true;
 				}
@@ -317,6 +397,15 @@ impl<'a> Lexer<'a> {
 		location: &'static str,
 		check_reserved: bool,
 	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+		self.skip();
+		Self::parse_immediate_identifier(self, location, check_reserved)
+	}
+
+	pub(crate) fn parse_immediate_identifier(
+		&mut self,
+		location: &'static str,
+		check_reserved: bool,
+	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
 		fn valid_start_character(chr: char) -> bool {
 			unicode_id_start::is_id_start(chr) || matches!(chr, '\\' | '_' | '$')
 		}
@@ -325,7 +414,6 @@ impl<'a> Lexer<'a> {
 			unicode_id_start::is_id_continue(chr) || chr == '$'
 		}
 
-		self.skip();
 		let start = self.get_start();
 		let current = self.get_current();
 
@@ -380,61 +468,47 @@ impl<'a> Lexer<'a> {
 	// Will append the length on `until`
 	pub(crate) fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
 		let current = self.get_current();
-		for (idx, _) in current.char_indices() {
-			if current[idx..].starts_with(until) {
+		if let "\n" = until {
+			let idx = current.find(until).unwrap_or(current.len());
+			self.head += idx as u32;
+			Ok(&current[..idx])
+		} else {
+			let idx = current.find(until);
+			if let Some(idx) = idx {
 				self.head += (idx + until.len()) as u32;
 				// TODO temp fix
-				if let "\n" = until {
-					self.head -= 1;
-				}
-				return Ok(&current[..idx]);
+				Ok(&current[..idx])
+			} else {
+				Err(())
 			}
-		}
-
-		// Fix for at the end stuff
-		if let "\n" = until {
-			self.head += current.len() as u32;
-			Ok(current)
-		} else {
-			Err(())
 		}
 	}
 
 	// For JSX attributes and content. Also returns which one of `possibles` matched
 	pub(crate) fn parse_until_one_of_advance(
 		&mut self,
-		possibles: &[&'static str],
-	) -> Result<(&'a str, &'static str), ()> {
+		possibles: &[char],
+	) -> Result<(&'a str, &'a str), ()> {
 		let current = self.get_current();
-		for (i, _) in current.char_indices() {
-			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
-				self.head += (i + until.len()) as u32;
-				return Ok((&current[..i], until));
-			}
+		if let Some((idx, until)) = current.match_indices(possibles).next() {
+			self.head += (idx + 1) as u32;
+			Ok((&current[..idx], until))
+		} else {
+			Err(())
 		}
-		Err(())
 	}
 
-	/// Similar to `parse_until_one_of_advance`. Does not add the matched lenght to head
 	pub(crate) fn parse_until_one_of_no_advance(
 		&mut self,
-		possibles: &[&'static str],
-	) -> Result<(&'a str, &'static str), ()> {
-		self.state.last_new_lines = 0;
+		possibles: &[char],
+	) -> Result<(&'a str, &'a str), ()> {
 		let current = self.get_current();
-		for (i, chr) in current.char_indices() {
-			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
-				self.head += i as u32;
-				let content = &current[..i];
-				// self.state.last_new_lines =
-				//    content.chars().filter(|char| matches!(char, '\n')).count() as u32;
-				return Ok((content, until));
-			}
-			if let '\n' = chr {
-				self.state.last_new_lines += 1;
-			}
+		if let Some((idx, until)) = current.match_indices(possibles).next() {
+			self.head += idx as u32;
+			Ok((&current[..idx], until))
+		} else {
+			Err(())
 		}
-		Err(())
 	}
 
 	#[must_use]
@@ -643,14 +717,12 @@ impl<'a> Lexer<'a> {
 
 	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
 	pub(crate) fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
-		// TODO order
-		let semi_colon_like = self.starts_with_slice("//")
-			|| self.is_operator_advance(";")
-			|| self.last_was_from_new_line() > 0
-			|| self.is_operator("}")
-			// TODO what about spaces
-			|| self.starts_with_slice("\n")
-			|| self.is_finished();
+		self.skip();
+		let semi_colon_like = self.state.last_new_lines > 0
+			|| self.is_finished()
+			|| self.starts_with_slice("//")
+			|| self.starts_with_slice("}")
+			|| self.is_immediate_operator_advance(";");
 
 		if semi_colon_like {
 			Ok(())
@@ -668,12 +740,26 @@ impl<'a> Lexer<'a> {
 			|| self.last_was_from_new_line() > 0
 			|| self.is_finished()
 	}
+
+	pub(crate) fn starts_with_function_header(&self) -> bool {
+		self.is_immediate_keyword("async")
+			|| self.is_immediate_keyword("function")
+			|| self.is_immediate_keyword("generator")
+			|| self.is_immediate_keyword("worker")
+			|| self.is_immediate_keyword("server")
+			|| self.is_immediate_keyword("test")
+	}
 }
 
 pub(crate) mod utilities {
-	pub(crate) fn is_valid_identifier(chr: char) -> bool {
-		// TODO `\\` for unicode identifiers
-		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
+	// #[inline]
+	// pub(crate) fn is_valid_identifier(chr: char) -> bool {
+	// 	// TODO `\\` for unicode identifiers
+	// 	chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
+	// }
+
+	pub(crate) fn is_identifier_start(chr: char) -> bool {
+		unicode_id_start::is_id_start(chr) || chr == '$'
 	}
 
 	pub(crate) fn is_identifier_continutation(chr: char) -> bool {
@@ -744,26 +830,6 @@ pub(crate) mod utilities {
 		&on[idx..]
 	}
 
-	fn is_keyword(on: &str, word: &str) -> bool {
-		if let Some((lhs, rhs)) = on.split_at_checked(word.len()) {
-			lhs == word && !rhs.starts_with(is_identifier_continutation)
-		} else {
-			false
-		}
-	}
-
-	pub(crate) fn is_function_header(slice: &str) -> bool {
-		let slice = slice.trim_start();
-		// TODO
-		let extras = true;
-		is_keyword(slice, "async")
-			|| is_keyword(slice, "function")
-			// TODO WIP
-			|| extras && slice.starts_with("generator ")
-			|| extras && slice.starts_with("worker ")
-			|| extras && slice.starts_with("serve ")
-	}
-
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
 	pub(crate) fn assert_type_annotations(
 		reader: &super::Lexer,
@@ -795,22 +861,22 @@ pub(crate) mod utilities {
 		crate::ParseError::new(reason, position)
 	}
 
-	pub(crate) fn get_not_identifier_length(reader: &super::Lexer) -> Option<usize> {
-		let on = reader.get_current();
-		for (idx, c) in on.char_indices() {
-			if c == '#' || crate::lexer::utilities::is_valid_identifier(c) {
-				return None;
-			} else if !c.is_whitespace() {
-				let after = &on[idx..];
-				return if after.starts_with("//") || after.starts_with("/*") {
-					None
-				} else {
-					Some(idx)
-				};
-			}
-		}
+	// pub(crate) fn get_not_identifier_length(reader: &super::Lexer) -> Option<usize> {
+	// 	let on = reader.get_current();
+	// 	for (idx, c) in on.char_indices() {
+	// 		if c == '#' || crate::lexer::utilities::is_identifier_continutation(c) {
+	// 			return None;
+	// 		} else if !c.is_whitespace() {
+	// 			let after = &on[idx..];
+	// 			return if after.starts_with("//") || after.starts_with("/*") {
+	// 				None
+	// 			} else {
+	// 				Some(idx)
+	// 			};
+	// 		}
+	// 	}
 
-		// Else nothing exists
-		Some(0)
-	}
+	// 	// Else nothing exists
+	// 	Some(0)
+	// }
 }

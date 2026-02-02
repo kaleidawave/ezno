@@ -119,9 +119,25 @@ impl ASTNode for ClassMember {
 			});
 		}
 
-		let header = MethodHeader::from_reader(reader);
-		let key =
-			WithComment::<PropertyKey<crate::property_key::PublicOrPrivate>>::from_reader(reader)?;
+		// TODO what about readonly: 2, or constructor: 2, etc
+		let mut header = MethodHeader::from_reader(reader);
+		reader.skip();
+		let key = if reader.is_operator("<") || reader.is_operator("(") || reader.is_operator(":") {
+			if let Ok(name) = header.into_property_key() {
+				let position = start.with_length(name.len());
+				let privacy = crate::property_key::PublicOrPrivate::Public;
+				let key = crate::property_key::PropertyKey::Identifier(
+					name.to_owned(),
+					position,
+					privacy,
+				);
+				WithComment::None(key)
+			} else {
+				todo!("error")
+			}
+		} else {
+			WithComment::<PropertyKey<crate::property_key::PublicOrPrivate>>::from_reader(reader)?
+		};
 		reader.skip();
 
 		if reader.starts_with('(') || reader.starts_with('<') {

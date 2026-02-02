@@ -320,7 +320,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader)?;
-		reader.skip_including_comments();
+		reader.skip_including_comments()?;
 		let name = T::from_reader(reader)?;
 		Ok((header, name))
 	}
@@ -410,50 +410,8 @@ impl ASTNode for FunctionHeader {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		#[cfg(feature = "extras")]
-		fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier> {
-			if reader.is_keyword_advance("server") {
-				Some(FunctionLocationModifier::Server)
-			} else if reader.is_keyword_advance("worker") {
-				Some(FunctionLocationModifier::Worker)
-			} else if reader.is_keyword_advance("test") {
-				Some(FunctionLocationModifier::Test)
-			} else {
-				None
-			}
-		}
-
-		let start = reader.get_start();
-		let is_async = reader.is_keyword_advance("async");
-
-		#[cfg(feature = "extras")]
-		if reader.get_options().extras.custom_function_headers
-			&& reader.is_keyword_advance("generator")
-		{
-			let location = parse_location(reader);
-			let _ = reader.expect_keyword("function")?;
-			return Ok(Self::ChadFunctionHeader {
-				is_async,
-				location,
-				position: start.union(reader.get_end()),
-			});
-		}
-
-		#[cfg(feature = "extras")]
-		let location = if reader.get_options().extras.custom_function_headers {
-			parse_location(reader)
-		} else {
-			None
-		};
-		let _ = reader.expect_keyword("function")?;
-		let is_generator = reader.is_operator_advance("*");
-		Ok(Self::BasicFunctionHeader {
-			is_async,
-			is_generator,
-			position: start.union(reader.get_end()),
-			#[cfg(feature = "extras")]
-			location,
-		})
+		let initial = Self::from_reader_initial(reader)?;
+		initial.to_full(reader)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -474,7 +432,80 @@ impl ASTNode for FunctionHeader {
 	}
 }
 
+impl Default for FunctionHeader {
+	fn default() -> Self {
+		Self::BasicFunctionHeader {
+			is_async: false,
+			#[cfg(feature = "extras")]
+			location: None,
+			is_generator: false,
+			position: source_map::Nullable::NULL,
+		}
+	}
+}
+
+fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier> {
+	reader.skip();
+	if reader.is_immediate_keyword_advance("server") {
+		Some(FunctionLocationModifier::Server)
+	} else if reader.is_immediate_keyword_advance("worker") {
+		Some(FunctionLocationModifier::Worker)
+	} else if reader.is_immediate_keyword_advance("test") {
+		Some(FunctionLocationModifier::Test)
+	} else {
+		None
+	}
+}
+
 impl FunctionHeader {
+	pub(crate) fn from_reader_initial(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		#[cfg(feature = "extras")]
+		let start = reader.get_start();
+		let is_async = reader.is_keyword_advance("async");
+
+		#[cfg(feature = "extras")]
+		if reader.get_options().extras.custom_function_headers
+			&& reader.is_keyword_advance("generator")
+		{
+			return Ok(Self::ChadFunctionHeader {
+				is_async,
+				location: None,
+				position: start.union(reader.get_end()),
+			});
+		}
+
+		#[cfg(feature = "extras")]
+		let location = if reader.get_options().extras.custom_function_headers {
+			parse_location(reader)
+		} else {
+			None
+		};
+
+		Ok(Self::BasicFunctionHeader {
+			is_async,
+			is_generator: false,
+			position: start.union(reader.get_end()),
+			#[cfg(feature = "extras")]
+			location,
+		})
+	}
+
+	// mut self
+	pub(crate) fn to_full(self, reader: &mut crate::Lexer) -> ParseResult<Self> {
+		// #[cfg(feature = "extras")]
+		// if reader.get_options().extras.custom_function_headers && self.get_location().is_none() {
+		// 	let location = parse_location(reader);
+		// 	let _ = reader.expect_keyword("function")?;
+		// 	self.position = self.get_position().union(reader.get_end());
+		// 	return Ok(self);
+		// }
+
+		let _ = reader.expect_keyword("function")?;
+		let _ = reader.is_operator_advance("*");
+		// self.position = self.get_position().union(reader.get_end());
+		return Ok(self);
+	}
+
 	#[must_use]
 	pub fn is_generator(&self) -> bool {
 		match self {
@@ -502,14 +533,40 @@ impl FunctionHeader {
 		}
 	}
 
-	#[must_use]
-	pub fn empty() -> Self {
-		Self::BasicFunctionHeader {
-			is_async: false,
+	/// For fallback cases
+	pub fn into_expression(&mut self) -> Result<&'static str, ()> {
+		match std::mem::take(self) {
+			Self::BasicFunctionHeader {
+				is_async: true,
+				#[cfg(feature = "extras")]
+					location: None,
+				is_generator: false,
+				..
+			} => Ok("async"),
 			#[cfg(feature = "extras")]
-			location: None,
-			is_generator: false,
-			position: source_map::Nullable::NULL,
+			Self::BasicFunctionHeader {
+				is_async: false,
+				location: Some(FunctionLocationModifier::Server),
+				is_generator: false,
+				..
+			} => Ok("server"),
+			#[cfg(feature = "extras")]
+			Self::BasicFunctionHeader {
+				is_async: false,
+				location: Some(FunctionLocationModifier::Worker),
+				is_generator: false,
+				..
+			} => Ok("worker"),
+			#[cfg(feature = "extras")]
+			Self::BasicFunctionHeader {
+				is_async: false,
+				location: Some(FunctionLocationModifier::Test),
+				is_generator: false,
+				..
+			} => Ok("test"),
+			#[cfg(feature = "extras")]
+			Self::ChadFunctionHeader { is_async: false, location: None, .. } => Ok("generator"),
+			_ => Err(()),
 		}
 	}
 }
@@ -551,16 +608,17 @@ impl MethodHeader {
 		// if reader.after_identifier().starts_with(['<', '(', '}', ',', ':', '?']) {
 		// 	MethodHeader::default()
 		// } else
-		if reader.is_keyword_advance("get") {
+		reader.skip();
+		if reader.is_immediate_keyword_advance("get") {
 			MethodHeader::Get
-		} else if reader.is_keyword_advance("set") {
+		} else if reader.is_immediate_keyword_advance("set") {
 			MethodHeader::Set
 		} else {
-			reader.skip_including_comments();
+			reader.skip_including_comments().unwrap();
 			let is_async = reader.is_keyword_advance("async");
-			reader.skip_including_comments();
+			reader.skip_including_comments().unwrap();
 			let generator = GeneratorSpecifier::from_reader(reader);
-			reader.skip_including_comments();
+			reader.skip_including_comments().unwrap();
 			MethodHeader::Regular { is_async, generator }
 		}
 	}
@@ -581,48 +639,16 @@ impl MethodHeader {
 	}
 
 	/// For fallback cases
-	pub fn into_property_key<T: crate::property_key::PropertyKeyKind>(
-		&mut self,
-		start: source_map::Start,
-	) -> Result<crate::property_key::PropertyKey<T>, ()> {
-		let privacy = T::new_public();
+	pub fn into_property_key(&mut self) -> Result<&'static str, ()> {
 		match std::mem::take(self) {
-			MethodHeader::Get => {
-				let position = start.with_length(3);
-				Ok(crate::property_key::PropertyKey::Identifier(
-					"get".to_owned(),
-					position,
-					privacy,
-				))
-			}
-			MethodHeader::Set => {
-				let position = start.with_length(3);
-				Ok(crate::property_key::PropertyKey::Identifier(
-					"set".to_owned(),
-					position,
-					privacy,
-				))
-			}
-			MethodHeader::Regular { is_async: true, generator: None } => {
-				let position = start.with_length(5);
-				Ok(crate::property_key::PropertyKey::Identifier(
-					"async".to_owned(),
-					position,
-					privacy,
-				))
-			}
+			MethodHeader::Get => Ok("get"),
+			MethodHeader::Set => Ok("set"),
+			MethodHeader::Regular { is_async: true, generator: None } => Ok("async"),
 			#[cfg(feature = "extras")]
 			MethodHeader::Regular {
 				is_async: false,
 				generator: Some(GeneratorSpecifier::Keyword),
-			} => {
-				let position = start.with_length(9);
-				Ok(crate::property_key::PropertyKey::Identifier(
-					"generator".to_owned(),
-					position,
-					privacy,
-				))
-			}
+			} => Ok("generator"),
 			MethodHeader::Regular { .. } => Err(()),
 		}
 	}
@@ -667,7 +693,7 @@ impl ASTNode for FunctionBody {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// If type annotations. Allow elided bodies for function overloading
-		reader.skip_including_comments();
+		reader.skip_including_comments()?;
 		let body = if reader.is_operator("{")
 			|| !reader.get_options().type_annotations.type_annotations()
 		{

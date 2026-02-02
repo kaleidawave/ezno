@@ -198,7 +198,8 @@ impl ImportExportName {
 			let marker = reader.new_partial_point_marker(position);
 			Ok((ImportExportName::Marker(marker), position))
 		} else {
-			let identifier = reader.parse_identifier("import or export alias", false)?.into_owned();
+			let identifier =
+				reader.parse_immediate_identifier("import or export alias", false)?.into_owned();
 			if reader.get_options().features.interpolation_points
 				&& identifier == crate::marker::MARKER
 			{

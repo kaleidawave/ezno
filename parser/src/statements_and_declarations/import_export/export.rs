@@ -100,7 +100,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 	reader.skip();
 	if reader.is_keyword_advance("default") {
 		let edge_case = reader.get_options().type_annotations.is_definition_file()
-			&& crate::lexer::utilities::is_function_header(reader.get_current());
+			&& reader.starts_with_function_header();
 		// Always have == .d.ts file here
 		// Unfortuantly have to do quite a bit of parsing here
 		if edge_case {
