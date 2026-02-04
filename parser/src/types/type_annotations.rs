@@ -240,35 +240,6 @@ pub struct TypeName {
 }
 
 impl TypeName {
-	// pub fn from_parts<'a>(parts: impl Iterator<Item = &'a str>) -> Self {
-	// 	let mut buf = String::new();
-	// 	for part in parts {
-	// 		if !buf.is_empty() {
-	// 			buf.push('.');
-	// 		}
-	// 		buf.push_str(part);
-	// 	}
-	// 	TypeName(buf)
-	// }
-
-	// #[must_use]
-	// pub fn is_namespace_reference(&self) -> bool {
-	// 	self.0.contains('.')
-	// }
-
-	// pub fn parts(&self) -> impl Iterator<Item = &str> + '_ {
-	// 	self.0.split('.')
-	// }
-	// #[must_use]
-	// pub fn raw(&self) -> &str {
-	// 	&self.0
-	// }
-
-	// #[must_use]
-	// pub fn from_raw(on: String) -> Self {
-	// 	Self(on)
-	// }
-
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
 		for part in &self.namespace {
 			buf.push_str(part);
@@ -519,11 +490,16 @@ impl TypeAnnotation {
 		// Yes leading syntax is allowed sometimes
 		if let TypeOperatorKind::None = parent_kind {
 			reader.skip();
-			let _ = reader.is_immediate_keyword_advance("|")
+			let found = reader.is_immediate_keyword_advance("|")
 				|| reader.is_immediate_keyword_advance("&");
+
+			if found {
+				reader.skip();
+			}
+		} else {
+			reader.skip();
 		}
 
-		reader.skip();
 		let start = reader.get_start();
 
 		// TODO temp
@@ -755,15 +731,17 @@ impl TypeAnnotation {
 				let mut position = start.with_length(name.len());
 
 				let mut name = TypeName { namespace: Vec::new(), name };
-				while reader.is_operator_advance(".") {
+				reader.skip();
+				while reader.is_immediate_operator_advance(".") {
 					let new_name = reader.parse_identifier("type name", false)?.into_owned();
 					let old = std::mem::replace(&mut name.name, new_name);
 					name.namespace.push(old);
 					position = start.union(reader.get_end());
+					reader.skip();
 				}
 
 				// Generics arguments:
-				if reader.is_operator_advance("<") {
+				if reader.is_immediate_operator_advance("<") {
 					let (generic_arguments, _) = bracketed_items_from_reader(reader, ">")?;
 					let end = reader.get_end();
 					Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
@@ -785,9 +763,12 @@ impl TypeAnnotation {
 			}
 		};
 
+		// TODO duplicated
+		reader.skip();
+
 		// Array shorthand & indexing type references. Loops as number[][]
 		// unsure if index type can be looped
-		while reader.is_operator_advance("[") {
+		while reader.is_immediate_operator_advance("[") {
 			let start = reference.get_position();
 			if reader.is_operator_advance("]") {
 				let position = start.union(reader.get_end());
@@ -799,9 +780,10 @@ impl TypeAnnotation {
 				let position = start.union(end);
 				reference = Self::Index(Box::new(reference), Box::new(indexer), position);
 			}
+			reader.skip();
 		}
 
-		if reader.is_keyword_advance("is") {
+		if reader.is_immediate_keyword_advance("is") {
 			fn type_annotation_as_name(
 				reference: TypeAnnotation,
 			) -> Result<(IsItem, Span), TypeAnnotation> {
@@ -838,7 +820,7 @@ impl TypeAnnotation {
 			}
 		}
 
-		if reader.is_keyword("extends") {
+		if reader.is_immediate_keyword("extends") {
 			if let TypeOperatorKind::Query = parent_kind {
 				return Ok(reference);
 			}
@@ -853,30 +835,20 @@ impl TypeAnnotation {
 			};
 		}
 
-		// Fix for `as` and `satisfies` expressions
-		if reader.is_one_of(&["||", "&&"]).is_some() {
-			return Ok(reference);
-		}
-
 		// Intersections, unions, conditonals and (special) implicit function literals
-		while let Some(operator) = reader.is_one_of_operators(&["|", "&"]) {
+		while reader.starts_with('|') || reader.starts_with('&') {
+			// Fix for `as` and `satisfies` expressions
 			if let TypeOperatorKind::Function = parent_kind {
 				return Ok(reference);
-			} else if let ("|", TypeOperatorKind::Intersection) = (operator, parent_kind) {
+			} else if reader.starts_with_slice("||") || reader.starts_with_slice("&&") {
+				return Ok(reference);
+			} else if reader.starts_with('|')
+				&& let TypeOperatorKind::Intersection = parent_kind
+			{
 				return Ok(reference);
 			}
-			reader.advance(1);
-			if let "&" = operator {
-				let precedence = TypeOperatorKind::Intersection;
-				let rhs = Self::from_reader_with_precedence(reader, precedence)?;
-				let position = reference.get_position().union(rhs.get_position());
-				if let TypeAnnotation::Intersection(ref mut members, ref mut existing) = reference {
-					*existing = position;
-					members.push(rhs);
-				} else {
-					reference = TypeAnnotation::Intersection(vec![reference, rhs], position);
-				}
-			} else if let "|" = operator {
+			if reader.starts_with('|') {
+				reader.advance(1);
 				let rhs = Self::from_reader_with_precedence(reader, parent_kind)?;
 				let position = reference.get_position().union(rhs.get_position());
 				if let TypeAnnotation::Union(ref mut members, ref mut existing) = reference {
@@ -886,12 +858,23 @@ impl TypeAnnotation {
 					reference = TypeAnnotation::Union(vec![reference, rhs], position);
 				}
 			} else {
-				unreachable!("{operator}")
+				debug_assert!(reader.starts_with('&'));
+				reader.advance(1);
+				let precedence = TypeOperatorKind::Intersection;
+				let rhs = Self::from_reader_with_precedence(reader, precedence)?;
+				let position = reference.get_position().union(rhs.get_position());
+				if let TypeAnnotation::Intersection(ref mut members, ref mut existing) = reference {
+					*existing = position;
+					members.push(rhs);
+				} else {
+					reference = TypeAnnotation::Intersection(vec![reference, rhs], position);
+				}
 			}
 		}
 
 		// TODO is this worthwhile syntax or a good feature?
-		if reader.get_options().extras.additional_type_annotations && reader.is_operator("=>") {
+		if reader.get_options().extras.additional_type_annotations && reader.starts_with_slice("=>")
+		{
 			if let TypeOperatorKind::Query
 			| TypeOperatorKind::Function
 			| TypeOperatorKind::ReturnType
@@ -920,7 +903,7 @@ impl TypeAnnotation {
 				}),
 				return_type: Box::new(return_type),
 			})
-		} else if reader.is_operator("?") {
+		} else if reader.starts_with('?') {
 			if let TypeOperatorKind::Query = parent_kind {
 				return Ok(reference);
 			}

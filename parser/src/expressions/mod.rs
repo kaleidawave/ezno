@@ -737,86 +737,6 @@ impl Expression {
 		return_precedence: u8,
 		first_expression: Expression,
 	) -> ParseResult<Self> {
-		use derive_finite_automaton::{FiniteAutomata, FiniteAutomataConstructor, GetNextResult};
-
-		#[derive(FiniteAutomataConstructor)]
-		#[automaton_mappings(
-			"}" => AfterFirst::Exit,
-			"]" => AfterFirst::Exit,
-			")" => AfterFirst::Exit,
-			";" => AfterFirst::Exit,
-			"//" => AfterFirst::SingleLineComment,
-			"/*" => AfterFirst::MultiLineComment,
-			"++" => AfterFirst::UnaryPostfixAssignmentOperator(
-				UnaryPostfixAssignmentOperator(IncrementOrDecrement::Increment)
-			),
-			"--" => AfterFirst::UnaryPostfixAssignmentOperator(
-				UnaryPostfixAssignmentOperator(IncrementOrDecrement::Decrement)
-			),
-			"+" => AfterFirst::BinaryOperator(BinaryOperator::Add),
-			"+=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Add),
-			"-" => AfterFirst::BinaryOperator(BinaryOperator::Subtract),
-			"-=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Subtract),
-			"*" => AfterFirst::BinaryOperator(BinaryOperator::Multiply),
-			"*=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Multiply),
-			"/" => AfterFirst::BinaryOperator(BinaryOperator::Divide),
-			"/=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Divide),
-			"%" => AfterFirst::BinaryOperator(BinaryOperator::Remainder),
-			"%=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Remainder),
-			"**" => AfterFirst::BinaryOperator(BinaryOperator::Exponent),
-			"**=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Exponent),
-			"??" => AfterFirst::BinaryOperator(BinaryOperator::NullCoalescing),
-			"??=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::NullCoalescing),
-			"&&" => AfterFirst::BinaryOperator(BinaryOperator::LogicalAnd),
-			"&&=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::LogicalAnd),
-			"||" => AfterFirst::BinaryOperator(BinaryOperator::LogicalOr),
-			"||=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::LogicalOr),
-			"&" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseAnd),
-			"&=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseAnd),
-			"|" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseOr),
-			"|=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseOr),
-			"^" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseXOr),
-			"^=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseXOr),
-			"," => AfterFirst::BinaryOperator(BinaryOperator::Comma),
-			"<" => AfterFirst::BinaryOperator(BinaryOperator::LessThan),
-			">" => AfterFirst::BinaryOperator(BinaryOperator::GreaterThan),
-			"<=" => AfterFirst::BinaryOperator(BinaryOperator::LessThanEqual),
-			">=" => AfterFirst::BinaryOperator(BinaryOperator::GreaterThanEqual),
-			"<<" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftLeft),
-			"<<=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftLeft),
-			">>" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRight),
-			">>=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftRight),
-			">>>" => AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRightUnsigned),
-			">>>=" => AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftRightUnsigned),
-			"==" => AfterFirst::BinaryOperator(BinaryOperator::Equal),
-			"===" => AfterFirst::BinaryOperator(BinaryOperator::StrictEqual),
-			"!=" => AfterFirst::BinaryOperator(BinaryOperator::NotEqual),
-			"!==" => AfterFirst::BinaryOperator(BinaryOperator::StrictNotEqual),
-			"." => AfterFirst::PropertyAccess { optional: false } ,
-			"?." => AfterFirst::PropertyAccess { optional: true } ,
-			"[" => AfterFirst::Index { optional: false },
-			"?.[" => AfterFirst::Index { optional: true },
-			"(" => AfterFirst::FunctionCall { optional: false },
-			"?.(" => AfterFirst::FunctionCall { optional: true },
-			"?.<" => AfterFirst::FunctionCall { optional: true },
-			"`" => AfterFirst::TemplateLiteralStart,
-			"=" => AfterFirst::Assign,
-			"?" => AfterFirst::ConditionalTernary,
-			"instanceof" => AfterFirst::InstanceOf,
-			"in" => AfterFirst::In,
-			// ":" => AfterFirst::Colon,
-			// "=>" => AfterFirst::ArrowFunction,
-		)]
-		#[cfg_attr(feature = "full-typescript", automaton_mappings(
-			"!" => AfterFirst::NonNullAssertion,
-			"as" => AfterFirst::As,
-			"satisfies" => AfterFirst::Satisfies,
-		))]
-		#[cfg_attr(feature = "extras", automaton_mappings(
-			"<@>" => AfterFirst::BinaryOperator(BinaryOperator::Compose),
-			"|>" => AfterFirst::BinaryOperator(BinaryOperator::Pipe),
-			"is" => AfterFirst::Is,
-		))]
 		#[allow(unused)]
 		enum AfterFirst {
 			SingleLineComment,
@@ -846,27 +766,6 @@ impl Expression {
 			// ArrowFunction,
 			/// Used as trick to exit early
 			Exit,
-		}
-
-		fn get_after_first(on: &str) -> AfterFirst {
-			let mut automaton = AfterFirst::new_automaton();
-			for (_idx, chr) in on.char_indices() {
-				match automaton.get_next(chr) {
-					GetNextResult::Result {
-						result,
-						ate_item: _, // Should always be true
-					} => return result,
-					GetNextResult::NewState(new_state) => {
-						automaton = new_state;
-					}
-					GetNextResult::InvalidItem(_err) => {
-						// todo!("{}", err)
-						return AfterFirst::Exit;
-					}
-				}
-			}
-			// I think this is okay
-			AfterFirst::Exit
 		}
 
 		let mut top = first_expression;
@@ -914,7 +813,148 @@ impl Expression {
 
 			reader.skip();
 
-			let next = get_after_first(reader.get_current());
+			let first = reader.get_current().as_bytes().first().copied().unwrap_or(0);
+			let next = match first {
+				b'}' | b']' | b')' | b';' => AfterFirst::Exit,
+				b'/' if reader.starts_with_slice("//") => AfterFirst::SingleLineComment,
+				b'/' if reader.starts_with_slice("/*") => AfterFirst::MultiLineComment,
+				b'+' if reader.starts_with_slice("++") => {
+					AfterFirst::UnaryPostfixAssignmentOperator(UnaryPostfixAssignmentOperator(
+						IncrementOrDecrement::Increment,
+					))
+				}
+				b'-' if reader.starts_with_slice("--") => {
+					AfterFirst::UnaryPostfixAssignmentOperator(UnaryPostfixAssignmentOperator(
+						IncrementOrDecrement::Decrement,
+					))
+				}
+				b'+' if reader.starts_with_slice("+=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Add)
+				}
+				b'+' => AfterFirst::BinaryOperator(BinaryOperator::Add),
+				b'-' if reader.starts_with_slice("-=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Subtract)
+				}
+				b'-' => AfterFirst::BinaryOperator(BinaryOperator::Subtract),
+				b'*' if reader.starts_with_slice("**=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Exponent)
+				}
+				b'*' if reader.starts_with_slice("**") => {
+					AfterFirst::BinaryOperator(BinaryOperator::Exponent)
+				}
+				b'*' if reader.starts_with_slice("*=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Multiply)
+				}
+				b'*' => AfterFirst::BinaryOperator(BinaryOperator::Multiply),
+				b'/' if reader.starts_with_slice("/=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Divide)
+				}
+				b'/' => AfterFirst::BinaryOperator(BinaryOperator::Divide),
+				b'%' if reader.starts_with_slice("%=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::Remainder)
+				}
+				b'%' => AfterFirst::BinaryOperator(BinaryOperator::Remainder),
+				b'?' if reader.starts_with_slice("??=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::NullCoalescing)
+				}
+				b'?' if reader.starts_with_slice("??") => {
+					AfterFirst::BinaryOperator(BinaryOperator::NullCoalescing)
+				}
+				b'&' if reader.starts_with_slice("&&=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::LogicalAnd)
+				}
+				b'&' if reader.starts_with_slice("&&") => {
+					AfterFirst::BinaryOperator(BinaryOperator::LogicalAnd)
+				}
+				b'^' if reader.starts_with_slice("^=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseXOr)
+				}
+				b'^' => AfterFirst::BinaryOperator(BinaryOperator::BitwiseXOr),
+				b',' => AfterFirst::BinaryOperator(BinaryOperator::Comma),
+				b'<' if reader.starts_with_slice("<=") => {
+					AfterFirst::BinaryOperator(BinaryOperator::LessThanEqual)
+				}
+				b'>' if reader.starts_with_slice(">=") => {
+					AfterFirst::BinaryOperator(BinaryOperator::GreaterThanEqual)
+				}
+				b'<' if reader.starts_with_slice("<<") => {
+					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftLeft)
+				}
+				b'<' if reader.starts_with_slice("<<=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftLeft)
+				}
+				b'>' if reader.starts_with_slice(">>") => {
+					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRight)
+				}
+				b'>' if reader.starts_with_slice(">>=") => AfterFirst::BinaryAssignmentOperator(
+					BinaryAssignmentOperator::BitwiseShiftRight,
+				),
+				b'>' if reader.starts_with_slice(">>>") => {
+					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRightUnsigned)
+				}
+				b'>' if reader.starts_with_slice(">>>=") => AfterFirst::BinaryAssignmentOperator(
+					BinaryAssignmentOperator::BitwiseShiftRightUnsigned,
+				),
+				b'=' if reader.starts_with_slice("===") => {
+					AfterFirst::BinaryOperator(BinaryOperator::StrictEqual)
+				}
+				b'=' if reader.starts_with_slice("==") => {
+					AfterFirst::BinaryOperator(BinaryOperator::Equal)
+				}
+				b'.' => AfterFirst::PropertyAccess { optional: false },
+				b'[' => AfterFirst::Index { optional: false },
+				b'?' if reader.starts_with_slice("?.[") => AfterFirst::Index { optional: true },
+				b'(' => AfterFirst::FunctionCall { optional: false },
+				b'?' if reader.starts_with_slice("?.(") => {
+					AfterFirst::FunctionCall { optional: true }
+				}
+				b'?' if reader.starts_with_slice("?.<") => {
+					AfterFirst::FunctionCall { optional: true }
+				}
+				b'?' if reader.starts_with_slice("?.") => {
+					AfterFirst::PropertyAccess { optional: true }
+				}
+				b'`' => AfterFirst::TemplateLiteralStart,
+				b'=' => AfterFirst::Assign,
+				b'i' if reader.is_immediate_keyword("instanceof") => AfterFirst::InstanceOf,
+				b'i' if reader.is_immediate_keyword("in") => AfterFirst::In,
+				#[cfg(feature = "full-typescript")]
+				b'a' if reader.is_immediate_keyword("as") => AfterFirst::As,
+				#[cfg(feature = "full-typescript")]
+				b's' if reader.is_immediate_keyword("satisfies") => AfterFirst::Satisfies,
+				#[cfg(feature = "extras")]
+				b'<' if reader.starts_with_slice("<@>") => AfterFirst::BinaryOperator(BinaryOperator::Compose),
+				#[cfg(feature = "extras")]
+				b'|' if reader.starts_with_slice("|>") => AfterFirst::BinaryOperator(BinaryOperator::Pipe),
+				#[cfg(feature = "extras")]
+				b'i' if reader.is_immediate_keyword("is") => AfterFirst::Is,
+				b'!' if reader.starts_with_slice("!==") => {
+					AfterFirst::BinaryOperator(BinaryOperator::StrictNotEqual)
+				}
+				b'!' if reader.starts_with_slice("!=") => {
+					AfterFirst::BinaryOperator(BinaryOperator::NotEqual)
+				}
+				b'?' => AfterFirst::ConditionalTernary,
+				b'<' => AfterFirst::BinaryOperator(BinaryOperator::LessThan),
+				b'>' => AfterFirst::BinaryOperator(BinaryOperator::GreaterThan),
+				b'|' if reader.starts_with_slice("||=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::LogicalOr)
+				}
+				b'|' if reader.starts_with_slice("||") => {
+					AfterFirst::BinaryOperator(BinaryOperator::LogicalOr)
+				}
+				b'&' if reader.starts_with_slice("&=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseAnd)
+				}
+				b'&' => AfterFirst::BinaryOperator(BinaryOperator::BitwiseAnd),
+				b'|' if reader.starts_with_slice("|=") => {
+					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseOr)
+				}
+				b'|' => AfterFirst::BinaryOperator(BinaryOperator::BitwiseOr),
+				#[cfg(feature = "full-typescript")]
+				b'!' => AfterFirst::NonNullAssertion,
+				_ => AfterFirst::Exit,
+			};
 
 			match next {
 				c @ (AfterFirst::SingleLineComment | AfterFirst::MultiLineComment) => {
