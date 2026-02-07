@@ -1,11 +1,11 @@
-use std::{borrow::Cow, str::FromStr};
+use std::borrow::Cow;
 
 use parser::{
 	ASTNode, Expression, ExpressionOrStatementPosition,
 	ast::{ImportExpression, TypeOrConst},
 	expressions::{
-		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
-		TemplateLiteral,
+		ArrayElement, ExpressionOrSpreadExpression, MultipleExpression, SpecialOperators,
+		SuperReference, TemplateLiteral,
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 		operators::{
 			BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
@@ -14,7 +14,7 @@ use parser::{
 	},
 	functions::MethodHeader,
 };
-use source_map::{Nullable, SpanWithSource};
+use source_map::SpanWithSource;
 
 use crate::{
 	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
@@ -122,8 +122,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) -> Option<(PropertyKey<'static>, TypeId)> {
-				element.0.as_ref().and_then(|element| match element {
-					FunctionArgument::Standard(element) => {
+				element.0.as_ref().and_then(|element| {
+					let position = element.get_position();
+					let (spread, element) = element.value_and_spread_ref();
+					if spread {
 						// TODO based off above
 						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
@@ -139,8 +141,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 							}
 						};
 						Some((property, expression_type))
-					}
-					FunctionArgument::Spread(_expr, position) => {
+					} else {
 						{
 							checking_data.raise_unimplemented_error(
 								"Spread elements",
@@ -160,7 +161,6 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						};
 						Some((property, TypeId::UNIMPLEMENTED_ERROR_TYPE))
 					}
-					FunctionArgument::Comment { .. } => None,
 				})
 			}
 
@@ -610,6 +610,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						}
 					}
 				}
+				UnaryOperator::Spread => unreachable!(),
 			}
 		}
 		Expression::Assignment { lhs, rhs, position } => {
@@ -1215,7 +1216,7 @@ fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
 	type_arguments: Option<&[parser::TypeAnnotation]>,
-	arguments: Option<&[FunctionArgument]>,
+	arguments: Option<&[ExpressionOrSpreadExpression]>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,
@@ -1233,25 +1234,18 @@ fn call_function<T: crate::ReadFromFS>(
 			.collect::<Vec<_>>()
 	});
 
-	let comment = parser::Expression::VariableReference(
-		String::from_str("undefined").unwrap(),
-		source_map::BaseSpan::NULL,
-	);
+	// let comment = parser::Expression::VariableReference(
+	// 	String::from_str("undefined").unwrap(),
+	// 	source_map::BaseSpan::NULL,
+	// );
 
 	let arguments = arguments
 		.map(|arguments| {
 			arguments
 				.iter()
-				.map(|a| match a {
-					FunctionArgument::Spread(e, _) => {
-						UnsynthesisedArgument { spread: true, expression: e }
-					}
-					FunctionArgument::Standard(e) => {
-						UnsynthesisedArgument { spread: false, expression: e }
-					}
-					FunctionArgument::Comment { .. } => {
-						UnsynthesisedArgument { spread: false, expression: &comment }
-					}
+				.map(|argument| {
+					let (spread, expression) = argument.value_and_spread_ref();
+					UnsynthesisedArgument { spread, expression }
 				})
 				.collect::<Vec<_>>()
 		})

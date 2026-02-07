@@ -506,7 +506,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 				String::new()
 			}
 		}
-		VariableField::Array { members, spread, .. } => {
+		VariableField::ArrayDestructuring { members, spread, .. } => {
 			let mut buf = String::from("[");
 			for (not_at_end, member) in members.iter().nendiate() {
 				match member.get_ast_ref() {
@@ -529,7 +529,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 			buf.push(']');
 			buf
 		}
-		VariableField::Object { members, spread, .. } => {
+		VariableField::ObjectDestructuring { members, spread, .. } => {
 			let mut buf = String::from("{");
 			for (not_at_end, item) in members.iter().nendiate() {
 				match item.get_ast_ref() {
@@ -586,11 +586,11 @@ fn get_parameter_name(parameter: &parser::VariableField) -> String {
 			VariableIdentifier::Standard(name, _) => name.to_owned(),
 			VariableIdentifier::Marker(_, _) => String::new(),
 		},
-		VariableField::Array { members: _, spread: _, position: _ } => {
-			"todo: VariableField::Array".to_owned()
+		VariableField::ArrayDestructuring { members: _, spread: _, position: _ } => {
+			"todo: VariableField::ArrayDestructuring".to_owned()
 		}
-		VariableField::Object { members: _, spread: _, position: _, .. } => {
-			"todo: VariableField::Object".to_owned()
+		VariableField::ObjectDestructuring { members: _, spread: _, position: _, .. } => {
+			"todo: VariableField::ObjectDestructuring".to_owned()
 		}
 	}
 }

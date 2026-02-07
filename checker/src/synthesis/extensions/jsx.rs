@@ -418,24 +418,19 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 ) -> TypeId {
 	match child {
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
-		JSXNode::InterpolatedExpression(expression, _expression_position) => {
-			match &**expression {
-				parser::ast::FunctionArgument::Spread(_, pos) => {
-					checking_data.raise_unimplemented_error(
-						"spread JSX child",
-						pos.with_source(environment.get_source()),
-					);
-					TypeId::UNDEFINED_TYPE
-				}
-				parser::ast::FunctionArgument::Standard(expression) => {
-					crate::utilities::notify!("Cast JSX interpolated value?");
-					synthesise_expression(&expression, environment, checking_data, TypeId::ANY_TYPE)
-				}
-				parser::ast::FunctionArgument::Comment { .. } => {
-					// TODO?
-					TypeId::UNDEFINED_TYPE
-				}
+		JSXNode::InterpolatedExpression(expression, position) => {
+			let (spread, expression) = expression.value_and_spread_ref();
+			if spread {
+				checking_data.raise_unimplemented_error(
+					"spread JSX child",
+					position.with_source(environment.get_source()),
+				);
+				TypeId::UNDEFINED_TYPE
+			} else {
+				crate::utilities::notify!("Cast JSX interpolated value?");
+				synthesise_expression(&expression, environment, checking_data, TypeId::ANY_TYPE)
 			}
+
 			// function intoNode(data) {
 			// 	if typeof data === "string" || typeof data === "number" {
 			// 		new Text(data)

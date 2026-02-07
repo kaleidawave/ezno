@@ -1,3 +1,7 @@
+---
+lists_as_expected = true
+---
+
 ## Specification
 
 See [./README.md](README.md) for details about how `specification.md` works

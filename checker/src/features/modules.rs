@@ -369,11 +369,16 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
 		let existing = checking_data.modules.files.get_source_at_path(full_importer);
 		if let Some(existing) = existing {
-			Some(Ok(checking_data
+			let existing_synthesised = checking_data
 				.modules
 				.synthesised_modules
-				.get(&existing)
-				.expect("existing file, but not synthesised")))
+				.get(&existing);
+			if let Some(existing) = existing_synthesised {
+				Some(Ok(existing))
+			} else {
+				eprintln!("existing file, but not synthesised");
+				None
+			}
 		} else {
 			let content = checking_data.modules.file_reader.read_file(full_importer);
 			if let Some(content) = content {

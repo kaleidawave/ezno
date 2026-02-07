@@ -63,9 +63,9 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 		{
 			if let "Constant" | "InputOutput" = name.as_str() {
 				let (identifier, may_throw) = if !arguments.is_empty() {
-					let identifier = if let Some(parser::expressions::FunctionArgument::Standard(
-						Expression::StringLiteral(identifier, _, _),
-					)) = arguments.first()
+					let identifier = if let Some(argument) = arguments.first()
+						&& let (false, Expression::StringLiteral(identifier, _, _)) =
+							argument.value_and_spread_ref()
 					{
 						identifier.clone()
 					} else {
@@ -74,9 +74,9 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 						);
 					};
 
-					let may_throw = if let Some(parser::expressions::FunctionArgument::Standard(
-						Expression::VariableReference(identifier, _),
-					)) = arguments.get(1)
+					let may_throw = if let Some(argument) = arguments.get(1)
+						&& let (false, Expression::VariableReference(identifier, _)) =
+							argument.value_and_spread_ref()
 					{
 						Some(
 							environment

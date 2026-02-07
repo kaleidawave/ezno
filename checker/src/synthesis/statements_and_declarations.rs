@@ -291,7 +291,8 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 					position.with_source(environment.get_source()),
 				);
 			}
-			ForLoopCondition::ForIn { lhs, r#in, position } => {
+			// TODO _value
+			ForLoopCondition::ForIn { lhs, r#in, position, value: _ } => {
 				use parser::control_flow::for_statement::VariableOrAssignable;
 				let lhs = match lhs {
 					VariableOrAssignable::Variable(_, field, _) => field,

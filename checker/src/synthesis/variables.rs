@@ -62,7 +62,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 		parser::VariableField::Name(variable) => {
 			register_variable_identifier(variable, environment, checking_data, argument);
 		}
-		parser::VariableField::Array { members, spread, position } => {
+		parser::VariableField::ArrayDestructuring { members, spread, position } => {
 			if let Some(_spread) = spread {
 				checking_data.raise_unimplemented_error(
 					"spread variable field",
@@ -102,7 +102,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		parser::VariableField::Object { members, spread, .. } => {
+		parser::VariableField::ObjectDestructuring { members, spread, .. } => {
 			let mut taken_members = spread.is_some().then(Vec::<Cow<str>>::new);
 
 			for field in members {
@@ -349,7 +349,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		VariableField::Array { members: _, spread: _, position } => {
+		VariableField::ArrayDestructuring { members: _, spread: _, position } => {
 			checking_data.raise_unimplemented_error(
 				"array spread",
 				position.with_source(environment.get_source()),
@@ -359,8 +359,8 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 			// if let Some(spread) = spread {
 			// }
 		}
-		VariableField::Object { members, spread, position, .. } => {
-			if let VariableField::Object { class_name: Some(_), .. } = item {
+		VariableField::ObjectDestructuring { members, spread, position, .. } => {
+			if let VariableField::ObjectDestructuring { class_name: Some(_), .. } = item {
 				checking_data.raise_unimplemented_error(
 					"Object destructuring + class name",
 					position.with_source(environment.get_source()),
