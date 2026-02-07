@@ -90,10 +90,13 @@ pub enum ParseErrors<'a> {
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
+	InvalidVariableField,
 	InvalidStringLiteral,
 	InvalidRegexFlag,
 	InvalidRegularExpression,
 	InvalidNumberLiteral,
+	InvalidStatementLabel,
+	InvalidArrowFunctionParameter,
 	BigIntNotAllowedHere,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
@@ -250,6 +253,15 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::CannotUsePrivatePropertyHere => {
 				write!(f, "Cannot use private property here")
+			}
+			ParseErrors::InvalidStatementLabel => {
+				write!(f, "Invalid LHS for statement label")
+			}
+			ParseErrors::InvalidArrowFunctionParameter => {
+				write!(f, "Invalid arrow function parameter")
+			}
+			ParseErrors::InvalidVariableField => {
+				write!(f, "Invalid variable field")
 			}
 		}
 	}

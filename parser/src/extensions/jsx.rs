@@ -1,6 +1,6 @@
 use crate::{
 	ASTNode, Expression, ParseError, ParseErrors, ParseResult, Span, derive_ASTNode,
-	expressions::FunctionArgument,
+	expressions::ExpressionOrSpreadExpression,
 };
 use get_field_by_type::GetFieldByType;
 use visitable_derive::Visitable;
@@ -45,7 +45,7 @@ pub enum JSXNode {
 	Element(JSXElement),
 	TextNode(String, Span),
 	/// Function argument as single comments and `...` is allowed
-	InterpolatedExpression(Box<FunctionArgument>, Span),
+	InterpolatedExpression(Box<ExpressionOrSpreadExpression>, Span),
 	// for nunjucks, etc
 	UnknownExpression(String, Span),
 	Comment(String, Span),
@@ -486,7 +486,7 @@ impl ASTNode for JSXNode {
 					}
 				}
 			} else {
-				let expression = FunctionArgument::from_reader(reader)?;
+				let expression = ExpressionOrSpreadExpression::from_reader(reader)?;
 				let end = reader.expect('}')?;
 				let position = start.union(end);
 				Ok(JSXNode::InterpolatedExpression(Box::new(expression), position))

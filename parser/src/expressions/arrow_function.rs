@@ -143,16 +143,17 @@ impl ArrowFunction {
 	pub(crate) fn from_reader_with_first_parameter(
 		reader: &mut crate::Lexer,
 		is_async: bool,
-		identifier: VariableIdentifier,
+		name: VariableField,
 	) -> ParseResult<Self> {
-		let position = identifier.get_position();
+		let position = name.get_position();
 		let parameters = vec![Parameter {
-			name: VariableField::Name(identifier).into(),
+			name: name.into(),
 			position,
 			visibility: (),
 			type_annotation: None,
 			additionally: None,
 		}];
+		reader.skip_including_comments()?;
 		reader.expect_operator("=>")?;
 		let body = ExpressionOrBlock::from_reader(reader)?;
 		let arrow_function = FunctionBase {

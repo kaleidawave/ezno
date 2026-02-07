@@ -9,6 +9,7 @@ use crate::{
 // TODO hold Keywords map, markers, syntax errors etc
 #[derive(Default)]
 pub struct ParsingState {
+	/// TODO this needs some improvements
 	last_new_lines: u32,
 	markers: Vec<Span>,
 }
@@ -25,6 +26,32 @@ pub struct Lexer<'a> {
 	/// options
 	options: ParseOptions,
 	state: ParsingState,
+}
+
+fn is_whitespace_ascii(byte: u8) -> bool {
+	matches!(byte, b'\t' | b' ' | 0b00001011 | 0b00001100)
+}
+
+fn is_whitespace_char_three_bytes(chr: char) -> bool {
+	matches!(
+		chr,
+		'\u{FEFF}'
+			| '\u{1680}'
+			| '\u{2000}'
+			| '\u{2001}'
+			| '\u{2002}'
+			| '\u{2003}'
+			| '\u{2004}'
+			| '\u{2005}'
+			| '\u{2006}'
+			| '\u{2007}'
+			| '\u{2008}'
+			| '\u{2009}'
+			| '\u{200A}'
+			| '\u{202F}'
+			| '\u{205F}'
+			| '\u{3000}'
+	)
 }
 
 #[allow(clippy::manual_find)]
@@ -82,10 +109,16 @@ impl<'a> Lexer<'a> {
 		self.options.type_annotations.type_annotations()
 	}
 
-	// TODO want to remove where public
 	#[must_use]
 	pub(crate) fn get_current(&self) -> &'a str {
 		&self.script[self.head as usize..]
+	}
+
+	#[must_use]
+	#[allow(unused)]
+	#[cfg(debug_assertions)]
+	pub(crate) fn get_current_short(&self) -> &'a str {
+		&self.script[self.head as usize..(self.head as usize + 8).min(self.script.len())]
 	}
 
 	#[must_use]
@@ -104,72 +137,86 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub(crate) fn skip(&mut self) {
-		let current = self.get_current();
-		if current.starts_with(char::is_whitespace) {
-			let start = self.head;
-			self.state.last_new_lines = 0;
-
-			// TODO double here
-			for (idx, chr) in current.char_indices() {
-				if !chr.is_whitespace() {
-					self.head = start + idx as u32;
-					return;
-				}
-				if let '\n' = chr {
+		while (self.head as usize) < self.script.len() {
+			let current = &self.script[self.head as usize..];
+			let first_byte: u8 = current.as_bytes()[0];
+			if is_whitespace_ascii(first_byte) {
+				self.head += 1;
+			} else if let b'\r' = first_byte {
+				self.head += 1;
+				// TODO if next byte != b''n' then add last_new_lines?
+			} else if let b'\n' = first_byte {
+				self.head += 1;
+				self.state.last_new_lines += 1;
+			} else if first_byte >= 0x80 {
+				if current.starts_with('\u{00A0}') {
+					// No-break space <NBSP>
+					self.head += 2;
+				} else if current.starts_with(is_whitespace_char_three_bytes) {
+					self.head += 3;
+				} else if current.starts_with(['\u{FEFF}']) {
+					// Zero-width no-break space <ZWNBSP>
+					self.head += 3;
+				} else if current.starts_with(['\u{2028}', '\u{2029}']) {
+					// Line Separator <LS> or Paragraph Separator <LS>
 					self.state.last_new_lines += 1;
+					self.head += 3;
+				} else {
+					break;
 				}
+			} else {
+				break;
 			}
-
-			// Else if
-			self.head += current.len() as u32;
 		}
 	}
 
 	pub(crate) fn skip_including_comments(&mut self) -> Result<(), ParseError> {
-		let current = self.get_current();
-		// TODO or comment
-		if current.starts_with(char::is_whitespace) {
-			let start = self.head;
-			self.state.last_new_lines = 0;
-
-			for (idx, chr) in current.char_indices() {
-				let rest = &current[idx..];
-				if rest.starts_with("//") {
-					let rest = &rest[2..];
-					let idx = rest.find('\n').unwrap_or(rest.len());
-					self.head += 2 + idx as u32;
-					let _comment = &rest[..idx];
-				} else if rest.starts_with("/*") {
-					let rest = &rest[2..];
-					let Some(idx) = rest.find("*/") else {
-						todo!();
-						// return ParseError::new(ParseErrors::UnexpectedEnd, position)
-					};
-					self.head += 4 + idx as u32;
-					let _comment = &rest[..idx];
-				} else if rest.starts_with("<!--") {
-					// TODO last was new line?
-					let rest = &rest[4..];
-					let idx = rest.find('\n').unwrap_or(rest.len());
-					self.head += 4 + idx as u32;
-					let _comment = &rest[..idx];
-				} else if rest.starts_with("-->") {
-					// TODO last was new line?
-					let rest = &rest[3..];
-					let idx = rest.find('\n').unwrap_or(rest.len());
-					self.head += 3 + idx as u32;
-					let _comment = &rest[..idx];
-				} else if !chr.is_whitespace() {
-					self.head = start + idx as u32;
-					return Ok(());
+		while (self.head as usize) < self.script.len() {
+			let current = &self.script[self.head as usize..];
+			let Some(first_byte): Option<u8> = current.as_bytes().first().copied() else {
+				break;
+			};
+			if is_whitespace_ascii(first_byte) {
+				self.head += 1;
+			} else if let b'\r' = first_byte {
+				self.head += 1;
+			} else if let b'\n' = first_byte {
+				self.head += 1;
+				self.state.last_new_lines += 1;
+			} else if first_byte >= 0x80 {
+				if current.starts_with('\u{00A0}') {
+					self.head += 2;
+				} else if current.starts_with(is_whitespace_char_three_bytes) {
+					self.head += 3;
+				} else if current.starts_with(['\u{2008}', '\u{2009}', '\u{FEFF}']) {
+					self.head += 3;
+				} else {
+					break;
 				}
-				if let '\n' = chr {
-					self.state.last_new_lines += 1;
-				}
+			} else if let Some(rest) = current.strip_prefix("//") {
+				let idx = rest.find('\n').unwrap_or(rest.len());
+				self.head += 2 + idx as u32;
+				let _comment = &rest[..idx];
+			} else if let Some(rest) = current.strip_prefix("/*") {
+				let Some(idx) = rest.find("*/") else {
+					todo!();
+					// return ParseError::new(ParseErrors::UnexpectedEnd, position)
+				};
+				self.head += 4 + idx as u32;
+				let _comment = &rest[..idx];
+			} else if let Some(rest) = current.strip_prefix("<!--") {
+				// TODO last was new line?
+				let idx = rest.find('\n').unwrap_or(rest.len());
+				self.head += 4 + idx as u32;
+				let _comment = &rest[..idx];
+			} else if let Some(rest) = current.strip_prefix("-->") {
+				// TODO last was new line?
+				let idx = rest.find('\n').unwrap_or(rest.len());
+				self.head += 3 + idx as u32;
+				let _comment = &rest[..idx];
+			} else {
+				break;
 			}
-
-			// Else if
-			self.head += current.len() as u32;
 		}
 		Ok(())
 	}
@@ -333,11 +380,7 @@ impl<'a> Lexer<'a> {
 	#[allow(clippy::match_like_matches_macro)]
 	pub(crate) fn starts_with_expression_delimiter(&self) -> bool {
 		let current = self.get_current().trim_start();
-		if let Some('=' | ',' | ':' | '?' | ']' | ')' | '}' | ';') | None = current.chars().next() {
-			true
-		} else {
-			false
-		}
+		current.is_empty() || current.starts_with(['=', ',', ':', '?', ']', ')', '}', ';', '.'])
 	}
 
 	#[must_use]
@@ -426,15 +469,24 @@ impl<'a> Lexer<'a> {
 
 		let mut last = 0;
 		let mut value = std::borrow::Cow::Borrowed("");
-		for (idx, matched) in current.match_indices(|c: char| !valid_continue_character(c)) {
-			if idx < last {
-				continue;
-			}
-			if matched == "\\" {
-				if let Some(after) = &current[idx + 1..].strip_prefix('u') {
-					if let Ok((chr, width)) = crate::strings::parse_unicode_escape_sequence(after) {
-						value.to_mut().push(chr);
-						last = idx + 2 + width;
+		for (idx, chr) in current.char_indices() {
+			if !valid_continue_character(chr) {
+				if idx < last {
+					continue;
+				}
+				if let '\\' = chr {
+					if let Some(after) = &current[idx + 1..].strip_prefix('u') {
+						if let Ok((chr, width)) =
+							crate::strings::parse_unicode_escape_sequence(after)
+						{
+							value.to_mut().push(chr);
+							last = idx + 2 + width;
+						} else {
+							return Err(ParseError::new(
+								ParseErrors::ExpectedIdentifier { location },
+								start.with_length(idx),
+							));
+						}
 					} else {
 						return Err(ParseError::new(
 							ParseErrors::ExpectedIdentifier { location },
@@ -442,24 +494,27 @@ impl<'a> Lexer<'a> {
 						));
 					}
 				} else {
-					return Err(ParseError::new(
-						ParseErrors::ExpectedIdentifier { location },
-						start.with_length(idx),
-					));
+					value += &current[last..idx];
+					last = idx;
+					break;
 				}
-			} else {
-				value += &current[last..idx];
-				last = idx;
-				break;
 			}
 		}
+		// if not advanced
 		if last == 0 {
 			value += current;
 			last = current.len();
 		}
 		self.advance(last as u32);
-		if check_reserved && !crate::lexer::utilities::is_valid_variable_identifier(&value) {
-			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(value.len())))
+		if check_reserved {
+			if crate::lexer::utilities::is_valid_variable_identifier(&value) {
+				Ok(value)
+			} else {
+				Err(ParseError::new(
+					ParseErrors::ReservedIdentifier,
+					start.with_length(value.len()),
+				))
+			}
 		} else {
 			Ok(value)
 		}
@@ -673,29 +728,28 @@ impl<'a> Lexer<'a> {
 		is_multiline: bool,
 	) -> Result<&'a str, ParseError> {
 		if is_multiline {
-			self.parse_until("*/").map_err(|()| {
-				// TODO might be a problem
-				let position = self.get_start().with_length(self.get_current().len());
-				ParseError::new(ParseErrors::UnexpectedEnd, position)
-			})
+			let result = self.parse_until("*/");
+			match result {
+				Ok(content) => {
+					// WIP
+					if content.contains(NEW_LINE_CHARACTERS) {
+						self.state.last_new_lines += 1;
+					}
+					Ok(content)
+				}
+				Err(()) => {
+					// TODO might be a problem
+					let position = self.get_start().with_length(self.get_current().len());
+					Err(ParseError::new(ParseErrors::UnexpectedEnd, position))
+				}
+			}
 		} else {
 			Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
 		}
 	}
 
-	/// Note scans after multiple comments
-	#[must_use]
-	pub(crate) fn after_comment_literals(&self) -> &str {
-		let mut current = self.get_current().trim_start();
-		loop {
-			if current.starts_with("//") {
-				current = current[current.find('\n').unwrap_or(current.len())..].trim_start();
-			} else if current.starts_with("/*") {
-				current = current[current.find("*/").unwrap_or(current.len())..].trim_start();
-			} else {
-				return current;
-			}
-		}
+	pub(crate) fn parse_html_comment_literal(&mut self) -> Result<&'a str, ParseError> {
+		Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
 	}
 
 	#[must_use]
@@ -749,7 +803,14 @@ impl<'a> Lexer<'a> {
 			|| self.is_immediate_keyword("server")
 			|| self.is_immediate_keyword("test")
 	}
+
+	pub(crate) fn contains_new_line_since(&self, since: Span) -> bool {
+		let on: &str = &self.script[since.end as usize..self.head as usize];
+		on.contains(NEW_LINE_CHARACTERS)
+	}
 }
+
+const NEW_LINE_CHARACTERS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
 pub(crate) mod utilities {
 	// #[inline]

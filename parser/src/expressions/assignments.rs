@@ -1,8 +1,8 @@
 use crate::{
 	ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
 	ast::{
-		ArrayDestructuringField, Expression, FunctionArgument, ObjectDestructuringField,
-		PropertyKey, PropertyLike, PropertyReference, SpreadDestructuringField, SuperReference,
+		ArrayDestructuringField, Expression, ObjectDestructuringField, PropertyKey, PropertyLike,
+		PropertyReference, SpreadDestructuringField, SuperReference,
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 	},
 	derive_ASTNode,
@@ -296,15 +296,11 @@ impl TryFrom<Expression> for LHSOfAssignment {
 				let mut new_members = Vec::with_capacity(members.len());
 				let mut iter = members.into_iter();
 				for member in iter.by_ref() {
-					let new_member = match member.0 {
-						Some(FunctionArgument::Comment { content, is_multiline: _, position }) => {
-							WithComment::PrefixComment(
-								content,
-								ArrayDestructuringField::None,
-								position,
-							)
-						}
-						Some(FunctionArgument::Spread(expression, span)) => {
+					let position = member.get_position();
+					if let Some(member) = member.0 {
+						let (spread, expression) = member.value_and_spread();
+
+						if spread {
 							return if let Some(next) = iter.next() {
 								Err(ParseError::new(
 									ParseErrors::CannotHaveRegularMemberAfterSpread,
@@ -314,24 +310,35 @@ impl TryFrom<Expression> for LHSOfAssignment {
 								let inner: LHSOfAssignment = expression.try_into()?;
 								Ok(Self::ArrayDestructuring {
 									members: new_members,
-									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
+									spread: Some(SpreadDestructuringField(
+										Box::new(inner),
+										position,
+									)),
+									// TODO
 									position,
 								})
 							};
-						}
-						Some(FunctionArgument::Standard(expression)) => {
-							WithComment::None(match expression {
+						} else {
+							match expression {
 								Expression::Assignment { lhs, rhs, position: _ } => {
-									ArrayDestructuringField::Name(lhs, (), Some(rhs))
+									new_members.push(WithComment::None(
+										ArrayDestructuringField::Name(lhs, (), Some(rhs)),
+									));
 								}
 								expression => {
-									ArrayDestructuringField::Name(expression.try_into()?, (), None)
+									new_members.push(WithComment::None(
+										ArrayDestructuringField::Name(
+											expression.try_into()?,
+											(),
+											None,
+										),
+									));
 								}
-							})
+							}
 						}
-						None => WithComment::None(ArrayDestructuringField::None),
-					};
-					new_members.push(new_member);
+					} else {
+						new_members.push(WithComment::None(ArrayDestructuringField::None));
+					}
 				}
 				Ok(Self::ArrayDestructuring { members: new_members, spread: None, position })
 			}

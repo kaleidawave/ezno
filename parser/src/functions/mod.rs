@@ -227,8 +227,10 @@ impl<T: FunctionBased> FunctionBase<T> {
 			None
 		};
 		// TODO options.type_annotations
+		reader.skip_including_comments()?;
 		if let Some(slice) = T::get_parameter_body_boundary_slice() {
 			reader.expect_operator(slice)?;
+			reader.skip_including_comments()?;
 		}
 		let body = T::Body::from_reader(reader)?;
 		let body_pos = body.get_position();
@@ -521,6 +523,21 @@ impl FunctionHeader {
 			FunctionHeader::BasicFunctionHeader { is_async, .. } => *is_async,
 			#[cfg(feature = "extras")]
 			FunctionHeader::ChadFunctionHeader { is_async, .. } => *is_async,
+		}
+	}
+
+	#[must_use]
+	pub fn is_async_only(&self) -> bool {
+		match self {
+			FunctionHeader::BasicFunctionHeader {
+				is_async: true,
+				location: None,
+				is_generator: false,
+				position: _,
+			} => true,
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { is_async: true, location: None, position: _ } => true,
+			_ => false,
 		}
 	}
 

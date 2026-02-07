@@ -75,6 +75,9 @@ pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
     Await, TypeOf, Void, Delete,
+
+	/// little bit weird
+	Spread
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -209,6 +212,7 @@ impl Operator for UnaryOperator {
 			UnaryOperator::Await => "await ",
 			UnaryOperator::TypeOf => "typeof ",
 			UnaryOperator::Void => "void ",
+			UnaryOperator::Spread => "... ",
 		}
 	}
 
@@ -222,6 +226,7 @@ impl Operator for UnaryOperator {
 			| UnaryOperator::LogicalNot
 			| UnaryOperator::Plus
 			| UnaryOperator::Negation => 14,
+			UnaryOperator::Spread => 2,
 		}
 	}
 

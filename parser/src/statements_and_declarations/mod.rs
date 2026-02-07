@@ -225,11 +225,35 @@ impl ASTNode for StatementOrDeclaration {
 			}
 			// async or function (generator, server, worker or test)
 			b'a' | b'f' | b'g' | b's' | b'w' | b't' if reader.starts_with_function_header() => {
-				let function = StatementFunction::from_reader(reader)?;
-				let exported = Exportable::not_exported(function);
-				let decorated = Decorated::new(possible_decorators, exported);
-				let item = Box::new(decorated);
-				Ok(StatementOrDeclaration::Function(item))
+				if reader.starts_with_slice("async") {
+					let result = reader.try_parse(StatementFunction::from_reader);
+					if let Ok(function) = result {
+						let exported = Exportable::not_exported(function);
+						let decorated = Decorated::new(possible_decorators, exported);
+						let item = Box::new(decorated);
+						Ok(StatementOrDeclaration::Function(item))
+					} else {
+						reader.expect_keyword("async")?;
+						let expression = crate::expressions::Expression::VariableReference(
+							"async".to_owned(),
+							start.with_length(5),
+						);
+						let precedence = crate::expressions::precedence::COMMA_PRECEDENCE;
+						let expression =
+							crate::expressions::Expression::from_reader_after_first_expression(
+								reader, precedence, expression,
+							)?;
+						let expression =
+							MultipleExpression::from_first_expression(reader, expression)?;
+						Ok(StatementOrDeclaration::Expression(expression))
+					}
+				} else {
+					let function = StatementFunction::from_reader(reader)?;
+					let exported = Exportable::not_exported(function);
+					let decorated = Decorated::new(possible_decorators, exported);
+					let item = Box::new(decorated);
+					Ok(StatementOrDeclaration::Function(item))
+				}
 			}
 			b'e' if reader.is_immediate_keyword_advance("export") => {
 				let mut possible_inner_decorators = possible_decorators_from_reader(reader)?;
@@ -514,6 +538,14 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Empty(position))
 				}
 			}
+			b'<' if reader.starts_with_slice("<!--") => {
+				let _ = reader.parse_html_comment_literal()?;
+				Ok(StatementOrDeclaration::Empty(start.union(reader.get_end())))
+			}
+			b'-' if reader.starts_with_slice("-->") => {
+				let _ = reader.parse_html_comment_literal()?;
+				Ok(StatementOrDeclaration::Empty(start.union(reader.get_end())))
+			}
 			_ => {
 				if reader.get_options().features.partial_syntax
 					&& reader.starts_with_expression_delimiter()
@@ -559,15 +591,16 @@ impl ASTNode for StatementOrDeclaration {
 				if reader.is_operator_advance(":") {
 					if let crate::Expression::VariableReference(name, ..) = expression.get_inner() {
 						let statement = Statement::from_reader(reader)?;
-						if statement.0.requires_semi_colon() {
-							reader.expect_semi_colon()?;
-						}
+						check_semi_colon(&statement.0, reader)?;
 						let position = start.union(statement.get_position());
 						let statement = Box::new(statement);
 						let name = name.to_owned();
 						return Ok(StatementOrDeclaration::Labelled { name, statement, position });
 					} else {
-						todo!("error")
+						return Err(ParseError::new(
+							ParseErrors::InvalidStatementLabel,
+							expression.get_position(),
+						));
 					}
 				}
 
@@ -776,4 +809,11 @@ impl ASTNode for Statement {
 	) {
 		self.0.to_string_from_buffer(buf, options, local);
 	}
+}
+
+pub(crate) fn check_semi_colon(
+	item: &StatementOrDeclaration,
+	reader: &mut crate::Lexer,
+) -> ParseResult<()> {
+	if item.requires_semi_colon() { reader.expect_semi_colon() } else { Ok(()) }
 }
