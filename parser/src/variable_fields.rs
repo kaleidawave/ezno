@@ -29,7 +29,6 @@ impl ASTNode for VariableIdentifier {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		let start = reader.get_start();
 		if reader.get_options().features.partial_syntax && reader.starts_with_expression_delimiter()
 		{
@@ -119,9 +118,8 @@ impl ASTNode for VariableField {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		let start = reader.get_start();
-		if reader.is_immediate_operator_advance("{") {
+		if reader.is_operator_advance("{") {
 			let (members, spread) = bracketed_items_from_reader(reader, "}")?;
 			Ok(Self::ObjectDestructuring {
 				members,
@@ -130,7 +128,7 @@ impl ASTNode for VariableField {
 				#[cfg(feature = "extras")]
 				class_name: None,
 			})
-		} else if reader.is_immediate_operator_advance("[") {
+		} else if reader.is_operator_advance("[") {
 			let (members, spread) = bracketed_items_from_reader(reader, "]")?;
 			Ok(Self::ArrayDestructuring {
 				members,
@@ -282,14 +280,12 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		// Allowed
 		if reader.get_current().starts_with([',', ']']) {
 			Ok(Self::None)
 		} else {
 			let name = T::from_reader(reader)?;
 			let annotation = T::type_annotation_from_reader(reader)?;
-			reader.skip_including_comments()?;
 			let default_value = if reader.is_operator_advance("=") {
 				Some(ASTNode::from_reader(reader).map(Box::new)?)
 			} else {
@@ -332,7 +328,6 @@ impl<T: DestructuringFieldInto> ListItem for ArrayDestructuringField<T> {
 	type LAST = SpreadDestructuringField<T>;
 
 	fn parse_last_item(reader: &mut crate::Lexer) -> ParseResult<Self::LAST> {
-		reader.skip();
 		let start = reader.get_start();
 		reader.expect_operator("...")?;
 		let node = T::from_reader(reader)?;
@@ -398,16 +393,13 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 		// 	}
 		// }
 
-		reader.skip_including_comments()?;
 		let key = PropertyKey::from_reader(reader)?;
-		reader.skip_including_comments()?;
-		if reader.is_immediate_operator_advance(":") {
+		if reader.is_operator_advance(":") {
 			let name = T::from_reader(reader)?;
 			let annotation = T::type_annotation_from_reader(reader)?;
 
-			reader.skip_including_comments()?;
 			let default_value = reader
-				.is_immediate_operator_advance("=")
+				.is_operator_advance("=")
 				.then(|| Expression::from_reader(reader).map(Box::new))
 				.transpose()?;
 
@@ -420,7 +412,7 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 			Ok(Self::Map { from: key, annotation, name, default_value, position })
 		} else if let PropertyKey::Identifier(name, key_pos, _) = key {
 			let default_value = reader
-				.is_immediate_operator_advance("=")
+				.is_operator_advance("=")
 				.then(|| Expression::from_reader(reader).map(Box::new))
 				.transpose()?;
 

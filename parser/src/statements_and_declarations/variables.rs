@@ -66,8 +66,6 @@ impl ASTNode for VariableDeclarationItem {
 			let _ = reader.is_operator_advance("!");
 		}
 
-		reader.skip_including_comments()?; // TODO temp
-
 		let type_annotation = if reader.is_operator_advance(":") {
 			let annotation = TypeAnnotation::from_reader(reader)?;
 			position = position.union(annotation.get_position());
@@ -76,8 +74,6 @@ impl ASTNode for VariableDeclarationItem {
 		} else {
 			None
 		};
-
-		reader.skip_including_comments()?; // TODO temp
 
 		let expression = if reader.is_operator_advance("=") {
 			let expression = Expression::from_reader(reader)?;
@@ -153,7 +149,6 @@ impl ASTNode for VariableDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		let start = reader.get_start();
 		if let Some(kind) = VariableDeclarationKeyword::from_reader(reader) {
 			Self::parse_declarations_after_kind((start, kind), reader)
@@ -198,8 +193,6 @@ impl VariableDeclaration {
 	) -> ParseResult<Self> {
 		let mut declarations = Vec::new();
 		loop {
-			reader.skip_including_comments()?;
-
 			let value = VariableDeclarationItem::from_reader(reader)?;
 
 			if value.expression.is_none() {

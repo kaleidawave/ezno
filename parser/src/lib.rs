@@ -129,6 +129,7 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 		// head: 0
 
 		let mut reader = crate::Lexer::new(&script, offset, options);
+		reader.skip_including_comments()?;
 
 		let node = Self::from_reader(&mut reader)?;
 
@@ -263,18 +264,16 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	type FunctionBody = Block;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		let is_not_name = reader.is_finished() || reader.is_one_of(&["(", "{", "[", "<"]).is_some();
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
 	}
 
 	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		// TODO "implements" is TS syntax (reader options)
 		let is_not_name = reader.is_finished()
-			|| reader.is_immediate_keyword("extends")
-			|| reader.is_immediate_keyword("implements")
+			|| reader.is_keyword("extends")
+			|| reader.is_keyword("implements")
 			|| reader.get_current().starts_with(['(', '{', '[', '<']);
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
@@ -323,9 +322,6 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 ) -> ParseResult<(Vec<T>, Option<T::LAST>)> {
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
-		// TODO need to mark start
-		reader.skip_including_comments()?;
-
 		if (T::skip_trailing() || nodes.is_empty()) && reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		}

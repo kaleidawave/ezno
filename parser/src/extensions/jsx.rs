@@ -72,10 +72,9 @@ impl ASTNode for JSXElement {
 
 		// Kind of weird / not clear conditions for breaking out of while loop
 		loop {
-			reader.skip();
-			if reader.is_immediate_operator_advance(">") {
+			if reader.is_operator_advance(">") {
 				break;
-			} else if reader.is_immediate_operator_advance("/>") {
+			} else if reader.is_operator_advance("/>") {
 				// TODO check set closing
 				// Early return if self closing
 				let end = reader.get_end();
@@ -356,7 +355,6 @@ impl ASTNode for JSXRoot {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		if let Some(start) = reader.get_current().get(0..15)
 			&& start.eq_ignore_ascii_case("<!DOCTYPE html>")
 		{
@@ -447,7 +445,7 @@ impl ASTNode for JSXNode {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		if reader.is_immediate_operator_advance("{") {
+		if reader.is_operator_advance("{") {
 			if reader.get_options().jsx.unwrap().accept_unknown_expressions
 				&& reader.get_current().starts_with([':', '#', '%', '/', '{'])
 			{

@@ -210,19 +210,18 @@ impl<T: FunctionBased> FunctionBase<T> {
 		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		// TODO header.get_start else here
 		let start = reader.get_start();
-		let type_parameters = if reader.is_immediate_operator_advance("<") {
+		let type_parameters = if reader.is_operator_advance("<") {
 			Some(bracketed_items_from_reader(reader, ">").map(|(params, _)| params)?)
 		} else {
 			None
 		};
 		// TODO insert into below?
-		reader.skip_including_comments()?;
+
 		let parameters = T::parameters_from_reader(reader)?;
-		reader.skip_including_comments()?;
-		let return_type = if reader.is_immediate_operator_advance(":") {
+
+		let return_type = if reader.is_operator_advance(":") {
 			let precedence = if let Some("=>") = T::get_parameter_body_boundary_slice() {
 				crate::types::type_annotations::TypeOperatorKind::ReturnType
 			} else {
@@ -233,10 +232,9 @@ impl<T: FunctionBased> FunctionBase<T> {
 			None
 		};
 		// TODO options.type_annotations
-		reader.skip_including_comments()?;
+
 		if let Some(slice) = T::get_parameter_body_boundary_slice() {
 			reader.expect_operator(slice)?;
-			reader.skip_including_comments()?;
 		}
 		let body = T::Body::from_reader(reader)?;
 		let body_pos = body.get_position();
@@ -328,7 +326,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader)?;
-		reader.skip_including_comments()?;
+
 		let name = T::from_reader(reader)?;
 		Ok((header, name))
 	}
@@ -453,12 +451,11 @@ impl Default for FunctionHeader {
 }
 
 fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier> {
-	reader.skip();
-	if reader.is_immediate_keyword_advance("server") {
+	if reader.is_keyword_advance("server") {
 		Some(FunctionLocationModifier::Server)
-	} else if reader.is_immediate_keyword_advance("worker") {
+	} else if reader.is_keyword_advance("worker") {
 		Some(FunctionLocationModifier::Worker)
-	} else if reader.is_immediate_keyword_advance("test") {
+	} else if reader.is_keyword_advance("test") {
 		Some(FunctionLocationModifier::Test)
 	} else {
 		None
@@ -467,13 +464,9 @@ fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier>
 
 impl FunctionHeader {
 	pub(crate) fn from_reader_initial(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
-
 		#[cfg(feature = "extras")]
 		let start = reader.get_start();
 		let is_async = reader.is_keyword_advance("async");
-
-		reader.skip_including_comments()?;
 
 		#[cfg(feature = "extras")]
 		if reader.get_options().extras.custom_function_headers
@@ -485,8 +478,6 @@ impl FunctionHeader {
 				position: start.union(reader.get_end()),
 			});
 		}
-
-		reader.skip_including_comments()?;
 
 		#[cfg(feature = "extras")]
 		let location = if reader.get_options().extras.custom_function_headers {
@@ -514,8 +505,8 @@ impl FunctionHeader {
 		// }
 
 		let _ = reader.expect_keyword("function")?;
-		reader.skip_including_comments()?;
-		let set_generator = reader.is_immediate_operator_advance("*");
+
+		let set_generator = reader.is_operator_advance("*");
 		// TODO update position
 		match self {
 			FunctionHeader::BasicFunctionHeader { ref mut is_generator, .. } => {
@@ -644,17 +635,16 @@ impl MethodHeader {
 		// if reader.after_identifier().starts_with(['<', '(', '}', ',', ':', '?']) {
 		// 	MethodHeader::default()
 		// } else
-		reader.skip_including_comments()?;
-		if reader.is_immediate_keyword_advance("get") {
+
+		if reader.is_keyword_advance("get") {
 			Ok(MethodHeader::Get)
-		} else if reader.is_immediate_keyword_advance("set") {
+		} else if reader.is_keyword_advance("set") {
 			Ok(MethodHeader::Set)
 		} else {
-			reader.skip_including_comments()?;
 			let is_async = reader.is_keyword_advance("async");
-			reader.skip_including_comments()?;
+
 			let generator = GeneratorSpecifier::from_reader(reader);
-			reader.skip_including_comments()?;
+
 			Ok(MethodHeader::Regular { is_async, generator })
 		}
 	}
@@ -729,7 +719,7 @@ impl ASTNode for FunctionBody {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// If type annotations. Allow elided bodies for function overloading
-		reader.skip_including_comments()?;
+
 		let body = if reader.is_operator("{")
 			|| !reader.get_options().type_annotations.type_annotations()
 		{

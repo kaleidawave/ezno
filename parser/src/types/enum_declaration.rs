@@ -112,7 +112,6 @@ impl ASTNode for EnumMember {
 		{
 			let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 			loop {
-				reader.skip();
 				if reader.starts_with('}') {
 					break;
 				}

@@ -34,24 +34,22 @@ impl ASTNode for TryCatchStatement {
 		if reader.is_keyword_advance("catch") {
 			// state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Catch);
 
-			reader.skip_including_comments()?;
 			// Optional exception variable field `catch (e)`
-			if reader.is_immediate_operator_advance("(") {
+			if reader.is_operator_advance("(") {
 				let variable_field = VariableField::from_reader(reader)?;
 
-				reader.skip_including_comments()?;
 				// Optional type reference `catch (e: type)`
-				let exception_var_type: Option<TypeAnnotation> =
-					if reader.is_immediate_operator_advance(":") {
-						let annotation = TypeAnnotation::from_reader(reader)?;
-						crate::lexer::utilities::assert_type_annotations(
-							reader,
-							annotation.get_position(),
-						)?;
-						Some(annotation)
-					} else {
-						None
-					};
+				let exception_var_type: Option<TypeAnnotation> = if reader.is_operator_advance(":")
+				{
+					let annotation = TypeAnnotation::from_reader(reader)?;
+					crate::lexer::utilities::assert_type_annotations(
+						reader,
+						annotation.get_position(),
+					)?;
+					Some(annotation)
+				} else {
+					None
+				};
 				exception_var = Some((variable_field, exception_var_type));
 
 				reader.expect(')')?;

@@ -107,8 +107,6 @@ impl ASTNode for BlockOrSingleStatement {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		// FIX
-		reader.skip_including_comments()?;
 		// TODO
 		// if reader.starts_with('{') {
 		// } else {
@@ -161,8 +159,6 @@ pub(crate) fn statements_and_declarations_from_reader(
 ) -> ParseResult<Vec<StatementOrDeclaration>> {
 	let mut items = Vec::new();
 	loop {
-		reader.skip();
-
 		let at_end = reader.is_finished() || reader.starts_with('}');
 
 		if at_end {

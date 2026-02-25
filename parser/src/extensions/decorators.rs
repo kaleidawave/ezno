@@ -43,13 +43,12 @@ impl ASTNode for Decorator {
 		// TODO modify position? or new
 		let _start = reader.get_start();
 		reader.expect('@')?;
-		reader.skip_including_comments()?;
-		let expression = if reader.is_immediate_keyword_advance("await") {
+		let expression = if reader.is_keyword_advance("await") {
 			let start = reader.get_start();
 			let expression =
 				Expression::VariableReference("await".to_owned(), start.with_length(5));
-			reader.skip_including_comments()?;
-			if reader.is_immediate_operator_advance("()") {
+
+			if reader.is_operator_advance("()") {
 				Expression::FunctionCall {
 					function: Box::new(expression),
 					type_arguments: None,
@@ -60,12 +59,12 @@ impl ASTNode for Decorator {
 			} else {
 				expression
 			}
-		} else if reader.is_immediate_keyword_advance("yield") {
+		} else if reader.is_keyword_advance("yield") {
 			let start = reader.get_start();
 			let expression =
 				Expression::VariableReference("yield".to_owned(), start.with_length(5));
-			reader.skip_including_comments()?;
-			if reader.is_immediate_operator_advance("()") {
+
+			if reader.is_operator_advance("()") {
 				Expression::FunctionCall {
 					function: Box::new(expression),
 					type_arguments: None,

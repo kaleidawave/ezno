@@ -195,12 +195,11 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 
 	let is_type_annotation_import_only = reader.is_operator_advance("type");
 
-	reader.skip_including_comments()?;
 	let is_identifier =
 		reader.get_current().starts_with(crate::lexer::utilities::is_identifier_continutation);
 
 	#[cfg(feature = "extras")]
-	if is_deferred && !is_type_annotation_import_only && reader.is_immediate_keyword("from") {
+	if is_deferred && !is_type_annotation_import_only && reader.is_keyword("from") {
 		// TODO WIP
 		return Ok(PartsResult {
 			#[cfg(feature = "extras")]

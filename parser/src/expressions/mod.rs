@@ -236,7 +236,7 @@ impl Expression {
 	) -> ParseResult<Self> {
 		if reader.get_options().features.partial_syntax {
 			let start = reader.get_start();
-			reader.skip();
+
 			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
 				|| reader.starts_with_statement_or_declaration_on_new_line();
 
@@ -249,7 +249,6 @@ impl Expression {
 				});
 			}
 		} else {
-			reader.skip();
 		}
 
 		let start = reader.get_start();
@@ -320,7 +319,7 @@ impl Expression {
 								crate::functions::parameters::FunctionParameters::from_reader(
 									reader,
 								)?;
-							reader.skip_including_comments()?;
+
 							if reader.starts_with(':') || reader.starts_with_slice("=>") {
 								Ok(parameters)
 							} else {
@@ -368,7 +367,7 @@ impl Expression {
 							match result {
 								Ok(type_parameters) => {
 									let parameters = crate::functions::parameters::FunctionParameters::from_reader(reader)?;
-									reader.skip_including_comments()?;
+
 									let arrow_function =
 										ArrowFunction::from_reader_with_parameters(
 											reader,
@@ -480,7 +479,7 @@ impl Expression {
 						position,
 					)
 				}
-				b'+' if reader.is_immediate_operator_advance("++") => {
+				b'+' if reader.is_operator_advance("++") => {
 					let operator = UnaryPrefixAssignmentOperator::IncrementOrDecrement(
 						IncrementOrDecrement::Increment,
 					);
@@ -490,7 +489,7 @@ impl Expression {
 					let position = start.union(operand.get_position());
 					Expression::UnaryPrefixAssignmentOperation { operand, operator, position }
 				}
-				b'-' if reader.is_immediate_operator_advance("--") => {
+				b'-' if reader.is_operator_advance("--") => {
 					let operator = UnaryPrefixAssignmentOperator::IncrementOrDecrement(
 						IncrementOrDecrement::Decrement,
 					);
@@ -500,7 +499,7 @@ impl Expression {
 					let position = start.union(operand.get_position());
 					Expression::UnaryPrefixAssignmentOperation { operand, operator, position }
 				}
-				b'c' if reader.is_immediate_keyword("class") => {
+				b'c' if reader.is_keyword("class") => {
 					let on = ClassDeclaration::from_reader(reader)?;
 					let position = on.get_position(); // FUTURE duplicate position 
 					Expression::ClassExpression(Box::new(
@@ -546,7 +545,7 @@ impl Expression {
 				// TODO should be after to account for function calls
 				#[cfg(feature = "extras")]
 				b'n' if reader.get_options().extras.keyword_logical_operators
-					&& reader.is_immediate_keyword_advance("not") =>
+					&& reader.is_keyword_advance("not") =>
 				{
 					let operator = UnaryOperator::LogicalNot;
 					let precedence = operator.precedence();
@@ -554,10 +553,9 @@ impl Expression {
 					let position = start.union(operand.get_position());
 					Expression::UnaryOperation { operand: Box::new(operand), operator, position }
 				}
-				b'a' if reader.is_immediate_keyword_advance("await") => {
-					reader.skip_including_comments()?;
+				b'a' if reader.is_keyword_advance("await") => {
 					// // TEMP fix, what about comments
-					// if !reader.strict_mode() && reader.is_immediate_operator_advance("()") {
+					// if !reader.strict_mode() && reader.is_operator_advance("()") {
 					// 	let on = Expression::VariableReference("await".to_owned(), start.with_length(5));
 					// 	Expression::FunctionCall {
 					// 		function: Box::new(on),
@@ -582,31 +580,30 @@ impl Expression {
 						}
 					}
 				}
-				b't' if reader.is_immediate_keyword_advance("typeof") => {
+				b't' if reader.is_keyword_advance("typeof") => {
 					let operator = UnaryOperator::TypeOf;
 					let operand =
 						Expression::from_reader_with_precedence(reader, operator.precedence())?;
 					let position = start.union(operand.get_position());
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
-				b'd' if reader.is_immediate_keyword_advance("delete") => {
+				b'd' if reader.is_keyword_advance("delete") => {
 					let operator = UnaryOperator::Delete;
 					let operand =
 						Expression::from_reader_with_precedence(reader, operator.precedence())?;
 					let position = start.union(operand.get_position());
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
-				b'v' if reader.is_immediate_keyword_advance("void") => {
+				b'v' if reader.is_keyword_advance("void") => {
 					let operator = UnaryOperator::Void;
 					let operand =
 						Expression::from_reader_with_precedence(reader, operator.precedence())?;
 					let position = start.union(operand.get_position());
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
-				b'y' if reader.is_immediate_keyword_advance("yield") => {
-					reader.skip_including_comments()?;
+				b'y' if reader.is_keyword_advance("yield") => {
 					// TEMP fix, what about comments
-					if !reader.strict_mode() && reader.is_immediate_operator_advance("()") {
+					if !reader.strict_mode() && reader.is_operator_advance("()") {
 						let on =
 							Expression::VariableReference("yield".to_owned(), start.with_length(5));
 						Expression::FunctionCall {
@@ -632,22 +629,18 @@ impl Expression {
 						Expression::SpecialOperators(SpecialOperators::Yield { yielded }, position)
 					}
 				}
-				b't' if reader.is_immediate_keyword_advance("true") => {
+				b't' if reader.is_keyword_advance("true") => {
 					Expression::BooleanLiteral(true, start.with_length(4))
 				}
-				b'f' if reader.is_immediate_keyword_advance("false") => {
+				b'f' if reader.is_keyword_advance("false") => {
 					Expression::BooleanLiteral(false, start.with_length(5))
 				}
-				b't' if reader.is_immediate_keyword_advance("this") => {
+				b't' if reader.is_keyword_advance("this") => {
 					Expression::ThisReference(start.with_length(4))
 				}
-				b'n' if reader.is_immediate_keyword_advance("null") => {
-					Expression::Null(start.with_length(4))
-				}
-				b'n' if reader.is_immediate_keyword_advance("new") => {
-					reader.skip_including_comments()?;
-					if reader.is_immediate_operator_advance(".") {
-						reader.skip_including_comments()?;
+				b'n' if reader.is_keyword_advance("null") => Expression::Null(start.with_length(4)),
+				b'n' if reader.is_keyword_advance("new") => {
+					if reader.is_operator_advance(".") {
 						reader.expect_keyword("target")?;
 						let end = reader.get_end();
 						Expression::NewTarget(start.union(end))
@@ -680,7 +673,7 @@ impl Expression {
 						}
 					}
 				}
-				b's' if reader.is_immediate_keyword_advance("super") => {
+				b's' if reader.is_keyword_advance("super") => {
 					let inner = if reader.is_operator_advance("(") {
 						// TODO generics?
 						let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
@@ -702,7 +695,7 @@ impl Expression {
 					};
 					Expression::SuperExpression(inner, start.union(reader.get_end()))
 				}
-				b'i' if reader.is_immediate_keyword_advance("import") => {
+				b'i' if reader.is_keyword_advance("import") => {
 					Expression::Import(parse_after_import(reader, start)?)
 				}
 				// esid: prod-ClassExpression
@@ -719,8 +712,7 @@ impl Expression {
 					))
 				}
 				_ => {
-					let name =
-						reader.parse_immediate_identifier("variable reference expression", true)?;
+					let name = reader.parse_identifier("variable reference expression", true)?;
 
 					if reader.get_options().features.interpolation_points
 						&& name == crate::marker::MARKER
@@ -851,7 +843,6 @@ impl Expression {
 			}
 
 			// reader.skip();
-			reader.skip_including_comments()?;
 
 			// TODO if not returning and comments, then we want to build the comments up.
 
@@ -1014,12 +1005,12 @@ impl Expression {
 				b'(' => AfterFirst::FunctionCall { is_optional: false },
 				b'`' => AfterFirst::TemplateLiteralStart,
 				b'=' => AfterFirst::Assign,
-				b'i' if reader.is_immediate_keyword("instanceof") => AfterFirst::InstanceOf,
-				b'i' if reader.is_immediate_keyword("in") => AfterFirst::In,
+				b'i' if reader.is_keyword("instanceof") => AfterFirst::InstanceOf,
+				b'i' if reader.is_keyword("in") => AfterFirst::In,
 				#[cfg(feature = "full-typescript")]
-				b'a' if reader.is_immediate_keyword("as") => AfterFirst::As,
+				b'a' if reader.is_keyword("as") => AfterFirst::As,
 				#[cfg(feature = "full-typescript")]
-				b's' if reader.is_immediate_keyword("satisfies") => AfterFirst::Satisfies,
+				b's' if reader.is_keyword("satisfies") => AfterFirst::Satisfies,
 				// non enabled caught later
 				#[cfg(feature = "extras")]
 				b'<' if reader.starts_with_slice("<@>") => AfterFirst::BinaryOperator(BinaryOperator::Compose),
@@ -1027,25 +1018,21 @@ impl Expression {
 				#[cfg(feature = "extras")]
 				b'|' if reader.starts_with_slice("|>") => AfterFirst::BinaryOperator(BinaryOperator::Pipe),
 				#[cfg(feature = "extras")]
-				b'i' if reader.is_immediate_keyword("is")
-					&& reader.get_options().extras.is_expressions =>
-				{
-					AfterFirst::Is
-				}
+				b'i' if reader.is_keyword("is") && reader.get_options().extras.is_expressions => AfterFirst::Is,
 				#[cfg(feature = "extras")]
-				b'a' if reader.is_immediate_keyword("and")
+				b'a' if reader.is_keyword("and")
 					&& reader.get_options().extras.keyword_logical_operators =>
 				{
 					AfterFirst::AndKeyword
 				}
 				#[cfg(feature = "extras")]
-				b'o' if reader.is_immediate_keyword("or")
+				b'o' if reader.is_keyword("or")
 					&& reader.get_options().extras.keyword_logical_operators =>
 				{
 					AfterFirst::OrKeyword
 				}
 				#[cfg(feature = "extras")]
-				b'i' if reader.is_immediate_keyword("if")
+				b'i' if reader.is_keyword("if")
 					&& reader.get_options().extras.keyword_logical_operators =>
 				{
 					AfterFirst::IfKeyword
@@ -1406,8 +1393,6 @@ impl Expression {
 						let marker = reader.new_partial_point_marker(position);
 						PropertyReference::Marker(marker)
 					} else {
-						// reader.skip();
-						reader.skip_including_comments()?;
 						let is_private = reader.is_operator_advance("#");
 						let property =
 							reader.parse_identifier("property name", false)?.into_owned();
@@ -2320,23 +2305,22 @@ pub(crate) fn parse_after_import(
 	start: source_map::Start,
 ) -> ParseResult<ImportExpression> {
 	if reader.is_operator_advance(".") {
-		reader.skip();
 		#[cfg(feature = "extras")]
-		if reader.is_immediate_keyword_advance("source") {
+		if reader.is_keyword_advance("source") {
 			reader.expect('(')?;
 			let path = Box::new(Expression::from_reader(reader)?);
 			let _ = reader.is_operator_advance(",");
 			reader.expect(')')?;
 			let position = start.union(reader.get_end());
 			Ok(ImportExpression::ImportSource { path, position })
-		} else if reader.is_immediate_keyword_advance("defer") {
+		} else if reader.is_keyword_advance("defer") {
 			reader.expect('(')?;
 			let path = Box::new(Expression::from_reader(reader)?);
 			let _ = reader.is_operator_advance(",");
 			reader.expect(')')?;
 			let position = start.union(reader.get_end());
 			Ok(ImportExpression::ImportDefer { path, position })
-		} else if reader.is_immediate_keyword_advance("meta") {
+		} else if reader.is_keyword_advance("meta") {
 			let position = start.union(reader.get_end());
 			Ok(ImportExpression::ImportMeta(position))
 		} else {
@@ -2347,7 +2331,7 @@ pub(crate) fn parse_after_import(
 		}
 
 		#[cfg(not(feature = "extras"))]
-		if reader.is_immediate_keyword_advance("meta") {
+		if reader.is_keyword_advance("meta") {
 			let position = start.union(reader.get_end());
 			Ok(ImportExpression::ImportMeta(position))
 		} else {
@@ -2356,7 +2340,7 @@ pub(crate) fn parse_after_import(
 				&["source", "defer", "meta"],
 			))
 		}
-	} else if reader.is_immediate_operator_advance("(") {
+	} else if reader.is_operator_advance("(") {
 		let path = Expression::from_reader(reader)?;
 		// if let Expression::StringLiteral(path, ..) = &path {
 		//     state.constant_imports.push(path.clone());
@@ -2711,10 +2695,9 @@ impl ASTNode for ExpressionOrSpreadExpression {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		let start = reader.get_start();
 		// Precedence of `...` is weird (same level as others) so doing this here
-		if reader.is_immediate_operator_advance("...") {
+		if reader.is_operator_advance("...") {
 			let operand = Expression::from_reader(reader)?;
 			let position = start.union(operand.get_position());
 			let value = Expression::UnaryOperation {
@@ -2786,8 +2769,6 @@ impl ASTNode for ArrayElement {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		// This is allowed for some reason
-		reader.skip_including_comments()?;
 		if reader.is_one_of_operators(&[",", "]"]).is_some() {
 			Ok(Self(None))
 		} else {

@@ -29,33 +29,26 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		let start = reader.get_start();
 		reader.expect_keyword("class")?;
 
 		let name = U::class_name_from_reader(reader)?;
 
-		reader.skip_including_comments()?;
-
 		// TODO check name?
-		let type_parameters = if reader.is_immediate_operator_advance("<") {
+		let type_parameters = if reader.is_operator_advance("<") {
 			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
 			Some(params)
 		} else {
 			None
 		};
 
-		reader.skip_including_comments()?;
-
-		let extends = if reader.is_immediate_keyword_advance("extends") {
+		let extends = if reader.is_keyword_advance("extends") {
 			Some(Expression::from_reader(reader)?.into())
 		} else {
 			None
 		};
 
-		reader.skip_including_comments()?;
-
-		let implements = if reader.is_immediate_keyword_advance("implements") {
+		let implements = if reader.is_keyword_advance("implements") {
 			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			let mut implements = vec![type_annotation];
 			while reader.is_operator_advance(",") {
@@ -66,14 +59,10 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 			None
 		};
 
-		reader.skip_including_comments()?;
-
 		reader.expect('{')?;
 
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {
-			reader.skip();
-
 			// TODO temp fix
 			while reader.is_operator_advance(";") {}
 

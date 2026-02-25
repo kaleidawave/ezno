@@ -91,18 +91,15 @@ impl ASTNode for ClassMember {
 		}
 
 		let is_static = reader.is_keyword_advance("static");
-		reader.skip_including_comments()?;
 
 		// TODO need to check on branches
 		let is_accessor = reader.is_keyword_advance("accessor");
-		reader.skip_including_comments()?;
 
 		if is_static && reader.starts_with('{') {
 			return Ok(ClassMember::StaticBlock(Block::from_reader(reader)?));
 		}
 
 		let is_readonly = reader.is_keyword_advance("readonly");
-		reader.skip_including_comments()?;
 
 		// Special index type annotation. And needed for computed keys
 		if reader.starts_with('[') && reader.after_identifier_offset(1).starts_with(':') {
@@ -124,7 +121,7 @@ impl ASTNode for ClassMember {
 
 		// TODO what about readonly: 2, or constructor: 2, etc
 		let mut header = MethodHeader::from_reader(reader)?;
-		reader.skip_including_comments()?;
+
 		// TODO , '*'
 		let key = if reader.get_current().starts_with(['<', '(', ':', ';', '=', '}', '*']) {
 			if let Ok(name) = header.into_property_key() {
@@ -149,9 +146,7 @@ impl ASTNode for ClassMember {
 					start.union(reader.get_end()),
 				));
 			}
-		} else if is_accessor
-			&& (reader.is_immediate_keyword("static") || reader.is_immediate_keyword("async"))
-		{
+		} else if is_accessor && (reader.is_keyword("static") || reader.is_keyword("async")) {
 			PropertyKey::Identifier(
 				"accessor".to_owned(),
 				start.union(reader.get_end()),
@@ -160,8 +155,6 @@ impl ASTNode for ClassMember {
 		} else {
 			PropertyKey::<PublicOrPrivate>::from_reader(reader)?
 		};
-
-		reader.skip_including_comments()?;
 
 		if reader.get_current().starts_with(['(', '<']) {
 			let function =

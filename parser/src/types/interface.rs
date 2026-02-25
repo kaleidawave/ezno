@@ -203,8 +203,6 @@ impl ASTNode for InterfaceMember {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
-
 		let start = reader.get_start();
 		let is_readonly = reader.is_keyword_advance("readonly");
 
@@ -228,7 +226,7 @@ impl ASTNode for InterfaceMember {
 				return_type,
 				type_parameters: None,
 			})
-		} else if reader.is_immediate_operator_advance("<") {
+		} else if reader.is_operator_advance("<") {
 			// Caller self with generic parameters
 			let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
 			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
@@ -247,7 +245,7 @@ impl ASTNode for InterfaceMember {
 				type_parameters: Some(type_parameters),
 				return_type,
 			})
-		} else if reader.is_immediate_keyword_advance("new") {
+		} else if reader.is_keyword_advance("new") {
 			// Constructor
 			let type_parameters = reader
 				.is_operator_advance("<")
@@ -274,7 +272,7 @@ impl ASTNode for InterfaceMember {
 				type_parameters,
 				return_type,
 			})
-		} else if reader.is_immediate_operator_advance("-") {
+		} else if reader.is_operator_advance("-") {
 			// Little bit weird, but prevents a lot of duplication
 			let inner = Self::from_reader(reader)?;
 			if let Self::Rule {
@@ -311,7 +309,6 @@ impl ASTNode for InterfaceMember {
 			let mut header = MethodHeader::from_reader(reader)?;
 
 			// We do not use `PropertyKey::from_reader` to handle a case with type annotation
-			reader.skip();
 			let name = if reader.get_current().starts_with(['<', '(', '<', '?', ':']) {
 				if let Ok(name) = header.into_property_key() {
 					let privacy = PublicOrPrivate::Public;
@@ -320,7 +317,7 @@ impl ASTNode for InterfaceMember {
 				} else {
 					todo!("error")
 				}
-			} else if reader.is_immediate_operator_advance("[") {
+			} else if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
 					let (content, quoting, width) = reader.parse_string_literal()?;
 					let position = start.with_length(width as usize);
@@ -376,12 +373,11 @@ impl ASTNode for InterfaceMember {
 						};
 
 						reader.expect(']')?;
-						reader.skip();
-						let optionality = if reader.is_immediate_operator_advance("?:") {
+						let optionality = if reader.is_operator_advance("?:") {
 							Optionality::Optional
-						} else if reader.is_immediate_operator_advance("-?:") {
+						} else if reader.is_operator_advance("-?:") {
 							Optionality::Required
-						} else if reader.is_immediate_operator_advance(":") {
+						} else if reader.is_operator_advance(":") {
 							Optionality::Default
 						} else {
 							return Err(crate::lexer::utilities::expected_one_of_items(
@@ -630,7 +626,6 @@ pub(crate) fn interface_members_from_reader(
 ) -> ParseResult<Vec<Decorated<InterfaceMember>>> {
 	let mut members = Vec::new();
 	loop {
-		reader.skip();
 		if reader.is_operator("}") {
 			break;
 		}

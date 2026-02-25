@@ -182,14 +182,12 @@ where
 		let mut names: Vec<String> = Vec::new();
 
 		loop {
-			reader.skip_including_comments()?;
 			if reader.starts_with(')') {
 				break;
 			}
 
 			let start = reader.get_start();
-			if reader.is_immediate_operator_advance("...") {
-				reader.skip_including_comments()?;
+			if reader.is_operator_advance("...") {
 				let name = SpreadParameterName::from_reader(reader)?;
 
 				let name_position = name.get_position();
@@ -228,7 +226,7 @@ where
 				rest_parameter =
 					Some(Box::new(SpreadParameter { name, type_annotation, position }));
 				break;
-			} else if parameters.is_empty() && reader.is_immediate_keyword_advance("this") {
+			} else if parameters.is_empty() && reader.is_keyword_advance("this") {
 				// Some(Token(_, start)) = reader.conditional_next(|tok| {
 				// options.type_annotations
 				// 	&& reader.expect(TSXToken::Colon)?;
@@ -236,7 +234,7 @@ where
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
 				this_type = Some(ThisParameter { constraint: Box::new(constraint), position });
-			} else if parameters.is_empty() && reader.is_immediate_keyword_advance("super") {
+			} else if parameters.is_empty() && reader.is_keyword_advance("super") {
 				reader.expect(':')?;
 				// reader.expect(TSXToken::Colon)?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
@@ -246,14 +244,14 @@ where
 				let visibility = V::from_reader(reader);
 
 				let name = VariableField::from_reader(reader)?;
-				reader.skip_including_comments()?;
-				let (is_optional, type_annotation) = if reader.is_immediate_keyword_advance("?:") {
+
+				let (is_optional, type_annotation) = if reader.is_keyword_advance("?:") {
 					let type_annotation = TypeAnnotation::from_reader(reader)?;
 					(true, Some(type_annotation))
-				} else if reader.is_immediate_keyword_advance(":") {
+				} else if reader.is_keyword_advance(":") {
 					let type_annotation = TypeAnnotation::from_reader(reader)?;
 					(false, Some(type_annotation))
-				} else if reader.is_immediate_keyword_advance("?") {
+				} else if reader.is_keyword_advance("?") {
 					(true, None)
 				} else {
 					(false, None)

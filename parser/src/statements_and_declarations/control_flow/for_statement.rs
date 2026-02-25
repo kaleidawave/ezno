@@ -352,13 +352,12 @@ impl ASTNode for ForLoopCondition {
 		}
 
 		reader.expect('(')?;
-		reader.skip_including_comments()?;
 
 		let start = reader.get_start();
 
-		let condition = if reader.is_immediate_keyword_advance("using") {
+		let condition = if reader.is_keyword_advance("using") {
 			parse_using(reader, false, start)?
-		} else if reader.is_immediate_keyword_advance("await") {
+		} else if reader.is_keyword_advance("await") {
 			if reader.is_keyword_advance("using") {
 				parse_using(reader, true, start)?
 			} else {
@@ -367,10 +366,9 @@ impl ASTNode for ForLoopCondition {
 					Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
 				parse_statements(reader, initialiser, start)?
 			}
-		} else if reader.is_immediate_keyword_advance("let") {
+		} else if reader.is_keyword_advance("let") {
 			use crate::expressions::assignments::VariableOrPropertyAccess;
 
-			reader.skip_including_comments()?;
 			if reader.starts_with_expression_delimiter() || reader.starts_with('(') {
 				// TODO conflicts with destucturing || reader.get_current().starts_with(['{', '[']) {
 				let identifier = "let";
@@ -386,7 +384,7 @@ impl ASTNode for ForLoopCondition {
 				let initialiser =
 					Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
 				parse_statements(reader, initialiser, start)?
-			} else if !reader.strict_mode() && reader.is_immediate_keyword_advance("in") {
+			} else if !reader.strict_mode() && reader.is_keyword_advance("in") {
 				let lhs = LHSOfAssignment::VariableOrPropertyAccess(
 					VariableOrPropertyAccess::Variable("let".to_owned(), start.with_length(3)),
 				);
@@ -396,7 +394,7 @@ impl ASTNode for ForLoopCondition {
 				let lhs = VariableOrAssignable::Assignable(lhs);
 				let r#in = Box::new(r#in);
 				ForLoopCondition::ForIn { lhs, value: None, r#in, position }
-			} else if !reader.strict_mode() && reader.is_immediate_keyword_advance("of") {
+			} else if !reader.strict_mode() && reader.is_keyword_advance("of") {
 				let lhs = LHSOfAssignment::VariableOrPropertyAccess(
 					VariableOrPropertyAccess::Variable("let".to_owned(), start.with_length(3)),
 				);
@@ -408,9 +406,9 @@ impl ASTNode for ForLoopCondition {
 			} else {
 				parse_let_const_var(reader, VariableKeyword::Let, start)?
 			}
-		} else if reader.is_immediate_keyword_advance("var") {
+		} else if reader.is_keyword_advance("var") {
 			parse_let_const_var(reader, VariableKeyword::Var, start)?
-		} else if reader.is_immediate_keyword_advance("const") {
+		} else if reader.is_keyword_advance("const") {
 			parse_let_const_var(reader, VariableKeyword::Const, start)?
 		} else if reader.is_operator(";") {
 			parse_statements(reader, None, start)?
@@ -423,7 +421,7 @@ impl ASTNode for ForLoopCondition {
 
 			// let expression = Expression::from_reader(reader)?;
 
-			if reader.is_immediate_keyword_advance("in") {
+			if reader.is_keyword_advance("in") {
 				let lhs = LHSOfAssignment::try_from(expression)?;
 				let r#in = MultipleExpression::from_reader(reader)?;
 				let position = start.union(r#in.get_position());
@@ -431,7 +429,7 @@ impl ASTNode for ForLoopCondition {
 				let lhs = VariableOrAssignable::Assignable(lhs);
 				let r#in = Box::new(r#in);
 				ForLoopCondition::ForIn { lhs, value: None, r#in, position }
-			} else if reader.is_immediate_keyword_advance("of") {
+			} else if reader.is_keyword_advance("of") {
 				let lhs = LHSOfAssignment::try_from(expression)?;
 				let of = Box::new(Expression::from_reader(reader)?);
 				let position = start.union(reader.get_end());

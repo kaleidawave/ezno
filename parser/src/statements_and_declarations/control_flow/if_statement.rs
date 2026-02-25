@@ -51,9 +51,7 @@ impl ASTNode for IfStatement {
 		let (mut else_conditions, mut trailing_else) =
 			(Vec::<ConditionalElseStatement>::new(), None::<UnconditionalElseStatement>);
 
-		reader.skip_including_comments()?;
-
-		while reader.is_immediate_keyword("else") {
+		while reader.is_keyword("else") {
 			// TODO doesn't use `ConditionalElseStatement` or `UnconditionalElseStatement`,
 			// `ASTNode::from_reader` implementations
 			reader.advance("else".len() as u32);
@@ -68,7 +66,6 @@ impl ASTNode for IfStatement {
 					inner,
 				};
 				else_conditions.push(value);
-				reader.skip_including_comments()?;
 			} else {
 				let inner = BlockOrSingleStatement::from_reader(reader)?;
 				let position = start.union(inner.get_position());

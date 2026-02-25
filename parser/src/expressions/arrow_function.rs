@@ -158,7 +158,7 @@ impl ArrowFunction {
 			rest_parameter: None,
 			position,
 		};
-		reader.skip_including_comments()?;
+
 		Self::from_reader_with_parameters(reader, position.get_start(), is_async, None, parameters)
 	}
 
@@ -169,7 +169,7 @@ impl ArrowFunction {
 		type_parameters: Option<crate::functions::FunctionTypeParameters>,
 		parameters: FunctionParameters<(), ()>,
 	) -> ParseResult<Self> {
-		let return_type = if reader.is_immediate_operator_advance(":") {
+		let return_type = if reader.is_operator_advance(":") {
 			Some(crate::types::TypeAnnotation::from_reader(reader)?)
 		} else {
 			None
@@ -206,7 +206,6 @@ impl ASTNode for ExpressionOrBlock {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip_including_comments()?;
 		if reader.is_operator("{") {
 			Block::from_reader(reader).map(Self::Block)
 		} else {

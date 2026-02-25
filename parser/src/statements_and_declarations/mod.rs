@@ -150,7 +150,6 @@ impl ASTNode for StatementOrDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		let start = reader.get_start();
 
 		// TODO assert possible_decorators are used. If they exist but item is not `Decorated`
@@ -161,9 +160,9 @@ impl ASTNode for StatementOrDeclaration {
 		let first_byte = reader.get_current().as_bytes().first().copied().unwrap_or(0);
 
 		match first_byte {
-			b'c' if reader.is_immediate_keyword_advance("const") => {
+			b'c' if reader.is_keyword_advance("const") => {
 				// Const can be either variable declaration or `const enum`
-				reader.skip_including_comments()?;
+
 				if reader.is_keyword("enum") {
 					let enum_declaration = EnumDeclaration::from_reader(reader)?;
 					crate::lexer::utilities::assert_type_annotations(
@@ -185,9 +184,9 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Variable(Box::new(declaration)))
 				}
 			}
-			b'l' if reader.is_immediate_keyword_advance("let") => {
+			b'l' if reader.is_keyword_advance("let") => {
 				warn_if_possible_decorators_unused("let", possible_decorators)?;
-				reader.skip_including_comments()?;
+
 				if reader.starts_with_expression_delimiter()
 					|| reader.get_current().starts_with('(')
 				{
@@ -203,19 +202,18 @@ impl ASTNode for StatementOrDeclaration {
 					.map(StatementOrDeclaration::Variable)
 				}
 			}
-			b'e' if reader.is_immediate_keyword("enum") => EnumDeclaration::from_reader(reader)
+			b'e' if reader.is_keyword("enum") => EnumDeclaration::from_reader(reader)
 				.map(Exportable::not_exported)
 				.map(|on| Decorated::new(possible_decorators, on))
 				.map(Box::new)
 				.map(StatementOrDeclaration::Enum),
-			b'c' if reader.is_immediate_keyword("class") => ClassDeclaration::from_reader(reader)
+			b'c' if reader.is_keyword("class") => ClassDeclaration::from_reader(reader)
 				.map(Exportable::not_exported)
 				.map(|on| Decorated::new(possible_decorators, on))
 				.map(Box::new)
 				.map(StatementOrDeclaration::Class),
 			// This can be a expression start
-			b'i' if reader.is_immediate_keyword_advance("interface") => {
-				reader.skip_including_comments()?;
+			b'i' if reader.is_keyword_advance("interface") => {
 				if reader.starts_with_expression_delimiter_or_open_bracket() {
 					expression_statement_after(reader, start, "interface")
 				} else {
@@ -230,8 +228,7 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Interface(item))
 				}
 			}
-			b't' if reader.is_immediate_keyword_advance("type") => {
-				reader.skip_including_comments()?;
+			b't' if reader.is_keyword_advance("type") => {
 				if reader.starts_with_expression_delimiter_or_open_bracket() {
 					expression_statement_after(reader, start, "type")
 				} else {
@@ -262,8 +259,8 @@ impl ASTNode for StatementOrDeclaration {
 			// async or function (generator, server, worker or test)
 			b'a' | b'f' | b'g' | b's' | b'w' | b't' if reader.starts_with_function_header() => {
 				let mut header = crate::functions::FunctionHeader::from_reader_initial(reader)?;
-				reader.skip_including_comments()?;
-				if reader.is_immediate_keyword("function") {
+
+				if reader.is_keyword("function") {
 					// `to_full` absorbs the function keyword
 					let header = header.to_full(reader)?;
 					let name: crate::StatementPosition =
@@ -298,15 +295,14 @@ impl ASTNode for StatementOrDeclaration {
 					}
 				}
 			}
-			b'e' if reader.is_immediate_keyword_advance("export") => {
+			b'e' if reader.is_keyword_advance("export") => {
 				let mut possible_inner_decorators = possible_decorators_from_reader(reader)?;
 				possible_decorators.append(&mut possible_inner_decorators);
 
-				reader.skip();
 				// TODO as match
-				if reader.is_immediate_keyword_advance("const") {
+				if reader.is_keyword_advance("const") {
 					// Const can be either variable declaration or `const enum`
-					reader.skip_including_comments()?;
+
 					if reader.is_operator("enum") {
 						let enum_declaration = EnumDeclaration::from_reader(reader)?;
 						crate::lexer::utilities::assert_type_annotations(
@@ -327,13 +323,13 @@ impl ASTNode for StatementOrDeclaration {
 						let declaration = Exportable::exported(declaration);
 						Ok(StatementOrDeclaration::Variable(Box::new(declaration)))
 					}
-				} else if reader.is_immediate_keyword("let") {
+				} else if reader.is_keyword("let") {
 					warn_if_possible_decorators_unused("let", possible_decorators)?;
 					VariableDeclaration::from_reader(reader)
 						.map(Exportable::exported)
 						.map(Box::new)
 						.map(StatementOrDeclaration::Variable)
-				} else if reader.is_immediate_keyword("var") {
+				} else if reader.is_keyword("var") {
 					warn_if_possible_decorators_unused("var", possible_decorators)?;
 					VarVariableStatement::from_reader(reader)
 						.map(Exportable::exported)
@@ -343,7 +339,7 @@ impl ASTNode for StatementOrDeclaration {
 						StatementFunction::from_reader(reader).map(Exportable::exported)?;
 					let item = Decorated::new(possible_decorators, function);
 					Ok(StatementOrDeclaration::Function(Box::new(item)))
-				} else if reader.is_immediate_keyword("enum") {
+				} else if reader.is_keyword("enum") {
 					let enum_declaration = EnumDeclaration::from_reader(reader)?;
 					crate::lexer::utilities::assert_type_annotations(
 						reader,
@@ -354,12 +350,12 @@ impl ASTNode for StatementOrDeclaration {
 						Exportable::not_exported(enum_declaration),
 					);
 					Ok(StatementOrDeclaration::Enum(Box::new(declaration)))
-				} else if reader.is_immediate_keyword("class") {
+				} else if reader.is_keyword("class") {
 					let declaration = ClassDeclaration::from_reader(reader)?;
 					let declaration =
 						Decorated::new(possible_decorators, Exportable::not_exported(declaration));
 					Ok(StatementOrDeclaration::Class(Box::new(declaration)))
-				} else if reader.is_immediate_keyword("interface") {
+				} else if reader.is_keyword("interface") {
 					let interface = InterfaceDeclaration::from_reader(reader)?;
 					crate::lexer::utilities::assert_type_annotations(
 						reader,
@@ -370,7 +366,7 @@ impl ASTNode for StatementOrDeclaration {
 					let item = Box::new(decorated);
 					Ok(StatementOrDeclaration::Interface(item))
 				} else {
-					if reader.is_immediate_keyword("type") {
+					if reader.is_keyword("type") {
 						let type_alias_result = reader.try_parse(TypeAlias::from_reader);
 						if let Ok(type_alias) = type_alias_result {
 							crate::lexer::utilities::assert_type_annotations(
@@ -388,11 +384,10 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Export(export))
 				}
 			}
-			b'i' if reader.is_immediate_keyword_advance("import") => {
+			b'i' if reader.is_keyword_advance("import") => {
 				// TODO could be parse initial keyword then continue
 				warn_if_possible_decorators_unused("import", possible_decorators)?;
 
-				reader.skip_including_comments()?;
 				let after = reader.get_current().as_bytes().first();
 
 				if let Some(b'.' | b'(') = after {
@@ -411,35 +406,33 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Import(Box::new(import)))
 				}
 			}
-			b'd' if reader.is_immediate_keyword_advance("declare") => {
+			b'd' if reader.is_keyword_advance("declare") => {
 				// TODO match
-				reader.skip();
-				if reader.is_immediate_keyword("let")
-					|| reader.is_immediate_keyword("const")
-					|| reader.is_immediate_keyword("var")
+
+				if reader.is_keyword("let")
+					|| reader.is_keyword("const")
+					|| reader.is_keyword("var")
 				{
 					let mut declare =
 						DeclareVariableDeclaration::from_reader_without_declare(reader)?;
 					// TODO pass these down
 					declare.decorators = possible_decorators;
 					Ok(StatementOrDeclaration::DeclareVariable(declare))
-				} else if reader.is_immediate_keyword("class") {
+				} else if reader.is_keyword("class") {
 					let mut class = ClassDeclaration::<StatementPosition>::from_reader(reader)?;
 					class.name.is_declare = true;
 					class.position.start = start.0;
 					let class = Exportable::not_exported(class);
 					let decorated = Decorated::new(possible_decorators, class);
 					Ok(StatementOrDeclaration::Class(Box::new(decorated)))
-				} else if reader.is_immediate_keyword("function")
-					|| reader.is_immediate_keyword("async")
-				{
+				} else if reader.is_keyword("function") || reader.is_keyword("async") {
 					let mut function = StatementFunction::from_reader(reader)?;
 					function.name.is_declare = true;
 					function.position.start = start.0;
 					let function = Exportable::not_exported(function);
 					let decorated = Decorated::new(possible_decorators, function);
 					Ok(StatementOrDeclaration::Function(Box::new(decorated)))
-				} else if reader.is_immediate_keyword("type") {
+				} else if reader.is_keyword("type") {
 					let mut alias = TypeAlias::from_reader(reader)?;
 					alias.name.is_declare = true;
 					alias.position.start = start.0;
@@ -449,7 +442,7 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::TypeAlias(item))
 				} else {
 					#[cfg(feature = "extras")]
-					if reader.is_immediate_keyword("namespace") {
+					if reader.is_keyword("namespace") {
 						let mut namespace =
 							crate::types::namespace::Namespace::from_reader(reader)?;
 						namespace.is_declare = true;
@@ -464,7 +457,7 @@ impl ASTNode for StatementOrDeclaration {
 					))
 				}
 			}
-			b'u' if reader.is_immediate_keyword_advance("using") => {
+			b'u' if reader.is_keyword_advance("using") => {
 				warn_if_possible_decorators_unused("using", possible_decorators)?;
 				if reader.starts_with_expression_delimiter_or_open_bracket() {
 					expression_statement_after(reader, start, "using")
@@ -473,10 +466,8 @@ impl ASTNode for StatementOrDeclaration {
 						.map(StatementOrDeclaration::UsingDeclaration)
 				}
 			}
-			b'a' if reader.is_immediate_keyword_advance("await") => {
-				reader.skip_including_comments()?;
-				if reader.is_immediate_keyword_advance("using") {
-					reader.skip_including_comments()?;
+			b'a' if reader.is_keyword_advance("await") => {
+				if reader.is_keyword_advance("using") {
 					if reader.starts_with_expression_delimiter_or_open_bracket() {
 						let expression =
 							crate::expressions::parse_after_await(reader, start, true)?;
@@ -487,7 +478,6 @@ impl ASTNode for StatementOrDeclaration {
 							.map(StatementOrDeclaration::UsingDeclaration)
 					}
 				} else if reader.is_operator_advance(":") {
-					reader.skip_including_comments()?;
 					let statement = Statement::from_reader(reader)?;
 					check_semi_colon(&statement.0, reader)?;
 					let position = start.union(statement.get_position());
@@ -500,37 +490,37 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Expression(expression))
 				}
 			}
-			b'i' if reader.is_immediate_keyword("if") => {
+			b'i' if reader.is_keyword("if") => {
 				warn_if_possible_decorators_unused("if", possible_decorators)?;
 				IfStatement::from_reader(reader).map(Box::new).map(Into::into)
 			}
-			b'f' if reader.is_immediate_keyword("for") => {
+			b'f' if reader.is_keyword("for") => {
 				warn_if_possible_decorators_unused("for", possible_decorators)?;
 				ForLoopStatement::from_reader(reader).map(Box::new).map(Into::into)
 			}
-			b's' if reader.is_immediate_keyword("switch") => {
+			b's' if reader.is_keyword("switch") => {
 				warn_if_possible_decorators_unused("switch", possible_decorators)?;
 				SwitchStatement::from_reader(reader).map(Into::into)
 			}
-			b'w' if reader.is_immediate_keyword("while") => {
+			b'w' if reader.is_keyword("while") => {
 				warn_if_possible_decorators_unused("while", possible_decorators)?;
 				WhileStatement::from_reader(reader).map(Into::into)
 			}
-			b'd' if reader.is_immediate_keyword("do") => {
+			b'd' if reader.is_keyword("do") => {
 				warn_if_possible_decorators_unused("do", possible_decorators)?;
 				DoWhileStatement::from_reader(reader).map(Into::into)
 			}
-			b't' if reader.is_immediate_keyword("try") => {
+			b't' if reader.is_keyword("try") => {
 				warn_if_possible_decorators_unused("try", possible_decorators)?;
 				TryCatchStatement::from_reader(reader).map(Box::new).map(Into::into)
 			}
-			b'v' if reader.is_immediate_keyword("var") => {
+			b'v' if reader.is_keyword("var") => {
 				warn_if_possible_decorators_unused("var", possible_decorators)?;
 				VarVariableStatement::from_reader(reader)
 					.map(Exportable::not_exported)
 					.map(StatementOrDeclaration::VarVariable)
 			}
-			b'w' if reader.is_immediate_keyword("with") => {
+			b'w' if reader.is_keyword("with") => {
 				warn_if_possible_decorators_unused("with", possible_decorators)?;
 				WithStatement::from_reader(reader).map(StatementOrDeclaration::WithStatement)
 			}
@@ -538,11 +528,11 @@ impl ASTNode for StatementOrDeclaration {
 				warn_if_possible_decorators_unused("block", possible_decorators)?;
 				Block::from_reader(reader).map(StatementOrDeclaration::Block)
 			}
-			b'd' if reader.is_immediate_keyword_advance("debugger") => {
+			b'd' if reader.is_keyword_advance("debugger") => {
 				warn_if_possible_decorators_unused("debugger", possible_decorators)?;
 				Ok(StatementOrDeclaration::Debugger(start.with_length("debugger".len())))
 			}
-			b'r' if reader.is_immediate_keyword_advance("return") => {
+			b'r' if reader.is_keyword_advance("return") => {
 				warn_if_possible_decorators_unused("return", possible_decorators)?;
 				if reader.is_semi_colon() {
 					Ok(StatementOrDeclaration::Return(ReturnStatement(
@@ -558,7 +548,7 @@ impl ASTNode for StatementOrDeclaration {
 					)))
 				}
 			}
-			b'b' if reader.is_immediate_keyword_advance("break") => {
+			b'b' if reader.is_keyword_advance("break") => {
 				warn_if_possible_decorators_unused("break", possible_decorators)?;
 				if reader.is_semi_colon() {
 					Ok(StatementOrDeclaration::Break(None, start.with_length("break".len())))
@@ -568,7 +558,7 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Break(Some(label), start.union(reader.get_end())))
 				}
 			}
-			b'c' if reader.is_immediate_keyword_advance("continue") => {
+			b'c' if reader.is_keyword_advance("continue") => {
 				warn_if_possible_decorators_unused("continue", possible_decorators)?;
 				if reader.is_semi_colon() {
 					// WIP fix
@@ -580,7 +570,7 @@ impl ASTNode for StatementOrDeclaration {
 					Ok(StatementOrDeclaration::Continue(Some(label), start.union(reader.get_end())))
 				}
 			}
-			b't' if reader.is_immediate_keyword_advance("throw") => {
+			b't' if reader.is_keyword_advance("throw") => {
 				warn_if_possible_decorators_unused("throw", possible_decorators)?;
 				let expression = MultipleExpression::from_reader(reader)?;
 				let position = start.union(expression.get_position());
@@ -627,7 +617,7 @@ impl ASTNode for StatementOrDeclaration {
 					let (_found, position) = crate::lexer::utilities::next_item(reader);
 					return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
 				} else if reader.get_options().features.interpolation_points
-					&& reader.is_immediate_keyword_advance(crate::marker::MARKER)
+					&& reader.is_keyword_advance(crate::marker::MARKER)
 				{
 					let position = start.with_length(0);
 					let marker_id = reader.new_partial_point_marker(position);
@@ -636,7 +626,7 @@ impl ASTNode for StatementOrDeclaration {
 
 				// TODO what about markers here?
 				#[cfg(feature = "extras")]
-				if reader.is_immediate_keyword("from") {
+				if reader.is_keyword("from") {
 					let reversed_import_result =
 						reader.try_parse(ImportDeclaration::from_reader_reversed);
 					if let Ok(reversed_import) = reversed_import_result {
@@ -646,7 +636,7 @@ impl ASTNode for StatementOrDeclaration {
 				}
 
 				#[cfg(feature = "full-typescript")]
-				if reader.is_immediate_keyword("namespace") {
+				if reader.is_keyword("namespace") {
 					warn_if_possible_decorators_unused("namespace", possible_decorators)?;
 					let namespace = crate::types::namespace::Namespace::from_reader(reader)?;
 
@@ -665,7 +655,6 @@ impl ASTNode for StatementOrDeclaration {
 					let position = expression.get_position();
 					let inner = expression.get_inner();
 					if let Ok((name, _pos)) = inner.as_identifier() {
-						reader.skip_including_comments()?;
 						let statement = Statement::from_reader(reader)?;
 						check_semi_colon(&statement.0, reader)?;
 						let position = start.union(statement.get_position());
@@ -893,7 +882,7 @@ impl ASTNode for Statement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// TEMP fix
 		let start = reader.get_start();
-		if reader.is_immediate_keyword_advance("let") {
+		if reader.is_keyword_advance("let") {
 			return expression_statement_after(reader, start, "let").map(Statement);
 		}
 

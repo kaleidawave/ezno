@@ -99,9 +99,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 	start: source_map::Start,
 	reader: &mut crate::Lexer,
 ) -> ParseResult<ExportDeclaration> {
-	reader.skip_including_comments()?;
-	if reader.is_immediate_keyword_advance("default") {
-		reader.skip_including_comments()?;
+	if reader.is_keyword_advance("default") {
 		let edge_case = reader.get_options().type_annotations.is_definition_file()
 			&& reader.starts_with_function_header();
 		// Always have == .d.ts file here
@@ -158,7 +156,6 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 
 		Ok(ExportDeclaration::ImportToExportAll { r#as, from, position, with })
 	} else if reader.is_operator_advance("{") {
-		reader.skip_including_comments()?;
 		let type_definitions_only = false;
 		let (parts, _) =
 			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
@@ -188,8 +185,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 	} else if reader.parse_type_annotations() && reader.is_keyword_advance("type") {
 		reader.expect_operator("{")?;
 		let type_definitions_only = true;
-		reader.skip_including_comments()?;
-		dbg!(reader.get_current_short());
+
 		let (parts, _) =
 			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
 

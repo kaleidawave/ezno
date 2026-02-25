@@ -68,7 +68,6 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 
 	// TODO also single line comments here
 	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
-		reader.skip_including_comments()?;
 		let just_type = reader.is_keyword_advance("type");
 
 		if U::PREFIX {
@@ -187,13 +186,12 @@ pub enum ImportExportName {
 impl ImportExportName {
 	// TODO remove Span return
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<(Self, Span)> {
-		reader.skip_including_comments()?;
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
 			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
 			Ok((ImportExportName::Quoted(content.into_owned(), quoting), position))
-		} else if reader.is_immediate_keyword_advance("default") {
+		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
 			let position = start.with_length("default".len());
 			Ok((ImportExportName::Reference("default".into()), position))
@@ -202,8 +200,7 @@ impl ImportExportName {
 			let marker = reader.new_partial_point_marker(position);
 			Ok((ImportExportName::Marker(marker), position))
 		} else {
-			let identifier =
-				reader.parse_immediate_identifier("import or export alias", false)?.into_owned();
+			let identifier = reader.parse_identifier("import or export alias", false)?.into_owned();
 			if reader.get_options().features.interpolation_points
 				&& identifier == crate::marker::MARKER
 			{
@@ -277,8 +274,6 @@ impl ImportLocation {
 		// 	ParseErrors::ExpectedStringLiteral { found: token.0 },
 		// 	token.1.with_length(0),
 		// ))
-
-		reader.skip();
 
 		let _start = reader.get_start();
 		let (content, quoting, _width) = reader.parse_string_literal()?;

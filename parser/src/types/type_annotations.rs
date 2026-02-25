@@ -472,7 +472,6 @@ impl TypeAnnotation {
 		parent_kind: TypeOperatorKind,
 	) -> ParseResult<Self> {
 		if reader.get_options().features.partial_syntax {
-			reader.skip();
 			let start = reader.get_start();
 			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
 				|| reader.starts_with_statement_or_declaration_on_new_line();
@@ -489,15 +488,7 @@ impl TypeAnnotation {
 
 		// Yes leading syntax is allowed sometimes
 		if let TypeOperatorKind::None = parent_kind {
-			reader.skip();
-			let found = reader.is_immediate_keyword_advance("|")
-				|| reader.is_immediate_keyword_advance("&");
-
-			if found {
-				reader.skip();
-			}
-		} else {
-			reader.skip();
+			let found = reader.is_keyword_advance("|") || reader.is_keyword_advance("&");
 		}
 
 		let start = reader.get_start();
@@ -525,16 +516,16 @@ impl TypeAnnotation {
 					}
 				}
 			}
-			Some(b't') if reader.is_immediate_keyword_advance("this") => {
+			Some(b't') if reader.is_keyword_advance("this") => {
 				TypeAnnotation::This(start.with_length(4))
 			}
-			Some(b't') if reader.is_immediate_keyword_advance("true") => {
+			Some(b't') if reader.is_keyword_advance("true") => {
 				TypeAnnotation::BooleanLiteral(true, start.with_length(4))
 			}
-			Some(b'f') if reader.is_immediate_keyword_advance("false") => {
+			Some(b'f') if reader.is_keyword_advance("false") => {
 				TypeAnnotation::BooleanLiteral(false, start.with_length(5))
 			}
-			Some(b'i') if reader.is_immediate_keyword_advance("infer") => {
+			Some(b'i') if reader.is_keyword_advance("infer") => {
 				let name = reader.parse_identifier("infer name", false)?.into_owned();
 				let (position, extends) = if reader.is_keyword_advance("extends") {
 					let extends = TypeAnnotation::from_reader_with_precedence(
@@ -548,35 +539,35 @@ impl TypeAnnotation {
 				};
 				TypeAnnotation::Infer { name, extends, position }
 			}
-			Some(b'a') if reader.is_immediate_keyword_advance("asserts") => {
+			Some(b'a') if reader.is_keyword_advance("asserts") => {
 				let predicate = TypeAnnotation::from_reader_with_precedence(reader, parent_kind)?;
 				let position = start.union(predicate.get_position());
 				TypeAnnotation::Asserts(Box::new(predicate), position)
 			}
-			Some(b't') if reader.is_immediate_keyword_advance("typeof") => {
+			Some(b't') if reader.is_keyword_advance("typeof") => {
 				let reference = VariableOrPropertyAccess::from_reader(reader)?;
 				let position = start.union(reference.get_position());
 				Self::TypeOf(Box::new(reference), position)
 			}
-			Some(b'r') if reader.is_immediate_keyword_advance("readonly") => {
+			Some(b'r') if reader.is_keyword_advance("readonly") => {
 				let readonly_type =
 					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 				let position = start.union(readonly_type.get_position());
 				TypeAnnotation::Readonly(Box::new(readonly_type), position)
 			}
-			Some(b'k') if reader.is_immediate_keyword_advance("keyof") => {
+			Some(b'k') if reader.is_keyword_advance("keyof") => {
 				let key_of_type =
 					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 				let position = start.union(key_of_type.get_position());
 				TypeAnnotation::KeyOf(Box::new(key_of_type), position)
 			}
-			Some(b'a') if reader.is_immediate_keyword_advance("abstract") => {
+			Some(b'a') if reader.is_keyword_advance("abstract") => {
 				let inner_type =
 					TypeAnnotation::from_reader_with_precedence(reader, TypeOperatorKind::Query)?;
 				let position = start.union(inner_type.get_position());
 				TypeAnnotation::Abstract(Box::new(inner_type), position)
 			}
-			Some(b'n') if reader.is_immediate_keyword_advance("new") => {
+			Some(b'n') if reader.is_keyword_advance("new") => {
 				let type_parameters = if reader.is_operator_advance("<") {
 					let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
 					Some(type_parameters)
@@ -594,33 +585,32 @@ impl TypeAnnotation {
 					return_type,
 				}
 			}
-			Some(b's') if reader.is_immediate_keyword_advance("string") => {
+			Some(b's') if reader.is_keyword_advance("string") => {
 				Self::CommonName(CommonTypes::String, start.with_length(6))
 			}
-			Some(b'n') if reader.is_immediate_keyword_advance("number") => {
+			Some(b'n') if reader.is_keyword_advance("number") => {
 				Self::CommonName(CommonTypes::Number, start.with_length(6))
 			}
-			Some(b'b') if reader.is_immediate_keyword_advance("boolean") => {
+			Some(b'b') if reader.is_keyword_advance("boolean") => {
 				Self::CommonName(CommonTypes::Boolean, start.with_length(7))
 			}
-			Some(b'a') if reader.is_immediate_keyword_advance("any") => {
+			Some(b'a') if reader.is_keyword_advance("any") => {
 				Self::CommonName(CommonTypes::Any, start.with_length(3))
 			}
-			Some(b'n') if reader.is_immediate_keyword_advance("null") => {
+			Some(b'n') if reader.is_keyword_advance("null") => {
 				Self::CommonName(CommonTypes::Null, start.with_length(4))
 			}
-			Some(b'u') if reader.is_immediate_keyword_advance("undefined") => {
+			Some(b'u') if reader.is_keyword_advance("undefined") => {
 				Self::CommonName(CommonTypes::Undefined, start.with_length(9))
 			}
-			Some(b'u') if reader.is_immediate_keyword_advance("unknown") => {
+			Some(b'u') if reader.is_keyword_advance("unknown") => {
 				Self::CommonName(CommonTypes::Unknown, start.with_length(7))
 			}
-			Some(b'n') if reader.is_immediate_keyword_advance("never") => {
+			Some(b'n') if reader.is_keyword_advance("never") => {
 				Self::CommonName(CommonTypes::Never, start.with_length(5))
 			}
-			Some(b'u') if reader.is_immediate_keyword_advance("unique") => {
+			Some(b'u') if reader.is_keyword_advance("unique") => {
 				reader.expect_keyword("symbol")?;
-				reader.skip();
 
 				#[cfg(feature = "extras")]
 				let name = if reader.get_options().extras.additional_type_annotations
@@ -671,7 +661,6 @@ impl TypeAnnotation {
 				let result = reader.try_parse(TypeAnnotationFunctionParameters::from_reader);
 
 				if let Ok(mut parameters) = result {
-					reader.skip_including_comments()?;
 					// TODO abstract
 					if !reader.starts_with_slice("=>")
 						&& parameters.rest_parameter.is_none()
@@ -743,21 +732,20 @@ impl TypeAnnotation {
 				Self::TemplateLiteral { parts, final_part, position }
 			}
 			_ => {
-				let name = reader.parse_immediate_identifier("type name", false)?.into_owned();
+				let name = reader.parse_identifier("type name", false)?.into_owned();
 				let mut position = start.with_length(name.len());
 
 				let mut name = TypeName { namespace: Vec::new(), name };
-				reader.skip();
-				while reader.is_immediate_operator_advance(".") {
+
+				while reader.is_operator_advance(".") {
 					let new_name = reader.parse_identifier("type name", false)?.into_owned();
 					let old = std::mem::replace(&mut name.name, new_name);
 					name.namespace.push(old);
 					position = start.union(reader.get_end());
-					reader.skip();
 				}
 
 				// Generics arguments:
-				if reader.is_immediate_operator_advance("<") {
+				if reader.is_operator_advance("<") {
 					let (generic_arguments, _) = bracketed_items_from_reader(reader, ">")?;
 					let end = reader.get_end();
 					Self::NameWithGenericArguments(name, generic_arguments, start.union(end))
@@ -780,11 +768,10 @@ impl TypeAnnotation {
 		};
 
 		// TODO duplicated
-		reader.skip();
 
 		// Array shorthand & indexing type references. Loops as number[][]
 		// unsure if index type can be looped
-		while reader.is_immediate_operator_advance("[") {
+		while reader.is_operator_advance("[") {
 			let start = reference.get_position();
 			if reader.is_operator_advance("]") {
 				let position = start.union(reader.get_end());
@@ -796,10 +783,9 @@ impl TypeAnnotation {
 				let position = start.union(end);
 				reference = Self::Index(Box::new(reference), Box::new(indexer), position);
 			}
-			reader.skip();
 		}
 
-		if reader.is_immediate_keyword_advance("is") {
+		if reader.is_keyword_advance("is") {
 			fn type_annotation_as_name(
 				reference: TypeAnnotation,
 			) -> Result<(IsItem, Span), TypeAnnotation> {
@@ -836,7 +822,7 @@ impl TypeAnnotation {
 			}
 		}
 
-		if reader.is_immediate_keyword("extends") {
+		if reader.is_keyword("extends") {
 			if let TypeOperatorKind::Query = parent_kind {
 				return Ok(reference);
 			}
@@ -960,7 +946,6 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		let mut rest_parameter = None;
 
 		loop {
-			reader.skip();
 			if reader.starts_with(')') {
 				break;
 			}

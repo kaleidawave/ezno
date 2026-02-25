@@ -203,7 +203,6 @@ impl ASTNode for ObjectLiteralMember {
 		}
 
 		let mut header = MethodHeader::from_reader(reader)?;
-		reader.skip_including_comments()?;
 		let key = if reader.get_current().starts_with(['<', '(', ':', '}', ',']) {
 			if let Ok(name) = header.into_property_key() {
 				let position = start.with_length(name.len());
@@ -216,7 +215,6 @@ impl ASTNode for ObjectLiteralMember {
 			PropertyKey::<crate::property_key::AlwaysPublic>::from_reader(reader)?
 		};
 
-		reader.skip_including_comments()?;
 		if reader.get_current().starts_with(['(', '<']) {
 			let method: ObjectLiteralMethod =
 				FunctionBase::from_reader_with_header_and_name(reader, header, key)?;
