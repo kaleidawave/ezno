@@ -108,6 +108,8 @@ result_unit_err = "allow"
 implicit_hasher = "allow"
 
 [package.metadata.commands]
+check-ws = "cargo check --workspace"
+
 parse-check = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.tsx --extras"
 parse-check-js = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.js"
 parse-ast = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.tsx --ast --extras"

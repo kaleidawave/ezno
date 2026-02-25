@@ -115,6 +115,7 @@ jobs:
   
   # TODO merge into tests
   test262:
+    needs: validity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -319,6 +320,7 @@ jobs:
         run: cargo clippy
 
   publish-ability:
+    needs: validity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
