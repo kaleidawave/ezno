@@ -23,9 +23,9 @@ impl ASTNode for IsExpression {
 
 	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		let start = reader.expect_keyword("is")?;
-		reader.expect('(')?;
+		reader.expect_chr('(')?;
 		let matcher = MultipleExpression::from_reader(reader)?;
-		reader.expect(')')?;
+		reader.expect_chr(')')?;
 		Self::from_reader_with_matcher(reader, start, Box::new(matcher))
 	}
 
@@ -56,7 +56,7 @@ impl IsExpression {
 		start: source_map::Start,
 		matcher: Box<MultipleExpression>,
 	) -> crate::ParseResult<Self> {
-		reader.expect('{')?;
+		reader.expect_chr('{')?;
 		let mut branches = Vec::new();
 		loop {
 			// ReturnType important here for
@@ -71,7 +71,7 @@ impl IsExpression {
 				break;
 			}
 			if let ExpressionOrBlock::Expression(..) = body {
-				reader.expect(',')?;
+				reader.expect_chr(',')?;
 			}
 			branches.push((type_annotation, body));
 		}

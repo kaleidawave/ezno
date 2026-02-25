@@ -101,7 +101,7 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub(crate) fn get_current(&self) -> &'a str {
-		&self.script[self.state.head as usize..]
+		unsafe { &self.script.get_unchecked(self.state.head as usize..) }
 	}
 
 	#[must_use]
@@ -127,23 +127,22 @@ impl<'a> Lexer<'a> {
 		self.state.blank_lines
 	}
 
-	pub(crate) fn skip_including_comments(&mut self) -> Result<(), ParseError> {
+	pub(crate) fn skip_including_comments(&mut self) {
 		while (self.state.head as usize) < self.script.len() {
-			let current = &self.script[self.state.head as usize..];
-			let Some(first_byte): Option<u8> = current.as_bytes().first().copied() else {
-				break;
-			};
+			let first_byte: u8 =
+				unsafe { *self.script.as_bytes().get_unchecked(self.state.head as usize) };
 			if is_whitespace_ascii(first_byte) {
 				self.state.head += 1;
 			} else if let b'\r' = first_byte {
 				self.state.head += 1;
-				if current.as_bytes()[1] != b'n' {
+				if !self.get_current().starts_with('\n') {
 					self.state.blank_lines += 1;
 				}
 			} else if let b'\n' = first_byte {
 				self.state.head += 1;
 				self.state.blank_lines += 1;
 			} else if first_byte >= 0x80 {
+				let current = self.get_current();
 				if current.starts_with('\u{00A0}') {
 					self.state.head += 2;
 				} else if current.starts_with(is_whitespace_char_three_bytes) {
@@ -157,42 +156,56 @@ impl<'a> Lexer<'a> {
 				} else {
 					break;
 				}
-			} else if let Some(rest) = current.strip_prefix("//") {
-				let idx = rest.find('\n').unwrap_or(rest.len());
-				self.state.head += 2 + idx as u32;
-				self.state.comment_lines += 1;
-
-				let _comment = &rest[..idx];
-			} else if let Some(rest) = current.strip_prefix("/*") {
-				let Some(idx) = rest.find("*/") else {
-					todo!();
-					// return ParseError::new(ParseErrors::UnexpectedEnd, position)
-				};
-				self.state.head += 4 + idx as u32;
-				let comment = &rest[..idx];
-				if comment.contains(NEW_LINE_CHARACTERS) {
+			} else if first_byte == b'/' {
+				let current = self.get_current();
+				if let Some(rest) = current.strip_prefix("//") {
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.state.head += 2 + idx as u32;
 					self.state.comment_lines += 1;
+
+					let _comment = &rest[..idx];
+				} else if let Some(rest) = current.strip_prefix("/*") {
+					let Some(idx) = rest.find("*/") else {
+						todo!();
+						// return ParseError::new(ParseErrors::UnexpectedEnd, position)
+					};
+					self.state.head += 4 + idx as u32;
+					let comment = &rest[..idx];
+					if comment.contains(NEW_LINE_CHARACTERS) {
+						self.state.comment_lines += 1;
+					}
+					// TODO short comment
+				} else {
+					break;
 				}
-				// TODO short comment
-			} else if let Some(rest) = current.strip_prefix("<!--") {
-				// TODO last was new line?
-				let idx = rest.find('\n').unwrap_or(rest.len());
-				self.state.comment_lines += 1;
+			} else if first_byte == b'<' {
+				let current = self.get_current();
+				if let Some(rest) = current.strip_prefix("<!--") {
+					// TODO last was new line?
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.state.comment_lines += 1;
 
-				self.state.head += 4 + idx as u32;
-				let _comment = &rest[..idx];
-			} else if let Some(rest) = current.strip_prefix("-->") {
-				// TODO last was new line?
-				let idx = rest.find('\n').unwrap_or(rest.len());
-				self.state.comment_lines += 1;
+					self.state.head += 4 + idx as u32;
+					let _comment = &rest[..idx];
+				} else {
+					break;
+				}
+			} else if first_byte == b'-' {
+				let current = self.get_current();
+				if let Some(rest) = current.strip_prefix("-->") {
+					// TODO last was new line?
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.state.comment_lines += 1;
 
-				self.state.head += 3 + idx as u32;
-				let _comment = &rest[..idx];
+					self.state.head += 3 + idx as u32;
+					let _comment = &rest[..idx];
+				} else {
+					break;
+				}
 			} else {
 				break;
 			}
 		}
-		Ok(())
 	}
 
 	pub(crate) fn is_keyword(&self, keyword: &str) -> bool {
@@ -212,7 +225,7 @@ impl<'a> Lexer<'a> {
 			self.state.blank_lines = 0;
 			self.state.comment_lines = 0;
 			self.state.head += keyword.len() as u32;
-			let todo = self.skip_including_comments();
+			self.skip_including_comments();
 			true
 		} else {
 			false
@@ -230,7 +243,7 @@ impl<'a> Lexer<'a> {
 			self.state.blank_lines = 0;
 			self.state.comment_lines = 0;
 			self.state.head += operator.len() as u32;
-			let todo = self.skip_including_comments();
+			self.skip_including_comments();
 		}
 		matches
 	}
@@ -240,7 +253,7 @@ impl<'a> Lexer<'a> {
 		if current.starts_with(chr) {
 			let start = source_map::Start(self.offset + self.state.head);
 			self.state.head += chr.len_utf8() as u32;
-			self.skip_including_comments()?;
+			self.skip_including_comments();
 			Ok(start)
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
@@ -252,12 +265,13 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub(crate) fn expect(&mut self, chr: char) -> Result<source_map::End, ParseError> {
+	pub(crate) fn expect_chr(&mut self, chr: char) -> Result<source_map::End, ParseError> {
 		let current = self.get_current();
 		if current.starts_with(chr) {
 			self.state.head += chr.len_utf8() as u32;
-			self.skip_including_comments()?;
-			Ok(source_map::End(self.offset + self.state.head))
+			let end = self.state.head;
+			self.skip_including_comments();
+			Ok(source_map::End(end))
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
 			let reason = ParseErrors::UnexpectedCharacter {
@@ -268,11 +282,27 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
+	/// Same as above, but do not advance as to lose any whitespace in the literal part of template literals
+	pub(crate) fn expect_closing_bracket(&mut self) -> Result<source_map::End, ParseError> {
+		if self.get_current().starts_with('}') {
+			self.state.head += 1;
+			// self.skip_including_comments();
+			Ok(source_map::End(self.state.head))
+		} else {
+			let position = self.get_start().with_length(1);
+			let reason = ParseErrors::UnexpectedCharacter {
+				expected: &['}'],
+				found: self.get_current().chars().next(),
+			};
+			Err(ParseError::new(reason, position))
+		}
+	}
+
 	pub(crate) fn expect_operator(&mut self, expected: &'static str) -> Result<(), ParseError> {
 		let current = self.get_current();
 		if current.starts_with(expected) {
 			self.state.head += expected.len() as u32;
-			self.skip_including_comments()?;
+			self.skip_including_comments();
 			Ok(())
 		} else {
 			let (found, position) = utilities::next_item(self);
@@ -289,7 +319,7 @@ impl<'a> Lexer<'a> {
 		if current.starts_with(expected) {
 			let start = source_map::Start(self.offset + self.state.head);
 			self.state.head += expected.len() as u32;
-			self.skip_including_comments()?;
+			self.skip_including_comments();
 			Ok(start)
 		} else {
 			let (found, position) = utilities::next_item(self);
@@ -394,7 +424,7 @@ impl<'a> Lexer<'a> {
 		self.state.blank_lines = 0;
 		self.state.comment_lines = 0;
 		self.state.head += count;
-		let todo = self.skip_including_comments();
+		self.skip_including_comments();
 	}
 
 	pub(crate) fn parse_identifier(
@@ -479,13 +509,13 @@ impl<'a> Lexer<'a> {
 		if let "\n" = until {
 			let idx = current.find(until).unwrap_or(current.len());
 			self.state.head += idx as u32;
-			let todo = self.skip_including_comments();
+			self.skip_including_comments();
 			Ok(&current[..idx])
 		} else {
 			let idx = current.find(until);
 			if let Some(idx) = idx {
 				self.state.head += (idx + until.len()) as u32;
-				let todo = self.skip_including_comments();
+				self.skip_including_comments();
 				// TODO temp fix
 				Ok(&current[..idx])
 			} else {
@@ -502,7 +532,7 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		if let Some((idx, until)) = current.match_indices(possibles).next() {
 			self.state.head += (idx + 1) as u32;
-			let todo = self.skip_including_comments();
+			self.skip_including_comments();
 			Ok((&current[..idx], until))
 		} else {
 			Err(())
@@ -516,7 +546,7 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		if let Some((idx, until)) = current.match_indices(possibles).next() {
 			self.state.head += idx as u32;
-			let todo = self.skip_including_comments();
+			self.skip_including_comments();
 			Ok((&current[..idx], until))
 		} else {
 			Err(())
@@ -672,7 +702,7 @@ impl<'a> Lexer<'a> {
 			))
 		} else {
 			self.state.head += regex_flags.len() as u32;
-			self.skip_including_comments()?;
+			self.skip_including_comments();
 			Ok((regex, regex_flags))
 		}
 	}

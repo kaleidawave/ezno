@@ -113,9 +113,9 @@ impl InterfaceDeclaration {
 			None
 		};
 
-		let _ = reader.expect('{')?;
+		let _ = reader.expect_chr('{')?;
 		let members = interface_members_from_reader(reader)?;
-		let position = start.union(reader.expect('}')?);
+		let position = start.union(reader.expect_chr('}')?);
 		Ok(InterfaceDeclaration {
 			name,
 			is_is_declare: false,
@@ -346,13 +346,13 @@ impl ASTNode for InterfaceMember {
 						let top = Expression::VariableReference(name, position);
 						let expression =
 							Expression::from_reader_after_first_expression(reader, 0, top)?;
-						let end = reader.expect(']')?;
+						let end = reader.expect_chr(']')?;
 						PropertyKey::Computed(Box::new(expression), start.union(end))
 					} else if reader.is_operator_advance(":") && header.is_no_modifiers() {
 						// Indexed type
 						let indexer_type = TypeAnnotation::from_reader(reader)?;
-						reader.expect(']')?;
-						reader.expect(':')?;
+						reader.expect_chr(']')?;
+						reader.expect_chr(':')?;
 						let return_type = TypeAnnotation::from_reader(reader)?;
 						let position = start.union(return_type.get_position());
 						return Ok(InterfaceMember::Indexer {
@@ -372,7 +372,7 @@ impl ASTNode for InterfaceMember {
 							None
 						};
 
-						reader.expect(']')?;
+						reader.expect_chr(']')?;
 						let optionality = if reader.is_operator_advance("?:") {
 							Optionality::Optional
 						} else if reader.is_operator_advance("-?:") {

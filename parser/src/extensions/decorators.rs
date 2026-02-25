@@ -42,7 +42,7 @@ impl ASTNode for Decorator {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// TODO modify position? or new
 		let _start = reader.get_start();
-		reader.expect('@')?;
+		reader.expect_chr('@')?;
 		let expression = if reader.is_keyword_advance("await") {
 			let start = reader.get_start();
 			let expression =

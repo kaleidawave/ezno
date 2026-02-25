@@ -24,7 +24,7 @@ impl ASTNode for EnumDeclaration {
 		let is_constant = reader.is_keyword_advance("const");
 		reader.expect_keyword("enum")?;
 		let name = reader.parse_identifier("enum name", true)?.into_owned();
-		reader.expect('{')?;
+		reader.expect_chr('{')?;
 		let mut members = Vec::new();
 		loop {
 			if reader.is_operator("}") {
@@ -43,7 +43,7 @@ impl ASTNode for EnumDeclaration {
 				reader.expect_semi_colon()?;
 			}
 		}
-		reader.expect('}')?;
+		reader.expect_chr('}')?;
 		let position = start.union(reader.get_end());
 		Ok(EnumDeclaration { is_constant, name, members, position })
 	}
@@ -121,7 +121,7 @@ impl ASTNode for EnumMember {
 				}
 				members.push(value);
 			}
-			let _end = reader.expect('}')?;
+			let _end = reader.expect_chr('}')?;
 			EnumMemberValue::ClassMembers(members)
 		} else {
 			EnumMemberValue::None

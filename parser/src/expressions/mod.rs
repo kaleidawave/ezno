@@ -337,7 +337,7 @@ impl Expression {
 						} else {
 							reader.advance(1);
 							let parenthesize_expression = MultipleExpression::from_reader(reader)?;
-							let end = reader.expect(')')?;
+							let end = reader.expect_chr(')')?;
 							Expression::Parenthesised(
 								Box::new(parenthesize_expression),
 								start.union(end),
@@ -685,7 +685,7 @@ impl Expression {
 						SuperReference::PropertyAccess(PropertyLike::Fixed(property))
 					} else if reader.is_operator_advance("[") {
 						let indexer = Expression::from_reader(reader)?;
-						reader.expect(']')?;
+						reader.expect_chr(']')?;
 						SuperReference::PropertyAccess(PropertyLike::Computed(Box::new(indexer)))
 					} else {
 						return Err(crate::lexer::utilities::expected_one_of_items(
@@ -823,7 +823,7 @@ impl Expression {
 				match result {
 					Ok(Break::Value(type_arguments)) => {
 						// TODO instantation here if expression delimeter
-						reader.expect('(')?;
+						reader.expect_chr('(')?;
 						let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
 						let position = top.get_position().union(reader.get_end());
 						top = Expression::FunctionCall {
@@ -971,17 +971,13 @@ impl Expression {
 				b'?' if reader.starts_with_slice("?.") => {
 					enum Out {
 						ConditionalDotNumber,
-						Err,
 					}
 
 					// TODO does this break precedence early returns
 					let out: Result<AfterFirst, Out> =
 						reader.try_parse(|reader: &mut crate::Lexer| -> Result<AfterFirst, Out> {
 							reader.advance(2);
-							let result = reader.skip_including_comments();
-							if result.is_err() {
-								Err(Out::Err)
-							} else if reader.starts_with('[') {
+							if reader.starts_with('[') {
 								Ok(AfterFirst::Index { is_optional: true })
 							} else if reader.get_current().starts_with(['<', '(']) {
 								Ok(AfterFirst::FunctionCall { is_optional: true })
@@ -998,8 +994,6 @@ impl Expression {
 					match out {
 						Ok(out) => out,
 						Err(Out::ConditionalDotNumber) => AfterFirst::ConditionalTernary,
-						// let next handle error
-						Err(Out::Err) => AfterFirst::PropertyAccess { is_optional: true },
 					}
 				}
 				b'(' => AfterFirst::FunctionCall { is_optional: false },
@@ -1197,7 +1191,7 @@ impl Expression {
 					reader.advance(".<".len() as u32);
 					let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
 					// TODO instantation here
-					reader.expect('(')?;
+					reader.expect_chr('(')?;
 					let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
 					let position = top.get_position().union(reader.get_end());
 					top = Expression::FunctionCall {
@@ -1218,7 +1212,7 @@ impl Expression {
 					// TODO differentiated between less than?
 					let type_arguments = if reader.is_operator_advance("<") {
 						let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
-						reader.expect('(')?;
+						reader.expect_chr('(')?;
 						Some(type_arguments)
 					} else {
 						reader.advance(1);
@@ -1363,7 +1357,7 @@ impl Expression {
 					reader.advance(1);
 
 					let indexer = MultipleExpression::from_reader(reader)?;
-					let end = reader.expect(']')?;
+					let end = reader.expect_chr(']')?;
 					let position = top.get_position().union(end);
 					top = Expression::Index {
 						position,
@@ -1446,7 +1440,7 @@ impl Expression {
 					let condition_position = top.get_position();
 					let condition = Box::new(top);
 					let truthy_result = Box::new(Self::from_reader(reader)?);
-					reader.expect(':')?;
+					reader.expect_chr(':')?;
 					let falsy_result = Self::from_reader(reader)?;
 					let position = condition_position.union(falsy_result.get_position());
 					let falsy_result = Box::new(falsy_result);
@@ -2307,17 +2301,17 @@ pub(crate) fn parse_after_import(
 	if reader.is_operator_advance(".") {
 		#[cfg(feature = "extras")]
 		if reader.is_keyword_advance("source") {
-			reader.expect('(')?;
+			reader.expect_chr('(')?;
 			let path = Box::new(Expression::from_reader(reader)?);
 			let _ = reader.is_operator_advance(",");
-			reader.expect(')')?;
+			reader.expect_chr(')')?;
 			let position = start.union(reader.get_end());
 			Ok(ImportExpression::ImportSource { path, position })
 		} else if reader.is_keyword_advance("defer") {
-			reader.expect('(')?;
+			reader.expect_chr('(')?;
 			let path = Box::new(Expression::from_reader(reader)?);
 			let _ = reader.is_operator_advance(",");
-			reader.expect(')')?;
+			reader.expect_chr(')')?;
 			let position = start.union(reader.get_end());
 			Ok(ImportExpression::ImportDefer { path, position })
 		} else if reader.is_keyword_advance("meta") {
@@ -2353,7 +2347,7 @@ pub(crate) fn parse_after_import(
 			None
 		};
 		let _ = reader.is_operator_advance(",");
-		let end = reader.expect(')')?;
+		let end = reader.expect_chr(')')?;
 		Ok(ImportExpression::DynamicImport {
 			path: Box::new(path),
 			options,

@@ -133,13 +133,13 @@ impl ASTNode for ForLoopCondition {
 			initialiser: Option<ForLoopStatementInitialiser>,
 			start: source_map::Start,
 		) -> ParseResult<ForLoopCondition> {
-			let _semi_colon_one = reader.expect(';')?;
+			let _semi_colon_one = reader.expect_chr(';')?;
 			let condition = if reader.is_operator(";") {
 				None
 			} else {
 				Some(MultipleExpression::from_reader(reader).map(Box::new)?)
 			};
-			let _semi_colon_two = reader.expect(';')?;
+			let _semi_colon_two = reader.expect_chr(';')?;
 			let afterthought = if reader.is_operator(")") {
 				None
 			} else {
@@ -243,13 +243,13 @@ impl ASTNode for ForLoopCondition {
 					let initialiser = Some(ForLoopStatementInitialiser::VarVariableStatement(
 						variable_declaration,
 					));
-					let _semi_colon_one = reader.expect(';')?;
+					let _semi_colon_one = reader.expect_chr(';')?;
 					let condition = if reader.is_operator(";") {
 						None
 					} else {
 						Some(MultipleExpression::from_reader(reader).map(Box::new)?)
 					};
-					let _semi_colon_two = reader.expect(';')?;
+					let _semi_colon_two = reader.expect_chr(';')?;
 					let afterthought = if reader.is_operator(")") {
 						None
 					} else {
@@ -351,7 +351,7 @@ impl ASTNode for ForLoopCondition {
 			}
 		}
 
-		reader.expect('(')?;
+		reader.expect_chr('(')?;
 
 		let start = reader.get_start();
 
@@ -448,7 +448,7 @@ impl ASTNode for ForLoopCondition {
 				parse_statements(reader, initialiser, start)?
 			}
 		};
-		reader.expect(')')?;
+		reader.expect_chr(')')?;
 		Ok(condition)
 	}
 

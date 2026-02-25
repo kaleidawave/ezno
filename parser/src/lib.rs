@@ -129,7 +129,7 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 		// head: 0
 
 		let mut reader = crate::Lexer::new(&script, offset, options);
-		reader.skip_including_comments()?;
+		reader.skip_including_comments();
 
 		let node = Self::from_reader(&mut reader)?;
 

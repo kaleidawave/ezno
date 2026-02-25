@@ -41,7 +41,7 @@ impl ASTNode for Block {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_start('{')?;
 		let items = statements_and_declarations_from_reader(reader)?;
-		let position = start.union(reader.expect('}')?);
+		let position = start.union(reader.expect_chr('}')?);
 		Ok(Block(items, position))
 	}
 

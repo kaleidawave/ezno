@@ -27,10 +27,10 @@ impl ASTNode for SwitchStatement {
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("switch")?;
 
-		reader.expect('(')?;
+		reader.expect_chr('(')?;
 		let case = MultipleExpression::from_reader(reader).map(Box::new)?;
-		reader.expect(')')?;
-		reader.expect('{')?;
+		reader.expect_chr(')')?;
+		reader.expect_chr('{')?;
 
 		let mut branches = Vec::new();
 		loop {
@@ -38,10 +38,10 @@ impl ASTNode for SwitchStatement {
 				break;
 			} else if reader.is_operator_advance("case") {
 				let case = MultipleExpression::from_reader(reader).map(Box::new)?;
-				reader.expect(':')?;
+				reader.expect_chr(':')?;
 				Some(case)
 			} else if reader.is_operator_advance("default") {
-				reader.expect(':')?;
+				reader.expect_chr(':')?;
 				None
 			} else if reader.is_one_of(&["//", "/*"]).is_some() {
 				let is_multiline = reader.starts_with_slice("/*");

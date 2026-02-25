@@ -134,7 +134,7 @@ impl ASTNode for AnnotationWithBinder {
 		let start = reader.get_start();
 		let name = if reader.after_identifier().starts_with(':') {
 			let name = reader.parse_identifier("type annotation binder", false)?.into_owned();
-			let _ = reader.expect(':')?;
+			let _ = reader.expect_chr(':')?;
 			Some(name)
 		} else {
 			None
@@ -488,7 +488,7 @@ impl TypeAnnotation {
 
 		// Yes leading syntax is allowed sometimes
 		if let TypeOperatorKind::None = parent_kind {
-			let found = reader.is_keyword_advance("|") || reader.is_keyword_advance("&");
+			let _ = reader.is_keyword_advance("|") || reader.is_keyword_advance("&");
 		}
 
 		let start = reader.get_start();
@@ -692,7 +692,7 @@ impl TypeAnnotation {
 				} else {
 					reader.advance(1);
 					let type_annotation = Self::from_reader(reader)?;
-					let position = start.union(reader.expect(')')?);
+					let position = start.union(reader.expect_chr(')')?);
 					Self::ParenthesizedReference(type_annotation.into(), position)
 				}
 			}
@@ -712,7 +712,7 @@ impl TypeAnnotation {
 			Some(b'{') => {
 				reader.advance(1);
 				let members = crate::types::interface::interface_members_from_reader(reader)?;
-				let position = start.union(reader.expect('}')?);
+				let position = start.union(reader.expect_chr('}')?);
 				Self::ObjectLiteral(members, position)
 			}
 			Some(b'[') => {
@@ -779,7 +779,7 @@ impl TypeAnnotation {
 			} else {
 				// E.g type allTypes = Person[keyof Person];
 				let indexer = TypeAnnotation::from_reader(reader)?;
-				let end = reader.expect(']')?;
+				let end = reader.expect_chr(']')?;
 				let position = start.union(end);
 				reference = Self::Index(Box::new(reference), Box::new(indexer), position);
 			}
@@ -911,7 +911,7 @@ impl TypeAnnotation {
 			}
 			reader.advance(1);
 			let lhs = TypeAnnotation::from_reader(reader)?;
-			reader.expect(':')?;
+			reader.expect_chr(':')?;
 			let rhs = TypeAnnotation::from_reader(reader)?;
 			let position = reference.get_position().union(rhs.get_position());
 			Ok(TypeAnnotation::Conditional {
@@ -961,7 +961,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				// 	None
 				// };
 
-				let _ = reader.expect(':');
+				let _ = reader.expect_chr(':');
 				let type_annotation = TypeAnnotation::from_reader(reader)?;
 
 				let position = start.union(type_annotation.get_position());
@@ -1015,7 +1015,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				break;
 			}
 		}
-		let end = reader.expect(')')?;
+		let end = reader.expect_chr(')')?;
 		let position = start.union(end);
 		Ok(TypeAnnotationFunctionParameters { parameters, rest_parameter, position })
 	}

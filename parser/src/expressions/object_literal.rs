@@ -160,7 +160,7 @@ impl ASTNode for ObjectLiteral {
 				break;
 			}
 		}
-		let end = reader.expect('}')?;
+		let end = reader.expect_chr('}')?;
 		Ok(ObjectLiteral { members, position: start.union(end) })
 	}
 
@@ -235,7 +235,7 @@ impl ASTNode for ObjectLiteralMember {
 				let assignment = if reader.is_operator_advance("=") {
 					true
 				} else {
-					reader.expect(':')?;
+					reader.expect_chr(':')?;
 					false
 				};
 				let value = Expression::from_reader(reader)?;

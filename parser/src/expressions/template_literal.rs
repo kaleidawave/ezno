@@ -85,7 +85,7 @@ pub fn parse_template_literal<T: ASTNode>(
 		if current.starts_with("${") {
 			reader.advance(2);
 			let expression = T::from_reader(reader)?;
-			reader.expect('}')?;
+			reader.expect_closing_bracket()?;
 			parts.push((std::mem::take(&mut last_part).into_owned(), expression));
 		} else {
 			let mut buf = std::borrow::Cow::Borrowed("");
@@ -124,7 +124,6 @@ pub fn parse_template_literal<T: ASTNode>(
 							}
 						}
 					} else {
-						eprintln!("Expected end");
 						return Err(ParseError::new(
 							ParseErrors::InvalidStringLiteral,
 							start.with_length(idx),

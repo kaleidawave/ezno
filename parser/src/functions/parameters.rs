@@ -227,16 +227,12 @@ where
 					Some(Box::new(SpreadParameter { name, type_annotation, position }));
 				break;
 			} else if parameters.is_empty() && reader.is_keyword_advance("this") {
-				// Some(Token(_, start)) = reader.conditional_next(|tok| {
-				// options.type_annotations
-				// 	&& reader.expect(TSXToken::Colon)?;
-				reader.expect(':')?;
+				reader.expect_chr(':')?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
 				this_type = Some(ThisParameter { constraint: Box::new(constraint), position });
 			} else if parameters.is_empty() && reader.is_keyword_advance("super") {
-				reader.expect(':')?;
-				// reader.expect(TSXToken::Colon)?;
+				reader.expect_chr(':')?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
 				super_type = Some(SuperParameter { constraint: Box::new(constraint), position });
@@ -319,7 +315,7 @@ where
 				break;
 			}
 		}
-		let close = reader.expect(')')?;
+		let close = reader.expect_chr(')')?;
 		let leading = L::try_make(this_type, super_type)?;
 		let position = start.union(close);
 		Ok(FunctionParameters { leading, parameters, rest_parameter, position })

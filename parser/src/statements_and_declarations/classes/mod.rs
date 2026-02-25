@@ -59,7 +59,7 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 			None
 		};
 
-		reader.expect('{')?;
+		reader.expect_chr('{')?;
 
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {
@@ -77,7 +77,7 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 			members.push(value);
 		}
 
-		let end = reader.expect('}')?;
+		let end = reader.expect_chr('}')?;
 		let position = start.union(end);
 
 		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })

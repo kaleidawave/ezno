@@ -117,7 +117,7 @@ impl ASTNode for JSXElement {
 					start.with_length(closing_tag_name.len() + 2),
 				));
 			}
-			let end = reader.expect('>')?;
+			let end = reader.expect_chr('>')?;
 			return Ok(JSXElement {
 				tag_name,
 				attributes,
@@ -129,7 +129,7 @@ impl ASTNode for JSXElement {
 		let children = jsx_children_from_reader(reader)?;
 		if reader.is_operator_advance("</") {
 			let closing_tag_name = reader.parse_identifier("JSX closing tag", false)?;
-			let end = reader.expect('>')?;
+			let end = reader.expect_chr('>')?;
 			if closing_tag_name != tag_name {
 				return Err(ParseError::new(
 					crate::ParseErrors::ClosingTagDoesNotMatch {
@@ -220,7 +220,7 @@ impl ASTNode for JSXAttribute {
 			let start = reader.get_start();
 			if reader.is_operator_advance("...") {
 				let expression = Expression::from_reader(reader)?;
-				let end = reader.expect('}')?;
+				let end = reader.expect_chr('}')?;
 				Ok(JSXAttribute::Spread(expression, start.union(end)))
 			} else {
 				let expression = Expression::from_reader(reader)?;
@@ -255,7 +255,7 @@ impl ASTNode for JSXAttribute {
 				let start = reader.get_start();
 				if reader.is_operator_advance("{") {
 					let expression = Expression::from_reader(reader)?;
-					let end = reader.expect('}')?;
+					let end = reader.expect_chr('}')?;
 					Ok(JSXAttribute::Dynamic(key, Box::new(expression), start.union(end)))
 				} else if reader.get_options().jsx.unwrap().attributes_as_expressions {
 					// Precedence important, we want to break before >
@@ -485,7 +485,7 @@ impl ASTNode for JSXNode {
 				}
 			} else {
 				let expression = ExpressionOrSpreadExpression::from_reader(reader)?;
-				let end = reader.expect('}')?;
+				let end = reader.expect_chr('}')?;
 				let position = start.union(end);
 				Ok(JSXNode::InterpolatedExpression(Box::new(expression), position))
 			}

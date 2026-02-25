@@ -131,7 +131,6 @@ test262-statistics = "sqlite-tool statistics test262/out/results.db results perc
 investigate-test262 = "sqlite-tool sample test262/out/results.db results --where 'parser_out LIKE \\'Expected%\\'' --pick 5"
 
 spectra-dev = "spectra-options test checker/specification/specification.md 'cargo r -p ezno-checker --example runner -q -- --interactive --rpc'"
-spectra-dev2 = "spectra-options test checker/specification/private_hmm.md 'cargo r -p ezno-checker --example runner -q -- --interactive --rpc'"
 private-check = "cargo r -p ezno-checker --example private_check"
 private-ast = "cargo r -p ezno-parser --example private_ast"
 

@@ -143,7 +143,7 @@ impl ASTNode for VariableField {
 				let start = reader.get_start();
 				let class_name =
 					reader.parse_identifier("class name in destructuring label", true)?;
-				let _ = reader.expect('{')?;
+				let _ = reader.expect_chr('{')?;
 				let (members, spread) = bracketed_items_from_reader(reader, "}")?;
 				return Ok(Self::ObjectDestructuring {
 					class_name: Some(class_name.into_owned()),

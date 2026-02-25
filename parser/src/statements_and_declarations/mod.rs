@@ -241,7 +241,7 @@ impl ASTNode for StatementOrDeclaration {
 						} else {
 							None
 						};
-						reader.expect('=')?;
+						reader.expect_chr('=')?;
 						let references = crate::types::TypeAnnotation::from_reader(reader)?;
 						let position = start.union(references.get_position());
 						TypeAlias { name, parameters, references, position }

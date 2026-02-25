@@ -105,10 +105,10 @@ impl ASTNode for ClassMember {
 		if reader.starts_with('[') && reader.after_identifier_offset(1).starts_with(':') {
 			reader.advance(1);
 			let name = reader.parse_identifier("class indexer", false)?.into_owned();
-			reader.expect(':')?;
+			reader.expect_chr(':')?;
 			let indexer_type = TypeAnnotation::from_reader(reader)?;
-			reader.expect(']')?;
-			reader.expect(':')?;
+			reader.expect_chr(']')?;
+			reader.expect_chr(':')?;
 			let return_type = TypeAnnotation::from_reader(reader)?;
 			return Ok(ClassMember::Indexer {
 				name,

@@ -150,7 +150,7 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 			}
 		} else if reader.is_operator_advance("[") {
 			let expression = Expression::from_reader(reader)?;
-			let end = reader.expect(']')?;
+			let end = reader.expect_chr(']')?;
 			Ok(Self::Computed(Box::new(expression), start.union(end)))
 		} else {
 			let (name, position, private) = U::parse_identifier(reader)?;
