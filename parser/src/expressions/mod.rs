@@ -248,7 +248,6 @@ impl Expression {
 					position,
 				});
 			}
-		} else {
 		}
 
 		let start = reader.get_start();
@@ -723,10 +722,7 @@ impl Expression {
 					} else {
 						let position = start.with_length(name.len());
 						let is_arrow_function =
-							crate::lexer::utilities::trim_whitespace_not_newlines(
-								reader.get_current(),
-							)
-							.starts_with("=>");
+							reader.last_was_from_new_line() == 0 && reader.is_operator("=>");
 						if is_arrow_function
 							&& AssociativityDirection::RightToLeft
 								.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
@@ -800,52 +796,6 @@ impl Expression {
 
 		let mut top = first_expression;
 		while !reader.is_finished() {
-			// Do this before `.skip` call as `<` needs to be immediate
-			if reader.parse_type_annotations() && reader.starts_with('<') {
-				enum Break<T> {
-					Break,
-					Value(T),
-				}
-
-				let result: ParseResult<Break<_>> =
-					reader.try_parse(|reader: &mut crate::Lexer<'_>| {
-						if AssociativityDirection::LeftToRight
-							.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
-						{
-							Ok(Break::Break)
-						} else {
-							reader.advance("<".len() as u32);
-							let (value, _) = bracketed_items_from_reader(reader, ">")?;
-							Ok(Break::Value(value))
-						}
-					});
-
-				match result {
-					Ok(Break::Value(type_arguments)) => {
-						// TODO instantation here if expression delimeter
-						reader.expect_chr('(')?;
-						let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
-						let position = top.get_position().union(reader.get_end());
-						top = Expression::FunctionCall {
-							function: Box::new(top),
-							type_arguments: Some(type_arguments),
-							arguments,
-							position,
-							is_optional: false,
-						};
-						continue;
-					}
-					Ok(Break::Break) => {
-						return Ok(top);
-					}
-					_ => {}
-				}
-			}
-
-			// reader.skip();
-
-			// TODO if not returning and comments, then we want to build the comments up.
-
 			let first = reader.get_current().as_bytes().first().copied().unwrap_or(0);
 			let next = match first {
 				b'}' | b']' | b')' | b';' => AfterFirst::Exit,
@@ -1097,6 +1047,83 @@ impl Expression {
 						operator,
 						position,
 					};
+				}
+				AfterFirst::BinaryOperator(BinaryOperator::LessThan)
+					if reader.parse_type_annotations() && !reader.last_was_whitespace() =>
+				{
+					enum Break<T> {
+						Break,
+						Value(T),
+					}
+
+					let result: ParseResult<Break<_>> =
+						reader.try_parse(|reader: &mut crate::Lexer<'_>| {
+							if AssociativityDirection::LeftToRight
+								.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
+							{
+								Ok(Break::Break)
+							} else {
+								reader.advance("<".len() as u32);
+								let (value, _) = bracketed_items_from_reader(reader, ">")?;
+								Ok(Break::Value(value))
+							}
+						});
+
+					match result {
+						Ok(Break::Value(type_arguments)) => {
+							// TODO instantation here if expression delimeter
+							reader.expect_chr('(')?;
+							let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
+							let position = top.get_position().union(reader.get_end());
+							top = Expression::FunctionCall {
+								function: Box::new(top),
+								type_arguments: Some(type_arguments),
+								arguments,
+								position,
+								is_optional: false,
+							};
+							continue;
+						}
+						Ok(Break::Break) => {
+							return Ok(top);
+						}
+						Err(_) => {
+							let operator = BinaryOperator::LessThan;
+							if operator
+								.associativity_direction()
+								.should_return(return_precedence, operator.precedence())
+							{
+								return Ok(top);
+							}
+
+							let operator_len = operator.to_str().len();
+							reader.advance(operator_len as u32);
+
+							#[cfg(feature = "extras")]
+							if !reader.get_options().extras.extra_operators
+								&& operator.is_non_standard()
+							{
+								let position =
+									source_map::Start(reader.get_end().0).with_length(operator_len);
+								return Err(ParseError::new(
+									ParseErrors::NonStandardSyntaxUsedWithoutEnabled {
+										syntax: operator.to_str(),
+									},
+									position,
+								));
+							}
+
+							let rhs =
+								Self::from_reader_with_precedence(reader, operator.precedence())?;
+
+							top = Expression::BinaryOperation {
+								position: top.get_position().union(rhs.get_position()),
+								lhs: Box::new(top),
+								operator,
+								rhs: Box::new(rhs),
+							};
+						}
+					}
 				}
 				AfterFirst::BinaryOperator(operator) => {
 					if operator

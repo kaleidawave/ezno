@@ -165,16 +165,17 @@ impl<'a> Lexer<'a> {
 
 					let _comment = &rest[..idx];
 				} else if let Some(rest) = current.strip_prefix("/*") {
-					let Some(idx) = rest.find("*/") else {
-						todo!();
+					if let Some(idx) = rest.find("*/") {
+						self.state.head += 4 + idx as u32;
+						let comment = &rest[..idx];
+						if comment.contains(NEW_LINE_CHARACTERS) {
+							self.state.comment_lines += 1;
+						}
 						// return ParseError::new(ParseErrors::UnexpectedEnd, position)
-					};
-					self.state.head += 4 + idx as u32;
-					let comment = &rest[..idx];
-					if comment.contains(NEW_LINE_CHARACTERS) {
-						self.state.comment_lines += 1;
+					} else {
+						// TODO error
+						self.state.head += current.len() as u32;
 					}
-					// TODO short comment
 				} else {
 					break;
 				}
@@ -205,6 +206,15 @@ impl<'a> Lexer<'a> {
 			} else {
 				break;
 			}
+		}
+	}
+
+	/// TODO wip
+	pub(crate) fn last_was_whitespace(&self) -> bool {
+		if let Some(before) = self.script.get(..self.state.head as usize) {
+			before.ends_with(char::is_whitespace)
+		} else {
+			false
 		}
 	}
 
@@ -868,18 +878,6 @@ pub(crate) mod utilities {
 			}
 		}
 		0
-	}
-
-	pub(crate) fn trim_whitespace_not_newlines(on: &str) -> &str {
-		let chars = on.char_indices();
-		let mut idx = 0;
-		for (at, chr) in chars {
-			idx = at;
-			if !chr.is_whitespace() || chr == '\n' {
-				break;
-			}
-		}
-		&on[idx..]
 	}
 
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
