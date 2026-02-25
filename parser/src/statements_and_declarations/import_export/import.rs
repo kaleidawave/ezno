@@ -46,34 +46,7 @@ impl ASTNode for ImportDeclaration {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 		let out = import_specifier_and_parts_from_reader(reader)?;
-
-		// If not `import "./side_effect.js"`
-		if out.items.is_some() || out.default.is_some() {
-			reader.expect_keyword("from")?;
-		}
-
-		let from = ImportLocation::from_reader(reader)?;
-
-		let with = reader
-			.is_operator_advance("with")
-			.then(|| ObjectLiteral::from_reader(reader))
-			.transpose()?;
-
-		let end = reader.get_end();
-
-		Ok(ImportDeclaration {
-			default: out.default,
-			items: out.items,
-			#[cfg(feature = "full-typescript")]
-			is_type_annotation_import_only: out.is_type_annotation_import_only,
-			#[cfg(feature = "extras")]
-			is_deferred: out.is_deferred,
-			from,
-			with,
-			position: start.union(end),
-			#[cfg(feature = "extras")]
-			reversed: false,
-		})
+		Self::from_reader_with_parts(reader, start, out)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -161,6 +134,40 @@ impl ImportDeclaration {
 			reversed: true,
 		})
 	}
+
+	pub(crate) fn from_reader_with_parts(
+		reader: &mut crate::Lexer,
+		start: source_map::Start,
+		parts: PartsResult,
+	) -> ParseResult<Self> {
+		// If not `import "./side_effect.js"`
+		if parts.items.is_some() || parts.default.is_some() {
+			reader.expect_keyword("from")?;
+		}
+
+		let from = ImportLocation::from_reader(reader)?;
+
+		let with = reader
+			.is_operator_advance("with")
+			.then(|| ObjectLiteral::from_reader(reader))
+			.transpose()?;
+
+		let end = reader.get_end();
+
+		Ok(ImportDeclaration {
+			default: parts.default,
+			items: parts.items,
+			#[cfg(feature = "full-typescript")]
+			is_type_annotation_import_only: parts.is_type_annotation_import_only,
+			#[cfg(feature = "extras")]
+			is_deferred: parts.is_deferred,
+			from,
+			with,
+			position: start.union(end),
+			#[cfg(feature = "extras")]
+			reversed: false,
+		})
+	}
 }
 
 pub(crate) struct PartsResult {
@@ -176,17 +183,33 @@ pub(crate) fn import_specifier_and_parts_from_reader(
 	reader: &mut crate::Lexer,
 ) -> ParseResult<PartsResult> {
 	reader.expect_keyword("import")?;
+	import_specifier_and_parts_from_reader_without_import(reader)
+}
 
+pub(crate) fn import_specifier_and_parts_from_reader_without_import(
+	reader: &mut crate::Lexer,
+) -> ParseResult<PartsResult> {
+	let start = reader.get_start();
 	#[cfg(feature = "extras")]
 	let is_deferred = reader.is_operator_advance("defer");
 
 	let is_type_annotation_import_only = reader.is_operator_advance("type");
 
-	// TODO temp
-
-	reader.skip();
+	reader.skip_including_comments()?;
 	let is_identifier =
 		reader.get_current().starts_with(crate::lexer::utilities::is_identifier_continutation);
+
+	#[cfg(feature = "extras")]
+	if is_deferred && !is_type_annotation_import_only && reader.is_immediate_keyword("from") {
+		// TODO WIP
+		return Ok(PartsResult {
+			#[cfg(feature = "extras")]
+			is_deferred: false,
+			is_type_annotation_import_only,
+			default: Some(VariableIdentifier::Standard("defer".to_owned(), start.with_length(5))),
+			items: ImportedItems::Parts(None),
+		});
+	}
 
 	let default = if is_identifier {
 		let default_identifier = VariableIdentifier::from_reader(reader)?;

@@ -1,6 +1,5 @@
 use crate::{
-	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, WithComment,
-	derive_ASTNode,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, derive_ASTNode,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
 	property_key::AlwaysPublic,
 	visiting::Visitable,
@@ -24,7 +23,7 @@ pub enum ObjectLiteralMember {
 	Spread(Expression, Span),
 	Shorthand(String, Span),
 	Property {
-		key: WithComment<PropertyKey<AlwaysPublic>>,
+		key: PropertyKey<AlwaysPublic>,
 		/// Makes object destructuring syntax a subset of object literal syntax
 		assignment: bool,
 		value: Expression,
@@ -78,13 +77,13 @@ const OBJECT_LITERAL_METHOD_TYPE: &str = r"
 	export interface ObjectLiteralMethod extends FunctionBase {
 		header: MethodHeader,
 		body: Block,
-		name: WithComment<PropertyKey<AlwaysPublic>>,
+		name: PropertyKey<AlwaysPublic>,
 		parameters: FunctionParameters<ThisParameter | null, null>
 	}
 ";
 
 impl FunctionBased for ObjectLiteralMethodBase {
-	type Name = WithComment<PropertyKey<AlwaysPublic>>;
+	type Name = PropertyKey<AlwaysPublic>;
 	type Header = MethodHeader;
 	type Body = Block;
 	type LeadingParameter = Option<ThisParameter>;
@@ -97,8 +96,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 		// // TODO not great
 		// let start = reader.peek().unwrap().1;
 		// Ok((
-		// 	(Some(start), MethodHeader::from_reader(reader)),
-		// 	WithComment::from_reader(reader)?,
+		// 	(Some(start), MethodHeader::from_reader(reader)?),
 		// ))
 	}
 
@@ -134,11 +132,7 @@ impl FunctionBased for ObjectLiteralMethodBase {
 	}
 
 	fn get_name(name: &Self::Name) -> Option<&str> {
-		if let PropertyKey::Identifier(name, ..) = name.get_ast_ref() {
-			Some(name.as_str())
-		} else {
-			None
-		}
+		if let PropertyKey::Identifier(name, ..) = name { Some(name.as_str()) } else { None }
 	}
 }
 
@@ -159,7 +153,10 @@ impl ASTNode for ObjectLiteral {
 
 			members.push(member);
 
-			if !reader.is_operator_advance(",") && !is_comment {
+			if is_comment || reader.starts_with_slice("/*") || reader.starts_with_slice("//") {
+				continue;
+			}
+			if !reader.is_operator_advance(",") {
 				break;
 			}
 		}
@@ -205,32 +202,28 @@ impl ASTNode for ObjectLiteralMember {
 			return Ok(Self::Spread(expression, position));
 		}
 
-		let mut header = MethodHeader::from_reader(reader);
-		reader.skip();
-		let key = if reader.get_current().starts_with(['<', '(', ':', '}']) {
+		let mut header = MethodHeader::from_reader(reader)?;
+		reader.skip_including_comments()?;
+		let key = if reader.get_current().starts_with(['<', '(', ':', '}', ',']) {
 			if let Ok(name) = header.into_property_key() {
 				let position = start.with_length(name.len());
 				let privacy = crate::property_key::AlwaysPublic;
-				let key = crate::property_key::PropertyKey::Identifier(
-					name.to_owned(),
-					position,
-					privacy,
-				);
-				WithComment::None(key)
+				crate::property_key::PropertyKey::Identifier(name.to_owned(), position, privacy)
 			} else {
 				todo!("error")
 			}
 		} else {
-			WithComment::<PropertyKey<crate::property_key::AlwaysPublic>>::from_reader(reader)?
+			PropertyKey::<crate::property_key::AlwaysPublic>::from_reader(reader)?
 		};
 
+		reader.skip_including_comments()?;
 		if reader.get_current().starts_with(['(', '<']) {
 			let method: ObjectLiteralMethod =
 				FunctionBase::from_reader_with_header_and_name(reader, header, key)?;
 			Ok(Self::Method(Box::new(method)))
 		} else if header.is_no_modifiers() {
 			if reader.get_current().starts_with([',', '}']) {
-				if let PropertyKey::Identifier(name, position, _) = key.get_ast() {
+				if let PropertyKey::Identifier(name, position, _) = key {
 					Ok(Self::Shorthand(name, position))
 				} else {
 					let found = reader.get_current().chars().next();

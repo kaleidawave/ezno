@@ -21,7 +21,6 @@ fn do_fuzz(data: &str) -> Corpus {
 		type_definition_files,
 		&|_path: &std::path::Path| Some(input.to_owned()),
 		options,
-		(),
 		None,
 	);
 

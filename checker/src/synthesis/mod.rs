@@ -61,8 +61,12 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 		options: Self::ParseOptions,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
-		<parser::Module as parser::ASTNode>::from_string(string, options)
-			.map_err(|err| (err, source_id))
+		let result =
+			<parser::Module as parser::ASTNode>::from_string_with_options(string, options, 0);
+		match result {
+			Ok((node, _state)) => Ok(node),
+			Err(err) => Err((err, source_id)),
+		}
 	}
 
 	fn definition_module_from_string(
@@ -75,8 +79,12 @@ impl crate::ASTImplementation for EznoParser {
 			..Default::default()
 		};
 
-		<parser::Module as parser::ASTNode>::from_string(string, options)
-			.map_err(|err| (err, source_id))
+		let result =
+			<parser::Module as parser::ASTNode>::from_string_with_options(string, options, 0);
+		match result {
+			Ok((node, _state)) => Ok(node),
+			Err(err) => Err((err, source_id)),
+		}
 	}
 
 	fn synthesise_module<T: crate::ReadFromFS>(
@@ -274,6 +282,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 				PropertyKey::Type(TypeId::ANY_TYPE)
 			}
 		}
+		ParserPropertyKey::BigIntLiteral(_, _) => todo!(),
 	}
 }
 

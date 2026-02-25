@@ -1,6 +1,6 @@
 use crate::{
 	ASTNode, ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span,
-	StatementPosition, TypeAnnotation, TypeParameter, WithComment, bracketed_items_from_reader,
+	StatementPosition, TypeAnnotation, TypeParameter, bracketed_items_from_reader,
 	bracketed_items_to_string, derive_ASTNode, property_key::PublicOrPrivate,
 };
 
@@ -22,7 +22,7 @@ pub struct InterfaceDeclaration {
 	pub type_parameters: Option<Vec<TypeParameter>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
-	pub members: Vec<WithComment<Decorated<InterfaceMember>>>,
+	pub members: Vec<Decorated<InterfaceMember>>,
 	pub position: Span,
 }
 
@@ -42,44 +42,7 @@ impl ASTNode for InterfaceDeclaration {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("interface")?;
-
-		// #[cfg(feature = "extras")]
-		// let is_nominal = reader
-		// 	.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
-		// 	.is_some();
-
-		let name = StatementPosition::from_reader(reader)?;
-		let type_parameters = if reader.is_operator_advance("<") {
-			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
-			Some(params)
-		} else {
-			None
-		};
-
-		let extends = if reader.is_keyword_advance("extends") {
-			let type_annotation = TypeAnnotation::from_reader(reader)?;
-			let mut extends = vec![type_annotation];
-			while reader.is_operator_advance(",") {
-				extends.push(TypeAnnotation::from_reader(reader)?);
-			}
-			Some(extends)
-		} else {
-			None
-		};
-
-		let _ = reader.expect('{')?;
-		let members = interface_members_from_reader(reader)?;
-		let position = start.union(reader.expect('}')?);
-		Ok(InterfaceDeclaration {
-			name,
-			is_is_declare: false,
-			// #[cfg(feature = "extras")]
-			// is_nominal,
-			type_parameters,
-			extends,
-			members,
-			position,
-		})
+		InterfaceDeclaration::from_reader_after_keyword(reader, start)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -123,6 +86,44 @@ impl ASTNode for InterfaceDeclaration {
 			options.add_indent(local.depth, buf);
 			buf.push('}');
 		}
+	}
+}
+
+impl InterfaceDeclaration {
+	pub fn from_reader_after_keyword(
+		reader: &mut crate::Lexer,
+		start: source_map::Start,
+	) -> ParseResult<Self> {
+		let name = StatementPosition::from_reader(reader)?;
+		let type_parameters = if reader.is_operator_advance("<") {
+			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
+			Some(params)
+		} else {
+			None
+		};
+
+		let extends = if reader.is_keyword_advance("extends") {
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
+			let mut extends = vec![type_annotation];
+			while reader.is_operator_advance(",") {
+				extends.push(TypeAnnotation::from_reader(reader)?);
+			}
+			Some(extends)
+		} else {
+			None
+		};
+
+		let _ = reader.expect('{')?;
+		let members = interface_members_from_reader(reader)?;
+		let position = start.union(reader.expect('}')?);
+		Ok(InterfaceDeclaration {
+			name,
+			is_is_declare: false,
+			type_parameters,
+			extends,
+			members,
+			position,
+		})
 	}
 }
 
@@ -307,7 +308,7 @@ impl ASTNode for InterfaceMember {
 			Ok(InterfaceMember::Comment(content, is_multiline, position))
 		} else {
 			let start = reader.get_start();
-			let mut header = MethodHeader::from_reader(reader);
+			let mut header = MethodHeader::from_reader(reader)?;
 
 			// We do not use `PropertyKey::from_reader` to handle a case with type annotation
 			reader.skip();
@@ -626,14 +627,14 @@ impl ASTNode for InterfaceMember {
 
 pub(crate) fn interface_members_from_reader(
 	reader: &mut crate::Lexer,
-) -> ParseResult<Vec<WithComment<Decorated<InterfaceMember>>>> {
+) -> ParseResult<Vec<Decorated<InterfaceMember>>> {
 	let mut members = Vec::new();
 	loop {
 		reader.skip();
 		if reader.is_operator("}") {
 			break;
 		}
-		let decorated_member = WithComment::from_reader(reader)?;
+		let decorated_member = ASTNode::from_reader(reader)?;
 
 		if reader.is_operator("}") {
 			members.push(decorated_member);

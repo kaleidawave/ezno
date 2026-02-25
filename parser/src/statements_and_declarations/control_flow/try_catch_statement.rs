@@ -1,12 +1,11 @@
 use crate::{
-	ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField, WithComment,
-	derive_ASTNode,
+	ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField, derive_ASTNode,
 };
 use source_map::Span;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]
-pub type ExceptionVarField = WithComment<VariableField>;
+pub type ExceptionVarField = VariableField;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -35,22 +34,24 @@ impl ASTNode for TryCatchStatement {
 		if reader.is_keyword_advance("catch") {
 			// state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::Catch);
 
+			reader.skip_including_comments()?;
 			// Optional exception variable field `catch (e)`
-			if reader.is_operator_advance("(") {
-				let variable_field = WithComment::<VariableField>::from_reader(reader)?;
+			if reader.is_immediate_operator_advance("(") {
+				let variable_field = VariableField::from_reader(reader)?;
 
+				reader.skip_including_comments()?;
 				// Optional type reference `catch (e: type)`
-				let exception_var_type: Option<TypeAnnotation> = if reader.is_operator_advance(":")
-				{
-					let annotation = TypeAnnotation::from_reader(reader)?;
-					crate::lexer::utilities::assert_type_annotations(
-						reader,
-						annotation.get_position(),
-					)?;
-					Some(annotation)
-				} else {
-					None
-				};
+				let exception_var_type: Option<TypeAnnotation> =
+					if reader.is_immediate_operator_advance(":") {
+						let annotation = TypeAnnotation::from_reader(reader)?;
+						crate::lexer::utilities::assert_type_annotations(
+							reader,
+							annotation.get_position(),
+						)?;
+						Some(annotation)
+					} else {
+						None
+					};
 				exception_var = Some((variable_field, exception_var_type));
 
 				reader.expect(')')?;

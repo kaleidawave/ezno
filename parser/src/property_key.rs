@@ -7,7 +7,8 @@ use source_map::Span;
 use std::fmt::Debug;
 use temporary_annex::Annex;
 
-use crate::{ASTNode, Expression, ParseResult, numbers::NumberRepresentation};
+use crate::numbers::{BigIntRepresentation, NumberRepresentation};
+use crate::{ASTNode, Expression, ParseResult};
 
 pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;
@@ -86,6 +87,8 @@ pub enum PropertyKey<T: PropertyKeyKind> {
 	Identifier(String, Span, T),
 	StringLiteral(String, Quoting, Span),
 	NumberLiteral(NumberRepresentation, Span),
+	// proposal (pls not)
+	BigIntLiteral(BigIntRepresentation, Span),
 	/// Includes anything in the `[...]` maybe a symbol
 	Computed(Box<Expression>, Span),
 }
@@ -100,7 +103,7 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 
 	pub fn as_str(&self) -> Option<&str> {
 		match self {
-			Self::Identifier(item, _, _) | Self::StringLiteral(item, _, _) => Some(item),
+			Self::Identifier(item, ..) | Self::StringLiteral(item, ..) => Some(item),
 			_ => None,
 		}
 	}
@@ -109,10 +112,12 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
 		match self {
-			PropertyKey::Identifier(name, _, _) | PropertyKey::StringLiteral(name, _, _) => {
+			PropertyKey::Identifier(name, ..) | PropertyKey::StringLiteral(name, ..) => {
 				name == other
 			}
-			PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => false,
+			PropertyKey::BigIntLiteral(..)
+			| PropertyKey::NumberLiteral(..)
+			| PropertyKey::Computed(..) => false,
 		}
 	}
 }
@@ -131,10 +136,17 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		} else if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
-			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
-				Ok(Self::NumberLiteral(value, position))
-			} else {
-				Err(crate::ParseError::new(crate::ParseErrors::BigIntNotAllowedHere, position))
+			match value {
+				crate::numbers::ParsedNumberLiteral::Number(value) => {
+					Ok(Self::NumberLiteral(value, position))
+				}
+				// reader.get_options().extras.big_int_object_keys
+				crate::numbers::ParsedNumberLiteral::BigInt(value) => Ok(Self::BigIntLiteral(
+					BigIntRepresentation { source: value.to_owned() },
+					position,
+				)), // _ => {
+				    // 	Err(crate::ParseError::new(crate::ParseErrors::BigIntNotAllowedHere, position))
+				    // }
 			}
 		} else if reader.is_operator_advance("[") {
 			let expression = Expression::from_reader(reader)?;
@@ -155,6 +167,7 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		match self {
 			Self::Identifier(ident, _pos, _) => buf.push_str(ident.as_str()),
 			Self::NumberLiteral(number, _) => buf.push_str(&number.to_string()),
+			Self::BigIntLiteral(number, _) => buf.push_str(&number.source),
 			Self::StringLiteral(string, quoting, _) => {
 				buf.push(quoting.as_char());
 				buf.push_str(string.as_str());

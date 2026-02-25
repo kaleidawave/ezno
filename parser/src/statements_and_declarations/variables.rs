@@ -4,7 +4,7 @@ use visitable_derive::Visitable;
 
 /// re-export
 pub use crate::VariableField;
-use crate::{ASTNode, ParseError, ParseResult, Span, WithComment, derive_ASTNode};
+use crate::{ASTNode, ParseError, ParseResult, Span, derive_ASTNode};
 use crate::{Expression, TypeAnnotation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,7 +45,7 @@ impl VariableKeyword {
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct VariableDeclarationItem {
-	pub name: WithComment<VariableField>,
+	pub name: VariableField,
 	pub type_annotation: Option<TypeAnnotation>,
 	/// `const` declarations require this to be some but it is an error during parsing
 	pub expression: Option<Expression>,
@@ -58,13 +58,15 @@ impl ASTNode for VariableDeclarationItem {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let name = WithComment::<VariableField>::from_reader(reader)?;
+		let name = VariableField::from_reader(reader)?;
 		let mut position = name.get_position();
 		// if TExpr::allow_definite_assignment_assertions() {
 		// TODO
 		if true {
 			let _ = reader.is_operator_advance("!");
 		}
+
+		reader.skip_including_comments()?; // TODO temp
 
 		let type_annotation = if reader.is_operator_advance(":") {
 			let annotation = TypeAnnotation::from_reader(reader)?;
@@ -74,6 +76,9 @@ impl ASTNode for VariableDeclarationItem {
 		} else {
 			None
 		};
+
+		reader.skip_including_comments()?; // TODO temp
+
 		let expression = if reader.is_operator_advance("=") {
 			let expression = Expression::from_reader(reader)?;
 			position = position.union(expression.get_position());
@@ -201,13 +206,13 @@ impl VariableDeclaration {
 				if let VariableDeclarationKeyword::Const = kind {
 					return Err(crate::ParseError::new(
 						crate::ParseErrors::ConstDeclarationRequiresValue,
-						value.name.get_ast_ref().get_position(),
+						value.name.get_position(),
 					));
 				}
-				if !matches!(value.name.get_ast_ref(), VariableField::Name(_)) {
+				if !matches!(value.name, VariableField::Name(_)) {
 					return Err(crate::ParseError::new(
 						crate::ParseErrors::DestructuringRequiresValue,
-						value.name.get_ast_ref().get_position(),
+						value.name.get_position(),
 					));
 				}
 			}
@@ -264,12 +269,10 @@ impl ASTNode for VarVariableStatement {
 		let mut declarations = Vec::new();
 		loop {
 			let value = VariableDeclarationItem::from_reader(reader)?;
-			if value.expression.is_none()
-				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
-			{
+			if value.expression.is_none() && !matches!(value.name, crate::VariableField::Name(_)) {
 				return Err(crate::ParseError::new(
 					crate::ParseErrors::DestructuringRequiresValue,
-					value.name.get_ast_ref().get_position(),
+					value.name.get_position(),
 				));
 			}
 			declarations.push(value);

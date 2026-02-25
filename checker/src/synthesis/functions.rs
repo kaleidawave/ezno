@@ -3,7 +3,7 @@
 use iterator_endiate::EndiateIteratorExt;
 use parser::{
 	ASTNode, Block, FunctionBased, Span, SpreadDestructuringField, TypeAnnotation, TypeParameter,
-	VariableField, VariableIdentifier, WithComment,
+	VariableField, VariableIdentifier,
 	expressions::ExpressionOrBlock,
 	functions::{LeadingParameter, ParameterData},
 };
@@ -22,10 +22,9 @@ use crate::{
 	},
 };
 
+// TODO comment_as_type_annotation
 use super::{
-	synthesise_block,
-	type_annotations::{comment_as_type_annotation, synthesise_type_annotation},
-	variables::register_variable,
+	synthesise_block, type_annotations::synthesise_type_annotation, variables::register_variable,
 };
 
 impl<U: FunctionBased + 'static> SynthesisableFunction<super::EznoParser>
@@ -255,14 +254,13 @@ pub(super) fn synthesise_type_annotation_function_parameters<T: crate::ReadFromF
 			let name = parameter
 				.name
 				.as_ref()
-				.map(WithComment::get_ast_ref)
 				.map_or_else(|| format!("parameter{idx}"), get_parameter_name);
 
 			let ty = checking_data.types.new_function_parameter(parameter_constraint, id, &name);
 
 			if let Some(name) = &parameter.name {
 				register_variable(
-					name.get_ast_ref(),
+					name,
 					environment,
 					checking_data,
 					VariableRegisterArguments {
@@ -363,19 +361,19 @@ fn synthesise_function_parameters<
 				.map(|reference| synthesise_type_annotation(reference, environment, checking_data))
 				.or_else(|| {
 					// See comments-as-type-annotation
-					if let WithComment::PostfixComment(_item, possible_declaration, position) =
-						&parameter.name
-					{
-						comment_as_type_annotation(
-							possible_declaration,
-							&position.with_source(environment.get_source()),
-							environment,
-							checking_data,
-						)
-						.map(|(ty, _pos)| ty)
-					} else {
-						None
-					}
+					// if let WithComment::PostfixComment(_item, possible_declaration, position) =
+					// 	&parameter.name
+					// {
+					// 	comment_as_type_annotation(
+					// 		possible_declaration,
+					// 		&position.with_source(environment.get_source()),
+					// 		environment,
+					// 		checking_data,
+					// 	)
+					// 	.map(|(ty, _pos)| ty)
+					// } else {
+					None
+					// }
 				})
 				.or_else(|| {
 					// Try use expected type
@@ -395,7 +393,7 @@ fn synthesise_function_parameters<
 
 			let id =
 				crate::VariableId(environment.get_source(), parameter.name.get_position().start);
-			let name = variable_field_to_string(parameter.name.get_ast_ref());
+			let name = variable_field_to_string(&parameter.name);
 			let ty = checking_data.types.new_function_parameter(parameter_constraint, id, &name);
 
 			let (optional, variable_ty) = match &parameter.additionally {
@@ -414,7 +412,7 @@ fn synthesise_function_parameters<
 			};
 
 			register_variable(
-				parameter.name.get_ast_ref(),
+				&parameter.name,
 				environment,
 				checking_data,
 				VariableRegisterArguments {
@@ -509,7 +507,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 		VariableField::ArrayDestructuring { members, spread, .. } => {
 			let mut buf = String::from("[");
 			for (not_at_end, member) in members.iter().nendiate() {
-				match member.get_ast_ref() {
+				match member {
 					parser::ArrayDestructuringField::Name(name, ..) => {
 						buf.push_str(&variable_field_to_string(name));
 					}
@@ -532,7 +530,7 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 		VariableField::ObjectDestructuring { members, spread, .. } => {
 			let mut buf = String::from("{");
 			for (not_at_end, item) in members.iter().nendiate() {
-				match item.get_ast_ref() {
+				match item {
 					parser::ObjectDestructuringField::Name(name, ..) => {
 						if let VariableIdentifier::Standard(name, ..) = name {
 							buf.push_str(name);
@@ -556,9 +554,10 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 								// TODO maybe could do better here?
 								buf.push_str("[...]");
 							}
+							parser::PropertyKey::BigIntLiteral(_, _) => todo!(),
 						}
 						buf.push_str(": ");
-						buf.push_str(&variable_field_to_string(name.get_ast_ref()));
+						buf.push_str(&variable_field_to_string(name));
 					}
 				}
 				if not_at_end {
@@ -683,7 +682,7 @@ pub(super) fn synthesise_shape<T: crate::ReadFromFS, B: parser::FunctionBased>(
 						};
 
 						SynthesisedParameter {
-							name: variable_field_to_string(parameter.name.get_ast_ref()),
+							name: variable_field_to_string(&parameter.name),
 							is_optional,
 							ty,
 							position: parameter.position.with_source(environment.get_source()),

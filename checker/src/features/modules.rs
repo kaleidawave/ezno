@@ -89,6 +89,7 @@ impl Exported {
 }
 
 /// After a syntax error
+#[derive(Debug)]
 pub struct InvalidModule;
 
 /// The result of synthesising a module
@@ -126,9 +127,9 @@ pub fn import_items<
 		return;
 	}
 
-	let exports = import_file(partial_import_path, environment, checking_data);
+	let file = import_file(partial_import_path, environment, checking_data);
 
-	if let Err(ref err) = exports {
+	if let Err(ref err) = file {
 		checking_data.diagnostics_container.add_error(
 			crate::diagnostics::TypeCheckError::CannotOpenFile {
 				file: err.clone(),
@@ -148,7 +149,7 @@ pub fn import_items<
 	let current_source = environment.get_source();
 
 	if let Some((default_name, position)) = default_import {
-		if let Ok(Ok(ref exports)) = exports {
+		if let Ok(Ok(ref exports)) = file {
 			if let Some(item) = &exports.default {
 				let id = crate::VariableId(current_source, position.start);
 				let v = VariableOrImport::ConstantImport {
@@ -200,7 +201,7 @@ pub fn import_items<
 		ImportKind::Parts(parts) => {
 			for part in parts {
 				// Here in nested because want to type variables as error otherwise
-				if let Ok(Ok(ref exports)) = exports {
+				if let Ok(Ok(ref exports)) = file {
 					crate::utilities::notify!("{:?}", part);
 					let (exported_variable, exported_type) =
 						exports.get_export(part.value, type_only);
@@ -258,7 +259,6 @@ pub fn import_items<
 								.position
 								.with_source(environment.get_source()),
 						};
-						crate::utilities::notify!("{:?}", part.r#as.to_owned());
 						let existing = environment.variables.insert(part.r#as.to_owned(), v);
 						if let Some(existing) = existing {
 							checking_data.diagnostics_container.add_error(
@@ -283,11 +283,14 @@ pub fn import_items<
 							);
 						}
 
-						if also_export
-							&& let Scope::Module { ref mut exported, .. } =
+						if also_export {
+							if let Scope::Module { ref mut exported, .. } =
 								environment.context_type.scope
-						{
-							exported.named.insert(part.r#as.to_owned(), (variable, mutability));
+							{
+								exported.named.insert(part.r#as.to_owned(), (variable, mutability));
+							} else {
+								crate::utilities::notify!("SHOULD NOT BE HERE");
+							}
 						}
 					}
 
@@ -317,7 +320,7 @@ pub fn import_items<
 			}
 		}
 		ImportKind::All { under, position } => {
-			let value = if let Ok(Ok(ref exports)) = exports {
+			let value = if let Ok(Ok(ref exports)) = file {
 				let import_object = crate::Type::SpecialObject(Box::new(
 					crate::features::objects::SpecialObject::Import(exports.clone()),
 				));
@@ -341,7 +344,7 @@ pub fn import_items<
 			);
 		}
 		ImportKind::Everything => {
-			if let Ok(Ok(ref exports)) = exports {
+			if let Ok(Ok(ref exports)) = file {
 				for (name, (variable, mutability)) in exports.named.iter() {
 					// TODO are variables put into scope?
 					if let Scope::Module { ref mut exported, .. } = environment.context_type.scope {
@@ -369,10 +372,7 @@ pub fn import_file<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	) -> Option<Result<&'a SynthesisedModule<A::OwnedModule>, A::ParseError>> {
 		let existing = checking_data.modules.files.get_source_at_path(full_importer);
 		if let Some(existing) = existing {
-			let existing_synthesised = checking_data
-				.modules
-				.synthesised_modules
-				.get(&existing);
+			let existing_synthesised = checking_data.modules.synthesised_modules.get(&existing);
 			if let Some(existing) = existing_synthesised {
 				Some(Ok(existing))
 			} else {

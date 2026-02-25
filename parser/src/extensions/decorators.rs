@@ -43,11 +43,47 @@ impl ASTNode for Decorator {
 		// TODO modify position? or new
 		let _start = reader.get_start();
 		reader.expect('@')?;
-		let expression = Expression::from_reader_with_precedence(
-			reader,
-			crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE - 1,
-		)?;
-		// TODO check valid here?
+		reader.skip_including_comments()?;
+		let expression = if reader.is_immediate_keyword_advance("await") {
+			let start = reader.get_start();
+			let expression =
+				Expression::VariableReference("await".to_owned(), start.with_length(5));
+			reader.skip_including_comments()?;
+			if reader.is_immediate_operator_advance("()") {
+				Expression::FunctionCall {
+					function: Box::new(expression),
+					type_arguments: None,
+					arguments: Vec::new(),
+					position: start.union(reader.get_end()),
+					is_optional: false,
+				}
+			} else {
+				expression
+			}
+		} else if reader.is_immediate_keyword_advance("yield") {
+			let start = reader.get_start();
+			let expression =
+				Expression::VariableReference("yield".to_owned(), start.with_length(5));
+			reader.skip_including_comments()?;
+			if reader.is_immediate_operator_advance("()") {
+				Expression::FunctionCall {
+					function: Box::new(expression),
+					type_arguments: None,
+					arguments: Vec::new(),
+					position: start.union(reader.get_end()),
+					is_optional: false,
+				}
+			} else {
+				expression
+			}
+		} else {
+			// TODO check valid here?
+			let expression = Expression::from_reader_with_precedence(
+				reader,
+				crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE - 1,
+			)?;
+			expression
+		};
 		Ok(Self(expression))
 	}
 

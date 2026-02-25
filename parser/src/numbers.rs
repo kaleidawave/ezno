@@ -330,12 +330,12 @@ mod tests {
 /// FUTURE Cow
 #[derive(Debug, Clone)]
 #[apply(crate::derive_ASTNode!)]
-pub struct BigInt {
+pub struct BigIntRepresentation {
 	/// This can contain prefix information etc
 	pub source: String,
 }
 
-impl BigInt {
+impl BigIntRepresentation {
 	#[must_use]
 	pub fn radix(&self) -> u32 {
 		let s = self.source.chars().nth(1);

@@ -5,8 +5,7 @@ use ezno_parser::source_map::{Nullable, SourceId, Span};
 use ezno_parser::visiting::{self, VisitOptions, Visitors};
 use ezno_parser::{
 	ASTNode, Expression, ExpressionPosition, Module, StatementOrDeclaration, StatementPosition,
-	ToStringOptions, VariableField, VariableIdentifier, WithComment, ast, expressions::operators,
-	functions,
+	ToStringOptions, VariableField, VariableIdentifier, ast, expressions::operators, functions,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -161,7 +160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					StatementOrDeclaration::DeclareVariable(declare_variable) => {
 						for declaration in &declare_variable.declarations {
 							declare_lets.push((
-								declaration.name.get_ast_ref().clone(),
+								declaration.name.clone(),
 								declaration.type_annotation.clone(),
 							));
 						}
@@ -242,7 +241,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 					.into_iter()
 					.map(|(name, type_annotation)| functions::Parameter {
 						visibility: (),
-						name: WithComment::None(name),
+						name,
 						type_annotation,
 						additionally: None,
 						position,

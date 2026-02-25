@@ -9,13 +9,16 @@ use crate::{Marker, Quoting, derive_ASTNode};
 
 /// Import and export parts are very similar but have their parts reversed
 pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
+	/// Whether name registe
 	const PREFIX: bool;
 }
 
+// import { decl as alias }
 impl ImportOrExport for import::ImportDeclaration {
 	const PREFIX: bool = true;
 }
 
+// export { decl as alias }
 impl ImportOrExport for export::ExportDeclaration {
 	const PREFIX: bool = false;
 }
@@ -65,6 +68,7 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 
 	// TODO also single line comments here
 	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
+		reader.skip_including_comments()?;
 		let just_type = reader.is_keyword_advance("type");
 
 		if U::PREFIX {
@@ -183,17 +187,17 @@ pub enum ImportExportName {
 impl ImportExportName {
 	// TODO remove Span return
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<(Self, Span)> {
-		reader.skip();
+		reader.skip_including_comments()?;
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
 			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
 			Ok((ImportExportName::Quoted(content.into_owned(), quoting), position))
-		} else if reader.is_keyword_advance("default") {
+		} else if reader.is_immediate_keyword_advance("default") {
 			// TODO separate identifier
 			let position = start.with_length("default".len());
 			Ok((ImportExportName::Reference("default".into()), position))
-		} else if reader.is_operator(",") {
+		} else if reader.starts_with(',') {
 			let position = start.with_length(0);
 			let marker = reader.new_partial_point_marker(position);
 			Ok((ImportExportName::Marker(marker), position))
@@ -302,5 +306,18 @@ impl ImportLocation {
 	#[must_use]
 	pub fn from_path(path: &str) -> Self {
 		Self::Quoting(path.to_owned(), Quoting::Double)
+	}
+}
+
+impl std::cmp::PartialEq<str> for ImportLocation {
+	fn eq(&self, other: &str) -> bool {
+		if let Self::Quoting(value, _) = self { value == other } else { false }
+	}
+}
+
+// TODO T: AsRef<str>,
+impl From<String> for ImportLocation {
+	fn from(value: String) -> Self {
+		Self::Quoting(value, Quoting::default())
 	}
 }

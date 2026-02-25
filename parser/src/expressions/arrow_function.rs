@@ -90,7 +90,7 @@ impl FunctionBased for ArrowFunctionBase {
 				&& !matches!(
 					additionally,
 					Some(crate::functions::ParameterData::WithDefaultValue(_))
-				) && let VariableField::Name(name, ..) = name.get_ast_ref()
+				) && let VariableField::Name(name, ..) = name
 			{
 				name.to_string_from_buffer(buf, options, local);
 				return;
@@ -146,28 +146,43 @@ impl ArrowFunction {
 		name: VariableField,
 	) -> ParseResult<Self> {
 		let position = name.get_position();
-		let parameters = vec![Parameter {
-			name: name.into(),
+		let parameters = FunctionParameters {
+			leading: (),
+			parameters: vec![Parameter {
+				name: name.into(),
+				position,
+				visibility: (),
+				type_annotation: None,
+				additionally: None,
+			}],
+			rest_parameter: None,
 			position,
-			visibility: (),
-			type_annotation: None,
-			additionally: None,
-		}];
+		};
 		reader.skip_including_comments()?;
+		Self::from_reader_with_parameters(reader, position.get_start(), is_async, None, parameters)
+	}
+
+	pub(crate) fn from_reader_with_parameters(
+		reader: &mut crate::Lexer,
+		start: source_map::Start,
+		is_async: bool,
+		type_parameters: Option<crate::functions::FunctionTypeParameters>,
+		parameters: FunctionParameters<(), ()>,
+	) -> ParseResult<Self> {
+		let return_type = if reader.is_immediate_operator_advance(":") {
+			Some(crate::types::TypeAnnotation::from_reader(reader)?)
+		} else {
+			None
+		};
 		reader.expect_operator("=>")?;
 		let body = ExpressionOrBlock::from_reader(reader)?;
-		let arrow_function = FunctionBase {
+		let arrow_function = ArrowFunction {
 			header: is_async,
-			position: position.union(body.get_position()),
+			position: start.union(body.get_position()),
 			name: (),
-			parameters: FunctionParameters {
-				parameters,
-				rest_parameter: None,
-				position,
-				leading: (),
-			},
-			return_type: None,
-			type_parameters: None,
+			parameters,
+			return_type,
+			type_parameters,
 			body,
 		};
 		Ok(arrow_function)
@@ -191,6 +206,7 @@ impl ASTNode for ExpressionOrBlock {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		reader.skip_including_comments()?;
 		if reader.is_operator("{") {
 			Block::from_reader(reader).map(Self::Block)
 		} else {

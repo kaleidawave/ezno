@@ -223,7 +223,7 @@ pub fn parse_expression_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Expression};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Expression::from_string(input, Default::default());
+	let item = Expression::from_string(input);
 	match item {
 		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
 		Err(parse_error) => {
@@ -240,7 +240,7 @@ pub fn parse_module_to_json(input: String) -> JsValue {
 	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default());
+	let item = Module::from_string(input);
 	match item {
 		Ok(item) => serde_wasm_bindgen::to_value(&Ok::<_, ()>(item)).unwrap(),
 		Err(parse_error) => {
@@ -268,6 +268,7 @@ pub fn parse_module_and_into_string(
 	let item = Module::from_string(
 		input,
 		serde_wasm_bindgen::from_value(parse_options).expect("invalid ParseOptions"),
+		0,
 	);
 	match item {
 		Ok(item) => serde_wasm_bindgen::to_value(&item.to_string(
@@ -287,7 +288,7 @@ pub fn just_imports(input: String) -> JsValue {
 	use parser::{ASTNode, Module};
 
 	std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-	let item = Module::from_string(input, Default::default());
+	let item = Module::from_string(input);
 	match item {
 		Ok(mut item) => {
 			crate::transformers::filter_imports(&mut item);

@@ -22,7 +22,6 @@ mod variable_fields;
 pub mod visiting;
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement};
-pub use comments::WithComment;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
@@ -95,40 +94,46 @@ impl LocalToStringInformation {
 	}
 }
 
+// TODO state for "use strict" etc?
+// TODO hold Keywords map, markers, syntax errors etc
+#[derive(Default, Debug)]
+pub struct ParseState {
+	blank_lines: u32,
+	comment_lines: u32,
+	pub markers: Vec<Span>,
+	pub constant_imports: Vec<String>,
+	/// the current position into the script
+	pub head: u32,
+}
+
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
 /// serializing to string from options.
 pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method `from_reader`
-	fn from_string(script: String, options: ParseOptions) -> ParseResult<Self> {
-		Self::from_string_with_options(script, options, None).map(|(ast, _)| ast)
+	fn from_string(script: String) -> ParseResult<Self> {
+		Self::from_string_with_options(script, ParseOptions::all(), 0).map(|(ast, _)| ast)
 	}
 
 	fn from_string_with_options(
 		script: String,
 		options: ParseOptions,
-		offset: Option<u32>,
-	) -> ParseResult<(Self, ParsingState)> {
-		let line_starts = source_map::LineStarts::new(script.as_str());
-		#[allow(clippy::cast_possible_truncation)]
-		let length_of_source = script.len() as u32;
+		offset: u32,
+	) -> ParseResult<(Self, ParseState)> {
+		// length_of_source,
+		//
+		// keyword_positions: options
+		// 	.features
+		// 	.record_keyword_positions
+		// 	.then_some(KeywordPositions::new()),
+		// partial_points: Default::default(),
+		// head: 0
 
-		let state = ParsingState {
-			line_starts,
-			length_of_source,
-			constant_imports: Default::default(),
-			keyword_positions: options
-				.features
-				.record_keyword_positions
-				.then_some(KeywordPositions::new()),
-			partial_points: Default::default(),
-		};
+		let mut reader = crate::Lexer::new(&script, offset, options);
 
-		let mut reader = crate::Lexer::new(&script, offset.unwrap_or_default(), options);
+		let node = Self::from_reader(&mut reader)?;
 
-		let result = Self::from_reader(&mut reader).map(|ok| (ok, state))?;
-
-		if reader.is_finished() {
-			Ok(result)
+		if options.features.section_of_source || reader.is_finished() {
+			Ok((node, reader.state))
 		} else {
 			let (found, position) = crate::lexer::utilities::next_item(&reader);
 			Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
@@ -156,94 +161,37 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 	}
 }
 
-#[derive(Debug)]
-pub struct ParsingState {
-	pub line_starts: source_map::LineStarts,
-	pub length_of_source: u32,
-	/// TODO as multithreaded channel + record is dynamic exists
-	pub constant_imports: Vec<String>,
-	pub keyword_positions: Option<KeywordPositions>,
-	pub partial_points: Vec<source_map::Start>,
-}
+// As parsing is forwards, this is ordered
+// type TSXKeyword = &'static str;
 
-// impl ParsingState {
-// 	pub(crate) fn expect_keyword(
-// 		&mut self,
-// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-// 		kw: TSXKeyword,
-// 	) -> crate::ParseResult<TokenStart> {
-// 		let start = reader.expect(TSXToken::Keyword(kw))?;
-// 		self.append_keyword_at_pos(start.0, kw);
-// 		Ok(start)
-// 	}
+// #[derive(Debug)]
+// pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
 
-// 	pub(crate) fn optionally_expect_keyword(
-// 		&mut self,
-// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-// 		kw: TSXKeyword,
-// 	) -> Option<Span> {
-// 		if let Some(Token(t, start)) = reader.conditional_next(|t| *t == TSXToken::Keyword(kw)) {
-// 			self.append_keyword_at_pos(start.0, kw);
-// 			Some(start.with_length(t.length() as usize))
-// 		} else {
-// 			None
+// impl KeywordPositions {
+// 	#[must_use]
+// 	#[allow(clippy::cast_possible_truncation)]
+// 	pub fn try_get_keyword_at_position(&self, pos: u32) -> Option<TSXKeyword> {
+// 		// binary search
+// 		let mut l: u32 = 0;
+// 		let mut r: u32 = self.0.len() as u32 - 1u32;
+// 		while l <= r {
+// 			let m = (l + r) >> 1;
+// 			let (kw_pos, kw) = self.0[m as usize];
+// 			if kw_pos <= pos && pos < (kw_pos + kw.len() as u32) {
+// 				return Some(kw);
+// 			} else if pos > kw_pos {
+// 				l = m + 1;
+// 			} else if pos < kw_pos {
+// 				r = m - 1;
+// 			}
 // 		}
+// 		None
 // 	}
 
-// 	pub(crate) fn expect_keyword_get_full_span(
-// 		&mut self,
-// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-// 		kw: TSXKeyword,
-// 	) -> crate::ParseResult<Span> {
-// 		let start = reader.expect(TSXToken::Keyword(kw))?;
-// 		self.append_keyword_at_pos(start.0, kw);
-// 		Ok(start.with_length(kw.length() as usize))
+// 	fn new() -> Self {
+// 		Self(Default::default())
 // 	}
-
-// 	fn append_keyword_at_pos(&mut self, start: u32, kw: TSXKeyword) {
-// 		if let Some(ref mut keyword_positions) = self.keyword_positions {
-// 			keyword_positions.0.push((start, kw));
-// 		}
-// 	}
-
-// 	fn new_partial_point_marker<T>(&mut self, at: source_map::Start) -> Marker<T> {
-// 		let id = self.partial_points.len();
-// 		self.partial_points.push(at);
-// 		Marker(u8::try_from(id).expect("more than 256 markers"), Default::default())
-// 	}
-// 2}
-
-/// As parsing is forwards, this is ordered
-type TSXKeyword = &'static str;
-
-#[derive(Debug)]
-pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
-
-impl KeywordPositions {
-	#[must_use]
-	#[allow(clippy::cast_possible_truncation)]
-	pub fn try_get_keyword_at_position(&self, pos: u32) -> Option<TSXKeyword> {
-		// binary search
-		let mut l: u32 = 0;
-		let mut r: u32 = self.0.len() as u32 - 1u32;
-		while l <= r {
-			let m = (l + r) >> 1;
-			let (kw_pos, kw) = self.0[m as usize];
-			if kw_pos <= pos && pos < (kw_pos + kw.len() as u32) {
-				return Some(kw);
-			} else if pos > kw_pos {
-				l = m + 1;
-			} else if pos < kw_pos {
-				r = m - 1;
-			}
-		}
-		None
-	}
-
-	fn new() -> Self {
-		Self(Default::default())
-	}
-}
+// }
 
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
@@ -251,6 +199,7 @@ pub trait ExpressionOrStatementPosition: Clone + std::fmt::Debug + Sync + Send +
 	type FunctionBody: ASTNode;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
+
 	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier>;
@@ -314,19 +263,19 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	type FunctionBody = Block;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
+		reader.skip_including_comments()?;
 		let is_not_name = reader.is_finished() || reader.is_one_of(&["(", "{", "[", "<"]).is_some();
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
 	}
 
 	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
+		reader.skip_including_comments()?;
 		// TODO "implements" is TS syntax (reader options)
 		let is_not_name = reader.is_finished()
-			|| reader.is_keyword("extends")
-			|| reader.is_keyword("implements")
-			|| reader.is_one_of(&["(", "{", "[", "<"]).is_some();
+			|| reader.is_immediate_keyword("extends")
+			|| reader.is_immediate_keyword("implements")
+			|| reader.get_current().starts_with(['(', '{', '[', '<']);
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
 	}
@@ -374,11 +323,12 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 ) -> ParseResult<(Vec<T>, Option<T::LAST>)> {
 	let mut nodes: Vec<T> = Vec::new();
 	loop {
+		// TODO need to mark start
+		reader.skip_including_comments()?;
+
 		if (T::skip_trailing() || nodes.is_empty()) && reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		}
-
-		reader.skip();
 
 		if T::LAST_PREFIX.is_some_and(|l| reader.starts_with_slice(l)) {
 			let last = T::parse_last_item(reader)?;
@@ -491,7 +441,7 @@ pub mod ast {
 	// TODO improve
 	pub use crate::{
 		Block, ExpressionPosition, PropertyKey, StatementOrDeclaration, StatementPosition,
-		VariableField, VariableIdentifier, WithComment,
+		VariableField, VariableIdentifier,
 		expressions::*,
 		extensions::decorators::Decorated,
 		extensions::jsx::*,

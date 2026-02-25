@@ -1,31 +1,18 @@
-use crate::{
-	Span,
-	errors::{ParseError, ParseErrors},
-	marker::Marker,
-	options::ParseOptions,
-};
-
-// TODO state for "use strict" etc?
-// TODO hold Keywords map, markers, syntax errors etc
-#[derive(Default)]
-pub struct ParsingState {
-	/// TODO this needs some improvements
-	last_new_lines: u32,
-	markers: Vec<Span>,
-}
+use crate::ParseState;
+use crate::Span;
+use crate::errors::{ParseError, ParseErrors};
+use crate::marker::Marker;
+use crate::options::ParseOptions;
 
 pub struct Lexer<'a> {
-	/// the current position into the script
-	head: u32,
 	/// the original source, must start with the content... (aka offset has no effect)
 	script: &'a str,
 	/// Used to offset position markers.
 	/// For example parsing the contents of a script tag need the positions shifted
 	offset: u32,
-
 	/// options
 	options: ParseOptions,
-	state: ParsingState,
+	pub(crate) state: ParseState,
 }
 
 fn is_whitespace_ascii(byte: u8) -> bool {
@@ -63,9 +50,8 @@ impl<'a> Lexer<'a> {
 			// return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
 		}
 
-		let state = ParsingState::default();
-		let head = 0;
-		Lexer { head, script, offset, options, state }
+		let state = ParseState::default();
+		Lexer { script, offset, options, state }
 	}
 
 	/// This is for lookahead
@@ -74,18 +60,18 @@ impl<'a> Lexer<'a> {
 		cb: impl for<'b> FnOnce(&'b mut Lexer<'a>) -> Result<T, U>,
 	) -> Result<T, U> {
 		let mut forked = Lexer {
-			head: self.head,
 			script: self.script,
 			offset: self.offset,
 			options: self.options.clone(),
-			state: ParsingState::default(),
+			state: ParseState { head: self.state.head, ..ParseState::default() },
 		};
 		let result = cb(&mut forked);
 		match result {
 			Ok(node) => {
 				// TODO merge more state
-				self.head = forked.head;
-				self.state.last_new_lines = forked.state.last_new_lines;
+				self.state.head = forked.state.head;
+				self.state.blank_lines = forked.state.blank_lines;
+				self.state.comment_lines = forked.state.comment_lines;
 				Ok(node)
 			}
 			Err(err) => Err(err),
@@ -95,6 +81,10 @@ impl<'a> Lexer<'a> {
 	#[must_use]
 	pub(crate) fn get_options(&self) -> &ParseOptions {
 		&self.options
+	}
+
+	pub(crate) fn strict_mode(&self) -> bool {
+		false
 	}
 
 	pub(crate) fn new_partial_point_marker<T>(&mut self, span: Span) -> Marker<T> {
@@ -111,14 +101,15 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub(crate) fn get_current(&self) -> &'a str {
-		&self.script[self.head as usize..]
+		&self.script[self.state.head as usize..]
 	}
 
 	#[must_use]
 	#[allow(unused)]
 	#[cfg(debug_assertions)]
 	pub(crate) fn get_current_short(&self) -> &'a str {
-		&self.script[self.head as usize..(self.head as usize + 8).min(self.script.len())]
+		&self.script
+			[self.state.head as usize..(self.state.head as usize + 8).min(self.script.len())]
 	}
 
 	#[must_use]
@@ -128,39 +119,43 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub(crate) fn is_finished(&self) -> bool {
-		self.head >= self.source_size()
+		self.state.head >= self.source_size()
 	}
 
 	#[must_use]
 	pub(crate) fn last_was_from_new_line(&self) -> u32 {
-		self.state.last_new_lines
+		self.state.blank_lines
 	}
 
 	pub(crate) fn skip(&mut self) {
-		while (self.head as usize) < self.script.len() {
-			let current = &self.script[self.head as usize..];
-			let first_byte: u8 = current.as_bytes()[0];
+		while (self.state.head as usize) < self.script.len() {
+			let current = &self.script[self.state.head as usize..];
+			let Some(first_byte): Option<u8> = current.as_bytes().first().copied() else {
+				break;
+			};
 			if is_whitespace_ascii(first_byte) {
-				self.head += 1;
+				self.state.head += 1;
 			} else if let b'\r' = first_byte {
-				self.head += 1;
-				// TODO if next byte != b''n' then add last_new_lines?
+				self.state.head += 1;
+				if current.as_bytes()[1] != b'n' {
+					self.state.blank_lines += 1;
+				}
 			} else if let b'\n' = first_byte {
-				self.head += 1;
-				self.state.last_new_lines += 1;
+				self.state.head += 1;
+				self.state.blank_lines += 1;
 			} else if first_byte >= 0x80 {
 				if current.starts_with('\u{00A0}') {
 					// No-break space <NBSP>
-					self.head += 2;
+					self.state.head += 2;
 				} else if current.starts_with(is_whitespace_char_three_bytes) {
-					self.head += 3;
+					self.state.head += 3;
 				} else if current.starts_with(['\u{FEFF}']) {
 					// Zero-width no-break space <ZWNBSP>
-					self.head += 3;
+					self.state.head += 3;
 				} else if current.starts_with(['\u{2028}', '\u{2029}']) {
 					// Line Separator <LS> or Paragraph Separator <LS>
-					self.state.last_new_lines += 1;
-					self.head += 3;
+					self.state.blank_lines += 1;
+					self.state.head += 3;
 				} else {
 					break;
 				}
@@ -171,48 +166,65 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub(crate) fn skip_including_comments(&mut self) -> Result<(), ParseError> {
-		while (self.head as usize) < self.script.len() {
-			let current = &self.script[self.head as usize..];
+		while (self.state.head as usize) < self.script.len() {
+			let current = &self.script[self.state.head as usize..];
 			let Some(first_byte): Option<u8> = current.as_bytes().first().copied() else {
 				break;
 			};
 			if is_whitespace_ascii(first_byte) {
-				self.head += 1;
+				self.state.head += 1;
 			} else if let b'\r' = first_byte {
-				self.head += 1;
+				self.state.head += 1;
+				if current.as_bytes()[1] != b'n' {
+					self.state.blank_lines += 1;
+				}
 			} else if let b'\n' = first_byte {
-				self.head += 1;
-				self.state.last_new_lines += 1;
+				self.state.head += 1;
+				self.state.blank_lines += 1;
 			} else if first_byte >= 0x80 {
 				if current.starts_with('\u{00A0}') {
-					self.head += 2;
+					self.state.head += 2;
 				} else if current.starts_with(is_whitespace_char_three_bytes) {
-					self.head += 3;
-				} else if current.starts_with(['\u{2008}', '\u{2009}', '\u{FEFF}']) {
-					self.head += 3;
+					self.state.head += 3;
+				} else if current.starts_with('\u{FEFF}') {
+					self.state.head += 3;
+				} else if current.starts_with(['\u{2028}', '\u{2029}']) {
+					// Line Separator <LS> or Paragraph Separator <LS>
+					self.state.blank_lines += 1;
+					self.state.head += 3;
 				} else {
 					break;
 				}
 			} else if let Some(rest) = current.strip_prefix("//") {
 				let idx = rest.find('\n').unwrap_or(rest.len());
-				self.head += 2 + idx as u32;
+				self.state.head += 2 + idx as u32;
+				self.state.comment_lines += 1;
+
 				let _comment = &rest[..idx];
 			} else if let Some(rest) = current.strip_prefix("/*") {
 				let Some(idx) = rest.find("*/") else {
 					todo!();
 					// return ParseError::new(ParseErrors::UnexpectedEnd, position)
 				};
-				self.head += 4 + idx as u32;
-				let _comment = &rest[..idx];
+				self.state.head += 4 + idx as u32;
+				let comment = &rest[..idx];
+				if comment.contains(NEW_LINE_CHARACTERS) {
+					self.state.comment_lines += 1;
+				}
+				// TODO short comment
 			} else if let Some(rest) = current.strip_prefix("<!--") {
 				// TODO last was new line?
 				let idx = rest.find('\n').unwrap_or(rest.len());
-				self.head += 4 + idx as u32;
+				self.state.comment_lines += 1;
+
+				self.state.head += 4 + idx as u32;
 				let _comment = &rest[..idx];
 			} else if let Some(rest) = current.strip_prefix("-->") {
 				// TODO last was new line?
 				let idx = rest.find('\n').unwrap_or(rest.len());
-				self.head += 3 + idx as u32;
+				self.state.comment_lines += 1;
+
+				self.state.head += 3 + idx as u32;
 				let _comment = &rest[..idx];
 			} else {
 				break;
@@ -246,8 +258,9 @@ impl<'a> Lexer<'a> {
 		if let Some(rest) = current.strip_prefix(keyword)
 			&& !rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
 		{
-			self.state.last_new_lines = 0;
-			self.head += keyword.len() as u32;
+			self.state.blank_lines = 0;
+			self.state.comment_lines = 0;
+			self.state.head += keyword.len() as u32;
 			true
 		} else {
 			false
@@ -259,8 +272,9 @@ impl<'a> Lexer<'a> {
 		if let Some(rest) = current.strip_prefix(keyword)
 			&& !rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
 		{
-			self.state.last_new_lines = 0;
-			self.head += keyword.len() as u32;
+			self.state.blank_lines = 0;
+			self.state.comment_lines = 0;
+			self.state.head += keyword.len() as u32;
 			true
 		} else {
 			false
@@ -270,8 +284,9 @@ impl<'a> Lexer<'a> {
 	pub(crate) fn is_immediate_operator_advance(&mut self, operator: &str) -> bool {
 		let current = self.get_current();
 		if current.starts_with(operator) {
-			self.state.last_new_lines = 0;
-			self.head += operator.len() as u32;
+			self.state.blank_lines = 0;
+			self.state.comment_lines = 0;
+			self.state.head += operator.len() as u32;
 			true
 		} else {
 			false
@@ -282,8 +297,8 @@ impl<'a> Lexer<'a> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(chr) {
-			let start = source_map::Start(self.offset + self.head);
-			self.head += chr.len_utf8() as u32;
+			let start = source_map::Start(self.offset + self.state.head);
+			self.state.head += chr.len_utf8() as u32;
 			Ok(start)
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
@@ -299,8 +314,8 @@ impl<'a> Lexer<'a> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(chr) {
-			self.head += chr.len_utf8() as u32;
-			Ok(source_map::End(self.offset + self.head))
+			self.state.head += chr.len_utf8() as u32;
+			Ok(source_map::End(self.offset + self.state.head))
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
 			let reason = ParseErrors::UnexpectedCharacter {
@@ -315,7 +330,7 @@ impl<'a> Lexer<'a> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(expected) {
-			self.head += expected.len() as u32;
+			self.state.head += expected.len() as u32;
 			Ok(())
 		} else {
 			let (found, position) = utilities::next_item(self);
@@ -331,8 +346,8 @@ impl<'a> Lexer<'a> {
 		self.skip();
 		let current = self.get_current();
 		if current.starts_with(expected) {
-			let start = source_map::Start(self.offset + self.head);
-			self.head += expected.len() as u32;
+			let start = source_map::Start(self.offset + self.state.head);
+			self.state.head += expected.len() as u32;
 			Ok(start)
 		} else {
 			let (found, position) = utilities::next_item(self);
@@ -379,14 +394,33 @@ impl<'a> Lexer<'a> {
 	#[must_use]
 	#[allow(clippy::match_like_matches_macro)]
 	pub(crate) fn starts_with_expression_delimiter(&self) -> bool {
-		let current = self.get_current().trim_start();
-		current.is_empty() || current.starts_with(['=', ',', ':', '?', ']', ')', '}', ';', '.'])
+		let current = self.get_current();
+		if current.starts_with(['=', ',', ':', '?', ';', '.', ']', ')', '}']) {
+			true
+		} else if self.is_immediate_keyword("instanceof") {
+			true
+		} else {
+			false
+		}
+	}
+
+	#[must_use]
+	#[allow(clippy::match_like_matches_macro)]
+	pub(crate) fn starts_with_expression_delimiter_or_open_bracket(&self) -> bool {
+		let current = self.get_current();
+		if current.starts_with(['=', ',', ':', ';', '.', '?', ']', ')', '}', '[', '(', '{']) {
+			true
+		} else if self.is_immediate_keyword("instanceof") {
+			true
+		} else {
+			false
+		}
 	}
 
 	#[must_use]
 	pub(crate) fn starts_with_statement_or_declaration_on_new_line(&self) -> bool {
 		let current = self.get_current();
-		if self.state.last_new_lines > 0 {
+		if (self.state.blank_lines + self.state.comment_lines) > 0 {
 			// `class` and `function` are actual expressions...
 			let statement_or_declaration_prefixes =
 				&["const", "let", "function", "class", "if", "for", "while"];
@@ -414,25 +448,27 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		let matches = current.starts_with(operator);
 		if matches {
-			self.state.last_new_lines = 0;
-			self.head += operator.len() as u32;
+			self.state.blank_lines = 0;
+			self.state.comment_lines = 0;
+			self.state.head += operator.len() as u32;
 		}
 		matches
 	}
 
 	#[must_use]
 	pub(crate) fn get_start(&self) -> source_map::Start {
-		source_map::Start(self.offset + self.head)
+		source_map::Start(self.offset + self.state.head)
 	}
 
 	#[must_use]
 	pub(crate) fn get_end(&self) -> source_map::End {
-		source_map::End(self.offset + self.head)
+		source_map::End(self.offset + self.state.head)
 	}
 
 	pub(crate) fn advance(&mut self, count: u32) {
-		self.state.last_new_lines = 0;
-		self.head += count;
+		self.state.blank_lines = 0;
+		self.state.comment_lines = 0;
+		self.state.head += count;
 	}
 
 	pub(crate) fn parse_identifier(
@@ -525,12 +561,12 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		if let "\n" = until {
 			let idx = current.find(until).unwrap_or(current.len());
-			self.head += idx as u32;
+			self.state.head += idx as u32;
 			Ok(&current[..idx])
 		} else {
 			let idx = current.find(until);
 			if let Some(idx) = idx {
-				self.head += (idx + until.len()) as u32;
+				self.state.head += (idx + until.len()) as u32;
 				// TODO temp fix
 				Ok(&current[..idx])
 			} else {
@@ -546,7 +582,7 @@ impl<'a> Lexer<'a> {
 	) -> Result<(&'a str, &'a str), ()> {
 		let current = self.get_current();
 		if let Some((idx, until)) = current.match_indices(possibles).next() {
-			self.head += (idx + 1) as u32;
+			self.state.head += (idx + 1) as u32;
 			Ok((&current[..idx], until))
 		} else {
 			Err(())
@@ -559,7 +595,7 @@ impl<'a> Lexer<'a> {
 	) -> Result<(&'a str, &'a str), ()> {
 		let current = self.get_current();
 		if let Some((idx, until)) = current.match_indices(possibles).next() {
-			self.head += idx as u32;
+			self.state.head += idx as u32;
 			Ok((&current[..idx], until))
 		} else {
 			Err(())
@@ -607,7 +643,7 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub(crate) fn starts_with_string_delimeter(&self) -> bool {
-		self.starts_with('"') || self.starts_with('\'')
+		self.get_current().starts_with(['"', '\''])
 	}
 
 	/// expects current to start with string delimeter
@@ -653,7 +689,6 @@ impl<'a> Lexer<'a> {
 			}
 		}
 
-		let mut escaped = false;
 		let mut in_set = false;
 		self.skip();
 		let current = self.get_current();
@@ -665,15 +700,16 @@ impl<'a> Lexer<'a> {
 		let mut regex_content = 1;
 		let mut found_end_slash = false;
 
-		for (idx, chr) in chars.by_ref() {
+		while let Some((idx, chr)) = chars.next() {
 			match chr {
-				'/' if !escaped && !in_set => {
+				'/' if !in_set => {
 					regex_content = idx;
 					found_end_slash = true;
 					break;
 				}
-				'\\' if !escaped => {
-					escaped = true;
+				'\\' => {
+					// TODO check is not control character etc
+					let _ = chars.next();
 				}
 				'[' => {
 					in_set = true;
@@ -687,9 +723,7 @@ impl<'a> Lexer<'a> {
 						start.with_length(idx),
 					));
 				}
-				_ => {
-					escaped = false;
-				}
+				_ => {}
 			}
 		}
 
@@ -701,7 +735,7 @@ impl<'a> Lexer<'a> {
 		}
 
 		let regex = &current[1..regex_content];
-		self.head += 2 + regex.len() as u32;
+		self.state.head += 2 + regex.len() as u32;
 		let regex_end = regex_content + '/'.len_utf8();
 
 		let first_non_char = chars
@@ -717,7 +751,7 @@ impl<'a> Lexer<'a> {
 				self.get_start().with_length(regex_flags.len()),
 			))
 		} else {
-			self.head += regex_flags.len() as u32;
+			self.state.head += regex_flags.len() as u32;
 			Ok((regex, regex_flags))
 		}
 	}
@@ -733,7 +767,7 @@ impl<'a> Lexer<'a> {
 				Ok(content) => {
 					// WIP
 					if content.contains(NEW_LINE_CHARACTERS) {
-						self.state.last_new_lines += 1;
+						self.state.comment_lines += 1;
 					}
 					Ok(content)
 				}
@@ -744,6 +778,7 @@ impl<'a> Lexer<'a> {
 				}
 			}
 		} else {
+			self.state.comment_lines += 1;
 			Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
 		}
 	}
@@ -772,7 +807,8 @@ impl<'a> Lexer<'a> {
 	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
 	pub(crate) fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
 		self.skip();
-		let semi_colon_like = self.state.last_new_lines > 0
+		let semi_colon_like = self.state.blank_lines > 0
+			|| self.state.comment_lines > 0
 			|| self.is_finished()
 			|| self.starts_with_slice("//")
 			|| self.starts_with_slice("}")
@@ -795,18 +831,24 @@ impl<'a> Lexer<'a> {
 			|| self.is_finished()
 	}
 
-	pub(crate) fn starts_with_function_header(&self) -> bool {
-		self.is_immediate_keyword("async")
-			|| self.is_immediate_keyword("function")
-			|| self.is_immediate_keyword("generator")
-			|| self.is_immediate_keyword("worker")
-			|| self.is_immediate_keyword("server")
-			|| self.is_immediate_keyword("test")
+	pub(crate) fn accept_semi_colon(&mut self) {
+		self.is_operator_advance(";");
+		self.state.blank_lines = 1;
 	}
 
-	pub(crate) fn contains_new_line_since(&self, since: Span) -> bool {
-		let on: &str = &self.script[since.end as usize..self.head as usize];
-		on.contains(NEW_LINE_CHARACTERS)
+	pub(crate) fn starts_with_function_header(&self) -> bool {
+		if self.is_immediate_keyword("async") || self.is_immediate_keyword("function") {
+			true
+		} else {
+			#[cfg(feature = "extras")]
+			if self.get_options().extras.custom_function_headers {
+				return self.is_immediate_keyword("generator")
+					|| self.is_immediate_keyword("worker")
+					|| self.is_immediate_keyword("server")
+					|| self.is_immediate_keyword("test");
+			}
+			false
+		}
 	}
 }
 

@@ -16,7 +16,7 @@
     clippy::default_trait_access
 )]
 
-use ezno_lib::cli::run_cli;
+use ezno::cli::run_cli;
 
 fn main() -> std::process::ExitCode {
 	fn read_from_file(path: &std::path::Path) -> Option<String> {

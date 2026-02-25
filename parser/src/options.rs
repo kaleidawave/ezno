@@ -32,11 +32,29 @@ pub struct ParseOptions {
 	pub jsx: Option<JSX>,
 	pub decorators: bool,
 	// ---
+	#[cfg(feature = "extras")]
 	pub extras: Extras,
 	pub features: Features,
 }
 
+impl ParseOptions {
+	#[must_use]
+	pub fn all() -> Self {
+		Self {
+			type_annotations: TypeAnnotationOption::Allowed,
+			comments: CommentsOption::All,
+			jsx: Some(JSX::all()),
+			decorators: true,
+			#[cfg(feature = "extras")]
+			extras: Extras::all(),
+			// just syntax all not feature all
+			features: Features::default(),
+		}
+	}
+}
+
 /// TODO JSX, TypeScript, decorators etc
+#[cfg(feature = "extras")]
 #[derive(Copy, Clone, Default)]
 #[expect(clippy::struct_excessive_bools)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
@@ -44,15 +62,22 @@ pub struct ParseOptions {
 pub struct Extras {
 	pub is_expressions: bool,
 	pub enum_members_as_data_types: bool,
+	/// adds pipe and
 	pub extra_operators: bool,
 	/// This breaks JavaScript
 	pub destructuring_type_annotation: bool,
 	pub custom_function_headers: bool,
+	/// for nunjucks (and the fearless)
+	pub keyword_logical_operators: bool,
+	/// yes
 	pub reversed_imports: bool,
 	/// Enables single parameter annotations, class + fields and symbol names
 	pub additional_type_annotations: bool,
+	/// pending proposal
+	pub big_int_object_keys: bool,
 }
 
+#[cfg(feature = "extras")]
 impl Extras {
 	pub fn all() -> Self {
 		Self {
@@ -63,6 +88,8 @@ impl Extras {
 			custom_function_headers: true,
 			reversed_imports: true,
 			additional_type_annotations: true,
+			keyword_logical_operators: true,
+			big_int_object_keys: true,
 		}
 	}
 }
@@ -80,6 +107,7 @@ pub struct Features {
 	/// For formatting
 	pub retain_blank_lines: bool,
 	pub run_validation: bool,
+	pub section_of_source: bool,
 }
 
 /// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
@@ -109,21 +137,6 @@ impl JSX {
 			top_level_html: true,
 			attributes_as_expressions: true,
 			accept_unknown_expressions: true,
-		}
-	}
-}
-
-impl ParseOptions {
-	#[must_use]
-	pub fn all() -> Self {
-		Self {
-			type_annotations: TypeAnnotationOption::Allowed,
-			comments: CommentsOption::All,
-			jsx: Some(JSX::all()),
-			decorators: true,
-			extras: Extras::all(),
-			// just syntax all not feature all
-			features: Features::default(),
 		}
 	}
 }

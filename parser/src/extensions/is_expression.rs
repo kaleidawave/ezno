@@ -26,30 +26,7 @@ impl ASTNode for IsExpression {
 		reader.expect('(')?;
 		let matcher = MultipleExpression::from_reader(reader)?;
 		reader.expect(')')?;
-		reader.expect('{')?;
-		let mut branches = Vec::new();
-		loop {
-			// ReturnType important here for
-			let type_annotation = TypeAnnotation::from_reader_with_precedence(
-				reader,
-				crate::type_annotations::TypeOperatorKind::ReturnType,
-			)?;
-			reader.expect_operator("=>")?;
-			let body = ExpressionOrBlock::from_reader(reader)?;
-			if reader.is_operator_advance("}") {
-				branches.push((type_annotation, body));
-				break;
-			}
-			if let ExpressionOrBlock::Expression(..) = body {
-				reader.expect(',')?;
-			}
-			branches.push((type_annotation, body));
-		}
-		Ok(IsExpression {
-			position: start.union(reader.get_end()),
-			matcher: Box::new(matcher),
-			branches,
-		})
+		Self::from_reader_with_matcher(reader, start, Box::new(matcher))
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -70,5 +47,34 @@ impl ASTNode for IsExpression {
 			}
 		}
 		buf.push('}');
+	}
+}
+
+impl IsExpression {
+	pub(crate) fn from_reader_with_matcher(
+		reader: &mut crate::Lexer,
+		start: source_map::Start,
+		matcher: Box<MultipleExpression>,
+	) -> crate::ParseResult<Self> {
+		reader.expect('{')?;
+		let mut branches = Vec::new();
+		loop {
+			// ReturnType important here for
+			let type_annotation = TypeAnnotation::from_reader_with_precedence(
+				reader,
+				crate::type_annotations::TypeOperatorKind::ReturnType,
+			)?;
+			reader.expect_operator("=>")?;
+			let body = ExpressionOrBlock::from_reader(reader)?;
+			if reader.is_operator_advance("}") {
+				branches.push((type_annotation, body));
+				break;
+			}
+			if let ExpressionOrBlock::Expression(..) = body {
+				reader.expect(',')?;
+			}
+			branches.push((type_annotation, body));
+		}
+		Ok(IsExpression { position: start.union(reader.get_end()), matcher, branches })
 	}
 }

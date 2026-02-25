@@ -28,7 +28,7 @@ keywords = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "ezno_lib"
+name = "ezno"
 path = "src/lib.rs"
 
 # cdylib is for WASM
@@ -37,6 +37,7 @@ crate-type = ["cdylib", "rlib"]
 [[bin]]
 name = "ezno"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 # ezno-web-framework = { path = "./plugins/web" }
@@ -107,23 +108,32 @@ result_unit_err = "allow"
 implicit_hasher = "allow"
 
 [package.metadata.commands]
-parse-check = "cargo run -p ezno-parser --example parse ./private/toparse/aaa.tsx --extras"
-parse-check-ft = "./target/debug/examples/parse ./private/toparse/aaa.tsx --extras"
-parse-check-split = "cargo run -p ezno-parser --example parse ./private/toparse/aaa.tsx --split --extras"
-parse-ast = "cargo run -p ezno-parser --example parse ./private/toparse/aaa.tsx --ast --extras"
+parse-check = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.tsx --extras"
+parse-check-js = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.js"
+parse-ast = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.tsx --ast --extras"
+parse-ast-js = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.js --ast"
+
+parse-fails = "cargo r -p ezno-parser --example parse --message-format short private/corpus/fails.js"
+parse-check-all = "cargo r -p ezno-parser --example parse private/corpus/all.tsx --extras"
+parse-check-ft = "./target/debug/examples/parse private/corpus/aaa.tsx --extras"
 
 # ft means 'from target' (existing build)
-parse-print-ast-ft = "./target/debug/examples/parse.exe ./private/toparse/aaa.tsx"
+parse-print-ast-ft = "./target/debug/examples/parse.exe ./private/corpus/aaa.tsx"
 parser-tests = "cargo test -p ezno-parser --no-fail-fast --tests"
-parser-specification = "spectra test parser/documentation/*.test.md 'cargo run -q -p ezno-parser --example parse -- --rpc --interactive'"
-parser-specification-dry-run = "spectra test parser/documentation/*.test.md 'cargo run -q -p ezno-parser --example parse -- --rpc --interactive' --dry-run"
-parser-specification-ft = "spectra test parser/documentation/*.test.md './target/debug/examples/parse --rpc --interactive'"
-run-test262 = "cargo run --manifest-path test262/Cargo.toml"
+parser-specification = "spectra-options test parser/specification/*.test.md 'cargo run -q -p ezno-parser --example parse -- --rpc --interactive'"
+parser-specification-dry-run = "spectra test parser/specification/*.test.md 'cargo run -q -p ezno-parser --example parse -- --rpc --interactive' --dry-run"
+parser-specification-ft = "spectra test parser/specification/*.test.md './target/debug/examples/parse --rpc --interactive'"
+
+test262 = "cargo r --manifest-path test262/Cargo.toml -- --store-results"
 test262-statistics = "sqlite-tool statistics test262/out/results.db results percentage --grouping parser_out"
 
 # TODO templating here
 investigate-test262 = "sqlite-tool sample test262/out/results.db results --where 'parser_out LIKE \\'Expected%\\'' --pick 5"
-save-test262 = "sqlite-tool sample test262/out/results.db results --where 'parser_out LIKE \\'Expected%\\'' --pick 5 --write-to-file private/toparse/aaa.tsx --field code"
+
+spectra-dev = "spectra-options test checker/specification/specification.md 'cargo r -p ezno-checker --example runner -q -- --interactive --rpc'"
+spectra-dev2 = "spectra-options test checker/specification/private_hmm.md 'cargo r -p ezno-checker --example runner -q -- --interactive --rpc'"
+private-check = "cargo r -p ezno-checker --example private_check"
+private-ast = "cargo r -p ezno-parser --example private_ast"
 
 # [profile.dev]
 # debug = false

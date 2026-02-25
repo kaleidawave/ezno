@@ -1,9 +1,9 @@
 use crate::{
-	ASTNode, ListItem, Marker, ParseError, ParseResult, Quoting, Span, VariableField, WithComment,
+	ASTNode, ListItem, Marker, ParseError, ParseResult, Quoting, Span, VariableField,
 	ast::VariableOrPropertyAccess,
 	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode,
 	extensions::decorators::Decorated,
-	numbers::{BigInt, NumberRepresentation},
+	numbers::{BigIntRepresentation, NumberRepresentation},
 };
 use iterator_endiate::EndiateIteratorExt;
 
@@ -31,7 +31,7 @@ pub enum TypeAnnotation {
 	/// Number literal e.g. `45`
 	NumberLiteral(NumberRepresentation, Span),
 	/// Big integer literal e.g. `100n`
-	BigIntLiteral(BigInt, Span),
+	BigIntLiteral(BigIntRepresentation, Span),
 	/// Boolean literal e.g. `true`
 	BooleanLiteral(bool, Span),
 	/// Array literal e.g. `string[]`. This is syntactic sugar for `Array` with type arguments. **This is not the same
@@ -52,7 +52,7 @@ pub enum TypeAnnotation {
 		position: Span,
 	},
 	/// Object literal e.g. `{ y: string }`
-	ObjectLiteral(Vec<WithComment<Decorated<InterfaceMember>>>, Span),
+	ObjectLiteral(Vec<Decorated<InterfaceMember>>, Span),
 	/// Tuple literal e.g. `[number, x: string]`
 	TupleLiteral(Vec<TupleLiteralElement>, Span),
 	/// ?
@@ -519,7 +519,7 @@ impl TypeAnnotation {
 					}
 					crate::numbers::ParsedNumberLiteral::BigInt(value) => {
 						TypeAnnotation::BigIntLiteral(
-							BigInt { source: value.to_string() },
+							BigIntRepresentation { source: value.to_string() },
 							position,
 						)
 					}
@@ -648,7 +648,7 @@ impl TypeAnnotation {
 					}
 					crate::numbers::ParsedNumberLiteral::BigInt(value) => {
 						TypeAnnotation::BigIntLiteral(
-							BigInt { source: format!("-{value}") },
+							BigIntRepresentation { source: format!("-{value}") },
 							position,
 						)
 					}
@@ -668,21 +668,37 @@ impl TypeAnnotation {
 				Self::Decorated(Box::new(decorator), Box::new(this_declaration), position)
 			}
 			Some(b'(') => {
-				let result: ParseResult<(_, _)> =
-					reader.try_parse(|reader: &mut crate::Lexer<'_>| {
-						let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+				let result = reader.try_parse(TypeAnnotationFunctionParameters::from_reader);
+
+				if let Ok(mut parameters) = result {
+					reader.skip_including_comments()?;
+					// TODO abstract
+					if !reader.starts_with_slice("=>")
+						&& parameters.rest_parameter.is_none()
+						&& let &[
+							TypeAnnotationFunctionParameter {
+								name: None,
+								is_optional: false,
+								ref decorators,
+								..
+							},
+						] = parameters.parameters.as_slice()
+						&& decorators.is_empty()
+					{
+						let parameter = parameters.parameters.pop().unwrap();
+						let type_annotation = parameter.type_annotation;
+						let position = parameter.position;
+						Self::ParenthesizedReference(type_annotation.into(), position)
+					} else {
 						reader.expect_operator("=>")?;
 						let return_type = Self::from_reader(reader)?;
-						Ok((parameters, return_type))
-					});
-
-				if let Ok((parameters, return_type)) = result {
-					let position = start.union(return_type.get_position());
-					Self::FunctionLiteral {
-						position,
-						type_parameters: None,
-						parameters: Box::new(parameters),
-						return_type: Box::new(return_type),
+						let position = start.union(return_type.get_position());
+						Self::FunctionLiteral {
+							position,
+							type_parameters: None,
+							parameters: Box::new(parameters),
+							return_type: Box::new(return_type),
+						}
 					}
 				} else {
 					reader.advance(1);
@@ -945,7 +961,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 
 		loop {
 			reader.skip();
-			if reader.is_operator(")") {
+			if reader.starts_with(')') {
 				break;
 			}
 
@@ -955,7 +971,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				let name = reader.parse_identifier("spread parameter name", true)?.into_owned();
 				// // TODO is this a good feature
 				// let name = if reader.after_identifier().starts_with(":") {
-				// 	Some(WithComment::<VariableField>::from_reader(reader)?)
+				// 	Some(VariableField::from_reader(reader)?)
 				// } else {
 				// 	None
 				// };
@@ -978,7 +994,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 			// TODO is this a good feature
 			let after_identifier = reader.after_identifier();
 			let name = if after_identifier.starts_with(':') || after_identifier.starts_with("?:") {
-				Some(WithComment::<VariableField>::from_reader(reader)?)
+				Some(VariableField::from_reader(reader)?)
 			} else {
 				None
 			};
@@ -1014,8 +1030,8 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 				break;
 			}
 		}
-		let close = reader.expect(')')?;
-		let position = start.union(close);
+		let end = reader.expect(')')?;
+		let position = start.union(end);
 		Ok(TypeAnnotationFunctionParameters { parameters, rest_parameter, position })
 	}
 
@@ -1055,7 +1071,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 pub struct TypeAnnotationFunctionParameter {
 	pub decorators: Vec<Decorator>,
 	/// Ooh nice optional
-	pub name: Option<WithComment<VariableField>>,
+	pub name: Option<VariableField>,
 	pub type_annotation: TypeAnnotation,
 	pub is_optional: bool,
 	pub position: Span,

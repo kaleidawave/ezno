@@ -4,7 +4,7 @@ use source_map::SourceId;
 
 use crate::{
 	ArrayDestructuringField, Expression, ObjectDestructuringField, PropertyKey,
-	StatementOrDeclaration, WithComment,
+	StatementOrDeclaration,
 };
 
 pub use temporary_annex::Annex;
@@ -223,7 +223,7 @@ mod ast {
 		crate::TypeAnnotation,
 		crate::types::Visibility,
 		crate::numbers::NumberRepresentation,
-		crate::numbers::BigInt,
+		crate::numbers::BigIntRepresentation,
 		crate::expressions::operators::BinaryOperator,
 		crate::expressions::operators::BinaryAssignmentOperator,
 		crate::expressions::operators::UnaryOperator,
@@ -253,9 +253,7 @@ mod structures {
 		property_key::{AlwaysPublic, PublicOrPrivate},
 	};
 
-	use super::{
-		ArrayDestructuringField, ObjectDestructuringField, PropertyKey, SourceId, WithComment,
-	};
+	use super::{ArrayDestructuringField, ObjectDestructuringField, PropertyKey, SourceId};
 	use source_map::Span;
 	use temporary_annex::{Annex, Annexable};
 
@@ -327,11 +325,10 @@ mod structures {
 
 	#[derive(Debug)]
 	pub enum ImmutableVariableOrProperty<'a> {
-		// TODO maybe WithComment on some of these
 		VariableFieldName(&'a str, &'a Span),
 		// TODO these should maybe only be the spread variables
 		ArrayDestructuringMember(&'a ArrayDestructuringField<VariableField>),
-		ObjectDestructuringMember(&'a WithComment<ObjectDestructuringField<VariableField>>),
+		ObjectDestructuringMember(&'a ObjectDestructuringField<VariableField>),
 		ClassName(Option<&'a VariableIdentifier>),
 		FunctionName(Option<&'a VariableIdentifier>),
 		ClassPropertyKey(&'a PropertyKey<PublicOrPrivate>),
@@ -343,7 +340,7 @@ mod structures {
 		VariableFieldName(&'a mut String),
 		// TODO these should maybe only be the spread variables
 		ArrayDestructuringMember(&'a mut ArrayDestructuringField<VariableField>),
-		ObjectDestructuringMember(&'a mut WithComment<ObjectDestructuringField<VariableField>>),
+		ObjectDestructuringMember(&'a mut ObjectDestructuringField<VariableField>),
 		ClassName(Option<&'a mut VariableIdentifier>),
 		FunctionName(Option<&'a mut VariableIdentifier>),
 		ClassPropertyKey(&'a mut PropertyKey<PublicOrPrivate>),
@@ -356,14 +353,12 @@ mod structures {
 			match self {
 				ImmutableVariableOrProperty::VariableFieldName(name, _) => Some(name),
 				ImmutableVariableOrProperty::ArrayDestructuringMember(_) => None,
-				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => {
-					match o.get_ast_ref() {
-						ObjectDestructuringField::Name(VariableIdentifier::Standard(a, ..), ..) => {
-							Some(a.as_str())
-						}
-						_ => None,
+				ImmutableVariableOrProperty::ObjectDestructuringMember(o) => match o {
+					ObjectDestructuringField::Name(VariableIdentifier::Standard(a, ..), ..) => {
+						Some(a.as_str())
 					}
-				}
+					_ => None,
+				},
 				ImmutableVariableOrProperty::FunctionName(name)
 				| ImmutableVariableOrProperty::ClassName(name) => {
 					if let Some(VariableIdentifier::Standard(name, _)) = name {
@@ -375,7 +370,7 @@ mod structures {
 				ImmutableVariableOrProperty::ObjectPropertyKey(_property) => {
 					// Just want variable names
 					None
-					// match property.get_ast_ref() {
+					// match property {
 					// 	PropertyKey::Identifier(ident, _, _)
 					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,
@@ -384,7 +379,7 @@ mod structures {
 				ImmutableVariableOrProperty::ClassPropertyKey(_property) => {
 					// Just want variable names
 					None
-					// match property.get_ast_ref() {
+					// match property {
 					// 	PropertyKey::Identifier(ident, _, _)
 					// 	| PropertyKey::StringLiteral(ident, _, _) => Some(ident.as_str()),
 					// 	PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => None,

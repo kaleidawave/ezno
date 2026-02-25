@@ -83,7 +83,7 @@ impl ReplSystem {
 		let (start, _) = self.state.get_fs_mut().append_to_file(self.source, &input);
 
 		let options = Default::default();
-		let offset = Some(start as u32);
+		let offset = start as u32;
 		let compact = false;
 
 		// self.offset += input.len() as u32 + 1;

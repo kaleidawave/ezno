@@ -1,4 +1,4 @@
-use crate::{Expression, Span, TypeAnnotation, derive_ASTNode};
+use crate::{ASTNode, Expression, Span, TypeAnnotation, derive_ASTNode};
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
 
@@ -28,24 +28,7 @@ impl crate::ASTNode for UsingDeclaration {
 	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		let is_await = reader.is_operator_advance("await");
 		let start = reader.expect_keyword("using")?;
-		let mut bindings = Vec::new();
-		loop {
-			let name = reader.parse_identifier("using name", false)?.into_owned();
-			let annotation = if reader.is_operator_advance(":") {
-				Some(TypeAnnotation::from_reader(reader)?)
-			} else {
-				None
-			};
-			reader.expect_operator("=")?;
-			let value = Expression::from_reader(reader)?;
-			let binding = UsingBinding { name, annotation, value };
-			bindings.push(binding);
-			if !reader.is_operator_advance(",") {
-				break;
-			}
-		}
-		let position = start.union(reader.get_end());
-		Ok(Self { is_await, bindings, position })
+		Self::from_reader_after_keywords(reader, start, is_await)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -75,5 +58,32 @@ impl crate::ASTNode for UsingDeclaration {
 			options.push_gap_optionally(buf);
 			binding.value.to_string_from_buffer(buf, options, local);
 		}
+	}
+}
+
+impl UsingDeclaration {
+	pub(crate) fn from_reader_after_keywords(
+		reader: &mut crate::Lexer,
+		start: source_map::Start,
+		is_await: bool,
+	) -> crate::ParseResult<Self> {
+		let mut bindings = Vec::new();
+		loop {
+			let name = reader.parse_identifier("using name", false)?.into_owned();
+			let annotation = if reader.is_operator_advance(":") {
+				Some(TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
+			reader.expect_operator("=")?;
+			let value = Expression::from_reader(reader)?;
+			let binding = UsingBinding { name, annotation, value };
+			bindings.push(binding);
+			if !reader.is_operator_advance(",") {
+				break;
+			}
+		}
+		let position = start.union(reader.get_end());
+		Ok(Self { is_await, bindings, position })
 	}
 }

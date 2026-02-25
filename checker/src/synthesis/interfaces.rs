@@ -1,5 +1,5 @@
 use parser::extensions::decorators::Decorated;
-use parser::{PropertyKey as ParserPropertyKey, WithComment, types::interface::InterfaceMember};
+use parser::{PropertyKey as ParserPropertyKey, types::interface::InterfaceMember};
 use source_map::SpanWithSource;
 
 use crate::{
@@ -169,20 +169,20 @@ impl SynthesiseInterfaceBehavior for PropertiesList {
 pub(super) fn synthesise_signatures<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
 	type_parameters: Option<&[parser::TypeParameter]>,
 	extends: Option<&[parser::TypeAnnotation]>,
-	signatures: &[WithComment<Decorated<InterfaceMember>>],
+	signatures: &[Decorated<InterfaceMember>],
 	mut behavior: B,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> B {
 	/// TODO check members declared before
 	fn synthesise_members<T: crate::ReadFromFS, B: SynthesiseInterfaceBehavior>(
-		members: &[WithComment<Decorated<InterfaceMember>>],
+		members: &[Decorated<InterfaceMember>],
 		environment: &mut Context<crate::context::environment::Syntax<'_>>,
 		checking_data: &mut CheckingData<T, super::EznoParser>,
 		interface_register_behavior: &mut B,
 	) {
 		for member in members {
-			let member = member.get_ast_ref();
+			let member = member;
 			match &member.on {
 				InterfaceMember::Method {
 					header,

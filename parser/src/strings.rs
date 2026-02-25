@@ -8,6 +8,12 @@ pub enum Quoting {
 	Double,
 }
 
+impl Default for Quoting {
+	fn default() -> Self {
+		Self::Double
+	}
+}
+
 impl Quoting {
 	#[must_use]
 	pub fn as_char(self) -> char {

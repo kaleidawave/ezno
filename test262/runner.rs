@@ -51,7 +51,6 @@ fn main() {
 		flags       TEXT,
 		es5id       TEXT,
 		negative    INTEGER NOT NULL,
-		code        TEXT,
 		pass        INTEGER NOT NULL,
 		parser_out  TEXT
 	);".trim_start();
@@ -59,7 +58,7 @@ fn main() {
 		connection.execute(query).unwrap();
 
 		let query = "INSERT INTO results VALUES (
-			:path, :info, :description, :features, :flags, :es5id, :negative, :code, :pass, :parser_out
+			:path, :info, :description, :features, :flags, :es5id, :negative, :pass, :parser_out
 		)";
 		Some(connection.prepare(query).unwrap())
 	} else {
@@ -160,6 +159,11 @@ fn main() {
 					}
 				});
 
+				// TODO temp fix because YAML parser broken
+				if es5id == Some("7.7_A2_T6") {
+					should_not_parse = true;
+				}
+
 				if let Err(err) = result {
 					eprintln!("yaml-parse {path} {err:?}", path = path.display());
 					return;
@@ -178,7 +182,7 @@ fn main() {
 			let result = <ezno_parser::Module as ezno_parser::ASTNode>::from_string_with_options(
 				code.into(),
 				options,
-				None,
+				0,
 			);
 			parsing += now.elapsed();
 
@@ -211,8 +215,6 @@ fn main() {
 					(":flags", flags.into()),
 					(":es5id", es5id.into()),
 					(":negative", (should_not_parse as i64).into()),
-					// space saving measure
-					(":code", (if matched { None } else { Some(code) }).into()),
 					(":pass", (matched as i64).into()),
 					(":parser_out", (&*reason).into()),
 				];
@@ -245,7 +247,7 @@ fn main() {
 		duration = now.elapsed()
 	);
 
-	{
+	if store_results_in_db {
 		let query =
 			"SELECT parser_out, COUNT(*) 
 			FROM results 

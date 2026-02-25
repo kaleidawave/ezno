@@ -1,7 +1,7 @@
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{ASTNode, Expression, StatementOrDeclaration, ast::MultipleExpression, derive_ASTNode};
+use crate::{ASTNode, StatementOrDeclaration, ast::MultipleExpression, derive_ASTNode};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -16,7 +16,7 @@ pub struct SwitchStatement {
 #[apply(derive_ASTNode)]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),
-	Case(Box<Expression>, Vec<StatementOrDeclaration>),
+	Case(Box<MultipleExpression>, Vec<StatementOrDeclaration>),
 }
 
 impl ASTNode for SwitchStatement {
@@ -34,10 +34,10 @@ impl ASTNode for SwitchStatement {
 
 		let mut branches = Vec::new();
 		loop {
-			let case: Option<Box<Expression>> = if reader.is_operator_advance("}") {
+			let case: Option<Box<MultipleExpression>> = if reader.is_operator_advance("}") {
 				break;
 			} else if reader.is_operator_advance("case") {
-				let case = Expression::from_reader(reader).map(Box::new)?;
+				let case = MultipleExpression::from_reader(reader).map(Box::new)?;
 				reader.expect(':')?;
 				Some(case)
 			} else if reader.is_operator_advance("default") {

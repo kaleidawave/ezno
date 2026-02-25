@@ -1,5 +1,5 @@
 use crate::{
-	ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
+	ASTNode, ParseError, ParseErrors, ParseResult,
 	ast::{
 		ArrayDestructuringField, Expression, ObjectDestructuringField, PropertyKey, PropertyLike,
 		PropertyReference, SpreadDestructuringField, SuperReference,
@@ -206,13 +206,13 @@ pub enum LHSOfAssignment {
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
 	ArrayDestructuring {
 		#[visit_skip_field]
-		members: Vec<WithComment<ArrayDestructuringField<LHSOfAssignment>>>,
+		members: Vec<ArrayDestructuringField<LHSOfAssignment>>,
 		spread: Option<SpreadDestructuringField<LHSOfAssignment>>,
 		position: Span,
 	},
 	ObjectDestructuring {
 		#[visit_skip_field]
-		members: Vec<WithComment<ObjectDestructuringField<LHSOfAssignment>>>,
+		members: Vec<ObjectDestructuringField<LHSOfAssignment>>,
 		spread: Option<SpreadDestructuringField<LHSOfAssignment>>,
 		position: Span,
 	},
@@ -321,23 +321,23 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						} else {
 							match expression {
 								Expression::Assignment { lhs, rhs, position: _ } => {
-									new_members.push(WithComment::None(
-										ArrayDestructuringField::Name(lhs, (), Some(rhs)),
+									new_members.push(ArrayDestructuringField::Name(
+										lhs,
+										(),
+										Some(rhs),
 									));
 								}
 								expression => {
-									new_members.push(WithComment::None(
-										ArrayDestructuringField::Name(
-											expression.try_into()?,
-											(),
-											None,
-										),
+									new_members.push(ArrayDestructuringField::Name(
+										expression.try_into()?,
+										(),
+										None,
 									));
 								}
 							}
 						}
 					} else {
-						new_members.push(WithComment::None(ArrayDestructuringField::None));
+						new_members.push(ArrayDestructuringField::None);
 					}
 				}
 				Ok(Self::ArrayDestructuring { members: new_members, spread: None, position })
@@ -372,7 +372,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						}
 						ObjectLiteralMember::Property { assignment, key, position, value } => {
 							if assignment {
-								if let PropertyKey::Identifier(name, pos, _) = key.get_ast() {
+								if let PropertyKey::Identifier(name, pos, _) = key {
 									ObjectDestructuringField::Name(
 										crate::VariableIdentifier::Standard(name, pos),
 										(),
@@ -395,9 +395,9 @@ impl TryFrom<Expression> for LHSOfAssignment {
 									};
 
 								ObjectDestructuringField::Map {
-									from: key.get_ast(),
+									from: key,
 									annotation: (),
-									name: WithComment::None(name),
+									name,
 									default_value,
 									position,
 								}
@@ -413,7 +413,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 							continue;
 						}
 					};
-					new_members.push(WithComment::None(new_member));
+					new_members.push(new_member);
 				}
 				Ok(Self::ObjectDestructuring { members: new_members, spread: None, position })
 			}

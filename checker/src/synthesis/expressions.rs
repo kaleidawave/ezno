@@ -125,7 +125,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				element.0.as_ref().and_then(|element| {
 					let position = element.get_position();
 					let (spread, element) = element.value_and_spread_ref();
-					if spread {
+					if !spread {
 						// TODO based off above
 						let expecting = TypeId::ANY_TYPE;
 						let expression_type =
@@ -975,7 +975,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),
 		Expression::ClassExpression(class) => Instance::RValue(synthesise_class_declaration(
-			class,
+			&class.on,
 			None,
 			expecting,
 			environment,
@@ -1447,7 +1447,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 			}
 			ObjectLiteralMember::Property { key, value, position, .. } => {
 				let key = parser_property_key_to_checker_property_key(
-					key.get_ast_ref(),
+					key,
 					environment,
 					checking_data,
 					true,
@@ -1517,7 +1517,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				// checking_data
 				//     .type_mappings
 				//     .properties_to_types
-				//     .insert(property_key.get_ast().get_property_id(), value.clone());
+				//     .insert(property_key.get_property_id(), value.clone());
 
 				// (
 				//     property_name,
@@ -1532,7 +1532,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 			// TODO abstract
 			ObjectLiteralMember::Method(method) => {
 				let key = parser_property_key_to_checker_property_key(
-					method.name.get_ast_ref(),
+					&method.name,
 					environment,
 					checking_data,
 					true,

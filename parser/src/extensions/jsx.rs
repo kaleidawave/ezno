@@ -72,9 +72,10 @@ impl ASTNode for JSXElement {
 
 		// Kind of weird / not clear conditions for breaking out of while loop
 		loop {
-			if reader.is_operator_advance(">") {
+			reader.skip();
+			if reader.is_immediate_operator_advance(">") {
 				break;
-			} else if reader.is_operator_advance("/>") {
+			} else if reader.is_immediate_operator_advance("/>") {
 				// TODO check set closing
 				// Early return if self closing
 				let end = reader.get_end();
@@ -392,7 +393,7 @@ pub fn jsx_children_from_reader(reader: &mut crate::Lexer) -> ParseResult<Vec<JS
 	let mut children = Vec::new();
 	// TODO count new lines etc
 	loop {
-		reader.skip();
+		// reader.skip();
 		// for _ in 0..reader.last_was_from_new_line_consume() {
 		for _ in 0..reader.last_was_from_new_line() {
 			children.push(JSXNode::LineBreak);
@@ -445,9 +446,8 @@ impl ASTNode for JSXNode {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		let start = reader.get_start();
-		if reader.is_operator_advance("{") {
+		if reader.is_immediate_operator_advance("{") {
 			if reader.get_options().jsx.unwrap().accept_unknown_expressions
 				&& reader.get_current().starts_with([':', '#', '%', '/', '{'])
 			{
@@ -508,7 +508,7 @@ impl ASTNode for JSXNode {
 			match next {
 				Ok((content, _)) => {
 					let position = start.with_length(content.len());
-					Ok(JSXNode::TextNode(content.trim_start().into(), position))
+					Ok(JSXNode::TextNode(content.to_owned(), position))
 				}
 				Err(_) => {
 					let (_found, position) = crate::lexer::utilities::next_item(reader);

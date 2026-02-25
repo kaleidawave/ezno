@@ -21,6 +21,10 @@ pub enum BinaryOperator {
     GreaterThan, LessThan, LessThanEqual, GreaterThanEqual,
 
     LogicalAnd, LogicalOr,
+	#[cfg(feature="extras")]
+    LogicalAndKeyword,
+	#[cfg(feature="extras")]
+	LogicalOrKeyword,
     NullCoalescing,
 
 	Comma,
@@ -49,7 +53,11 @@ impl BinaryOperator {
 	pub fn is_rhs_conditional_evaluation(&self) -> bool {
 		matches!(
 			self,
-			BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr | BinaryOperator::NullCoalescing
+			BinaryOperator::LogicalAnd
+				| BinaryOperator::LogicalOr
+				| BinaryOperator::LogicalOrKeyword
+				| BinaryOperator::LogicalAndKeyword
+				| BinaryOperator::NullCoalescing
 		)
 	}
 }
@@ -150,7 +158,9 @@ impl Operator for BinaryOperator {
 			BinaryOperator::Remainder => "%",
 			BinaryOperator::NullCoalescing => "??",
 			BinaryOperator::LogicalAnd => "&&",
+			BinaryOperator::LogicalAndKeyword => " and ",
 			BinaryOperator::LogicalOr => "||",
+			BinaryOperator::LogicalOrKeyword => " or ",
 			BinaryOperator::BitwiseShiftLeft => "<<",
 			BinaryOperator::BitwiseShiftRight => ">>",
 			BinaryOperator::BitwiseShiftRightUnsigned => ">>>",
@@ -186,8 +196,10 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseAnd => 8,
 			BinaryOperator::BitwiseXOr => 7,
 			BinaryOperator::BitwiseOr => 6,
-			BinaryOperator::LogicalAnd => 5,
-			BinaryOperator::NullCoalescing | BinaryOperator::LogicalOr => 4,
+			BinaryOperator::LogicalAnd | BinaryOperator::LogicalAndKeyword => 5,
+			BinaryOperator::NullCoalescing
+			| BinaryOperator::LogicalOr
+			| BinaryOperator::LogicalOrKeyword => 4,
 			BinaryOperator::Comma => 1,
 		}
 	}

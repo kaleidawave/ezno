@@ -107,6 +107,11 @@ impl ASTNode for BlockOrSingleStatement {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		// FIX
+		reader.skip_including_comments()?;
+		// TODO
+		// if reader.starts_with('{') {
+		// } else {
 		let stmt = Statement::from_reader(reader)?;
 		if let StatementOrDeclaration::Block(blk) = stmt.0 {
 			Ok(Self::Braced(blk))
@@ -116,6 +121,7 @@ impl ASTNode for BlockOrSingleStatement {
 			}
 			Ok(Self::SingleStatement(Box::new(stmt)))
 		}
+		// }
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

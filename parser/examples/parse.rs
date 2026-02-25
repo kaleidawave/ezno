@@ -5,7 +5,7 @@ use codespan_reporting::term::{
 	self, Config,
 	termcolor::{ColorChoice, StandardStream},
 };
-use ezno_parser::{ASTNode, Module, ParseError, ParsingState, SourceId, options};
+use ezno_parser::{ASTNode, Module, ParseError, ParseState, SourceId, options};
 use source_map::FileSystem;
 
 type Files = source_map::MapFileStore<source_map::WithPathMap>;
@@ -39,7 +39,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut print_source_maps = false;
 	let mut timings = false;
 	let mut parse_imports = false;
-	let mut split = false;
 	let mut increase_stack_size = false;
 
 	for argument in arguments {
@@ -87,9 +86,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			"--to-string" => {
 				print_output = true;
 			}
-			"--split" => {
-				split = true;
-			}
 			"--increase-stack-size" => {
 				increase_stack_size = true;
 			}
@@ -110,7 +106,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		&parse_options,
 		print_ast,
 		print_source_maps,
-		split,
 		increase_stack_size,
 		&to_string_options,
 		&mut fs,
@@ -124,7 +119,6 @@ fn parse_path(
 	parse_options: &options::ParseOptions,
 	print_ast: bool,
 	print_source_maps: bool,
-	split: bool,
 	increase_stack_size: bool,
 	to_string_options: &Option<options::ToStringOptions>,
 	fs: &mut Files,
@@ -155,63 +149,42 @@ fn parse_path(
 
 	let parse_options = options::ParseOptions { type_annotations, jsx, ..*parse_options };
 
-	if split {
-		for content in source.split("\n---") {
-			let offset = (content.as_ptr() as usize) - (source.as_ptr() as usize);
-			let _result = parse_source(
-				content,
-				source_id,
-				timings,
-				increase_stack_size,
-				parse_options,
-				print_ast,
-				print_source_maps,
-				to_string_options,
-				fs,
-				Some(offset as u32),
-			);
-		}
-		Ok(())
-	} else {
-		let result = parse_source(
-			&source,
-			source_id,
-			timings,
-			increase_stack_size,
-			parse_options,
-			print_ast,
-			print_source_maps,
-			to_string_options,
-			fs,
-			None,
-		);
-		match result {
-			Ok((_module, state)) => {
-				if parse_imports {
-					for import in &state.constant_imports {
-						// Don't reparse files (+ catches cycles)
-						let resolved_path = path.parent().unwrap().join(import);
-						if fs.get_paths().contains_key(&resolved_path) {
-							continue;
-						}
-						let () = parse_path(
-							&resolved_path,
-							timings,
-							parse_imports,
-							&parse_options,
-							print_ast,
-							print_source_maps,
-							split,
-							increase_stack_size,
-							to_string_options,
-							fs,
-						)?;
+	let result = parse_source(
+		&source,
+		source_id,
+		timings,
+		increase_stack_size,
+		parse_options,
+		print_ast,
+		print_source_maps,
+		to_string_options,
+		fs,
+	);
+	match result {
+		Ok((_module, state)) => {
+			if parse_imports {
+				for import in &state.constant_imports {
+					// Don't reparse files (+ catches cycles)
+					let resolved_path = path.parent().unwrap().join(import);
+					if fs.get_paths().contains_key(&resolved_path) {
+						continue;
 					}
+					let () = parse_path(
+						&resolved_path,
+						timings,
+						parse_imports,
+						&parse_options,
+						print_ast,
+						print_source_maps,
+						increase_stack_size,
+						to_string_options,
+						fs,
+					)?;
 				}
-				Ok(())
 			}
-			Err(err) => Err(err),
+			Ok(())
 		}
+		Err(err) => Err(err),
 	}
 }
 
@@ -225,8 +198,7 @@ fn parse_source(
 	print_source_maps: bool,
 	to_string_options: &Option<options::ToStringOptions>,
 	fs: &Files,
-	offset: Option<u32>,
-) -> Result<(Module, ParsingState), Box<dyn std::error::Error>> {
+) -> Result<(Module, ParseState), Box<dyn std::error::Error>> {
 	let now = Instant::now();
 	let input = source.to_owned();
 
@@ -236,12 +208,12 @@ fn parse_source(
 
 		std::thread::Builder::new()
 			.stack_size(EIGHT_MEGA_BYTES)
-			.spawn(move || Module::from_string_with_options(input, parse_options, offset))
+			.spawn(move || Module::from_string_with_options(input, parse_options, 0))
 			.unwrap()
 			.join()
 			.unwrap()
 	} else {
-		Module::from_string_with_options(input, parse_options, offset)
+		Module::from_string_with_options(input, parse_options, 0)
 	};
 
 	match result {
@@ -271,9 +243,9 @@ fn parse_source(
 				}
 			}
 
-			if parse_options.features.record_keyword_positions {
-				println!("{:?}", state.keyword_positions.as_ref());
-			}
+			// if parse_options.features.record_keyword_positions {
+			// 	println!("{:?}", state.keyword_positions.as_ref());
+			// }
 
 			Ok((module, state))
 		}
@@ -337,7 +309,7 @@ fn run_interactive() {
 				output
 			};
 
-			let module = Module::from_string_with_options(output.clone(), parse_options, None);
+			let module = Module::from_string_with_options(output.clone(), parse_options, 0);
 
 			// TODO could remove things here
 			match module {
@@ -346,7 +318,7 @@ fn run_interactive() {
 					if let [item] = items {
 						if let ezno_parser::StatementOrDeclaration::Expression(item) = item {
 							// Unwrap multiple expression
-							let item = item.get_inner();
+							let item = item.get_inner_ref();
 							println!("{item:#?}");
 						} else {
 							println!("{item:#?}");

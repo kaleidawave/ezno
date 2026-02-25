@@ -97,6 +97,7 @@ pub enum ParseErrors<'a> {
 	InvalidNumberLiteral,
 	InvalidStatementLabel,
 	InvalidArrowFunctionParameter,
+	InvalidClassPropertyName,
 	BigIntNotAllowedHere,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
@@ -204,6 +205,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::ReservedIdentifier => {
 				write!(f, "Found reserved identifier")
+			}
+			ParseErrors::InvalidClassPropertyName => {
+				write!(f, "Invalid class property name")
 			}
 			ParseErrors::AwaitRequiresForOf => {
 				write!(f, "Can only use await on for (.. of ..)")

@@ -78,7 +78,7 @@ fn synthesise_object_to_reference<
 	T: crate::ReadFromFS,
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
-	items: &[parser::WithComment<parser::ObjectDestructuringField<U>>],
+	items: &[parser::ObjectDestructuringField<U>],
 	spread: Option<&parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -86,7 +86,7 @@ fn synthesise_object_to_reference<
 	Assignable::ObjectDestructuring(
 		items
 			.iter()
-			.map(|item| match item.get_ast_ref() {
+			.map(|item| match item {
 				parser::ObjectDestructuringField::Name(name, _, default_value, position) => {
 					AssignableObjectDestructuringField::Mapped {
 						key: synthesise_object_property_key(name, environment),
@@ -116,7 +116,7 @@ fn synthesise_object_to_reference<
 					AssignableObjectDestructuringField::Mapped {
 						key,
 						name: SynthesiseToAssignable::synthesise_to_assignable(
-							name.get_ast_ref(),
+							name,
 							environment,
 							checking_data,
 						),
@@ -143,7 +143,7 @@ fn synthesise_array_to_reference<
 	T: crate::ReadFromFS,
 	U: SynthesiseToAssignable + parser::DestructuringFieldInto,
 >(
-	items: &[parser::WithComment<parser::ArrayDestructuringField<U>>],
+	items: &[parser::ArrayDestructuringField<U>],
 	spread: Option<&parser::SpreadDestructuringField<U>>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
@@ -151,7 +151,7 @@ fn synthesise_array_to_reference<
 	Assignable::ArrayDestructuring(
 		items
 			.iter()
-			.map(|item| match item.get_ast_ref() {
+			.map(|item| match item {
 				parser::ArrayDestructuringField::Name(name, _, default_value) => {
 					AssignableArrayDestructuringField::Name(
 						SynthesiseToAssignable::synthesise_to_assignable(

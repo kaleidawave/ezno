@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::{
 	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, TypeAnnotation,
-	WithComment, derive_ASTNode,
+	derive_ASTNode,
 	functions::{
 		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
 		ThisParameter,
@@ -47,7 +47,8 @@ pub type ClassFunction = FunctionBase<ClassFunctionBase>;
 pub struct ClassProperty {
 	pub is_readonly: bool,
 	pub is_optional: bool,
-	pub key: WithComment<PropertyKey<PublicOrPrivate>>,
+	pub is_accessor: bool,
+	pub key: PropertyKey<PublicOrPrivate>,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub value: Option<Box<Expression>>,
 	pub position: Span,
@@ -66,9 +67,9 @@ impl ASTNode for ClassMember {
 
 	#[allow(clippy::similar_names)]
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
 		let is_multiline_comment = reader.starts_with_slice("/*");
 		if is_multiline_comment || reader.starts_with_slice("//") {
-			let start = reader.get_start();
 			reader.advance(2);
 			let comment = reader.parse_comment_literal(is_multiline_comment)?;
 			let position = start.with_length(if is_multiline_comment {
@@ -90,16 +91,18 @@ impl ASTNode for ClassMember {
 		}
 
 		let is_static = reader.is_keyword_advance("static");
+		reader.skip_including_comments()?;
 
-		reader.skip();
+		// TODO need to check on branches
+		let is_accessor = reader.is_keyword_advance("accessor");
+		reader.skip_including_comments()?;
 
 		if is_static && reader.starts_with('{') {
 			return Ok(ClassMember::StaticBlock(Block::from_reader(reader)?));
 		}
 
 		let is_readonly = reader.is_keyword_advance("readonly");
-		reader.skip();
-		let start = reader.get_start();
+		reader.skip_including_comments()?;
 
 		// Special index type annotation. And needed for computed keys
 		if reader.starts_with('[') && reader.after_identifier_offset(1).starts_with(':') {
@@ -120,27 +123,47 @@ impl ASTNode for ClassMember {
 		}
 
 		// TODO what about readonly: 2, or constructor: 2, etc
-		let mut header = MethodHeader::from_reader(reader);
-		reader.skip();
-		let key = if reader.is_operator("<") || reader.is_operator("(") || reader.is_operator(":") {
+		let mut header = MethodHeader::from_reader(reader)?;
+		reader.skip_including_comments()?;
+		// TODO , '*'
+		let key = if reader.get_current().starts_with(['<', '(', ':', ';', '=', '}', '*']) {
 			if let Ok(name) = header.into_property_key() {
 				let position = start.with_length(name.len());
-				let privacy = crate::property_key::PublicOrPrivate::Public;
-				let key = crate::property_key::PropertyKey::Identifier(
-					name.to_owned(),
-					position,
-					privacy,
-				);
-				WithComment::None(key)
+				let privacy = PublicOrPrivate::Public;
+				PropertyKey::Identifier(name.to_owned(), position, privacy)
+			} else if is_accessor {
+				PropertyKey::Identifier(
+					"accessor".to_owned(),
+					start.union(reader.get_end()),
+					PublicOrPrivate::Public,
+				)
+			} else if is_static {
+				PropertyKey::Identifier(
+					"static".to_owned(),
+					start.union(reader.get_end()),
+					PublicOrPrivate::Public,
+				)
 			} else {
-				todo!("error")
+				return Err(crate::errors::ParseError::new(
+					crate::errors::ParseErrors::InvalidClassPropertyName,
+					start.union(reader.get_end()),
+				));
 			}
+		} else if is_accessor
+			&& (reader.is_immediate_keyword("static") || reader.is_immediate_keyword("async"))
+		{
+			PropertyKey::Identifier(
+				"accessor".to_owned(),
+				start.union(reader.get_end()),
+				PublicOrPrivate::Public,
+			)
 		} else {
-			WithComment::<PropertyKey<crate::property_key::PublicOrPrivate>>::from_reader(reader)?
+			PropertyKey::<PublicOrPrivate>::from_reader(reader)?
 		};
-		reader.skip();
 
-		if reader.starts_with('(') || reader.starts_with('<') {
+		reader.skip_including_comments()?;
+
+		if reader.get_current().starts_with(['(', '<']) {
 			let function =
 				ClassFunction::from_reader_with_config(reader, header, key).map(Box::new)?;
 			Ok(ClassMember::Method(is_static, function))
@@ -167,8 +190,15 @@ impl ASTNode for ClassMember {
 
 			let position = start.union(reader.get_end());
 
-			let property =
-				ClassProperty { is_readonly, is_optional, key, type_annotation, value, position };
+			let property = ClassProperty {
+				is_readonly,
+				is_optional,
+				is_accessor,
+				key,
+				type_annotation,
+				value,
+				position,
+			};
 
 			Ok(Self::Property(is_static, property))
 		}
@@ -185,7 +215,10 @@ impl ASTNode for ClassMember {
 				is_static,
 				ClassProperty {
 					is_readonly,
+					// TODO
 					is_optional: _,
+					// TODO
+					is_accessor: _,
 					key,
 					type_annotation,
 					value,
@@ -254,7 +287,7 @@ impl ClassFunction {
 	fn from_reader_with_config(
 		reader: &mut crate::Lexer,
 		header: MethodHeader,
-		key: WithComment<PropertyKey<PublicOrPrivate>>,
+		key: PropertyKey<PublicOrPrivate>,
 	) -> ParseResult<Self> {
 		FunctionBase::from_reader_with_header_and_name(reader, header, key)
 	}
@@ -262,7 +295,7 @@ impl ClassFunction {
 
 impl FunctionBased for ClassFunctionBase {
 	type Header = MethodHeader;
-	type Name = WithComment<PropertyKey<PublicOrPrivate>>;
+	type Name = PropertyKey<PublicOrPrivate>;
 	type LeadingParameter = (Option<ThisParameter>, Option<SuperParameter>);
 	type ParameterVisibility = ();
 	type Body = FunctionBody;
@@ -275,8 +308,8 @@ impl FunctionBased for ClassFunctionBase {
 	fn header_and_name_from_reader(
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
-		let header = MethodHeader::from_reader(reader);
-		let name = WithComment::<PropertyKey<_>>::from_reader(reader)?;
+		let header = MethodHeader::from_reader(reader)?;
+		let name = PropertyKey::from_reader(reader)?;
 		Ok((header, name))
 	}
 
@@ -312,11 +345,7 @@ impl FunctionBased for ClassFunctionBase {
 	}
 
 	fn get_name(name: &Self::Name) -> Option<&str> {
-		if let PropertyKey::Identifier(name, ..) = name.get_ast_ref() {
-			Some(name.as_str())
-		} else {
-			None
-		}
+		if let PropertyKey::Identifier(name, ..) = name { Some(name.as_str()) } else { None }
 	}
 }
 
@@ -385,7 +414,7 @@ const CLASS_CONSTRUCTOR_AND_FUNCTION_TYPES: &str = r"
 
 	export interface ClassFunction extends FunctionBase {
 		header: MethodHeader,
-		name: WithComment<PropertyKey<PublicOrPrivate>>
+		name: PropertyKey<PublicOrPrivate>,
 		parameters: FunctionParameters<ThisParameter | null, null>,
 		body: FunctionBody,
 	}

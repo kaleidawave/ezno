@@ -10,7 +10,7 @@ use crate::{
 	bracketed_items_from_reader, bracketed_items_to_string, derive_ASTNode, functions,
 };
 
-use crate::numbers::{BigInt, NumberRepresentation};
+use crate::numbers::{BigIntRepresentation, NumberRepresentation};
 use crate::statements_and_declarations::ClassDeclaration;
 
 pub use self::{
@@ -60,7 +60,7 @@ use std::convert::TryInto;
 pub enum Expression {
 	// Literals:
 	NumberLiteral(NumberRepresentation, Span),
-	BigIntLiteral(BigInt, Span),
+	BigIntLiteral(BigIntRepresentation, Span),
 	StringLiteral(String, Quoting, Span),
 	BooleanLiteral(bool, Span),
 	RegexLiteral {
@@ -148,6 +148,7 @@ pub enum Expression {
 	/// e.g `... ? ... ? ...`
 	ConditionalTernary {
 		condition: Box<Expression>,
+		is_keyword: bool,
 		truthy_result: Box<Expression>,
 		falsy_result: Box<Expression>,
 		position: Span,
@@ -156,7 +157,9 @@ pub enum Expression {
 	ArrowFunction(Box<ArrowFunction>),
 	ExpressionFunction(Box<ExpressionFunction>),
 	/// Yes classes can exist in expression position :?
-	ClassExpression(Box<ClassDeclaration<ExpressionPosition>>),
+	ClassExpression(
+		Box<crate::extensions::decorators::Decorated<ClassDeclaration<ExpressionPosition>>>,
+	),
 	Comment {
 		content: String,
 		on: Box<Expression>,
@@ -188,7 +191,6 @@ pub enum PropertyReference {
 	Marker(Marker<PropertyReference>),
 }
 
-// TODO #x == is private
 impl std::cmp::PartialEq<str> for PropertyReference {
 	fn eq(&self, other: &str) -> bool {
 		if let Some(other) = other.strip_prefix('#') {
@@ -267,9 +269,10 @@ impl Expression {
 						crate::numbers::ParsedNumberLiteral::Number(value) => {
 							Self::NumberLiteral(value, position)
 						}
-						crate::numbers::ParsedNumberLiteral::BigInt(value) => {
-							Self::BigIntLiteral(BigInt { source: value.to_owned() }, position)
-						}
+						crate::numbers::ParsedNumberLiteral::BigInt(value) => Self::BigIntLiteral(
+							BigIntRepresentation { source: value.to_owned() },
+							position,
+						),
 					}
 				}
 				b'/' if reader.starts_with_slice("//") || reader.starts_with_slice("/*") => {
@@ -305,28 +308,42 @@ impl Expression {
 				b'(' => {
 					// TODO temp
 					if reader.get_current().starts_with("()") {
-						return Ok(Expression::ArrowFunction(Box::new(
-							ArrowFunction::from_reader(reader)?,
-						)));
-					}
-					let result = reader.try_parse(|reader: &mut crate::Lexer<'_>| {
+						Expression::ArrowFunction(Box::new(ArrowFunction::from_reader(reader)?))
+					} else {
 						// if AssociativityDirection::LeftToRight
 						// 	.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
 						// {
 						// 	return Ok(Break::Break);
 						// }
-						ArrowFunction::from_reader(reader)
-					});
-					if let Ok(arrow_function) = result {
-						return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
-					} else {
-						reader.advance(1);
-						let parenthesize_expression = MultipleExpression::from_reader(reader)?;
-						let end = reader.expect(')')?;
-						Expression::Parenthesised(
-							Box::new(parenthesize_expression),
-							start.union(end),
-						)
+						let result = reader.try_parse(|reader: &mut crate::Lexer<'_>| {
+							let parameters =
+								crate::functions::parameters::FunctionParameters::from_reader(
+									reader,
+								)?;
+							reader.skip_including_comments()?;
+							if reader.starts_with(':') || reader.starts_with_slice("=>") {
+								Ok(parameters)
+							} else {
+								Err(ParseError::new(
+									ParseErrors::InvalidArrowFunctionParameter,
+									reader.get_start().with_length(0),
+								))
+							}
+						});
+						if let Ok(parameters) = result {
+							let arrow_function = ArrowFunction::from_reader_with_parameters(
+								reader, start, false, None, parameters,
+							)?;
+							return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
+						} else {
+							reader.advance(1);
+							let parenthesize_expression = MultipleExpression::from_reader(reader)?;
+							let end = reader.expect(')')?;
+							Expression::Parenthesised(
+								Box::new(parenthesize_expression),
+								start.union(end),
+							)
+						}
 					}
 				}
 				b'<' if reader.starts_with('<') => {
@@ -334,16 +351,32 @@ impl Expression {
 						(true, true) => {
 							let result: ParseResult<_> =
 								reader.try_parse(|reader: &mut crate::Lexer<'_>| {
-									// if AssociativityDirection::LeftToRight
-									// 	.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
-									// {
-									// 	return Ok(Break::Break);
-									// }
-									ArrowFunction::from_reader(reader)
+									reader.advance(1);
+									let (type_parameters, _) =
+										bracketed_items_from_reader(reader, ">")?;
+
+									if reader.starts_with('(') {
+										Ok(type_parameters)
+									} else {
+										Err(ParseError::new(
+											ParseErrors::InvalidArrowFunctionParameter,
+											reader.get_start().with_length(0),
+										))
+									}
 								});
 
 							match result {
-								Ok(arrow_function) => {
+								Ok(type_parameters) => {
+									let parameters = crate::functions::parameters::FunctionParameters::from_reader(reader)?;
+									reader.skip_including_comments()?;
+									let arrow_function =
+										ArrowFunction::from_reader_with_parameters(
+											reader,
+											start,
+											false,
+											Some(type_parameters),
+											parameters,
+										)?;
 									return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
 								}
 								Err(_) => {
@@ -355,7 +388,7 @@ impl Expression {
 						(true, false) => {
 							let arrow_function = ArrowFunction::from_reader(reader)?;
 							return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
-							// if !AssociativityDirection::LeftToRight
+							// if !AssociativityDirection::RightToLeft
 							// 		.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 							// {
 							// } else {
@@ -373,7 +406,6 @@ impl Expression {
 				}
 				b'`' => TemplateLiteral::from_reader(reader).map(Expression::TemplateLiteral)?,
 				b'a' | b'f' | b'g' | b's' | b'w' | b't' if reader.starts_with_function_header() => {
-					// TODO reader.advance
 					let mut header = crate::functions::FunctionHeader::from_reader_initial(reader)?;
 					if reader.is_keyword("function") {
 						let header = header.to_full(reader)?;
@@ -396,21 +428,22 @@ impl Expression {
 						}
 					} else {
 						// `(async(a, b, c))` is valid non-strict syntax
-						let non_script = true;
-						if non_script && header.is_async_only() {
+						if !reader.strict_mode() && header.is_async_only() {
 							let result = reader.try_parse(ArrowFunction::from_reader);
-							if let Ok(function) = result {
-								if AssociativityDirection::LeftToRight
-									.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
-								{
-									let (_found, position) =
-										crate::lexer::utilities::next_item(reader);
-									return Err(ParseError::new(
-										ParseErrors::ExpectedExpression,
-										position,
-									));
-								}
-								return Ok(Expression::ArrowFunction(Box::new(function)));
+							if let Ok(mut function) = result {
+								function.header = true;
+								// if AssociativityDirection::RightToLeft
+								// 	.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
+								// {
+								// 	dbg!(reader.get_current_short());
+								// 	let (_found, position) =
+								// 	crate::lexer::utilities::next_item(reader);
+								// 	return Err(ParseError::new(
+								// 		ParseErrors::ExpectedExpression,
+								// 		position,
+								// 	));
+								// }
+								Expression::ArrowFunction(Box::new(function))
 							} else {
 								Expression::VariableReference(
 									"async".to_owned(),
@@ -418,17 +451,17 @@ impl Expression {
 								)
 							}
 						} else {
-							if AssociativityDirection::LeftToRight
-								.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
-							{
-								let (_found, position) = crate::lexer::utilities::next_item(reader);
-								return Err(ParseError::new(
-									ParseErrors::ExpectedExpression,
-									position,
-								));
-							}
+							// if AssociativityDirection::RightToLeft
+							// 	.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
+							// {
+							// 	let (_found, position) = crate::lexer::utilities::next_item(reader);
+							// 	return Err(ParseError::new(
+							// 		ParseErrors::ExpectedExpression,
+							// 		position,
+							// 	));
+							// }
 							let function = ArrowFunction::from_reader(reader)?;
-							return Ok(Expression::ArrowFunction(Box::new(function)));
+							Expression::ArrowFunction(Box::new(function))
 						}
 					}
 				}
@@ -467,9 +500,17 @@ impl Expression {
 					let position = start.union(operand.get_position());
 					Expression::UnaryPrefixAssignmentOperation { operand, operator, position }
 				}
-				b'c' if reader.is_keyword("class") => ClassDeclaration::from_reader(reader)
-					.map(Box::new)
-					.map(Expression::ClassExpression)?,
+				b'c' if reader.is_immediate_keyword("class") => {
+					let on = ClassDeclaration::from_reader(reader)?;
+					let position = on.get_position(); // FUTURE duplicate position 
+					Expression::ClassExpression(Box::new(
+						crate::extensions::decorators::Decorated {
+							on,
+							decorators: Vec::new(),
+							position,
+						},
+					))
+				}
 				b'+' => {
 					reader.advance(1);
 					let operator = UnaryOperator::Plus;
@@ -488,7 +529,7 @@ impl Expression {
 				}
 				b'~' => {
 					reader.advance(1);
-					let operator = UnaryOperator::LogicalNot;
+					let operator = UnaryOperator::BitwiseNot;
 					let precedence = operator.precedence();
 					let operand = Expression::from_reader_with_precedence(reader, precedence)?;
 					let position = start.union(operand.get_position());
@@ -496,19 +537,41 @@ impl Expression {
 				}
 				b'!' => {
 					reader.advance(1);
-					let operator = UnaryOperator::Negation;
+					let operator = UnaryOperator::LogicalNot;
+					let precedence = operator.precedence();
+					let operand = Expression::from_reader_with_precedence(reader, precedence)?;
+					let position = start.union(operand.get_position());
+					Expression::UnaryOperation { operand: Box::new(operand), operator, position }
+				}
+				// TODO should be after to account for function calls
+				#[cfg(feature = "extras")]
+				b'n' if reader.get_options().extras.keyword_logical_operators
+					&& reader.is_immediate_keyword_advance("not") =>
+				{
+					let operator = UnaryOperator::LogicalNot;
 					let precedence = operator.precedence();
 					let operand = Expression::from_reader_with_precedence(reader, precedence)?;
 					let position = start.union(operand.get_position());
 					Expression::UnaryOperation { operand: Box::new(operand), operator, position }
 				}
 				b'a' if reader.is_immediate_keyword_advance("await") => {
-					// TODO skip etc
+					reader.skip_including_comments()?;
+					// // TEMP fix, what about comments
+					// if !reader.strict_mode() && reader.is_immediate_operator_advance("()") {
+					// 	let on = Expression::VariableReference("await".to_owned(), start.with_length(5));
+					// 	Expression::FunctionCall {
+					// 		function: Box::new(on),
+					// 		type_arguments: None,
+					// 		arguments: Vec::new(),
+					// 		position: start.union(reader.get_end()),
+					// 		is_optional: false,
+					// 	}
+					// } else {
+					let operator = UnaryOperator::Await;
 					if reader.starts_with_expression_delimiter() {
 						let position = start.with_length(5);
 						Expression::VariableReference("await".to_owned(), position)
 					} else {
-						let operator = UnaryOperator::Await;
 						let operand =
 							Expression::from_reader_with_precedence(reader, operator.precedence())?;
 						let position = start.union(operand.get_position());
@@ -541,33 +604,33 @@ impl Expression {
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
 				b'y' if reader.is_immediate_keyword_advance("yield") => {
-					// Fix for arrow functions
-					// if reader.is_operator("=>") {
-					// 	let is_async = false;
-					// 	let identifier: crate::VariableName = crate::VariableIdentifier::Standard(
-					// 		"yield".to_owned(),
-					// 		start.union(reader.get_end()),
-					// 	).into();
-					// 	return ArrowFunction::from_reader_with_first_parameter(
-					// 		reader, is_async, identifier,
-					// 	)
-					// 	.map(Box::new)
-					// 	.map(Expression::ArrowFunction);
-					// }
-
-					let yielded = if reader.starts_with_expression_delimiter() {
-						None
+					reader.skip_including_comments()?;
+					// TEMP fix, what about comments
+					if !reader.strict_mode() && reader.is_immediate_operator_advance("()") {
+						let on =
+							Expression::VariableReference("yield".to_owned(), start.with_length(5));
+						Expression::FunctionCall {
+							function: Box::new(on),
+							type_arguments: None,
+							arguments: Vec::new(),
+							position: start.union(reader.get_end()),
+							is_optional: false,
+						}
 					} else {
-						let is_delegated = reader.is_operator_advance("*");
-						let expression = Expression::from_reader_with_precedence(
-							reader,
-							YIELD_OPERATORS_PRECEDENCE,
-						)?;
-						Some((is_delegated, Box::new(expression)))
-					};
+						let yielded = if reader.starts_with_expression_delimiter() {
+							None
+						} else {
+							let is_delegated = reader.is_operator_advance("*");
+							let expression = Expression::from_reader_with_precedence(
+								reader,
+								YIELD_OPERATORS_PRECEDENCE,
+							)?;
+							Some((is_delegated, Box::new(expression)))
+						};
 
-					let position = start.union(reader.get_end());
-					Expression::SpecialOperators(SpecialOperators::Yield { yielded }, position)
+						let position = start.union(reader.get_end());
+						Expression::SpecialOperators(SpecialOperators::Yield { yielded }, position)
+					}
 				}
 				b't' if reader.is_immediate_keyword_advance("true") => {
 					Expression::BooleanLiteral(true, start.with_length(4))
@@ -582,7 +645,9 @@ impl Expression {
 					Expression::Null(start.with_length(4))
 				}
 				b'n' if reader.is_immediate_keyword_advance("new") => {
-					if reader.is_operator_advance(".") {
+					reader.skip_including_comments()?;
+					if reader.is_immediate_operator_advance(".") {
+						reader.skip_including_comments()?;
 						reader.expect_keyword("target")?;
 						let end = reader.get_end();
 						Expression::NewTarget(start.union(end))
@@ -638,85 +703,22 @@ impl Expression {
 					Expression::SuperExpression(inner, start.union(reader.get_end()))
 				}
 				b'i' if reader.is_immediate_keyword_advance("import") => {
-					if reader.is_operator_advance(".") {
-						reader.skip();
-						#[cfg(feature = "extras")]
-						if reader.is_immediate_keyword_advance("source") {
-							reader.expect('(')?;
-							let path = Box::new(Expression::from_reader(reader)?);
-							let _ = reader.is_operator_advance(",");
-							reader.expect(')')?;
-							let position = start.union(reader.get_end());
-							Expression::Import(ImportExpression::ImportSource { path, position })
-						} else if reader.is_immediate_keyword_advance("defer") {
-							reader.expect('(')?;
-							let path = Box::new(Expression::from_reader(reader)?);
-							let _ = reader.is_operator_advance(",");
-							reader.expect(')')?;
-							let position = start.union(reader.get_end());
-							Expression::Import(ImportExpression::ImportDefer { path, position })
-						} else if reader.is_immediate_keyword_advance("meta") {
-							let position = start.union(reader.get_end());
-							Expression::Import(ImportExpression::ImportMeta(position))
-						} else {
-							return Err(crate::lexer::utilities::expected_one_of_items(
-								reader,
-								&["source", "defer", "meta"],
-							));
-						}
-
-						#[cfg(not(feature = "extras"))]
-						if reader.is_immediate_keyword_advance("meta") {
-							let position = start.union(reader.get_end());
-							Expression::Import(ImportExpression::ImportMeta(position))
-						} else {
-							return Err(crate::lexer::utilities::expected_one_of_items(
-								reader,
-								&["source", "defer", "meta"],
-							));
-						}
-					} else if reader.is_immediate_keyword_advance("(") {
-						let path = Expression::from_reader(reader)?;
-						// if let Expression::StringLiteral(path, ..) = &path {
-						//     state.constant_imports.push(path.clone());
-						// }
-
-						// TODO may cause issue?
-						let options = if reader.is_operator_advance(",") && !reader.is_operator(")")
-						{
-							Some(Box::new(Expression::from_reader(reader)?))
-						} else {
-							None
-						};
-						let _ = reader.is_operator_advance(",");
-						let end = reader.expect(')')?;
-						let inner = ImportExpression::DynamicImport {
-							path: Box::new(path),
-							options,
-							position: start.union(end),
-						};
-						Expression::Import(inner)
-					} else {
-						let position = reader.get_start().with_length(1);
-						let reason = ParseErrors::UnexpectedCharacter {
-							expected: &['.', '('],
-							found: reader.get_current().chars().next(),
-						};
-						return Err(ParseError::new(reason, position));
+					Expression::Import(parse_after_import(reader, start)?)
+				}
+				// esid: prod-ClassExpression
+				b'@' if !reader.strict_mode() => {
+					let mut decorators = Vec::new();
+					while reader.is_operator("@") {
+						decorators
+							.push(crate::extensions::decorators::Decorator::from_reader(reader)?);
 					}
+					let on = ClassDeclaration::from_reader(reader)?;
+					let position = start.union(on.get_position());
+					Expression::ClassExpression(Box::new(
+						crate::extensions::decorators::Decorated { on, decorators, position },
+					))
 				}
 				_ => {
-					#[cfg(feature = "extras")]
-					if reader.get_options().extras.is_expressions && reader.is_keyword("is") {
-						let result = reader.try_parse(|reader: &mut crate::Lexer<'_>| {
-							crate::extensions::is_expression::IsExpression::from_reader(reader)
-						});
-
-						if let Ok(expr) = result {
-							return Ok(Expression::IsExpression(expr));
-						}
-					}
-
 					let name =
 						reader.parse_immediate_identifier("variable reference expression", true)?;
 
@@ -734,30 +736,23 @@ impl Expression {
 							)
 							.starts_with("=>");
 						if is_arrow_function
-							&& !AssociativityDirection::LeftToRight
+							&& AssociativityDirection::RightToLeft
 								.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 						{
 							let identifier =
 								crate::VariableIdentifier::Standard(name.into_owned(), position);
 							let is_async = false;
-							return ArrowFunction::from_reader_with_first_parameter(
+							let function = ArrowFunction::from_reader_with_first_parameter(
 								reader,
 								is_async,
 								identifier.into(),
-							)
-							.map(Box::new)
-							.map(Expression::ArrowFunction);
-						}
+							)?;
 
-						Expression::VariableReference(name.into_owned(), position)
+							Expression::ArrowFunction(Box::new(function))
+						} else {
+							Expression::VariableReference(name.into_owned(), position)
+						}
 					}
-					// if let Ok(name) = name {
-					// } else {
-					// 	return Err(ParseError::new(
-					// 		ParseErrors::ExpectedExpression,
-					// 		reader.next_item_span(),
-					// 	));
-					// }
 				}
 			}
 		};
@@ -770,23 +765,24 @@ impl Expression {
 		return_precedence: u8,
 		first_expression: Expression,
 	) -> ParseResult<Self> {
+		/// TODO is this needed
 		#[allow(unused)]
 		enum AfterFirst {
-			SingleLineComment,
-			MultiLineComment,
+			// SingleLineComment,
+			// MultiLineComment,
 			UnaryPostfixAssignmentOperator(UnaryPostfixAssignmentOperator),
 			BinaryOperator(BinaryOperator),
 			BinaryAssignmentOperator(BinaryAssignmentOperator),
 			Assign,
 			TemplateLiteralStart,
 			FunctionCall {
-				optional: bool,
+				is_optional: bool,
 			},
 			PropertyAccess {
-				optional: bool,
+				is_optional: bool,
 			},
 			Index {
-				optional: bool,
+				is_optional: bool,
 			},
 			NonNullAssertion,
 			ConditionalTernary,
@@ -795,6 +791,15 @@ impl Expression {
 			Is,
 			In,
 			InstanceOf,
+
+			// Extras
+			BetterGenericInstantation,
+
+			// For nunjucks
+			AndKeyword,
+			OrKeyword,
+			IfKeyword,
+
 			// Colon,
 			// ArrowFunction,
 			/// Used as trick to exit early
@@ -815,22 +820,23 @@ impl Expression {
 						if AssociativityDirection::LeftToRight
 							.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
 						{
-							return Ok(Break::Break);
+							Ok(Break::Break)
+						} else {
+							reader.advance("<".len() as u32);
+							let (value, _) = bracketed_items_from_reader(reader, ">")?;
+							Ok(Break::Value(value))
 						}
-						reader.advance("<".len() as u32);
-						let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
-						reader.expect('(')?;
-						let type_arguments = Some(type_arguments);
-						let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
-						Ok(Break::Value((type_arguments, arguments)))
 					});
 
 				match result {
-					Ok(Break::Value((type_arguments, arguments))) => {
+					Ok(Break::Value(type_arguments)) => {
+						// TODO instantation here if expression delimeter
+						reader.expect('(')?;
+						let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
 						let position = top.get_position().union(reader.get_end());
 						top = Expression::FunctionCall {
 							function: Box::new(top),
-							type_arguments,
+							type_arguments: Some(type_arguments),
 							arguments,
 							position,
 							is_optional: false,
@@ -844,13 +850,16 @@ impl Expression {
 				}
 			}
 
-			reader.skip();
+			// reader.skip();
+			reader.skip_including_comments()?;
+
+			// TODO if not returning and comments, then we want to build the comments up.
 
 			let first = reader.get_current().as_bytes().first().copied().unwrap_or(0);
 			let next = match first {
 				b'}' | b']' | b')' | b';' => AfterFirst::Exit,
-				b'/' if reader.starts_with_slice("//") => AfterFirst::SingleLineComment,
-				b'/' if reader.starts_with_slice("/*") => AfterFirst::MultiLineComment,
+				// b'/' if reader.starts_with_slice("//") => AfterFirst::SingleLineComment,
+				// b'/' if reader.starts_with_slice("/*") => AfterFirst::MultiLineComment,
 				b'+' if reader.starts_with_slice("++") => {
 					AfterFirst::UnaryPostfixAssignmentOperator(UnaryPostfixAssignmentOperator(
 						IncrementOrDecrement::Increment,
@@ -910,53 +919,51 @@ impl Expression {
 				b'>' if reader.starts_with_slice(">>>") => {
 					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRightUnsigned)
 				}
+				b'>' if reader.starts_with_slice(">>=") => AfterFirst::BinaryAssignmentOperator(
+					BinaryAssignmentOperator::BitwiseShiftRight,
+				),
+				b'>' if reader.starts_with_slice(">>") => {
+					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRight)
+				}
 				b'<' if reader.starts_with_slice("<=") => {
 					AfterFirst::BinaryOperator(BinaryOperator::LessThanEqual)
 				}
 				b'>' if reader.starts_with_slice(">=") => {
 					AfterFirst::BinaryOperator(BinaryOperator::GreaterThanEqual)
 				}
-				b'<' if reader.starts_with_slice("<<") => {
-					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftLeft)
-				}
 				b'<' if reader.starts_with_slice("<<=") => {
 					AfterFirst::BinaryAssignmentOperator(BinaryAssignmentOperator::BitwiseShiftLeft)
 				}
-				b'>' if reader.starts_with_slice(">>") => {
-					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftRight)
+				b'<' if reader.starts_with_slice("<<") => {
+					AfterFirst::BinaryOperator(BinaryOperator::BitwiseShiftLeft)
 				}
-				b'>' if reader.starts_with_slice(">>=") => AfterFirst::BinaryAssignmentOperator(
-					BinaryAssignmentOperator::BitwiseShiftRight,
-				),
-				// because of comments
 				b'=' if reader.starts_with_slice("=>") => {
-					// TODO
-					// let name: VariableField = top.get_non_comment().try_into()?;
-					match top.get_non_comment() {
-						Expression::VariableReference(name, position) => {
+					let non_comment = top.get_non_comment();
+					match non_comment.as_identifier() {
+						Ok((name, position)) => {
 							let identifier =
 								crate::VariableIdentifier::Standard(name.to_owned(), position);
-							return ArrowFunction::from_reader_with_first_parameter(
+							let function = ArrowFunction::from_reader_with_first_parameter(
 								reader,
 								false,
 								identifier.into(),
-							)
-							.map(Box::new)
-							.map(Expression::ArrowFunction);
+							)?;
+							top = Expression::ArrowFunction(Box::new(function));
+							continue;
 						}
-						Expression::Parenthesised(item, _) => {
-							return Err(ParseError::new(
-								ParseErrors::InvalidArrowFunctionParameter,
-								item.get_position(),
-							));
-							// TODO more
-						}
-						// TODO yield async etc
-						expression => {
-							return Err(ParseError::new(
-								ParseErrors::InvalidArrowFunctionParameter,
-								expression.get_position(),
-							));
+						Err(top) => {
+							if let Expression::Parenthesised(item, _) = top {
+								// TODO
+								return Err(ParseError::new(
+									ParseErrors::InvalidArrowFunctionParameter,
+									item.get_position(),
+								));
+							} else {
+								return Err(ParseError::new(
+									ParseErrors::InvalidArrowFunctionParameter,
+									top.get_position(),
+								));
+							}
 						}
 					}
 				}
@@ -966,19 +973,45 @@ impl Expression {
 				b'=' if reader.starts_with_slice("==") => {
 					AfterFirst::BinaryOperator(BinaryOperator::Equal)
 				}
-				b'.' => AfterFirst::PropertyAccess { optional: false },
-				b'[' => AfterFirst::Index { optional: false },
-				b'?' if reader.starts_with_slice("?.[") => AfterFirst::Index { optional: true },
-				b'(' => AfterFirst::FunctionCall { optional: false },
-				b'?' if reader.starts_with_slice("?.(") => {
-					AfterFirst::FunctionCall { optional: true }
-				}
-				b'?' if reader.starts_with_slice("?.<") => {
-					AfterFirst::FunctionCall { optional: true }
-				}
+				// Better way of specifying generic arguments
+				b'.' if reader.starts_with_slice(".<") => AfterFirst::BetterGenericInstantation,
+				b'.' => AfterFirst::PropertyAccess { is_optional: false },
+				b'[' => AfterFirst::Index { is_optional: false },
 				b'?' if reader.starts_with_slice("?.") => {
-					AfterFirst::PropertyAccess { optional: true }
+					enum Out {
+						ConditionalDotNumber,
+						Err,
+					}
+
+					// TODO does this break precedence early returns
+					let out: Result<AfterFirst, Out> =
+						reader.try_parse(|reader: &mut crate::Lexer| -> Result<AfterFirst, Out> {
+							reader.advance(2);
+							let result = reader.skip_including_comments();
+							if result.is_err() {
+								Err(Out::Err)
+							} else if reader.starts_with('[') {
+								Ok(AfterFirst::Index { is_optional: true })
+							} else if reader.get_current().starts_with(['<', '(']) {
+								Ok(AfterFirst::FunctionCall { is_optional: true })
+							} else if reader
+								.get_current()
+								.starts_with(|chr: char| chr.is_ascii_digit())
+							{
+								Err(Out::ConditionalDotNumber)
+							} else {
+								Ok(AfterFirst::PropertyAccess { is_optional: true })
+							}
+						});
+
+					match out {
+						Ok(out) => out,
+						Err(Out::ConditionalDotNumber) => AfterFirst::ConditionalTernary,
+						// let next handle error
+						Err(Out::Err) => AfterFirst::PropertyAccess { is_optional: true },
+					}
 				}
+				b'(' => AfterFirst::FunctionCall { is_optional: false },
 				b'`' => AfterFirst::TemplateLiteralStart,
 				b'=' => AfterFirst::Assign,
 				b'i' if reader.is_immediate_keyword("instanceof") => AfterFirst::InstanceOf,
@@ -987,12 +1020,36 @@ impl Expression {
 				b'a' if reader.is_immediate_keyword("as") => AfterFirst::As,
 				#[cfg(feature = "full-typescript")]
 				b's' if reader.is_immediate_keyword("satisfies") => AfterFirst::Satisfies,
+				// non enabled caught later
 				#[cfg(feature = "extras")]
 				b'<' if reader.starts_with_slice("<@>") => AfterFirst::BinaryOperator(BinaryOperator::Compose),
+				// non enabled caught later
 				#[cfg(feature = "extras")]
 				b'|' if reader.starts_with_slice("|>") => AfterFirst::BinaryOperator(BinaryOperator::Pipe),
 				#[cfg(feature = "extras")]
-				b'i' if reader.is_immediate_keyword("is") => AfterFirst::Is,
+				b'i' if reader.is_immediate_keyword("is")
+					&& reader.get_options().extras.is_expressions =>
+				{
+					AfterFirst::Is
+				}
+				#[cfg(feature = "extras")]
+				b'a' if reader.is_immediate_keyword("and")
+					&& reader.get_options().extras.keyword_logical_operators =>
+				{
+					AfterFirst::AndKeyword
+				}
+				#[cfg(feature = "extras")]
+				b'o' if reader.is_immediate_keyword("or")
+					&& reader.get_options().extras.keyword_logical_operators =>
+				{
+					AfterFirst::OrKeyword
+				}
+				#[cfg(feature = "extras")]
+				b'i' if reader.is_immediate_keyword("if")
+					&& reader.get_options().extras.keyword_logical_operators =>
+				{
+					AfterFirst::IfKeyword
+				}
 				b'!' if reader.starts_with_slice("!==") => {
 					AfterFirst::BinaryOperator(BinaryOperator::StrictNotEqual)
 				}
@@ -1022,23 +1079,24 @@ impl Expression {
 			};
 
 			match next {
-				c @ (AfterFirst::SingleLineComment | AfterFirst::MultiLineComment) => {
-					if reader.last_was_from_new_line() == 0 {
-						let is_multiline = matches!(c, AfterFirst::MultiLineComment);
-						reader.advance(2);
-						let content = reader.parse_comment_literal(is_multiline)?.to_owned();
-						let position = top.get_position().union(reader.get_end());
-						top = Expression::Comment {
-							is_multiline,
-							content,
-							position,
-							on: Box::new(top),
-							prefix: false,
-						};
-					} else {
-						return Ok(top);
-					}
-				}
+				// c @ (AfterFirst::SingleLineComment | AfterFirst::MultiLineComment) => {
+				// 	// TODO only for statements!
+				// 	if reader.last_was_from_new_line() == 0 {
+				// 		let is_multiline = matches!(c, AfterFirst::MultiLineComment);
+				// 		reader.advance(2);
+				// 		let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+				// 		let position = top.get_position().union(reader.get_end());
+				// 		top = Expression::Comment {
+				// 			is_multiline,
+				// 			content,
+				// 			position,
+				// 			on: Box::new(top),
+				// 			prefix: false,
+				// 		};
+				// 	} else {
+				// 		return Ok(top);
+				// 	}
+				// }
 				AfterFirst::UnaryPostfixAssignmentOperator(operator) => {
 					if operator
 						.associativity_direction()
@@ -1046,7 +1104,7 @@ impl Expression {
 					{
 						return Ok(top);
 					}
-					if reader.contains_new_line_since(top.get_non_right_comment().get_position()) {
+					if reader.last_was_from_new_line() > 0 {
 						return Ok(top);
 					}
 
@@ -1070,6 +1128,7 @@ impl Expression {
 					let operator_len = operator.to_str().len();
 					reader.advance(operator_len as u32);
 
+					#[cfg(feature = "extras")]
 					if !reader.get_options().extras.extra_operators && operator.is_non_standard() {
 						let position =
 							source_map::Start(reader.get_end().0).with_length(operator_len);
@@ -1147,20 +1206,29 @@ impl Expression {
 					template_literal.tag = Some(Box::new(top));
 					top = Expression::TemplateLiteral(template_literal);
 				}
-				AfterFirst::FunctionCall { optional: _ } => {
+				AfterFirst::BetterGenericInstantation => {
+					reader.advance(".<".len() as u32);
+					let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
+					// TODO instantation here
+					reader.expect('(')?;
+					let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
+					let position = top.get_position().union(reader.get_end());
+					top = Expression::FunctionCall {
+						function: Box::new(top),
+						type_arguments: Some(type_arguments),
+						arguments,
+						position,
+						is_optional: false,
+					};
+				}
+				AfterFirst::FunctionCall { is_optional } => {
 					if AssociativityDirection::LeftToRight
 						.should_return(return_precedence, FUNCTION_CALL_PRECEDENCE)
 					{
 						return Ok(top);
 					}
-					// TODO bit weird
-					let is_optional = if reader.starts_with('?') {
-						reader.advance(2);
-						true
-					} else {
-						false
-					};
 
+					// TODO differentiated between less than?
 					let type_arguments = if reader.is_operator_advance("<") {
 						let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
 						reader.expect('(')?;
@@ -1171,6 +1239,32 @@ impl Expression {
 					};
 
 					let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
+
+					#[cfg(feature = "extras")]
+					if reader.get_options().extras.is_expressions
+						&& reader.is_operator("{")
+						&& let Expression::VariableReference(ref variable, ..) = top
+						&& variable == "is"
+						&& arguments.len() > 0
+						&& arguments
+							.iter()
+							.find(|expr: &&ExpressionOrSpreadExpression| expr.is_spread())
+							.is_none()
+					{
+						let matcher = MultipleExpression::from_expressions(
+							arguments
+								.into_iter()
+								.map(|argument| argument.value_and_spread().1)
+								.collect(),
+						);
+						let expr = IsExpression::from_reader_with_matcher(
+							reader,
+							top.get_position().get_start(),
+							Box::new(matcher),
+						)?;
+						return Ok(Expression::IsExpression(expr));
+					}
+
 					let position = top.get_position().union(reader.get_end());
 					top = Expression::FunctionCall {
 						function: Box::new(top),
@@ -1180,15 +1274,106 @@ impl Expression {
 						is_optional,
 					};
 				}
-				AfterFirst::Index { optional: _ } => {
+				AfterFirst::AndKeyword => {
+					let operator = BinaryOperator::LogicalAndKeyword;
+					if operator
+						.associativity_direction()
+						.should_return(return_precedence, operator.precedence())
+					{
+						return Ok(top);
+					}
+
+					reader.advance(3);
+
+					// #[cfg(feature = "extras")]
+					// if !reader.get_options().extras.extra_operators && operator.is_non_standard() {
+					// 	let position =
+					// 		source_map::Start(reader.get_end().0).with_length(operator_len);
+					// 	return Err(ParseError::new(
+					// 		ParseErrors::NonStandardSyntaxUsedWithoutEnabled {
+					// 			syntax: operator.to_str(),
+					// 		},
+					// 		position,
+					// 	));
+					// }
+
+					let rhs = Self::from_reader_with_precedence(reader, operator.precedence())?;
+
+					top = Expression::BinaryOperation {
+						position: top.get_position().union(rhs.get_position()),
+						lhs: Box::new(top),
+						operator,
+						rhs: Box::new(rhs),
+					};
+				}
+				AfterFirst::OrKeyword => {
+					// TODO seperate operator?
+					let operator = BinaryOperator::LogicalOrKeyword;
+					if operator
+						.associativity_direction()
+						.should_return(return_precedence, operator.precedence())
+					{
+						return Ok(top);
+					}
+
+					reader.advance(2);
+
+					// #[cfg(feature = "extras")]
+					// if !reader.get_options().extras.extra_operators && operator.is_non_standard() {
+					// 	let position =
+					// 		source_map::Start(reader.get_end().0).with_length(operator_len);
+					// 	return Err(ParseError::new(
+					// 		ParseErrors::NonStandardSyntaxUsedWithoutEnabled {
+					// 			syntax: operator.to_str(),
+					// 		},
+					// 		position,
+					// 	));
+					// }
+
+					let rhs = Self::from_reader_with_precedence(reader, operator.precedence())?;
+
+					top = Expression::BinaryOperation {
+						position: top.get_position().union(rhs.get_position()),
+						lhs: Box::new(top),
+						operator,
+						rhs: Box::new(rhs),
+					};
+				}
+				AfterFirst::IfKeyword => {
+					if AssociativityDirection::RightToLeft
+						.should_return(return_precedence, CONDITIONAL_TERNARY_PRECEDENCE)
+					{
+						return Ok(top);
+					}
+					reader.advance(2);
+					let condition_position = top.get_position();
+					let condition = Box::new(top);
+					let truthy_result = Box::new(Self::from_reader(reader)?);
+					let (falsy_result, position) = if reader.is_keyword_advance("else") {
+						let falsy_result = Self::from_reader(reader)?;
+						let position = condition_position.union(falsy_result.get_position());
+						let falsy_result = Box::new(falsy_result);
+						(falsy_result, position)
+					} else {
+						let position = condition_position.union(truthy_result.get_position());
+						(Box::new(Expression::Null(source_map::Span::NULL)), position)
+					};
+					top = Expression::ConditionalTernary {
+						position,
+						is_keyword: true,
+						condition,
+						truthy_result,
+						falsy_result,
+					};
+				}
+				AfterFirst::Index { is_optional } => {
 					if AssociativityDirection::LeftToRight
 						.should_return(return_precedence, INDEX_PRECEDENCE)
 					{
 						return Ok(top);
 					}
-					let (is_optional, length) =
-						if reader.starts_with('?') { (true, 3) } else { (false, 1) };
-					reader.advance(length);
+
+					reader.advance(1);
 
 					let indexer = MultipleExpression::from_reader(reader)?;
 					let end = reader.expect(']')?;
@@ -1200,17 +1385,17 @@ impl Expression {
 						is_optional,
 					};
 				}
-				AfterFirst::PropertyAccess { optional: _ } => {
+				AfterFirst::PropertyAccess { is_optional } => {
 					if AssociativityDirection::LeftToRight
 						.should_return(return_precedence, MEMBER_ACCESS_PRECEDENCE)
 					{
 						return Ok(top);
 					}
 
-					let (is_optional, length) =
-						if reader.starts_with('?') { (true, 2) } else { (false, 1) };
-
-					reader.advance(length);
+					// Optional already skipped
+					if !is_optional {
+						reader.advance(1);
+					}
 
 					let property = if reader.get_options().features.partial_syntax
 						&& let Some(length) = reader.get_current().find(|c: char| c.is_alphabetic())
@@ -1282,6 +1467,7 @@ impl Expression {
 					let falsy_result = Box::new(falsy_result);
 					top = Expression::ConditionalTernary {
 						position,
+						is_keyword: false,
 						condition,
 						truthy_result,
 						falsy_result,
@@ -1383,7 +1569,6 @@ impl Expression {
 						return Ok(top);
 					}
 					reader.advance(2);
-					// TODO in for loop this could be multiple expression
 					let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
 					let position = top.get_position().union(rhs.get_position());
 					let operation = SpecialOperators::In {
@@ -1948,7 +2133,7 @@ impl Expression {
 				if local2.on_left {
 					buf.push('(');
 				}
-				class.to_string_from_buffer(buf, options, local);
+				class.on.to_string_from_buffer(buf, options, local);
 				if local2.on_left {
 					buf.push(')');
 				}
@@ -2104,15 +2289,105 @@ impl ExpressionToStringArgument {
 pub(crate) fn parse_after_await(
 	reader: &mut crate::Lexer,
 	start: source_map::Start,
-) -> ParseResult<Expression> {
-	let operator = UnaryOperator::Await;
-	let operand = Box::new(Expression::from_reader_with_precedence(reader, operator.precedence())?);
-	let position = start.union(operand.get_position());
-	Ok(Expression::UnaryOperation { operator, operand, position })
+	using: bool,
+) -> ParseResult<MultipleExpression> {
+	if reader.starts_with_expression_delimiter() {
+		let position = start.with_length(5);
+		let expression = Expression::VariableReference("await".to_owned(), position);
+		Expression::from_reader_after_first_expression(reader, 0, expression)
+			.map(MultipleExpression)
+	} else if using {
+		// TODO position broken
+		let operator = UnaryOperator::Await;
+		let position = start.with_length(5);
+		let operand = Box::new(Expression::VariableReference("using".to_owned(), position));
+		let top = Expression::UnaryOperation { operator, operand, position };
+		Expression::from_reader_after_first_expression(reader, 0, top).map(MultipleExpression)
+	} else {
+		let operator = UnaryOperator::Await;
+		let operand =
+			Box::new(Expression::from_reader_with_precedence(reader, operator.precedence())?);
+		let position = start.union(operand.get_position());
+		let top = Expression::UnaryOperation { operator, operand, position };
+		Expression::from_reader_after_first_expression(reader, 0, top).map(MultipleExpression)
+	}
+}
+
+/// because of `import {}`
+pub(crate) fn parse_after_import(
+	reader: &mut crate::Lexer,
+	// start of import keyword
+	start: source_map::Start,
+) -> ParseResult<ImportExpression> {
+	if reader.is_operator_advance(".") {
+		reader.skip();
+		#[cfg(feature = "extras")]
+		if reader.is_immediate_keyword_advance("source") {
+			reader.expect('(')?;
+			let path = Box::new(Expression::from_reader(reader)?);
+			let _ = reader.is_operator_advance(",");
+			reader.expect(')')?;
+			let position = start.union(reader.get_end());
+			Ok(ImportExpression::ImportSource { path, position })
+		} else if reader.is_immediate_keyword_advance("defer") {
+			reader.expect('(')?;
+			let path = Box::new(Expression::from_reader(reader)?);
+			let _ = reader.is_operator_advance(",");
+			reader.expect(')')?;
+			let position = start.union(reader.get_end());
+			Ok(ImportExpression::ImportDefer { path, position })
+		} else if reader.is_immediate_keyword_advance("meta") {
+			let position = start.union(reader.get_end());
+			Ok(ImportExpression::ImportMeta(position))
+		} else {
+			return Err(crate::lexer::utilities::expected_one_of_items(
+				reader,
+				&["source", "defer", "meta"],
+			));
+		}
+
+		#[cfg(not(feature = "extras"))]
+		if reader.is_immediate_keyword_advance("meta") {
+			let position = start.union(reader.get_end());
+			Ok(ImportExpression::ImportMeta(position))
+		} else {
+			Err(crate::lexer::utilities::expected_one_of_items(
+				reader,
+				&["source", "defer", "meta"],
+			))
+		}
+	} else if reader.is_immediate_operator_advance("(") {
+		let path = Expression::from_reader(reader)?;
+		// if let Expression::StringLiteral(path, ..) = &path {
+		//     state.constant_imports.push(path.clone());
+		// }
+
+		// TODO may cause issue?
+		let options = if reader.is_operator_advance(",") && !reader.is_operator(")") {
+			Some(Box::new(Expression::from_reader(reader)?))
+		} else {
+			None
+		};
+		let _ = reader.is_operator_advance(",");
+		let end = reader.expect(')')?;
+		Ok(ImportExpression::DynamicImport {
+			path: Box::new(path),
+			options,
+			position: start.union(end),
+		})
+	} else {
+		let position = reader.get_start().with_length(1);
+		let reason = ParseErrors::UnexpectedCharacter {
+			expected: &['.', '('],
+			found: reader.get_current().chars().next(),
+		};
+		Err(ParseError::new(reason, position))
+	}
 }
 
 /// Represents expressions that can be the comma operator. Has a special new type to discern the places
 /// where this is allowed
+/// TODO pub(crate)
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -2134,7 +2409,12 @@ impl MultipleExpression {
 	}
 
 	#[must_use]
-	pub fn get_inner(&self) -> &Expression {
+	pub fn get_inner(self) -> Expression {
+		self.0
+	}
+
+	#[must_use]
+	pub fn get_inner_ref(&self) -> &Expression {
 		&self.0
 	}
 
@@ -2191,6 +2471,20 @@ impl MultipleExpression {
 			};
 		}
 		Ok(Self(top))
+	}
+
+	pub fn from_expressions(expressions: Vec<Expression>) -> Self {
+		let mut expressions = expressions.into_iter();
+		let mut top = expressions.next().unwrap();
+		while let Some(next) = expressions.next() {
+			top = Expression::BinaryOperation {
+				position: top.get_position().union(next.get_position()),
+				lhs: Box::new(top),
+				operator: BinaryOperator::Comma,
+				rhs: Box::new(next),
+			};
+		}
+		MultipleExpression(top)
 	}
 }
 
@@ -2417,8 +2711,7 @@ impl ASTNode for ExpressionOrSpreadExpression {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		// TODO double
-		reader.skip();
+		reader.skip_including_comments()?;
 		let start = reader.get_start();
 		// Precedence of `...` is weird (same level as others) so doing this here
 		if reader.is_immediate_operator_advance("...") {
@@ -2477,6 +2770,10 @@ impl ExpressionOrSpreadExpression {
 			(false, &self.0)
 		}
 	}
+
+	pub fn is_spread(&self) -> bool {
+		matches!(&self.0, Expression::UnaryOperation { operator: UnaryOperator::Spread, .. })
+	}
 }
 
 #[derive(Debug, Clone, Visitable)]
@@ -2490,7 +2787,7 @@ impl ASTNode for ArrayElement {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// This is allowed for some reason
-		reader.skip();
+		reader.skip_including_comments()?;
 		if reader.is_one_of_operators(&[",", "]"]).is_some() {
 			Ok(Self(None))
 		} else {
@@ -2613,13 +2910,13 @@ impl Expression {
 
 	/// Recurses to find first non parenthesized expression
 	#[must_use]
-	pub fn as_identifier(self) -> Option<(String, Span)> {
+	pub fn as_identifier(self) -> Result<(String, Span), Self> {
 		match self.get_non_comment() {
-			Self::VariableReference(name, pos) => Some((name, pos)),
+			Self::VariableReference(name, pos) => Ok((name, pos)),
 			Self::SpecialOperators(SpecialOperators::Yield { yielded: None }, position) => {
-				Some(("yield".to_owned(), position))
+				Ok(("yield".to_owned(), position))
 			}
-			_ => None,
+			expr => Err(expr),
 		}
 	}
 }

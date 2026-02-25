@@ -1,7 +1,6 @@
-use crate::{
-	ASTNode, ParseResult, Span, block::BlockOrSingleStatement, derive_ASTNode,
-	expressions::MultipleExpression,
-};
+use crate::block::BlockOrSingleStatement;
+use crate::expressions::MultipleExpression;
+use crate::{ASTNode, ParseResult, Span, derive_ASTNode};
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
@@ -52,15 +51,11 @@ impl ASTNode for IfStatement {
 		let (mut else_conditions, mut trailing_else) =
 			(Vec::<ConditionalElseStatement>::new(), None::<UnconditionalElseStatement>);
 
-		while reader.is_keyword("else") || reader.is_one_of(&["//", "/*"]).is_some() {
-			if reader.is_one_of(&["//", "/*"]).is_some() {
-				let is_multiline = reader.starts_with_slice("/*");
-				reader.advance(2);
-				let _content = reader.parse_comment_literal(is_multiline)?;
-				continue;
-			}
+		reader.skip_including_comments()?;
 
-			// TODO doesn't use `ConditionalElseStatement` or `UnconditionalElseStatement`, `ASTNode::from_reader` implementations
+		while reader.is_immediate_keyword("else") {
+			// TODO doesn't use `ConditionalElseStatement` or `UnconditionalElseStatement`,
+			// `ASTNode::from_reader` implementations
 			reader.advance("else".len() as u32);
 			if reader.is_keyword_advance("if") {
 				let _value = reader.expect('(')?;
@@ -73,6 +68,7 @@ impl ASTNode for IfStatement {
 					inner,
 				};
 				else_conditions.push(value);
+				reader.skip_including_comments()?;
 			} else {
 				let inner = BlockOrSingleStatement::from_reader(reader)?;
 				let position = start.union(inner.get_position());

@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::{
 	ASTNode, Expression, ParseError, ParseErrors, ParseResult, TypeAnnotation, VariableField,
-	WithComment, derive_ASTNode,
+	derive_ASTNode,
 };
 
 use iterator_endiate::EndiateIteratorExt;
@@ -15,7 +15,7 @@ use visitable_derive::Visitable;
 pub struct Parameter<V> {
 	#[visit_skip_field]
 	pub visibility: V,
-	pub name: WithComment<VariableField>,
+	pub name: VariableField,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub additionally: Option<ParameterData>,
 	pub position: Span,
@@ -56,13 +56,8 @@ pub enum ParameterData {
 	WithDefaultValue(Box<Expression>),
 }
 
-#[cfg(feature = "extras")]
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type SpreadParameterName = VariableField;
-
-#[cfg(not(feature = "extras"))]
-#[cfg_attr(target_family = "wasm", tsify::declare)]
-pub type SpreadParameterName = crate::VariableIdentifier;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable)]
@@ -193,14 +188,14 @@ where
 			}
 
 			let start = reader.get_start();
-
 			if reader.is_immediate_operator_advance("...") {
+				reader.skip_including_comments()?;
 				let name = SpreadParameterName::from_reader(reader)?;
+
 				let name_position = name.get_position();
 
 				if reader.get_options().features.run_validation {
 					let mut duplicate = None;
-					#[cfg(feature = "extras")]
 					{
 						name.visit_names(&mut |name| {
 							if duplicate.is_none() {
@@ -211,14 +206,6 @@ where
 							}
 							names.push(name.to_owned());
 						});
-					}
-
-					#[cfg(not(feature = "extras"))]
-					{
-						duplicate = names
-							.iter()
-							.any(|existing| name == &**existing)
-							.then_some(name.clone());
 					}
 
 					if let Some(_duplicate) = duplicate {
@@ -258,7 +245,7 @@ where
 			} else {
 				let visibility = V::from_reader(reader);
 
-				let name = WithComment::<VariableField>::from_reader(reader)?;
+				let name = VariableField::from_reader(reader)?;
 				reader.skip_including_comments()?;
 				let (is_optional, type_annotation) = if reader.is_immediate_keyword_advance("?:") {
 					let type_annotation = TypeAnnotation::from_reader(reader)?;
@@ -304,7 +291,7 @@ where
 
 				if reader.get_options().features.run_validation {
 					let mut duplicate = None;
-					name.get_ast_ref().visit_names(&mut |name| {
+					name.visit_names(&mut |name| {
 						if duplicate.is_none() {
 							duplicate = names
 								.iter()

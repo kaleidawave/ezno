@@ -4,7 +4,7 @@ use crate::expressions::{Expression, ObjectLiteral};
 use crate::type_annotations::TypeAnnotationFunctionParameters;
 use crate::{TypeAnnotation, VariableIdentifier};
 
-use super::{ImportExportPart, ImportLocation};
+use super::{ImportExportName, ImportExportPart, ImportLocation};
 
 use get_field_by_type::GetFieldByType;
 use visitable_derive::Visitable;
@@ -66,7 +66,9 @@ pub enum ExportDeclaration {
 	Parts(Vec<ImportExportPart<ExportDeclaration>>, Span),
 	/// `export * as x from "..."`
 	ImportToExportAll {
-		r#as: Option<VariableIdentifier>,
+		// r#as: Option<VariableIdentifier>,
+		// under proposal this can be a string
+		r#as: Option<ImportExportName>,
 		from: ImportLocation,
 		with: Option<ObjectLiteral>,
 		position: Span,
@@ -97,8 +99,9 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 	start: source_map::Start,
 	reader: &mut crate::Lexer,
 ) -> ParseResult<ExportDeclaration> {
-	reader.skip();
-	if reader.is_keyword_advance("default") {
+	reader.skip_including_comments()?;
+	if reader.is_immediate_keyword_advance("default") {
+		reader.skip_including_comments()?;
 		let edge_case = reader.get_options().type_annotations.is_definition_file()
 			&& reader.starts_with_function_header();
 		// Always have == .d.ts file here
@@ -137,8 +140,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 		}
 	} else if reader.is_operator_advance("*") {
 		let r#as = if reader.is_keyword_advance("as") {
-			// TODO state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::As);
-			Some(VariableIdentifier::from_reader(reader)?)
+			Some(ImportExportName::from_reader(reader)?.0)
 		} else {
 			None
 		};
@@ -156,6 +158,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 
 		Ok(ExportDeclaration::ImportToExportAll { r#as, from, position, with })
 	} else if reader.is_operator_advance("{") {
+		reader.skip_including_comments()?;
 		let type_definitions_only = false;
 		let (parts, _) =
 			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
@@ -185,6 +188,8 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 	} else if reader.parse_type_annotations() && reader.is_keyword_advance("type") {
 		reader.expect_operator("{")?;
 		let type_definitions_only = true;
+		reader.skip_including_comments()?;
+		dbg!(reader.get_current_short());
 		let (parts, _) =
 			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
 
