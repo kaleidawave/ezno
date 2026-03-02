@@ -125,6 +125,7 @@ impl ImportDeclaration {
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
+			#[cfg(feature = "full-typescript")]
 			is_type_annotation_import_only: out.is_type_annotation_import_only,
 			#[cfg(feature = "extras")]
 			is_deferred: out.is_deferred,
@@ -173,6 +174,7 @@ impl ImportDeclaration {
 pub(crate) struct PartsResult {
 	#[cfg(feature = "extras")]
 	pub is_deferred: bool,
+	#[cfg(feature = "full-typescript")]
 	pub is_type_annotation_import_only: bool,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
@@ -190,32 +192,50 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 	reader: &mut crate::Lexer,
 ) -> ParseResult<PartsResult> {
 	let start = reader.get_start();
+
 	#[cfg(feature = "extras")]
 	let is_deferred = reader.is_operator_advance("defer");
 
+	#[cfg(feature = "full-typescript")]
 	let is_type_annotation_import_only = reader.is_operator_advance("type");
+
+	#[cfg(any(feature = "extras", feature = "full-typescript"))]
+	if reader.is_keyword("from") {
+		let mut is_name = false;
+
+		#[cfg(feature = "extras")]
+		{
+			is_name = is_deferred;
+		};
+
+		#[cfg(feature = "full-typescript")]
+		{
+			is_name ^= is_type_annotation_import_only;
+		};
+
+		if is_name {
+			return Ok(PartsResult {
+				#[cfg(feature = "extras")]
+				is_deferred: false,
+				#[cfg(feature = "full-typescript")]
+				is_type_annotation_import_only,
+				default: Some(VariableIdentifier::Standard(
+					"defer".to_owned(),
+					start.with_length(5),
+				)),
+				items: ImportedItems::Parts(None),
+			});
+		}
+	}
 
 	let is_identifier =
 		reader.get_current().starts_with(crate::lexer::utilities::is_identifier_continutation);
-
-	#[cfg(feature = "extras")]
-	if is_deferred && !is_type_annotation_import_only && reader.is_keyword("from") {
-		// TODO WIP
-		return Ok(PartsResult {
-			#[cfg(feature = "extras")]
-			is_deferred: false,
-			is_type_annotation_import_only,
-			default: Some(VariableIdentifier::Standard("defer".to_owned(), start.with_length(5))),
-			items: ImportedItems::Parts(None),
-		});
-	}
 
 	let default = if is_identifier {
 		let default_identifier = VariableIdentifier::from_reader(reader)?;
 		if reader.is_operator_advance(",") {
 			Some(default_identifier)
 		} else {
-			let _end = default_identifier.get_position().get_end();
 			return Ok(PartsResult {
 				#[cfg(feature = "extras")]
 				is_deferred,
@@ -244,6 +264,7 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 	Ok(PartsResult {
 		#[cfg(feature = "extras")]
 		is_deferred,
+		#[cfg(feature = "full-typescript")]
 		is_type_annotation_import_only,
 		default,
 		items,

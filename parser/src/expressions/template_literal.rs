@@ -113,15 +113,12 @@ pub fn parse_template_literal<T: ASTNode>(
 					if let Some(chr) = chr {
 						let after = &immediate[chr.len_utf8()..];
 						let result = escape_character(chr, after, buf.to_mut());
-						match result {
-							Ok(offset) => {
-								// Skip others
-								last = idx + 1 + offset;
-							}
-							Err(_) => {
-								unknown_escapes.push(idx as u32);
-								last = idx + 1;
-							}
+						if let Ok(offset) = result {
+							// Skip others
+							last = idx + 1 + offset;
+						} else {
+							unknown_escapes.push(idx as u32);
+							last = idx + 1;
 						}
 					} else {
 						return Err(ParseError::new(

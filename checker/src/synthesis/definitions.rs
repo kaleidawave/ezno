@@ -62,9 +62,11 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 			&& let Expression::VariableReference(name, _) = &**function
 		{
 			if let "Constant" | "InputOutput" = name.as_str() {
-				let (identifier, may_throw) = if !arguments.is_empty() {
+				let (identifier, may_throw) = if arguments.is_empty() {
+					(function_name.to_owned(), None)
+				} else {
 					let identifier = if let Some(argument) = arguments.first()
-						&& let (false, Expression::StringLiteral(identifier, _, _)) =
+						&& let (Expression::StringLiteral(identifier, _, _), false) =
 							argument.value_and_spread_ref()
 					{
 						identifier.clone()
@@ -75,12 +77,12 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 					};
 
 					let may_throw = if let Some(argument) = arguments.get(1)
-						&& let (false, Expression::VariableReference(identifier, _)) =
+						&& let (Expression::VariableReference(identifier, _), false) =
 							argument.value_and_spread_ref()
 					{
 						Some(
 							environment
-								.get_type_from_name(&identifier)
+								.get_type_from_name(identifier)
 								.expect("could not find thrown type"),
 						)
 					} else {
@@ -88,8 +90,6 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 					};
 
 					(identifier, may_throw)
-				} else {
-					(function_name.to_owned(), None)
 				};
 
 				let effect = match name.as_str() {

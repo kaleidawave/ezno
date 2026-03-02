@@ -728,7 +728,7 @@ impl TryFrom<Expression> for VariableField {
 				let mut iter = members.into_iter();
 				for member in iter.by_ref() {
 					if let Some(member) = member.0 {
-						let (spread, expression) = member.value_and_spread();
+						let (expression, spread) = member.value_and_spread();
 
 						if spread {
 							return if let Some(next) = iter.next() {
@@ -747,22 +747,22 @@ impl TryFrom<Expression> for VariableField {
 									position,
 								})
 							};
-						} else {
-							match expression {
-								Expression::Assignment { lhs, rhs, position: _ } => {
-									new_members.push(ArrayDestructuringField::Name(
-										lhs.try_into()?,
-										None,
-										Some(rhs),
-									));
-								}
-								expression => {
-									new_members.push(ArrayDestructuringField::Name(
-										expression.try_into()?,
-										None,
-										None,
-									));
-								}
+						}
+
+						match expression {
+							Expression::Assignment { lhs, rhs, position: _ } => {
+								new_members.push(ArrayDestructuringField::Name(
+									lhs.try_into()?,
+									None,
+									Some(rhs),
+								));
+							}
+							expression => {
+								new_members.push(ArrayDestructuringField::Name(
+									expression.try_into()?,
+									None,
+									None,
+								));
 							}
 						}
 					} else {
@@ -834,7 +834,7 @@ impl TryFrom<Expression> for VariableField {
 									};
 
 								ObjectDestructuringField::Map {
-									from: key.into(),
+									from: key,
 									annotation: None,
 									name: name.try_into()?,
 									default_value,

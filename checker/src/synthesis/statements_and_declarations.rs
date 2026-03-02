@@ -138,22 +138,19 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 							checking_data,
 						);
 
-						match variable {
-							Ok(variable) => {
-								let variable = variable.0.get_origin_variable_id();
+						if let Ok(variable) = variable {
+							let variable = variable.0.get_origin_variable_id();
 
-								if let crate::Scope::Module { ref mut exported, .. } =
-									environment.context_type.scope
-								{
-									exported.named.insert(
-										export_name.clone(),
-										(variable, VariableMutability::Constant),
-									);
-								} else {
-									crate::utilities::notify!("bad export position");
-								}
+							if let crate::Scope::Module { ref mut exported, .. } =
+								environment.context_type.scope
+							{
+								exported.named.insert(
+									export_name.clone(),
+									(variable, VariableMutability::Constant),
+								);
+							} else {
+								crate::utilities::notify!("bad export position");
 							}
-							Err(_) => {}
 						}
 					}
 				}

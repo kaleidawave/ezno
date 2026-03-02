@@ -19,12 +19,12 @@ const z = 2
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(input.clone(), partial_options()).unwrap();
+	let (module, _) = Module::from_string_with_options(input.clone(), partial_options()).unwrap();
 	let _output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
+	assert!(Module::from_string_with_options(input.clone(), ParseOptions::default()).is_err());
 
 	// TODO difference in semi colons
 	// assert_eq!(output, input);
@@ -39,12 +39,12 @@ if () {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(input.clone(), partial_options()).unwrap();
+	let (module, _) = Module::from_string_with_options(input.clone(), partial_options()).unwrap();
 	let output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
+	assert!(Module::from_string(input.clone()).is_err());
 
 	assert_eq!(output, input);
 }
@@ -60,13 +60,13 @@ function y(c: ) {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(input.clone(), partial_options()).unwrap();
+	let (module, _) = Module::from_string_with_options(input.clone(), partial_options()).unwrap();
 
 	let output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
+	assert!(Module::from_string(input.clone()).is_err());
 
 	assert_eq!(output, input);
 }
@@ -75,13 +75,13 @@ function y(c: ) {
 fn property_access() {
 	let input = r"console.log(x., 2)".trim_start().replace("    ", "\t");
 
-	let module = Module::from_string(input.clone(), partial_options()).unwrap();
+	let (module, _) = Module::from_string_with_options(input.clone(), partial_options()).unwrap();
 
 	let output = module
 		.to_string(&ToStringOptions { expect_markers: true, ..ToStringOptions::typescript() });
 
 	// also assert invalid without partial
-	assert!(Module::from_string(input.clone(), ParseOptions::default()).is_err());
+	assert!(Module::from_string(input.clone()).is_err());
 
 	assert_eq!(output, input);
 }
@@ -91,7 +91,7 @@ fn invalid_syntax() {
 	let sources = [("", true), ("][", false), ("{}}", false), ("))", false)];
 
 	for (source, is_okay) in sources {
-		let result = Module::from_string(source.to_owned(), partial_options());
+		let result = Module::from_string_with_options(source.to_owned(), partial_options());
 		if is_okay {
 			assert!(result.is_ok());
 		} else {

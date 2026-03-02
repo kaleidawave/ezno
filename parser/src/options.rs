@@ -11,10 +11,12 @@ pub enum TypeAnnotationOption {
 }
 
 impl TypeAnnotationOption {
+	#[must_use]
 	pub fn type_annotations(&self) -> bool {
 		matches!(self, Self::Allowed | Self::Definitions)
 	}
 
+	#[must_use]
 	pub fn is_definition_file(&self) -> bool {
 		matches!(self, Self::Definitions)
 	}
@@ -79,6 +81,7 @@ pub struct Extras {
 
 #[cfg(feature = "extras")]
 impl Extras {
+	#[must_use]
 	pub fn all() -> Self {
 		Self {
 			is_expressions: true,
@@ -108,6 +111,7 @@ pub struct Features {
 	pub retain_blank_lines: bool,
 	pub run_validation: bool,
 	pub section_of_source: bool,
+	pub position_offset: u32,
 }
 
 /// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)

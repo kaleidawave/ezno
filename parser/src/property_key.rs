@@ -111,14 +111,15 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 
 impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
-		match self {
-			PropertyKey::Identifier(name, ..) | PropertyKey::StringLiteral(name, ..) => {
-				name == other
-			}
-			PropertyKey::BigIntLiteral(..)
-			| PropertyKey::NumberLiteral(..)
-			| PropertyKey::Computed(..) => false,
-		}
+		self.as_str().is_some_and(|key| key == other)
+	}
+}
+
+impl<U: PropertyKeyKind> PropertyKey<U> {
+	#[must_use]
+	pub fn new_identifier(name: String, position: Span) -> Self {
+		// TODO if name is off or starts with '#' then do something here
+		PropertyKey::Identifier(name, position, U::new_public())
 	}
 }
 
@@ -129,7 +130,7 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		if reader.starts_with('"') || reader.starts_with('\'') {
+		if reader.starts_with_string_delimeter() {
 			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
 			Ok(Self::StringLiteral(content.into_owned(), quoting, position))

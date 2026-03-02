@@ -70,11 +70,8 @@ impl ASTNode for SwitchStatement {
 				// TODO temp
 				let retain_blank_lines = false;
 
-				if let (
-					false,
-					StatementOrDeclaration::AestheticSemiColon(..)
-					| StatementOrDeclaration::Empty(..),
-				) = (retain_blank_lines, &item)
+				if let StatementOrDeclaration::Empty(..) = item
+					&& !retain_blank_lines
 				{
 					continue;
 				}

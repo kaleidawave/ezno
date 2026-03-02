@@ -16,7 +16,7 @@ pub struct Lexer<'a> {
 }
 
 fn is_whitespace_ascii(byte: u8) -> bool {
-	matches!(byte, b'\t' | b' ' | 0b00001011 | 0b00001100)
+	matches!(byte, b'\t' | b' ' | 0b0000_1011 | 0b0000_1100)
 }
 
 fn is_whitespace_char_three_bytes(chr: char) -> bool {
@@ -62,16 +62,26 @@ impl<'a> Lexer<'a> {
 		let mut forked = Lexer {
 			script: self.script,
 			offset: self.offset,
-			options: self.options.clone(),
+			options: self.options,
 			state: ParseState { head: self.state.head, ..ParseState::default() },
 		};
 		let result = cb(&mut forked);
 		match result {
 			Ok(node) => {
-				// TODO merge more state
-				self.state.head = forked.state.head;
-				self.state.blank_lines = forked.state.blank_lines;
-				self.state.comment_lines = forked.state.comment_lines;
+				let ParseState {
+					head,
+					blank_lines,
+					comment_lines,
+					last,
+					mut markers,
+					mut constant_imports,
+				} = forked.state;
+				self.state.head = head;
+				self.state.blank_lines = blank_lines;
+				self.state.comment_lines = comment_lines;
+				self.state.last = last;
+				self.state.markers.append(&mut markers);
+				self.state.constant_imports.append(&mut constant_imports);
 				Ok(node)
 			}
 			Err(err) => Err(err),
@@ -101,7 +111,7 @@ impl<'a> Lexer<'a> {
 
 	#[must_use]
 	pub(crate) fn get_current(&self) -> &'a str {
-		unsafe { &self.script.get_unchecked(self.state.head as usize..) }
+		unsafe { self.script.get_unchecked(self.state.head as usize..) }
 	}
 
 	#[must_use]
@@ -128,6 +138,7 @@ impl<'a> Lexer<'a> {
 	}
 
 	pub(crate) fn skip_including_comments(&mut self) {
+		self.state.last = self.state.head;
 		while (self.state.head as usize) < self.script.len() {
 			let first_byte: u8 =
 				unsafe { *self.script.as_bytes().get_unchecked(self.state.head as usize) };
@@ -248,14 +259,15 @@ impl<'a> Lexer<'a> {
 
 	pub(crate) fn is_operator_advance(&mut self, operator: &str) -> bool {
 		let current = self.get_current();
-		let matches = current.starts_with(operator);
-		if matches {
+		if current.starts_with(operator) {
 			self.state.blank_lines = 0;
 			self.state.comment_lines = 0;
 			self.state.head += operator.len() as u32;
 			self.skip_including_comments();
+			true
+		} else {
+			false
 		}
-		matches
 	}
 
 	pub(crate) fn expect_start(&mut self, chr: char) -> Result<source_map::Start, ParseError> {
@@ -292,7 +304,8 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	/// Same as above, but do not advance as to lose any whitespace in the literal part of template literals
+	/// Same as above, but do not advance as to lose any whitespace in the literal parts
+	/// of template literals and JSX children
 	pub(crate) fn expect_closing_bracket(&mut self) -> Result<source_map::End, ParseError> {
 		if self.get_current().starts_with('}') {
 			self.state.head += 1;
@@ -379,10 +392,8 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		if current.starts_with(['=', ',', ':', '?', ';', '.', ']', ')', '}']) {
 			true
-		} else if self.is_keyword("instanceof") {
-			true
 		} else {
-			false
+			self.is_keyword("instanceof")
 		}
 	}
 
@@ -392,10 +403,8 @@ impl<'a> Lexer<'a> {
 		let current = self.get_current();
 		if current.starts_with(['=', ',', ':', ';', '.', '?', ']', ')', '}', '[', '(', '{']) {
 			true
-		} else if self.is_keyword("instanceof") {
-			true
 		} else {
-			false
+			self.is_keyword("instanceof")
 		}
 	}
 
@@ -420,14 +429,20 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
+	pub(crate) fn if_not_expression_like(&self) -> bool {
+		self.starts_with_expression_delimiter()
+			|| self.starts_with_statement_or_declaration_on_new_line()
+	}
+
 	#[must_use]
 	pub(crate) fn get_start(&self) -> source_map::Start {
 		source_map::Start(self.offset + self.state.head)
 	}
 
+	/// use last rather than head for whitespace and comment reasons
 	#[must_use]
 	pub(crate) fn get_end(&self) -> source_map::End {
-		source_map::End(self.offset + self.state.head)
+		source_map::End(self.offset + self.state.last)
 	}
 
 	pub(crate) fn advance(&mut self, count: u32) {
@@ -724,19 +739,16 @@ impl<'a> Lexer<'a> {
 	) -> Result<&'a str, ParseError> {
 		if is_multiline {
 			let result = self.parse_until("*/");
-			match result {
-				Ok(content) => {
-					// WIP
-					if content.contains(NEW_LINE_CHARACTERS) {
-						self.state.comment_lines += 1;
-					}
-					Ok(content)
+			if let Ok(content) = result {
+				// WIP
+				if content.contains(NEW_LINE_CHARACTERS) {
+					self.state.comment_lines += 1;
 				}
-				Err(()) => {
-					// TODO might be a problem
-					let position = self.get_start().with_length(self.get_current().len());
-					Err(ParseError::new(ParseErrors::UnexpectedEnd, position))
-				}
+				Ok(content)
+			} else {
+				// TODO might be a problem
+				let position = self.get_start().with_length(self.get_current().len());
+				Err(ParseError::new(ParseErrors::UnexpectedEnd, position))
 			}
 		} else {
 			self.state.comment_lines += 1;
@@ -814,12 +826,6 @@ impl<'a> Lexer<'a> {
 const NEW_LINE_CHARACTERS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
 pub(crate) mod utilities {
-	// #[inline]
-	// pub(crate) fn is_valid_identifier(chr: char) -> bool {
-	// 	// TODO `\\` for unicode identifiers
-	// 	chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
-	// }
-
 	pub(crate) fn is_identifier_start(chr: char) -> bool {
 		unicode_id_start::is_id_start(chr) || chr == '$'
 	}

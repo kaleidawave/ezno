@@ -3,15 +3,11 @@ use std::borrow::Cow;
 /// What surrounds string content
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 #[apply(crate::derive_ASTNode!)]
+#[derive(Default)]
 pub enum Quoting {
 	Single,
+	#[default]
 	Double,
-}
-
-impl Default for Quoting {
-	fn default() -> Self {
-		Self::Double
-	}
 }
 
 impl Quoting {
@@ -54,7 +50,7 @@ pub struct ParseStringOutput<'a> {
 }
 
 /// expects current to start with string delimeter
-pub fn parse_string<'a>(current: &'a str) -> Result<ParseStringOutput<'a>, StringError> {
+pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError> {
 	let (delimeter, quoting) = if current.starts_with('"') {
 		('"', Quoting::Double)
 	} else if current.starts_with('\'') {

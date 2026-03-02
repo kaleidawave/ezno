@@ -208,12 +208,12 @@ fn parse_source(
 
 		std::thread::Builder::new()
 			.stack_size(EIGHT_MEGA_BYTES)
-			.spawn(move || Module::from_string_with_options(input, parse_options, 0))
+			.spawn(move || Module::from_string_with_options(input, parse_options))
 			.unwrap()
 			.join()
 			.unwrap()
 	} else {
-		Module::from_string_with_options(input, parse_options, 0)
+		Module::from_string_with_options(input, parse_options)
 	};
 
 	match result {
@@ -309,7 +309,7 @@ fn run_interactive() {
 				output
 			};
 
-			let module = Module::from_string_with_options(output.clone(), parse_options, 0);
+			let module = Module::from_string_with_options(output.clone(), parse_options);
 
 			// TODO could remove things here
 			match module {

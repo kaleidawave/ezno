@@ -1,6 +1,6 @@
 use crate::{
 	ASTNode, Expression, ParseError, ParseErrors, ParseResult, Span, derive_ASTNode,
-	expressions::ExpressionOrSpreadExpression,
+	expressions::ArrayElement,
 };
 use get_field_by_type::GetFieldByType;
 use visitable_derive::Visitable;
@@ -45,7 +45,7 @@ pub enum JSXNode {
 	Element(JSXElement),
 	TextNode(String, Span),
 	/// Function argument as single comments and `...` is allowed
-	InterpolatedExpression(Box<ExpressionOrSpreadExpression>, Span),
+	InterpolatedExpression(Box<ArrayElement>, Span),
 	// for nunjucks, etc
 	UnknownExpression(String, Span),
 	Comment(String, Span),
@@ -84,10 +84,10 @@ impl ASTNode for JSXElement {
 					children: JSXElementChildren::SelfClosing,
 					position: start.union(end),
 				});
-			} else {
-				let attribute = JSXAttribute::from_reader(reader)?;
-				attributes.push(attribute);
 			}
+
+			let attribute = JSXAttribute::from_reader(reader)?;
+			attributes.push(attribute);
 		}
 
 		if html_tag_is_self_closing(&tag_name) {
@@ -379,7 +379,7 @@ impl ASTNode for JSXRoot {
 		match self {
 			JSXRoot::Document(element, _) => {
 				buf.push_str("<!DOCTYPE html>");
-				element.to_string_from_buffer(buf, options, local)
+				element.to_string_from_buffer(buf, options, local);
 			}
 			JSXRoot::Element(element) => element.to_string_from_buffer(buf, options, local),
 			JSXRoot::Fragment(fragment) => fragment.to_string_from_buffer(buf, options, local),
@@ -458,14 +458,12 @@ impl ASTNode for JSXNode {
 							if chr == '"' {
 								in_string = false;
 							}
-						} else {
-							if chr == '{' {
-								depth += 1;
-							} else if chr == '}' {
-								depth -= 1;
-								if depth == 0 {
-									return Ok(idx);
-								}
+						} else if chr == '{' {
+							depth += 1;
+						} else if chr == '}' {
+							depth -= 1;
+							if depth == 0 {
+								return Ok(idx);
 							}
 						}
 					}
@@ -484,8 +482,8 @@ impl ASTNode for JSXNode {
 					}
 				}
 			} else {
-				let expression = ExpressionOrSpreadExpression::from_reader(reader)?;
-				let end = reader.expect_chr('}')?;
+				let expression = ArrayElement::from_reader(reader)?;
+				let end = reader.expect_closing_bracket()?;
 				let position = start.union(end);
 				Ok(JSXNode::InterpolatedExpression(Box::new(expression), position))
 			}
@@ -503,15 +501,12 @@ impl ASTNode for JSXNode {
 			Ok(JSXNode::Element(element))
 		} else {
 			let next = reader.parse_until_one_of_no_advance(&['<', '{']);
-			match next {
-				Ok((content, _)) => {
-					let position = start.with_length(content.len());
-					Ok(JSXNode::TextNode(content.to_owned(), position))
-				}
-				Err(_) => {
-					let (_found, position) = crate::lexer::utilities::next_item(reader);
-					return Err(ParseError::new(crate::ParseErrors::UnexpectedEnd, position));
-				}
+			if let Ok((content, _)) = next {
+				let position = start.with_length(content.len());
+				Ok(JSXNode::TextNode(content.to_owned(), position))
+			} else {
+				let (_found, position) = crate::lexer::utilities::next_item(reader);
+				Err(ParseError::new(crate::ParseErrors::UnexpectedEnd, position))
 			}
 		}
 	}
@@ -534,7 +529,7 @@ impl ASTNode for JSXNode {
 			}
 			JSXNode::UnknownExpression(expression, _) => {
 				buf.push('{');
-				buf.push_str(&expression);
+				buf.push_str(expression);
 				buf.push('}');
 			}
 			JSXNode::LineBreak => {

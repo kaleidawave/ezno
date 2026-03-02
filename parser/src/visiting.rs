@@ -3,8 +3,8 @@
 use source_map::SourceId;
 
 use crate::{
-	ArrayDestructuringField, Expression, ObjectDestructuringField, PropertyKey,
-	StatementOrDeclaration,
+	Expression, PropertyKey, StatementOrDeclaration,
+	variable_fields::{ArrayDestructuringField, ObjectDestructuringField},
 };
 
 pub use temporary_annex::Annex;

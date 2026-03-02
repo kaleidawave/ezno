@@ -794,7 +794,7 @@ pub(super) fn part_to_name_pair<T: ImportOrExport>(
 			}
 			None => name,
 		};
-		let position = item.position.clone();
+		let position = item.position;
 		if T::PREFIX {
 			Some(NamePair { value, r#as: name, position })
 		} else {

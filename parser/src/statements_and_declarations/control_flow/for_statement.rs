@@ -104,7 +104,7 @@ pub enum ForLoopCondition {
 	},
 	ForIn {
 		lhs: VariableOrAssignable,
-		/// https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-initializers-in-forin-statement-heads
+		/// <https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-initializers-in-forin-statement-heads>
 		value: Option<Expression>,
 		/// Yes `of` is single expression, `in` is multiple
 		r#in: Box<MultipleExpression>,
@@ -155,6 +155,15 @@ impl ASTNode for ForLoopCondition {
 			is_await: bool,
 			start: source_map::Start,
 		) -> ParseResult<ForLoopCondition> {
+			if reader.starts_with_expression_delimiter_or_open_bracket() {
+				let initial =
+					Expression::VariableReference("using".to_owned(), start.with_length(5));
+				let expression =
+					Expression::from_reader_after_first_expression(reader, 0, initial)?;
+				let expression = Box::new(MultipleExpression(expression));
+				let initialiser = ForLoopStatementInitialiser::Expression(expression);
+				return parse_statements(reader, Some(initialiser), start);
+			}
 			let name = reader.parse_identifier("using name", true)?.into_owned();
 			let annotation = if reader.is_operator_advance(":") {
 				Some(crate::TypeAnnotation::from_reader(reader)?)
@@ -216,11 +225,11 @@ impl ASTNode for ForLoopCondition {
 					crate::expressions::precedence::RELATION_PRECEDENCE,
 				)?;
 				let position = start.union(after_assign.get_position());
-				if reader.is_operator_advance("in") {
+				let condition = if reader.is_operator_advance("in") {
 					let lhs = VariableOrAssignable::Variable(kind, name, type_annotation);
 					let r#in = Box::new(MultipleExpression::from_reader(reader)?);
 					let value = Some(after_assign);
-					return Ok(ForLoopCondition::ForIn { lhs, r#in, value, position });
+					ForLoopCondition::ForIn { lhs, r#in, value, position }
 				} else {
 					let declaration = crate::variables::VariableDeclarationItem {
 						name,
@@ -257,13 +266,9 @@ impl ASTNode for ForLoopCondition {
 					};
 
 					let position = start.union(reader.get_end());
-					return Ok(ForLoopCondition::Statements {
-						initialiser,
-						condition,
-						afterthought,
-						position,
-					});
-				}
+					ForLoopCondition::Statements { initialiser, condition, afterthought, position }
+				};
+				return Ok(condition);
 			}
 
 			if reader.is_keyword_advance("of") {

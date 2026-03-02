@@ -31,22 +31,6 @@ jobs:
         with:
           items: kaleidawave/experiments@assets[shell-language|spectra],sharkdp/hyperfine@v1.19.0
 
-      - name: Install valgrind
-        id: install-valgrind
-        if: false
-        continue-on-error: true
-        run: |
-          # See <https://github.com/actions/runner-images/issues/10977#issuecomment-2810713336>
-          # Skip installing pacakge docs {makes the man-db trigger much faster) 
-          # (I disabled `/doc` and `/info` too, just in case.)
-
-          sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc > /dev/null << 'EOF'
-          path-exclude /usr/share/doc/*
-          path-exclude /usr/share/man/*
-          path-exclude /usr/share/info/*
-          EOF
-          sudo apt-get install valgrind
-
       # TODO is there a way to cache this?
       - name: Build latest version of demo.tsx
         run: |
@@ -62,31 +46,17 @@ jobs:
 
       # get other binaries and last
 
-      - name: Create 'binaries' folder
-        continue-on-error: true
-        run: mkdir -p binaries
-
       - name: Build latest version of binary
-        shell: shell-language {0}
-        run: |
-          echo run cargo build --release
-          copy target/release/ezno binaries/latest/ezno
+        shell: bash
+        run: cargo build --release
 
       # start of performance
 
       - name: Compare checker performance
         shell: shell-language {0}
         run: |
-          # Ensure binaries are executable
-          ee binaries
-          
           let to = env GITHUB_STEP_SUMMARY
-
-          let binaries = files "binaries/**/*" then replace "\n" ","
-          echo "Found $binaries"
-
-          let output = run hyperfine -N -i -L binary $binaries './{binary} check demo.tsx'
-
+          hyperfine -N -i './target/release/ezno check demo.tsx'
           append $to "### Checking `demo.tsx`\n"
           append $to "```shell\n$output\n```"
 
@@ -96,7 +66,6 @@ jobs:
         run: |
           let to = env GITHUB_STEP_SUMMARY
           let content = read ./demo.tsx
-
           append $to "<details><summary>Input</summary>\n"
           append $to "```tsx\n$content\n```\n</details>"
           
@@ -107,17 +76,14 @@ jobs:
         run: |
           let to = env GITHUB_STEP_SUMMARY
           append $to "#### check demo.tsx"
-          for files "binaries/**/*" each
-            let out = run "./$file" check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
-            # let diagnostics = rbefore $out "---" then trim
-            let statistics = rafter $out "---" then trim
+          let out = run ./target/release/ezno check demo.tsx --timings --max-diagnostics all --merge-stdout-and-stderr
 
-            # append $to "<details><summary>Diagnostics</summary>\n"
-            # append $to "```\n$diagnostics\n```\n</details>\n"
+          # let diagnostics = rbefore $out "---" then trim
+          let statistics = rafter $out "---" then trim
 
-            append $to "<details><summary>Statistics for $file check demo.tsx</summary>\n"
-            append $to "```\n$statistics\n```\n</details>\n"
+          append $to "<details><summary>Statistics for $file check demo.tsx</summary>\n"
+          append $to "```\n$statistics\n```\n</details>\n"
 
       - name: Run checker performance on file 10
         shell: shell-language {0}
@@ -126,62 +92,27 @@ jobs:
           let large = read "./demo.tsx" then repeat 10
           write "./large.tsx" $large
 
-          let binaries = files "binaries/**/*"
-          set binaries = replace $binaries "\n" ","
-
           append $to "#### check large.tsx"
-          let output = run hyperfine -N -i -L binary $binaries './{binary} check large.tsx'
+          let output = run hyperfine -N -i './target/release/ezno check large.tsx'
           append $to "```shell\n$output\n```\n"
 
-          for files "binaries/**/*" each
-            let out = run "./$file" check large.tsx --timings --merge-stdout-and-stderr
-            append $to "<details><summary>Statistics for $file check large.tsx</summary>\n"
+          append $to "<details><summary>Statistics for $file check large.tsx</summary>\n"
           
-            let statistics = rafter $out "---" then trim
-            append $to "```\n$statistics\n```\n"
-            append $to "</details>\n"
-
-      - name: Valgrind and Callgrind statistics
-        shell: shell-language {0}
-        if: false
-        # if: ${{ steps.install-valgrind.outcome == 'success' }}
-        continue-on-error: true
-        run: |
-          let to = env GITHUB_STEP_SUMMARY
-          append $to "#### Instructions and memory usage for `check demo.tsx`"
-
-          for files "binaries/**/*" each
-            let output = run valgrind $file check ./demo.tsx --merge-stdout-and-stderr
-            let allocated = regexp $output "(?<bytes>[\\d,]+) bytes allocated" extract bytes
-            let allocated = replace $allocated "," "" then format_number
-
-            let output = run valgrind --tool=callgrind $file check ./demo.tsx --merge-stdout-and-stderr
-            let instructions = regexp $output "Collected : (?<name>\\d+?)\\b" extract name then format_number
-
-            append $to "- `$file`: `$allocated` bytes allocated and `$instructions` instructions\n"
-
+          let out = run ./target/release/ezno check large.tsx --timings --merge-stdout-and-stderr
+          let statistics = rafter $out "---" then trim
+          append $to "```\n$statistics\n```\n"
+          append $to "</details>\n"
 
       # TODO wip
       - uses: actions/checkout@v6
         with: { repository: kaleidawave/depict, ref: cli-improvements, path: depict }
 
       - name: Install and run depict
-        working-directory: depict
+        working-directory: todo install
         run: | 
           cargo r -- install-sde
-
           cargo r -- sde ../binaries/latest/ezno check ../demo.tsx
 
       # final steps
 
-      - name: Move binary
-        shell: shell-language {0}
-        run: copy target/release/ezno to-upload/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
-
-      - name: Upload current binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
-          path: to-upload/binary-${{ runner.os }}${{ runner.arch }}-${{ github.ref_name }}-last
-          overwrite: true
-          retention-days: 30
+      # upload to projects site

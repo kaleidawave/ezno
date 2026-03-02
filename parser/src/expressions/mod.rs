@@ -172,6 +172,8 @@ pub enum Expression {
 	/// Not to be confused with binary operator `is`
 	#[cfg(feature = "extras")]
 	IsExpression(IsExpression),
+	/// For things
+	Raw(String, Span),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(marker_id))]
 	Marker {
 		#[visit_skip_field]
@@ -199,12 +201,20 @@ impl std::cmp::PartialEq<str> for PropertyReference {
 			} else {
 				false
 			}
+		} else if let Self::Standard { property, is_private: false } = self {
+			property == other
 		} else {
-			if let Self::Standard { property, is_private: false } = self {
-				property == other
-			} else {
-				false
-			}
+			false
+		}
+	}
+}
+
+impl From<String> for PropertyReference {
+	fn from(property: String) -> Self {
+		if let Some(property) = property.strip_prefix('#') {
+			Self::Standard { property: property.to_owned(), is_private: true }
+		} else {
+			Self::Standard { property, is_private: false }
 		}
 	}
 }
@@ -234,24 +244,16 @@ impl Expression {
 		reader: &mut crate::Lexer,
 		return_precedence: u8,
 	) -> ParseResult<Self> {
-		if reader.get_options().features.partial_syntax {
-			let start = reader.get_start();
+		let start = reader.get_start();
 
-			let next_is_not_expression_like = reader.starts_with_expression_delimiter()
-				|| reader.starts_with_statement_or_declaration_on_new_line();
-
-			if next_is_not_expression_like {
-				// take up the whole next part for checker suggestions
-				let position = start.union(reader.get_end());
-				return Ok(Expression::Marker {
-					marker_id: reader.new_partial_point_marker(position),
-					position,
-				});
-			}
+		// TODO can this cause recursion
+		if reader.get_options().features.partial_syntax && reader.if_not_expression_like() {
+			let position = start.with_length(0);
+			let marker_id = reader.new_partial_point_marker(position);
+			// take up the whole next part for checker suggestions
+			return Ok(Expression::Marker { marker_id, position });
 		}
 
-		let start = reader.get_start();
-		// TODO
 		let first_byte = reader.get_current().as_bytes().first().copied().unwrap_or(0);
 		let first_expression = {
 			match first_byte {
@@ -298,7 +300,9 @@ impl Expression {
 				}
 				b'[' => {
 					reader.advance(1);
-					let (items, _) = bracketed_items_from_reader::<ArrayElement>(reader, "]")?;
+					let (items, _end) = bracketed_items_from_reader::<ArrayElement>(reader, "]")?;
+					// TODO fix
+					debug_assert!(_end.is_none());
 					let end = reader.get_end();
 					Expression::ArrayLiteral(items, start.union(end))
 				}
@@ -333,15 +337,14 @@ impl Expression {
 								reader, start, false, None, parameters,
 							)?;
 							return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
-						} else {
-							reader.advance(1);
-							let parenthesize_expression = MultipleExpression::from_reader(reader)?;
-							let end = reader.expect_chr(')')?;
-							Expression::Parenthesised(
-								Box::new(parenthesize_expression),
-								start.union(end),
-							)
 						}
+						reader.advance(1);
+						let parenthesize_expression = MultipleExpression::from_reader(reader)?;
+						let end = reader.expect_chr(')')?;
+						Expression::Parenthesised(
+							Box::new(parenthesize_expression),
+							start.union(end),
+						)
 					}
 				}
 				b'<' if reader.starts_with('<') => {
@@ -363,24 +366,23 @@ impl Expression {
 									}
 								});
 
-							match result {
-								Ok(type_parameters) => {
-									let parameters = crate::functions::parameters::FunctionParameters::from_reader(reader)?;
+							if let Ok(type_parameters) = result {
+								let parameters =
+									crate::functions::parameters::FunctionParameters::from_reader(
+										reader,
+									)?;
 
-									let arrow_function =
-										ArrowFunction::from_reader_with_parameters(
-											reader,
-											start,
-											false,
-											Some(type_parameters),
-											parameters,
-										)?;
-									return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
-								}
-								Err(_) => {
-									let value = JSXRoot::from_reader(reader)?;
-									Expression::JSXRoot(Box::new(value))
-								}
+								let arrow_function = ArrowFunction::from_reader_with_parameters(
+									reader,
+									start,
+									false,
+									Some(type_parameters),
+									parameters,
+								)?;
+								return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
+							} else {
+								let value = JSXRoot::from_reader(reader)?;
+								Expression::JSXRoot(Box::new(value))
 							}
 						}
 						(true, false) => {
@@ -427,9 +429,24 @@ impl Expression {
 					} else {
 						// `(async(a, b, c))` is valid non-strict syntax
 						if !reader.strict_mode() && header.is_async_only() {
-							let result = reader.try_parse(ArrowFunction::from_reader);
-							if let Ok(mut function) = result {
-								function.header = true;
+							use crate::functions::FunctionBased;
+
+							let result = reader.try_parse(
+								arrow_function::ArrowFunctionBase::parameters_from_reader,
+							);
+							if let Ok(parameters) = result {
+								// if reader.is_operator_advance("=>") {
+								let function = ArrowFunction::from_reader_with_parameters(
+									reader, start, true, None, parameters,
+								)?;
+								Expression::ArrowFunction(Box::new(function))
+
+								// } else {
+								// 	Expression::VariableReference(
+								// 		"async".to_owned(),
+								// 		start.with_length(5),
+								// 	)
+								// }
 								// if AssociativityDirection::RightToLeft
 								// 	.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
 								// {
@@ -441,7 +458,6 @@ impl Expression {
 								// 		position,
 								// 	));
 								// }
-								Expression::ArrowFunction(Box::new(function))
 							} else {
 								Expression::VariableReference(
 									"async".to_owned(),
@@ -707,7 +723,7 @@ impl Expression {
 					let on = ClassDeclaration::from_reader(reader)?;
 					let position = start.union(on.get_position());
 					Expression::ClassExpression(Box::new(
-						crate::extensions::decorators::Decorated { on, decorators, position },
+						crate::extensions::decorators::Decorated { decorators, on, position },
 					))
 				}
 				_ => {
@@ -882,8 +898,7 @@ impl Expression {
 					let non_comment = top.get_non_comment();
 					match non_comment.as_identifier() {
 						Ok((name, position)) => {
-							let identifier =
-								crate::VariableIdentifier::Standard(name.to_owned(), position);
+							let identifier = crate::VariableIdentifier::Standard(name, position);
 							let function = ArrowFunction::from_reader_with_first_parameter(
 								reader,
 								false,
@@ -893,18 +908,18 @@ impl Expression {
 							continue;
 						}
 						Err(top) => {
-							if let Expression::Parenthesised(item, _) = top {
-								// TODO
-								return Err(ParseError::new(
-									ParseErrors::InvalidArrowFunctionParameter,
-									item.get_position(),
-								));
-							} else {
-								return Err(ParseError::new(
-									ParseErrors::InvalidArrowFunctionParameter,
-									top.get_position(),
-								));
-							}
+							// if let Expression::Parenthesised(item, _) = top {
+							// 	// TODO
+							// 	return Err(ParseError::new(
+							// 		ParseErrors::InvalidArrowFunctionParameter,
+							// 		item.get_position(),
+							// 	));
+							// } else {
+							// }
+							return Err(ParseError::new(
+								ParseErrors::InvalidArrowFunctionParameter,
+								top.get_position(),
+							));
 						}
 					}
 				}
@@ -1082,7 +1097,6 @@ impl Expression {
 								position,
 								is_optional: false,
 							};
-							continue;
 						}
 						Ok(Break::Break) => {
 							return Ok(top);
@@ -1238,7 +1252,8 @@ impl Expression {
 
 					// TODO differentiated between less than?
 					let type_arguments = if reader.is_operator_advance("<") {
-						let (type_arguments, _) = bracketed_items_from_reader(reader, ">")?;
+						let (type_arguments, _) =
+							bracketed_items_from_reader::<TypeAnnotation>(reader, ">")?;
 						reader.expect_chr('(')?;
 						Some(type_arguments)
 					} else {
@@ -1246,23 +1261,23 @@ impl Expression {
 						None
 					};
 
-					let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
+					let (arguments, _) =
+						bracketed_items_from_reader::<ExpressionOrSpreadExpression>(reader, ")")?;
 
 					#[cfg(feature = "extras")]
 					if reader.get_options().extras.is_expressions
 						&& reader.is_operator("{")
 						&& let Expression::VariableReference(ref variable, ..) = top
 						&& variable == "is"
-						&& arguments.len() > 0
-						&& arguments
+						&& !arguments.is_empty()
+						&& !arguments
 							.iter()
-							.find(|expr: &&ExpressionOrSpreadExpression| expr.is_spread())
-							.is_none()
+							.any(|expr: &ExpressionOrSpreadExpression| expr.is_spread())
 					{
 						let matcher = MultipleExpression::from_expressions(
 							arguments
 								.into_iter()
-								.map(|argument| argument.value_and_spread().1)
+								.map(|argument| argument.value_and_spread().0)
 								.collect(),
 						);
 						let expr = IsExpression::from_reader_with_matcher(
@@ -1405,12 +1420,11 @@ impl Expression {
 						reader.advance(1);
 					}
 
+					// TODO or `if` etc
 					let property = if reader.get_options().features.partial_syntax
-						&& let Some(length) = reader.get_current().find(|c: char| c.is_alphabetic())
-						&& length > 0
+						&& reader.if_not_expression_like()
 					{
-						let position =
-							source_map::Start(top.get_position().get_end().0).with_length(length);
+						let position = top.get_position().get_start().with_length(0);
 						let marker = reader.new_partial_point_marker(position);
 						PropertyReference::Marker(marker)
 					} else {
@@ -1629,6 +1643,7 @@ impl Expression {
 			| Self::NewTarget(..)
 			| Self::ClassExpression(..)
 			| Self::Import(..)
+			| Self::Raw(..)
 			| Self::Marker { .. } => PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE,
 			Self::BinaryOperation { operator, .. } => operator.precedence(),
 			Self::UnaryOperation { operator, .. } => operator.precedence(),
@@ -1670,29 +1685,32 @@ impl Expression {
 		// 	buf.push('(');
 		// }
 		match self {
-			Self::Marker { .. } => {
+			Expression::Marker { .. } => {
 				assert!(options.expect_markers, "marker found");
 			}
-			Self::NumberLiteral(num, _) => buf.push_str(&num.to_string()),
-			Self::BigIntLiteral(num, _) => {
+			Expression::Raw(content, _) => {
+				buf.push_str(content);
+			}
+			Expression::NumberLiteral(num, _) => buf.push_str(&num.to_string()),
+			Expression::BigIntLiteral(num, _) => {
 				buf.push_str(&num.source);
 				buf.push('n');
 			}
-			Self::StringLiteral(string, quoting, _) => {
+			Expression::StringLiteral(string, quoting, _) => {
 				buf.push(quoting.as_char());
 				buf.push_str(string);
 				buf.push(quoting.as_char());
 			}
-			Self::BooleanLiteral(expression, _) => {
+			Expression::BooleanLiteral(expression, _) => {
 				buf.push_str(if *expression { "true" } else { "false" });
 			}
-			Self::RegexLiteral { pattern, flags, .. } => {
+			Expression::RegexLiteral { pattern, flags, .. } => {
 				buf.push('/');
 				buf.push_str(pattern);
 				buf.push('/');
 				buf.push_str(flags);
 			}
-			Self::BinaryOperation { lhs, operator, rhs, .. } => {
+			Expression::BinaryOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_using_precedence(
 					buf,
 					options,
@@ -1758,7 +1776,7 @@ impl Expression {
 					local2.with_precedence(self_precedence),
 				);
 			}
-			Self::SpecialOperators(special, _) => match special {
+			Expression::SpecialOperators(special, _) => match special {
 				SpecialOperators::Satisfies { value, type_annotation } => {
 					value.to_string_from_buffer(buf, options, local);
 					if options.include_type_annotations {
@@ -1863,7 +1881,7 @@ impl Expression {
 					type_annotation.to_string_from_buffer(buf, options, local);
 				}
 			},
-			Self::UnaryOperation { operand, operator, .. } => {
+			Expression::UnaryOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
 				// TODO not great
 				if let (
@@ -1894,7 +1912,7 @@ impl Expression {
 				let right_argument = local2.with_precedence(self_precedence).on_right();
 				operand.to_string_using_precedence(buf, options, local, right_argument);
 			}
-			Self::Assignment { lhs, rhs, .. } => {
+			Expression::Assignment { lhs, rhs, .. } => {
 				let require_parenthesis =
 					matches!(lhs, LHSOfAssignment::ObjectDestructuring { .. }) && local2.on_left;
 
@@ -1909,7 +1927,7 @@ impl Expression {
 					buf.push(')');
 				}
 			}
-			Self::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
+			Expression::BinaryAssignmentOperation { lhs, operator, rhs, .. } => {
 				lhs.to_string_from_buffer(buf, options, local);
 				options.push_gap_optionally(buf);
 				buf.push_str(operator.to_str());
@@ -1917,15 +1935,15 @@ impl Expression {
 				let right_argument = local2.with_precedence(self_precedence).on_right();
 				rhs.to_string_using_precedence(buf, options, local, right_argument);
 			}
-			Self::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
+			Expression::UnaryPrefixAssignmentOperation { operand, operator, .. } => {
 				buf.push_str(operator.to_str());
 				operand.to_string_from_buffer(buf, options, local);
 			}
-			Self::UnaryPostfixAssignmentOperation { operand, operator, .. } => {
+			Expression::UnaryPostfixAssignmentOperation { operand, operator, .. } => {
 				operand.to_string_from_buffer(buf, options, local);
 				buf.push_str(operator.to_str());
 			}
-			Self::VariableReference(name, position) => {
+			Expression::VariableReference(name, position) => {
 				buf.add_mapping(&position.with_source(local.under));
 				let is_reserved = crate::lexer::utilities::is_reserved_word(name);
 				if is_reserved && local2.on_left {
@@ -1936,33 +1954,33 @@ impl Expression {
 					buf.push(')');
 				}
 			}
-			Self::ThisReference(..) => {
+			Expression::ThisReference(..) => {
 				buf.push_str("this");
 			}
-			Self::NewTarget(..) => {
+			Expression::NewTarget(..) => {
 				buf.push_str("new.target");
 			}
-			Self::Import(ImportExpression::ImportMeta(..)) => {
+			Expression::Import(ImportExpression::ImportMeta(..)) => {
 				buf.push_str("import.meta");
 			}
 			#[cfg(feature = "extras")]
-			Self::Import(ImportExpression::ImportSource { path, .. }) => {
+			Expression::Import(ImportExpression::ImportSource { path, .. }) => {
 				buf.push_str("import.source(");
 				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
 			#[cfg(feature = "extras")]
-			Self::Import(ImportExpression::ImportDefer { path, .. }) => {
+			Expression::Import(ImportExpression::ImportDefer { path, .. }) => {
 				buf.push_str("import.defer(");
 				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
-			Self::Import(ImportExpression::DynamicImport { path, .. }) => {
+			Expression::Import(ImportExpression::DynamicImport { path, .. }) => {
 				buf.push_str("import(");
 				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
-			Self::PropertyAccess { parent, property, is_optional, position, .. } => {
+			Expression::PropertyAccess { parent, property, is_optional, position, .. } => {
 				if options.enforce_limit_length_limit() && local.should_try_pretty_print {
 					chain_to_string_from_buffer(self, buf, options, local);
 					return;
@@ -1971,8 +1989,9 @@ impl Expression {
 				buf.add_mapping(&position.with_source(local.under));
 
 				// hmm
-				if let Self::NumberLiteral(..) | Self::ObjectLiteral(..) | Self::ArrowFunction(..) =
-					parent.get_non_parenthesised()
+				if let Expression::NumberLiteral(..)
+				| Expression::ObjectLiteral(..)
+				| Expression::ArrowFunction(..) = parent.get_non_parenthesised()
 				{
 					buf.push('(');
 					parent.get_non_parenthesised().to_string_from_buffer(buf, options, local);
@@ -1999,7 +2018,7 @@ impl Expression {
 					}
 				}
 			}
-			Self::Parenthesised(expr, _) => {
+			Expression::Parenthesised(expr, _) => {
 				// TODO more expressions could be considered for parenthesis elision
 				// if matches!(&**expr, MultipleExpression::Single(inner) if inner.get_precedence() == PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE)
 				// {
@@ -2010,7 +2029,7 @@ impl Expression {
 				buf.push(')');
 				// }
 			}
-			Self::Index { indexee: expression, indexer, is_optional, .. } => {
+			Expression::Index { indexee: expression, indexer, is_optional, .. } => {
 				expression.to_string_using_precedence(buf, options, local, local2);
 				if *is_optional {
 					buf.push_str("?.");
@@ -2019,7 +2038,9 @@ impl Expression {
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
-			Self::FunctionCall { function, type_arguments, arguments, is_optional, .. } => {
+			Expression::FunctionCall {
+				function, type_arguments, arguments, is_optional, ..
+			} => {
 				// TODO is this okay?
 				if let Some(ExpressionOrBlock::Expression(expression)) = self.is_iife() {
 					expression.to_string_from_buffer(buf, options, local);
@@ -2038,7 +2059,7 @@ impl Expression {
 				}
 				arguments_to_string(arguments, buf, options, local);
 			}
-			Self::ConstructorCall { constructor, type_arguments, arguments, .. } => {
+			Expression::ConstructorCall { constructor, type_arguments, arguments, .. } => {
 				// TODO requires parenthesis
 				buf.push_str("new ");
 				constructor.to_string_from_buffer(buf, options, local);
@@ -2054,8 +2075,8 @@ impl Expression {
 					}
 				}
 			}
-			Self::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
-			Self::ArrowFunction(arrow_function) => {
+			Expression::JSXRoot(root) => root.to_string_from_buffer(buf, options, local),
+			Expression::ArrowFunction(arrow_function) => {
 				// `async () => {}` looks like async statement declaration when in declaration
 				if local2.on_left && arrow_function.header {
 					buf.push('(');
@@ -2065,7 +2086,7 @@ impl Expression {
 					buf.push(')');
 				}
 			}
-			Self::ExpressionFunction(function) => {
+			Expression::ExpressionFunction(function) => {
 				if local2.on_left {
 					buf.push('(');
 				}
@@ -2074,7 +2095,7 @@ impl Expression {
 					buf.push(')');
 				}
 			}
-			Self::ArrayLiteral(values, _) => {
+			Expression::ArrayLiteral(values, _) => {
 				// Improves numbers. See: https://github.com/kaleidawave/ezno/pull/158#issuecomment-2169621017
 				if options.pretty && options.enforce_limit_length_limit() {
 					const MAX_INLINE_OBJECT_LITERAL: u32 = 40;
@@ -2126,7 +2147,7 @@ impl Expression {
 				}
 				bracketed_items_to_string(values, ('[', ']'), buf, options, local);
 			}
-			Self::ObjectLiteral(object_literal) => {
+			Expression::ObjectLiteral(object_literal) => {
 				if local2.on_left {
 					buf.push('(');
 				}
@@ -2135,7 +2156,7 @@ impl Expression {
 					buf.push(')');
 				}
 			}
-			Self::ClassExpression(class) => {
+			Expression::ClassExpression(class) => {
 				if local2.on_left {
 					buf.push('(');
 				}
@@ -2144,7 +2165,7 @@ impl Expression {
 					buf.push(')');
 				}
 			}
-			Self::Comment { content, on, is_multiline, prefix, position: _ } => {
+			Expression::Comment { content, on, is_multiline, prefix, position: _ } => {
 				if *prefix && options.should_add_comment(content) {
 					if *is_multiline {
 						buf.push_str("/*");
@@ -2169,7 +2190,7 @@ impl Expression {
 					}
 				}
 			}
-			Self::TemplateLiteral(template_literal) => {
+			Expression::TemplateLiteral(template_literal) => {
 				// Doing here because of tag precedence
 				if let Some(tag) = &template_literal.tag {
 					// TODO ConstructorCall should not be here
@@ -2193,7 +2214,7 @@ impl Expression {
 				buf.push_str_contains_new_line(template_literal.final_part.as_str());
 				buf.push('`');
 			}
-			Self::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
+			Expression::ConditionalTernary { condition, truthy_result, falsy_result, .. } => {
 				let available_space = u32::from(options.max_line_length)
 					.saturating_sub(buf.characters_on_current_line());
 
@@ -2237,10 +2258,10 @@ impl Expression {
 					local2.with_precedence(CONDITIONAL_TERNARY_PRECEDENCE).on_right(),
 				);
 			}
-			Self::Null(..) => buf.push_str("null"),
+			Expression::Null(..) => buf.push_str("null"),
 			#[cfg(feature = "extras")]
-			Self::IsExpression(is_expr) => is_expr.to_string_from_buffer(buf, options, local),
-			Self::SuperExpression(super_expr, _) => {
+			Expression::IsExpression(is_expr) => is_expr.to_string_from_buffer(buf, options, local),
+			Expression::SuperExpression(super_expr, _) => {
 				buf.push_str("super");
 				match super_expr {
 					SuperReference::Call { arguments } => {
@@ -2345,10 +2366,10 @@ pub(crate) fn parse_after_import(
 			let position = start.union(reader.get_end());
 			Ok(ImportExpression::ImportMeta(position))
 		} else {
-			return Err(crate::lexer::utilities::expected_one_of_items(
+			Err(crate::lexer::utilities::expected_one_of_items(
 				reader,
 				&["source", "defer", "meta"],
-			));
+			))
 		}
 
 		#[cfg(not(feature = "extras"))]
@@ -2478,10 +2499,11 @@ impl MultipleExpression {
 		Ok(Self(top))
 	}
 
+	#[must_use]
 	pub fn from_expressions(expressions: Vec<Expression>) -> Self {
 		let mut expressions = expressions.into_iter();
 		let mut top = expressions.next().unwrap();
-		while let Some(next) = expressions.next() {
+		for next in expressions {
 			top = Expression::BinaryOperation {
 				position: top.get_position().union(next.get_position()),
 				lhs: Box::new(top),
@@ -2546,7 +2568,7 @@ pub(crate) fn arguments_to_string<T: source_map::ToString>(
 	let mut added_last = false;
 	for node in nodes {
 		// Hack for arrays, this is just easier for generators and ends up in a smaller output
-		if let (true, Expression::ArrayLiteral(items, _)) = node.value_and_spread_ref() {
+		if let (Expression::ArrayLiteral(items, _), true) = node.value_and_spread_ref() {
 			if items.is_empty() {
 				added_last = false;
 				continue;
@@ -2704,7 +2726,7 @@ pub enum ImportExpression {
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable)]
-pub struct ExpressionOrSpreadExpression(Expression);
+pub struct ExpressionOrSpreadExpression(pub Expression);
 
 impl ListItem for ExpressionOrSpreadExpression {
 	type LAST = ();
@@ -2738,7 +2760,7 @@ impl ASTNode for ExpressionOrSpreadExpression {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		Expression::to_string_from_buffer(&self.0, buf, options, local)
+		Expression::to_string_from_buffer(&self.0, buf, options, local);
 	}
 }
 
@@ -2749,32 +2771,35 @@ impl From<Expression> for ExpressionOrSpreadExpression {
 }
 
 impl ExpressionOrSpreadExpression {
-	pub fn value_and_spread(self) -> (bool, Expression) {
+	#[must_use]
+	pub fn value_and_spread(self) -> (Expression, bool) {
 		if let Expression::UnaryOperation {
 			operator: UnaryOperator::Spread,
 			operand,
 			position: _,
 		} = self.0
 		{
-			(true, *operand)
+			(*operand, true)
 		} else {
-			(false, self.0)
+			(self.0, false)
 		}
 	}
 
-	pub fn value_and_spread_ref(&self) -> (bool, &Expression) {
+	#[must_use]
+	pub fn value_and_spread_ref(&self) -> (&Expression, bool) {
 		if let Expression::UnaryOperation {
 			operator: UnaryOperator::Spread,
 			operand,
 			position: _,
 		} = &self.0
 		{
-			(true, &*operand)
+			(operand, true)
 		} else {
-			(false, &self.0)
+			(&self.0, false)
 		}
 	}
 
+	#[must_use]
 	pub fn is_spread(&self) -> bool {
 		matches!(&self.0, Expression::UnaryOperation { operator: UnaryOperator::Spread, .. })
 	}
@@ -2790,7 +2815,7 @@ impl ASTNode for ArrayElement {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		if reader.is_one_of_operators(&[",", "]"]).is_some() {
+		if reader.is_one_of_operators(&[",", "]", "}"]).is_some() {
 			Ok(Self(None))
 		} else {
 			ExpressionOrSpreadExpression::from_reader(reader).map(Some).map(Self)
@@ -2818,6 +2843,7 @@ impl ListItem for ArrayElement {
 }
 
 impl ArrayElement {
+	#[must_use]
 	pub fn inner_ref(&self) -> Option<&Expression> {
 		if let Some(ref expr) = self.0 { Some(&expr.0) } else { None }
 	}

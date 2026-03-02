@@ -29,10 +29,12 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 			interpolation_points: true,
 			..Default::default()
 		},
+		jsx: Some(Default::default()),
 		..Default::default()
 	};
+
 	let parse_result =
-		<T as ezno_parser::ASTNode>::from_string_with_options(string_to_parse, options, 0);
+		<T as ezno_parser::ASTNode>::from_string_with_options(string_to_parse, options);
 
 	let node = match parse_result {
 		Ok((node, _state)) => node,

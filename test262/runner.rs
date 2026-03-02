@@ -9,6 +9,7 @@ const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 fn main() {
 	let root = Path::new(ROOT);
 	let tests_dir = root.join("test262/test");
+	let tests_dir_prefix: usize = tests_dir.to_string().len();
 
 	let mut completed = 0;
 	let mut successful = 0;
@@ -182,17 +183,13 @@ fn main() {
 			let result = <ezno_parser::Module as ezno_parser::ASTNode>::from_string_with_options(
 				code.into(),
 				options,
-				0,
 			);
 			parsing += now.elapsed();
 
 			let (matched, reason) = match result {
 				Ok(_) if should_not_parse => {
-					(true, Cow::Borrowed("parsed when should have failed"))
+					(false, Cow::Borrowed("parsed when should have failed"))
 				}
-				// Ok(_) if should_not_parse => {
-				// 	(false, Cow::Borrowed("parsed when should have failed"))
-				// }
 				Err(error) if !should_not_parse => (false, Cow::Owned(error.reason)),
 				_ => {
 					successful += 1;
@@ -207,8 +204,9 @@ fn main() {
 			}
 
 			if let Some(ref mut statement) = statement {
+				let path: &str = &path.display().to_string()[tests_dir_prefix..];
 				let values = &[
-					(":path", path.display().to_string().into()),
+					(":path", path.into()),
 					(":info", info.into()),
 					(":description", description.into()),
 					(":features", features.into()),

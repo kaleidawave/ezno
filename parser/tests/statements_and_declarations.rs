@@ -31,7 +31,7 @@ try {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(input.clone(), Default::default()).unwrap();
+	let module = Module::from_string(input.clone()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 	assert_eq!(output, input);
 }
@@ -94,7 +94,7 @@ try {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let module = Module::from_string(input.clone(), Default::default()).unwrap();
+	let module = Module::from_string(input.clone()).unwrap();
 	let output = module.to_string(&Default::default());
 	assert_eq!(output, input);
 }
@@ -116,7 +116,7 @@ import defaultExport, * as name from "module-name";
 import "module-name""#
 		.trim_start();
 
-	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+	let module = Module::from_string(input.to_owned()).unwrap();
 	let output = module.to_string(&ToStringOptions::typescript());
 	assert_eq!(output, input);
 
@@ -127,7 +127,7 @@ import { a, } from "module-name"
 "#
 	.trim_start();
 
-	Module::from_string(input.to_owned(), Default::default()).unwrap();
+	Module::from_string(input.to_owned()).unwrap();
 }
 
 #[test]
@@ -171,7 +171,7 @@ export { default as name1 } from "module-name";
 export type { name1, nameN } from "module-name";"#
 		.trim_start();
 
-	let _module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+	let _module = Module::from_string(input.to_owned()).unwrap();
 
 	// TODO doesn't work because of comments
 	// let output = module.to_string(&ToStringOptions::typescript());
@@ -185,7 +185,7 @@ import { export1 } from "module-name" with { something: x };
     "#
 	.trim();
 
-	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+	let module = Module::from_string(input.to_owned()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 }
@@ -203,7 +203,9 @@ from "module-name" import defaultExport, * as name;
     "#
 	.trim();
 
-	let module = Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all()).unwrap();
+	let module =
+		Module::from_string_with_options(input.to_owned(), ezno_parser::ParseOptions::all())
+			.unwrap();
 
 	eprintln!("Module: {module:#?}");
 
@@ -224,7 +226,9 @@ worker function a() {}
     "
 	.trim();
 
-	let module = Module::from_string(input.to_owned(), ezno_parser::ParseOptions::all()).unwrap();
+	let module =
+		Module::from_string_with_options(input.to_owned(), ezno_parser::ParseOptions::all())
+			.unwrap();
 
 	eprintln!("Module: {module:#?}");
 
@@ -267,7 +271,7 @@ let a, b, a1, b1, c, d, rest, pop, push;
 ({ a, ...{ b: c } } = object)"
 		.trim();
 
-	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+	let module = Module::from_string(input.to_owned()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 
@@ -282,7 +286,7 @@ fn comments() {
 "
 	.trim();
 
-	let module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+	let module = Module::from_string(input.to_owned()).unwrap();
 
 	eprintln!("Module: {module:#?}");
 

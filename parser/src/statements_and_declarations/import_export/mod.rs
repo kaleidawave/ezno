@@ -40,6 +40,7 @@ pub struct ImportExportPart<T: ImportOrExport> {
 
 // TODO I think this okay
 impl ImportExportPart<export::ExportDeclaration> {
+	#[must_use]
 	pub fn into_import_form(self) -> ImportExportPart<import::ImportDeclaration> {
 		ImportExportPart {
 			just_type: self.just_type,
@@ -105,7 +106,7 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if self.just_type && options.include_type_annotations {
+		if self.just_type {
 			buf.push_str("type ");
 		}
 		if let Some(ref alias) = self.alias {
@@ -140,6 +141,9 @@ fn import_export_parts_to_string_from_buffer<T: source_map::ToString, U: ImportO
 		let mut parts: Vec<&ImportExportPart<U>> = parts.iter().collect();
 		parts.sort_unstable_by_key(|part| part.name.as_str());
 		for (at_end, part) in parts.iter().endiate() {
+			if part.just_type && !options.include_type_annotations {
+				continue;
+			}
 			part.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push(',');
@@ -148,6 +152,9 @@ fn import_export_parts_to_string_from_buffer<T: source_map::ToString, U: ImportO
 		}
 	} else {
 		for (at_end, part) in parts.iter().endiate() {
+			if part.just_type && !options.include_type_annotations {
+				continue;
+			}
 			part.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push(',');
@@ -304,9 +311,10 @@ impl ImportLocation {
 	}
 }
 
-impl std::cmp::PartialEq<str> for ImportLocation {
-	fn eq(&self, other: &str) -> bool {
-		if let Self::Quoting(value, _) = self { value == other } else { false }
+impl ImportLocation {
+	#[must_use]
+	pub fn as_str(&self) -> &str {
+		if let Self::Quoting(value, _) = self { value } else { "" }
 	}
 }
 

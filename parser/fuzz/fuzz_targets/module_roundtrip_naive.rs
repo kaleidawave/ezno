@@ -13,7 +13,7 @@ fn do_fuzz(data: &str) -> Corpus {
 
 	let parse_options = ParseOptions { type_annotations: TypeAnnotationOption::AsErrors, ..ParseOptions::default() };
 
-	let Ok(module1) = Module::from_string(input.to_owned(), parse_options) else {
+	let Ok(module1) = Module::from_string_with_options(input.to_owned(), parse_options) else {
 		return Corpus::Reject;
 	};
 
@@ -21,7 +21,7 @@ fn do_fuzz(data: &str) -> Corpus {
 
 	let output1 = module1.to_string(&to_string_options);
 
-	let module2 = match Module::from_string(output1.to_owned(), parse_options) {
+	let module2 = match Module::from_string_with_options(output1.to_owned(), parse_options) {
 		Ok(module2) => module2,
 		Err(error) => {
 			panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above. \nerror: `{:?}`", error);

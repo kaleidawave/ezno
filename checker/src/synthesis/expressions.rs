@@ -122,26 +122,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) -> Option<(PropertyKey<'static>, TypeId)> {
-				element.0.as_ref().and_then(|element| {
+				element.0.as_ref().map(|element| {
 					let position = element.get_position();
-					let (spread, element) = element.value_and_spread_ref();
-					if !spread {
-						// TODO based off above
-						let expecting = TypeId::ANY_TYPE;
-						let expression_type =
-							synthesise_expression(element, environment, checking_data, expecting);
-						let property = match idx {
-							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
-							Decidable::Unknown(_) => {
-								checking_data.raise_unimplemented_error(
-									"property after array spread",
-									element.get_position().with_source(environment.get_source()),
-								);
-								PropertyKey::Type(TypeId::NUMBER_TYPE)
-							}
-						};
-						Some((property, expression_type))
-					} else {
+					let (element, spread) = element.value_and_spread_ref();
+					if spread {
 						{
 							checking_data.raise_unimplemented_error(
 								"Spread elements",
@@ -159,7 +143,23 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								PropertyKey::Type(TypeId::NUMBER_TYPE)
 							}
 						};
-						Some((property, TypeId::UNIMPLEMENTED_ERROR_TYPE))
+						(property, TypeId::UNIMPLEMENTED_ERROR_TYPE)
+					} else {
+						// TODO based off above
+						let expecting = TypeId::ANY_TYPE;
+						let expression_type =
+							synthesise_expression(element, environment, checking_data, expecting);
+						let property = match idx {
+							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
+							Decidable::Unknown(_) => {
+								checking_data.raise_unimplemented_error(
+									"property after array spread",
+									element.get_position().with_source(environment.get_source()),
+								);
+								PropertyKey::Type(TypeId::NUMBER_TYPE)
+							}
+						};
+						(property, expression_type)
 					}
 				})
 			}
@@ -1143,6 +1143,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::IsExpression(is_expr) => {
 			Instance::RValue(synthesise_is_expression(is_expr, environment, checking_data))
 		}
+		Expression::Raw(..) => {
+			crate::utilities::notify!("TODO big int");
+			return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+		}
 	};
 
 	let position = ASTNode::get_position(expression).with_source(environment.get_source());
@@ -1244,7 +1248,7 @@ fn call_function<T: crate::ReadFromFS>(
 			arguments
 				.iter()
 				.map(|argument| {
-					let (spread, expression) = argument.value_and_spread_ref();
+					let (expression, spread) = argument.value_and_spread_ref();
 					UnsynthesisedArgument { spread, expression }
 				})
 				.collect::<Vec<_>>()

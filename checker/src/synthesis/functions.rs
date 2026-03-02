@@ -1,11 +1,14 @@
 //! Function tings. Contains parameter synthesis, function body synthesis
 
 use iterator_endiate::EndiateIteratorExt;
+use parser::functions::{LeadingParameter, ParameterData};
+use parser::variable_fields::{
+	ArrayDestructuringField, ObjectDestructuringField, SpreadDestructuringField, VariableField,
+	VariableIdentifier,
+};
 use parser::{
-	ASTNode, Block, FunctionBased, Span, SpreadDestructuringField, TypeAnnotation, TypeParameter,
-	VariableField, VariableIdentifier,
+	ASTNode, Block, FunctionBased, Span, TypeAnnotation, TypeParameter,
 	expressions::ExpressionOrBlock,
-	functions::{LeadingParameter, ParameterData},
 };
 
 use crate::{
@@ -359,7 +362,7 @@ fn synthesise_function_parameters<
 				.type_annotation
 				.as_ref()
 				.map(|reference| synthesise_type_annotation(reference, environment, checking_data))
-				.or_else(|| {
+				.or({
 					// See comments-as-type-annotation
 					// if let WithComment::PostfixComment(_item, possible_declaration, position) =
 					// 	&parameter.name
@@ -508,10 +511,10 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 			let mut buf = String::from("[");
 			for (not_at_end, member) in members.iter().nendiate() {
 				match member {
-					parser::ArrayDestructuringField::Name(name, ..) => {
+					ArrayDestructuringField::Name(name, ..) => {
 						buf.push_str(&variable_field_to_string(name));
 					}
-					parser::ArrayDestructuringField::None => {}
+					ArrayDestructuringField::None => {}
 				}
 				if not_at_end {
 					buf.push_str(", ");
@@ -531,12 +534,12 @@ pub(super) fn variable_field_to_string(param: &VariableField) -> String {
 			let mut buf = String::from("{");
 			for (not_at_end, item) in members.iter().nendiate() {
 				match item {
-					parser::ObjectDestructuringField::Name(name, ..) => {
+					ObjectDestructuringField::Name(name, ..) => {
 						if let VariableIdentifier::Standard(name, ..) = name {
 							buf.push_str(name);
 						}
 					}
-					parser::ObjectDestructuringField::Map { from, name, .. } => {
+					ObjectDestructuringField::Map { from, name, .. } => {
 						match from {
 							parser::PropertyKey::Identifier(ident, _, _) => {
 								buf.push_str(ident);

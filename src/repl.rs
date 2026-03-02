@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use parser::{
-	visiting::VisitorsMut, ASTNode, Expression, Module, SourceId, StatementOrDeclaration,
+	visiting::VisitorsMut, ASTNode, Expression, Module, ParseOptions, SourceId,
+	StatementOrDeclaration,
 };
 
 use crate::reporting::{checker_diagnostic_to_codespan_diagnostic, report_diagnostics_to_cli};
@@ -82,8 +83,8 @@ impl ReplSystem {
 		input.push('\n');
 		let (start, _) = self.state.get_fs_mut().append_to_file(self.source, &input);
 
-		let options = Default::default();
-		let offset = start as u32;
+		let mut options = ParseOptions::default();
+		options.features.position_offset = start as u32;
 		let compact = false;
 
 		// self.offset += input.len() as u32 + 1;
@@ -91,15 +92,13 @@ impl ReplSystem {
 		// Fix to remain consistent with other JS REPLs
 		let starts_with_brace = input.trim_start().starts_with('{');
 		let result = if starts_with_brace {
-			Expression::from_string_with_options(input, options, offset).map(|(expression, _)| {
-				Module {
-					hashbang_comment: None,
-					span: expression.get_position(),
-					items: vec![StatementOrDeclaration::Expression(expression.into())],
-				}
+			Expression::from_string_with_options(input, options).map(|(expression, _)| Module {
+				hashbang_comment: None,
+				span: expression.get_position(),
+				items: vec![StatementOrDeclaration::Expression(expression.into())],
 			})
 		} else {
-			Module::from_string_with_options(input, options, offset).map(|(module, _state)| module)
+			Module::from_string_with_options(input, options).map(|(module, _state)| module)
 		};
 
 		match result {

@@ -81,7 +81,9 @@ pub enum StatementOrDeclaration {
 	/// Special TypeScript only
 	DeclareVariable(DeclareVariableDeclaration),
 	#[cfg(feature = "full-typescript")]
-	Namespace(Exportable<crate::types::namespace::Namespace>),
+	Namespace(Exportable<crate::types::module_namespace::Namespace>),
+	#[cfg(feature = "full-typescript")]
+	Module(Exportable<crate::types::module_namespace::Module>),
 	// Top level only
 	Import(Box<ImportDeclaration>),
 	Export(Box<Decorated<ExportDeclaration>>),
@@ -118,8 +120,6 @@ pub enum StatementOrDeclaration {
 	},
 	/// FUTURE under cfg?
 	WithStatement(WithStatement),
-	/// Lol
-	AestheticSemiColon(Span),
 	Empty(Span),
 	/// For bundling
 	Imported {
@@ -128,6 +128,10 @@ pub enum StatementOrDeclaration {
 		originally: Span,
 		from: source_map::SourceId,
 	},
+	/// For things
+	Raw(String, Span),
+	/// For visitors to add multiple items
+	Multiple(Vec<StatementOrDeclaration>, Span),
 	/// TODO under cfg
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(#[visit_skip_field] Marker<Statement>, Span),
@@ -345,15 +349,13 @@ impl ASTNode for StatementOrDeclaration {
 						reader,
 						enum_declaration.get_position(),
 					)?;
-					let declaration = Decorated::new(
-						possible_decorators,
-						Exportable::not_exported(enum_declaration),
-					);
+					let declaration =
+						Decorated::new(possible_decorators, Exportable::exported(enum_declaration));
 					Ok(StatementOrDeclaration::Enum(Box::new(declaration)))
 				} else if reader.is_keyword("class") {
 					let declaration = ClassDeclaration::from_reader(reader)?;
 					let declaration =
-						Decorated::new(possible_decorators, Exportable::not_exported(declaration));
+						Decorated::new(possible_decorators, Exportable::exported(declaration));
 					Ok(StatementOrDeclaration::Class(Box::new(declaration)))
 				} else if reader.is_keyword("interface") {
 					let interface = InterfaceDeclaration::from_reader(reader)?;
@@ -366,6 +368,23 @@ impl ASTNode for StatementOrDeclaration {
 					let item = Box::new(decorated);
 					Ok(StatementOrDeclaration::Interface(item))
 				} else {
+					#[cfg(feature = "full-typescript")]
+					if reader.is_keyword("namespace") {
+						warn_if_possible_decorators_unused("namespace", possible_decorators)?;
+						let namespace =
+							crate::types::module_namespace::Namespace::from_reader(reader)?;
+						let namespace = Exportable::exported(namespace);
+						return Ok(StatementOrDeclaration::Namespace(namespace));
+					}
+
+					#[cfg(feature = "full-typescript")]
+					if reader.is_keyword("module") {
+						warn_if_possible_decorators_unused("namespace", possible_decorators)?;
+						let module = crate::types::module_namespace::Module::from_reader(reader)?;
+						let module = Exportable::exported(module);
+						return Ok(StatementOrDeclaration::Module(module));
+					}
+
 					if reader.is_keyword("type") {
 						let type_alias_result = reader.try_parse(TypeAlias::from_reader);
 						if let Ok(type_alias) = type_alias_result {
@@ -441,19 +460,38 @@ impl ASTNode for StatementOrDeclaration {
 					let item = Box::new(decorated);
 					Ok(StatementOrDeclaration::TypeAlias(item))
 				} else {
-					#[cfg(feature = "extras")]
+					#[cfg(feature = "full-typescript")]
 					if reader.is_keyword("namespace") {
 						let mut namespace =
-							crate::types::namespace::Namespace::from_reader(reader)?;
+							crate::types::module_namespace::Namespace::from_reader(reader)?;
 						namespace.is_declare = true;
 						namespace.position.start = start.0;
 						let namespace = Exportable::not_exported(namespace);
 						return Ok(StatementOrDeclaration::Namespace(namespace));
 					}
+					#[cfg(feature = "full-typescript")]
+					if reader.is_keyword("module") {
+						let mut module =
+							crate::types::module_namespace::Module::from_reader(reader)?;
+						module.is_declare = true;
+						module.position.start = start.0;
+						let module = Exportable::not_exported(module);
+						return Ok(StatementOrDeclaration::Module(module));
+					}
 
 					Err(crate::lexer::utilities::expected_one_of_items(
 						reader,
-						&["let", "const", "var", "class", "type", "async", "function", "namespace"],
+						&[
+							"let",
+							"const",
+							"var",
+							"class",
+							"type",
+							"async",
+							"function",
+							"namespace",
+							"namespace",
+						],
 					))
 				}
 			}
@@ -577,9 +615,10 @@ impl ASTNode for StatementOrDeclaration {
 				Ok(StatementOrDeclaration::Throw(ThrowStatement(Box::new(expression), position)))
 			}
 			b';' => {
+				// TODO record here
 				reader.advance(1);
 				warn_if_possible_decorators_unused("semi-colon", possible_decorators)?;
-				Ok(StatementOrDeclaration::AestheticSemiColon(start.with_length(1)))
+				Ok(StatementOrDeclaration::Empty(start.with_length(1)))
 			}
 			b'/' if reader.is_operator_advance("//") => {
 				warn_if_possible_decorators_unused("comment", possible_decorators)?;
@@ -638,15 +677,18 @@ impl ASTNode for StatementOrDeclaration {
 				#[cfg(feature = "full-typescript")]
 				if reader.is_keyword("namespace") {
 					warn_if_possible_decorators_unused("namespace", possible_decorators)?;
-					let namespace = crate::types::namespace::Namespace::from_reader(reader)?;
-
-					return Ok(StatementOrDeclaration::Namespace(Exportable::not_exported(
-						namespace,
-					)));
+					let namespace = crate::types::module_namespace::Namespace::from_reader(reader)?;
+					let namespace = Exportable::not_exported(namespace);
+					return Ok(StatementOrDeclaration::Namespace(namespace));
 				}
 
-				// "let" | "const" | "function" | "class" | "enum" | "type" | "declare" |
-				// "import" | "export" | "async" | "generator"
+				#[cfg(feature = "full-typescript")]
+				if reader.is_keyword("module") {
+					warn_if_possible_decorators_unused("namespace", possible_decorators)?;
+					let module = crate::types::module_namespace::Module::from_reader(reader)?;
+					let module = Exportable::not_exported(module);
+					return Ok(StatementOrDeclaration::Module(module));
+				}
 
 				warn_if_possible_decorators_unused("expression", possible_decorators)?;
 				let expression = MultipleExpression::from_reader(reader)?;
@@ -654,16 +696,15 @@ impl ASTNode for StatementOrDeclaration {
 				if reader.is_operator_advance(":") {
 					let position = expression.get_position();
 					let inner = expression.get_inner();
-					if let Ok((name, _pos)) = inner.as_identifier() {
+					return if let Ok((name, _pos)) = inner.as_identifier() {
 						let statement = Statement::from_reader(reader)?;
 						check_semi_colon(&statement.0, reader)?;
 						let position = start.union(statement.get_position());
 						let statement = Box::new(statement);
-						let name = name.to_owned();
-						return Ok(StatementOrDeclaration::Labelled { name, statement, position });
+						Ok(StatementOrDeclaration::Labelled { name, statement, position })
 					} else {
-						return Err(ParseError::new(ParseErrors::InvalidStatementLabel, position));
-					}
+						Err(ParseError::new(ParseErrors::InvalidStatementLabel, position))
+					};
 				}
 
 				Ok(StatementOrDeclaration::Expression(expression))
@@ -681,11 +722,29 @@ impl ASTNode for StatementOrDeclaration {
 			// declarations
 			StatementOrDeclaration::Variable(var) => var.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::Class(cls) => cls.to_string_from_buffer(buf, options, local),
-			StatementOrDeclaration::Import(is) => is.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::Export(es) => es.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::Function(f) => f.to_string_from_buffer(buf, options, local),
-			StatementOrDeclaration::Interface(id) => id.to_string_from_buffer(buf, options, local),
-			StatementOrDeclaration::TypeAlias(ta) => ta.to_string_from_buffer(buf, options, local),
+			StatementOrDeclaration::Import(is) => {
+				#[cfg(feature = "full-typescript")]
+				let skip = !options.include_type_annotations && is.is_type_annotation_import_only;
+
+				#[cfg(not(feature = "full-typescript"))]
+				let skip = false;
+
+				if !skip {
+					is.to_string_from_buffer(buf, options, local);
+				}
+			}
+			StatementOrDeclaration::Interface(id) => {
+				if options.include_type_annotations {
+					id.to_string_from_buffer(buf, options, local);
+				}
+			}
+			StatementOrDeclaration::TypeAlias(ta) => {
+				if options.include_type_annotations {
+					ta.to_string_from_buffer(buf, options, local);
+				}
+			}
 			StatementOrDeclaration::UsingDeclaration(ud) => {
 				ud.to_string_from_buffer(buf, options, local);
 			}
@@ -696,10 +755,19 @@ impl ASTNode for StatementOrDeclaration {
 				dvd.to_string_from_buffer(buf, options, local);
 			}
 			#[cfg(feature = "full-typescript")]
-			StatementOrDeclaration::Namespace(ns) => ns.to_string_from_buffer(buf, options, local),
+			StatementOrDeclaration::Namespace(ns) => {
+				if options.include_type_annotations {
+					ns.to_string_from_buffer(buf, options, local);
+				}
+			}
+			#[cfg(feature = "full-typescript")]
+			StatementOrDeclaration::Module(md) => {
+				if options.include_type_annotations {
+					md.to_string_from_buffer(buf, options, local);
+				}
+			}
 			// statements
 			StatementOrDeclaration::Empty(..) => {}
-			StatementOrDeclaration::AestheticSemiColon(..) => buf.push(';'),
 			StatementOrDeclaration::If(is) => is.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::ForLoop(fl) => fl.to_string_from_buffer(buf, options, local),
 			StatementOrDeclaration::Switch(ss) => ss.to_string_from_buffer(buf, options, local),
@@ -790,6 +858,12 @@ impl ASTNode for StatementOrDeclaration {
 			StatementOrDeclaration::Imported { moved, from, originally: _ } => {
 				moved.to_string_from_buffer(buf, options, local.change_source(*from));
 			}
+			StatementOrDeclaration::Raw(content, _) => {
+				buf.push_str(content);
+			}
+			StatementOrDeclaration::Multiple(parts, _) => {
+				crate::block::statements_and_declarations_to_string(parts, buf, options, local);
+			}
 		}
 	}
 }
@@ -801,7 +875,7 @@ fn expression_statement_after(
 ) -> ParseResult<StatementOrDeclaration> {
 	let initial =
 		Expression::VariableReference(identifier.to_owned(), start.with_length(identifier.len()));
-	crate::expressions::Expression::from_reader_after_first_expression(reader, 0, initial)
+	Expression::from_reader_after_first_expression(reader, 0, initial)
 		.map(MultipleExpression)
 		.map(StatementOrDeclaration::Expression)
 }

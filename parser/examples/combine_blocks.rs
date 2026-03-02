@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		let mut final_blocks: Vec<(HashSet<String>, String)> = Vec::new();
 		for code in blocks {
 			// TODO clone
-			let module = match Module::from_string(code.to_owned(), Default::default()) {
+			let module = match Module::from_string(code.to_owned()) {
 				Ok(module) => module,
 				Err(err) => {
 					return Err(From::from(format!("Parse error on {code}\nRecieved:{err:?}")));

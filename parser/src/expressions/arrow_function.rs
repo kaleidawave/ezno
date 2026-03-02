@@ -62,7 +62,7 @@ impl FunctionBased for ArrowFunctionBase {
 			let start = reader.get_start();
 			let name = reader.parse_identifier("arrow function parameter", true)?.into_owned();
 			let position = start.with_length(name.len());
-			let name = VariableField::Name(VariableIdentifier::Standard(name, position)).into();
+			let name = VariableField::Name(VariableIdentifier::Standard(name, position));
 			let parameters = vec![Parameter {
 				visibility: (),
 				name,
@@ -149,7 +149,7 @@ impl ArrowFunction {
 		let parameters = FunctionParameters {
 			leading: (),
 			parameters: vec![Parameter {
-				name: name.into(),
+				name,
 				position,
 				visibility: (),
 				type_annotation: None,

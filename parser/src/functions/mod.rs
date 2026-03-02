@@ -510,12 +510,12 @@ impl FunctionHeader {
 		// TODO update position
 		match self {
 			FunctionHeader::BasicFunctionHeader { ref mut is_generator, .. } => {
-				*is_generator = set_generator
+				*is_generator = set_generator;
 			}
 			#[cfg(feature = "extras")]
 			FunctionHeader::ChadFunctionHeader { .. } => {}
 		}
-		return Ok(self);
+		Ok(self)
 	}
 
 	#[must_use]

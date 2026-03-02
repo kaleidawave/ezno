@@ -77,11 +77,11 @@ impl ASTNode for Decorator {
 			}
 		} else {
 			// TODO check valid here?
-			let expression = Expression::from_reader_with_precedence(
+
+			Expression::from_reader_with_precedence(
 				reader,
 				crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE - 1,
-			)?;
-			expression
+			)?
 		};
 		Ok(Self(expression))
 	}
@@ -94,7 +94,7 @@ impl ASTNode for Decorator {
 	) {
 		if options.include_decorators {
 			buf.push('@');
-			self.0.to_string_from_buffer(buf, options, local)
+			self.0.to_string_from_buffer(buf, options, local);
 		}
 	}
 }
@@ -139,7 +139,7 @@ impl<U: ASTNode> Decorated<U> {
 	pub fn new(decorators: Vec<Decorator>, on: U) -> Self {
 		let position = decorators
 			.first()
-			.map_or(on.get_position(), |d| d.get_position())
+			.map_or(on.get_position(), super::super::ASTNode::get_position)
 			.union(on.get_position());
 		Self { decorators, on, position }
 	}

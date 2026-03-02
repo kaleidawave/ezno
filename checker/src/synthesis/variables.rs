@@ -1,9 +1,11 @@
 use std::borrow::Cow;
 
-use parser::{
-	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
-	SpreadDestructuringField, VariableField, VariableIdentifier,
-	statements_and_declarations::variables::VariableDeclarationItem,
+use parser::statements_and_declarations::variables::VariableDeclarationItem;
+use parser::{ASTNode, Expression};
+
+use parser::variable_fields::{
+	ArrayDestructuringField, ObjectDestructuringField, SpreadDestructuringField, VariableField,
+	VariableIdentifier,
 };
 
 use super::expressions::synthesise_expression;
@@ -301,7 +303,7 @@ pub(super) fn synthesise_variable_declaration_item<T: crate::ReadFromFS>(
 	};
 
 	let item = &variable_declaration.name;
-	assign_initial_to_fields(&item, environment, checking_data, value_ty, exported);
+	assign_initial_to_fields(item, environment, checking_data, value_ty, exported);
 }
 
 fn assign_initial_to_fields<T: crate::ReadFromFS>(

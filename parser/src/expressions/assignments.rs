@@ -298,7 +298,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 				for member in iter.by_ref() {
 					let position = member.get_position();
 					if let Some(member) = member.0 {
-						let (spread, expression) = member.value_and_spread();
+						let (expression, spread) = member.value_and_spread();
 
 						if spread {
 							return if let Some(next) = iter.next() {
@@ -318,22 +318,18 @@ impl TryFrom<Expression> for LHSOfAssignment {
 									position,
 								})
 							};
-						} else {
-							match expression {
-								Expression::Assignment { lhs, rhs, position: _ } => {
-									new_members.push(ArrayDestructuringField::Name(
-										lhs,
-										(),
-										Some(rhs),
-									));
-								}
-								expression => {
-									new_members.push(ArrayDestructuringField::Name(
-										expression.try_into()?,
-										(),
-										None,
-									));
-								}
+						}
+
+						match expression {
+							Expression::Assignment { lhs, rhs, position: _ } => {
+								new_members.push(ArrayDestructuringField::Name(lhs, (), Some(rhs)));
+							}
+							expression => {
+								new_members.push(ArrayDestructuringField::Name(
+									expression.try_into()?,
+									(),
+									None,
+								));
 							}
 						}
 					} else {

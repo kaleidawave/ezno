@@ -3,7 +3,6 @@
 #![warn(clippy::must_use_candidate)]
 
 mod block;
-mod comments;
 mod errors;
 pub mod expressions;
 pub mod extensions;
@@ -11,14 +10,14 @@ pub mod functions;
 pub mod generator_helpers;
 mod lexer;
 pub mod marker;
-mod modules;
+pub mod modules;
 pub mod numbers;
 pub mod options;
 pub mod property_key;
 pub mod statements_and_declarations;
 pub mod strings;
 pub mod types;
-mod variable_fields;
+pub mod variable_fields;
 pub mod visiting;
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement};
@@ -39,7 +38,7 @@ pub use types::{
 	type_annotations::{self, TypeAnnotation},
 	type_declarations::{self, TypeParameter},
 };
-pub use variable_fields::*;
+pub use variable_fields::{VariableField, VariableIdentifier};
 
 pub(crate) use lexer::Lexer;
 pub(crate) use visiting::{
@@ -104,6 +103,7 @@ pub struct ParseState {
 	pub constant_imports: Vec<String>,
 	/// the current position into the script
 	pub head: u32,
+	pub last: u32,
 }
 
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
@@ -111,24 +111,14 @@ pub struct ParseState {
 pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method `from_reader`
 	fn from_string(script: String) -> ParseResult<Self> {
-		Self::from_string_with_options(script, ParseOptions::all(), 0).map(|(ast, _)| ast)
+		Self::from_string_with_options(script, ParseOptions::default()).map(|(ast, _)| ast)
 	}
 
 	fn from_string_with_options(
 		script: String,
 		options: ParseOptions,
-		offset: u32,
 	) -> ParseResult<(Self, ParseState)> {
-		// length_of_source,
-		//
-		// keyword_positions: options
-		// 	.features
-		// 	.record_keyword_positions
-		// 	.then_some(KeywordPositions::new()),
-		// partial_points: Default::default(),
-		// head: 0
-
-		let mut reader = crate::Lexer::new(&script, offset, options);
+		let mut reader = crate::Lexer::new(&script, options.features.position_offset, options);
 		reader.skip_including_comments();
 
 		let node = Self::from_reader(&mut reader)?;
@@ -161,38 +151,6 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 		buf.source
 	}
 }
-
-// As parsing is forwards, this is ordered
-// type TSXKeyword = &'static str;
-
-// #[derive(Debug)]
-// pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
-
-// impl KeywordPositions {
-// 	#[must_use]
-// 	#[allow(clippy::cast_possible_truncation)]
-// 	pub fn try_get_keyword_at_position(&self, pos: u32) -> Option<TSXKeyword> {
-// 		// binary search
-// 		let mut l: u32 = 0;
-// 		let mut r: u32 = self.0.len() as u32 - 1u32;
-// 		while l <= r {
-// 			let m = (l + r) >> 1;
-// 			let (kw_pos, kw) = self.0[m as usize];
-// 			if kw_pos <= pos && pos < (kw_pos + kw.len() as u32) {
-// 				return Some(kw);
-// 			} else if pos > kw_pos {
-// 				l = m + 1;
-// 			} else if pos < kw_pos {
-// 				r = m - 1;
-// 			}
-// 		}
-// 		None
-// 	}
-
-// 	fn new() -> Self {
-// 		Self(Default::default())
-// 	}
-// }
 
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
@@ -298,6 +256,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 pub trait ListItem: Sized {
 	type LAST;
+
 	const LAST_PREFIX: Option<&'static str> = None;
 
 	#[allow(unused)]

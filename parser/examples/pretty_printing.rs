@@ -34,7 +34,7 @@ function x(a: { something: string, another: number, third: "yes" }, b: Array<{ e
 		features: Features { retain_blank_lines: true, ..Default::default() },
 		..Default::default()
 	};
-	let module = Module::from_string(input.to_owned(), parse_options).unwrap();
+	let (module, _) = Module::from_string_with_options(input.to_owned(), parse_options).unwrap();
 
 	let output = module.to_string(&ToStringOptions {
 		include_type_annotations: true,

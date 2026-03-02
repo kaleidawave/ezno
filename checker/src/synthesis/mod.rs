@@ -61,8 +61,7 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 		options: Self::ParseOptions,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
-		let result =
-			<parser::Module as parser::ASTNode>::from_string_with_options(string, options, 0);
+		let result = <parser::Module as parser::ASTNode>::from_string_with_options(string, options);
 		match result {
 			Ok((node, _state)) => Ok(node),
 			Err(err) => Err((err, source_id)),
@@ -79,8 +78,7 @@ impl crate::ASTImplementation for EznoParser {
 			..Default::default()
 		};
 
-		let result =
-			<parser::Module as parser::ASTNode>::from_string_with_options(string, options, 0);
+		let result = <parser::Module as parser::ASTNode>::from_string_with_options(string, options);
 		match result {
 			Ok((node, _state)) => Ok(node),
 			Err(err) => Err((err, source_id)),

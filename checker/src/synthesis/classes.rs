@@ -398,7 +398,7 @@ fn synthesise_class_declaration_extends_and_members<
 					{
 						get_internal_function_effect_from_decorators(
 							&member.decorators,
-							&name,
+							name,
 							environment,
 						)
 					} else {

@@ -841,16 +841,15 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();
-	let offset = position.end - 1 - possible_declaration.len() as u32;
 
 	let possible_declaration =
 		possible_declaration.strip_prefix('*').unwrap_or(possible_declaration);
 
-	let annotation = parser::TypeAnnotation::from_string_with_options(
-		possible_declaration.to_owned(),
-		Default::default(),
-		offset,
-	);
+	let mut options = parser::options::ParseOptions::default();
+	options.features.position_offset = position.end - 1 - possible_declaration.len() as u32;
+
+	let annotation =
+		parser::TypeAnnotation::from_string_with_options(possible_declaration.to_owned(), options);
 	if let Ok((annotation, _)) = annotation {
 		Some((
 			synthesise_type_annotation(&annotation, environment, checking_data),
@@ -868,14 +867,12 @@ pub(crate) fn get_annotation_from_declaration<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<TypeId> {
-	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
-		Some((
+	let result = declaration.type_annotation.as_ref().map(|annotation| {
+		(
 			synthesise_type_annotation(annotation, environment, checking_data),
 			annotation.get_position().with_source(environment.get_source()),
-		))
-	} else {
-		None
-	};
+		)
+	});
 
 	/*// TODO only under config
 	else if let parser::WithComment::PostfixComment(_item, possible_declaration, position) =

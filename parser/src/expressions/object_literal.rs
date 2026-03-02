@@ -1,9 +1,10 @@
 use crate::{
-	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, Span, derive_ASTNode,
+	ASTNode, Block, Expression, FunctionBase, ParseResult, Span, derive_ASTNode,
 	functions::{FunctionBased, HeadingAndPosition, MethodHeader, ThisParameter},
-	property_key::AlwaysPublic,
 	visiting::Visitable,
 };
+
+pub use crate::property_key::{AlwaysPublic, PropertyKey};
 
 use std::fmt::Debug;
 use visitable_derive::Visitable;
