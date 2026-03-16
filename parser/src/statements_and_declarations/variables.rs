@@ -4,9 +4,8 @@ use visitable_derive::Visitable;
 
 /// re-export
 pub use crate::VariableField;
-use crate::{
-	ASTNode, Expression, ParseError, ParseResult, Span, TypeAnnotation, WithComment, derive_ASTNode,
-};
+use crate::{ASTNode, ParseError, ParseResult, Span, derive_ASTNode};
+use crate::{Expression, TypeAnnotation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
@@ -46,7 +45,7 @@ impl VariableKeyword {
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct VariableDeclarationItem {
-	pub name: WithComment<VariableField>,
+	pub name: VariableField,
 	pub type_annotation: Option<TypeAnnotation>,
 	/// `const` declarations require this to be some but it is an error during parsing
 	pub expression: Option<Expression>,
@@ -59,7 +58,7 @@ impl ASTNode for VariableDeclarationItem {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let name = WithComment::<VariableField>::from_reader(reader)?;
+		let name = VariableField::from_reader(reader)?;
 		let mut position = name.get_position();
 		// if TExpr::allow_definite_assignment_assertions() {
 		// TODO
@@ -75,6 +74,7 @@ impl ASTNode for VariableDeclarationItem {
 		} else {
 			None
 		};
+
 		let expression = if reader.is_operator_advance("=") {
 			let expression = Expression::from_reader(reader)?;
 			position = position.union(expression.get_position());
@@ -149,46 +149,9 @@ impl ASTNode for VariableDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		let start = reader.get_start();
 		if let Some(kind) = VariableDeclarationKeyword::from_reader(reader) {
-			// state.append_keyword_at_pos(start.0, TSXKeyword::Let);
-			let mut declarations = Vec::new();
-			loop {
-				reader.skip();
-				if reader.is_one_of(&["//", "/*"]).is_some() {
-					let is_multiline = reader.starts_with_slice("/*");
-					reader.advance(2);
-					let _content = reader.parse_comment_literal(is_multiline)?;
-					continue;
-				}
-
-				let value = VariableDeclarationItem::from_reader(reader)?;
-
-				if value.expression.is_none() {
-					if let VariableDeclarationKeyword::Const = kind {
-						return Err(crate::ParseError::new(
-							crate::ParseErrors::ConstDeclarationRequiresValue,
-							value.name.get_ast_ref().get_position(),
-						));
-					}
-					if !matches!(value.name.get_ast_ref(), VariableField::Name(_)) {
-						return Err(crate::ParseError::new(
-							crate::ParseErrors::DestructuringRequiresValue,
-							value.name.get_ast_ref().get_position(),
-						));
-					}
-				}
-
-				declarations.push(value);
-				if !reader.is_operator_advance(",") {
-					break;
-				}
-			}
-
-			let position = start.union(reader.get_end());
-
-			Ok(VariableDeclaration { kind, declarations, position })
+			Self::parse_declarations_after_kind((start, kind), reader)
 		} else {
 			Err(crate::lexer::utilities::expected_one_of_items(reader, &["const", "let"]))
 		}
@@ -222,6 +185,40 @@ impl VariableDeclaration {
 	#[must_use]
 	pub fn is_constant(&self) -> bool {
 		matches!(self.kind, VariableDeclarationKeyword::Const)
+	}
+
+	pub(crate) fn parse_declarations_after_kind(
+		(start, kind): (source_map::Start, VariableDeclarationKeyword),
+		reader: &mut crate::Lexer,
+	) -> ParseResult<Self> {
+		let mut declarations = Vec::new();
+		loop {
+			let value = VariableDeclarationItem::from_reader(reader)?;
+
+			if value.expression.is_none() {
+				if let VariableDeclarationKeyword::Const = kind {
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::ConstDeclarationRequiresValue,
+						value.name.get_position(),
+					));
+				}
+				if !matches!(value.name, VariableField::Name(_)) {
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::DestructuringRequiresValue,
+						value.name.get_position(),
+					));
+				}
+			}
+
+			declarations.push(value);
+			if !reader.is_operator_advance(",") {
+				break;
+			}
+		}
+
+		let position = start.union(reader.get_end());
+
+		Ok(VariableDeclaration { kind, declarations, position })
 	}
 }
 
@@ -265,12 +262,10 @@ impl ASTNode for VarVariableStatement {
 		let mut declarations = Vec::new();
 		loop {
 			let value = VariableDeclarationItem::from_reader(reader)?;
-			if value.expression.is_none()
-				&& !matches!(value.name.get_ast_ref(), crate::VariableField::Name(_))
-			{
+			if value.expression.is_none() && !matches!(value.name, crate::VariableField::Name(_)) {
 				return Err(crate::ParseError::new(
 					crate::ParseErrors::DestructuringRequiresValue,
-					value.name.get_ast_ref().get_position(),
+					value.name.get_position(),
 				));
 			}
 			declarations.push(value);
@@ -283,7 +278,7 @@ impl ASTNode for VarVariableStatement {
 			start.union(last.get_position())
 		} else {
 			let position = start.with_length(3);
-			if reader.get_options().partial_syntax {
+			if reader.get_options().features.partial_syntax {
 				position
 			} else {
 				return Err(ParseError::new(crate::ParseErrors::ExpectedDeclaration, position));

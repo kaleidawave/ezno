@@ -1,5 +1,6 @@
 use derive_enum_from_into::EnumFrom;
 use iterator_endiate::EndiateIteratorExt;
+use std::fmt;
 
 use crate::{
 	ASTNode, ParseResult, Span, Statement, StatementOrDeclaration, VisitOptions, Visitable,
@@ -38,9 +39,12 @@ impl ASTNode for Block {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let start = reader.expect_start('{')?;
-		let items = statements_and_declarations_from_reader(reader)?;
-		let position = start.union(reader.expect('}')?);
+		let top_level = std::mem::replace(&mut reader.state.flags.top_level, false);
+		let start = reader.get_start();
+		reader.expect_chr('{')?;
+		let items = statements_and_declarations_from_reader(reader, None)?;
+		let position = start.union(reader.expect_chr('}')?);
+		reader.state.flags.top_level = top_level;
 		Ok(Block(items, position))
 	}
 
@@ -69,6 +73,21 @@ impl ASTNode for Block {
 	}
 }
 
+impl crate::functions::FunctionBodyTrait for Block {
+	fn from_reader_as_function_body(
+		reader: &mut crate::Lexer,
+		directive_allowed: bool,
+	) -> ParseResult<Self> {
+		let top_level = std::mem::replace(&mut reader.state.flags.top_level, false);
+		let start = reader.get_start();
+		reader.expect_chr('{')?;
+		let items = statements_and_declarations_from_reader(reader, Some(directive_allowed))?;
+		let position = start.union(reader.expect_chr('}')?);
+		reader.state.flags.top_level = top_level;
+		Ok(Block(items, position))
+	}
+}
+
 impl Block {
 	pub fn items(&self) -> core::slice::Iter<'_, StatementOrDeclaration> {
 		self.0.iter()
@@ -79,12 +98,22 @@ impl Block {
 	}
 }
 
-/// For ifs and other statements bodies
-#[derive(Debug, Clone, EnumFrom)]
+/// For `if`s and other statements bodies
+#[derive(Clone, EnumFrom)]
 #[apply(derive_ASTNode!)]
 pub enum BlockOrSingleStatement {
 	Braced(Block),
 	SingleStatement(Box<Statement>),
+}
+
+impl fmt::Debug for BlockOrSingleStatement {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+		match self {
+			Self::Braced(block) if block.0.is_empty() => f.write_str("Braced(*empty*)"),
+			Self::Braced(block) => f.debug_tuple("Braced").field(block).finish(),
+			Self::SingleStatement(stmt) => f.debug_tuple("SingleStatement").field(stmt).finish(),
+		}
+	}
 }
 
 impl ASTNode for BlockOrSingleStatement {
@@ -96,7 +125,12 @@ impl ASTNode for BlockOrSingleStatement {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		// TODO
+		// if reader.starts_with('{') {
+		// } else {
+		let was_top_level = std::mem::replace(&mut reader.state.flags.top_level, false);
 		let stmt = Statement::from_reader(reader)?;
+		reader.state.flags.top_level = was_top_level;
 		if let StatementOrDeclaration::Block(blk) = stmt.0 {
 			Ok(Self::Braced(blk))
 		} else {
@@ -105,6 +139,7 @@ impl ASTNode for BlockOrSingleStatement {
 			}
 			Ok(Self::SingleStatement(Box::new(stmt)))
 		}
+		// }
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -141,18 +176,13 @@ impl ASTNode for BlockOrSingleStatement {
 /// Parse statements, regardless of bracing or not
 pub(crate) fn statements_and_declarations_from_reader(
 	reader: &mut crate::Lexer,
+	in_script_or_function_block: Option<bool>,
 ) -> ParseResult<Vec<StatementOrDeclaration>> {
 	let mut items = Vec::new();
-	loop {
-		reader.skip();
+	let was_strict = reader.state.flags.strict_mode;
 
-		let at_end = reader.is_finished() || reader.starts_with('}');
-
-		if at_end {
-			break;
-		}
-
-		if reader.get_options().retain_blank_lines && !items.is_empty() {
+	while !(reader.is_finished() || reader.starts_with('}')) {
+		if reader.get_options().features.retain_blank_lines && !items.is_empty() {
 			let new_lines = reader.last_was_from_new_line();
 			// let new_lines = reader.last_was_from_new_line_consume();
 			for _ in 1..new_lines {
@@ -166,6 +196,63 @@ pub(crate) fn statements_and_declarations_from_reader(
 
 		let item = StatementOrDeclaration::from_reader(reader)?;
 
+		// Duplicate checking
+		if reader.get_options().features.run_validation && reader.strict_mode() {
+			// I believe this is lazyly allocated. TODO string -> &str
+			let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+			let mut duplicate = false;
+			if let StatementOrDeclaration::Function(ref func) = item {
+				if let Some(name) = &func.on.item.name.identifier.as_option_str() {
+					let name: String = String::from(*name);
+					duplicate = !seen.insert(name);
+				}
+			}
+
+			if let StatementOrDeclaration::VarVariable(ref item) = item {
+				for declaration in &item.item.declarations {
+					declaration.name.visit_names(&mut |name| {
+						duplicate = !seen.insert(name.to_owned());
+					});
+				}
+			}
+
+			if let StatementOrDeclaration::Variable(ref item) = item {
+				for declaration in &item.item.declarations {
+					declaration.name.visit_names(&mut |name| {
+						duplicate = !seen.insert(name.to_owned());
+					});
+				}
+			}
+
+			if duplicate {
+				let err = crate::ParseError::new(
+					crate::ParseErrors::TODO("double variable"),
+					item.get_position(),
+				);
+				return Err(err);
+			}
+		}
+
+		if let Some(allowed) = in_script_or_function_block {
+			if let StatementOrDeclaration::Expression(expression) = &item
+				&& let crate::Expression::StringLiteral(inner, ..) = &expression.0
+				&& inner == "use strict"
+			{
+				// TODO if last string octal
+				if items.len() == 0 {
+					reader.state.flags.strict_mode = true;
+				}
+				if !allowed {
+					let err = crate::ParseError::new(
+						crate::ParseErrors::TODO("cannot use 'use strict' here"),
+						expression.get_position(),
+					);
+					return Err(err);
+				}
+			}
+		}
+
 		// Skip emptyies at the start
 		if let (true, StatementOrDeclaration::Empty(..)) = (items.is_empty(), &item) {
 			continue;
@@ -177,6 +264,9 @@ pub(crate) fn statements_and_declarations_from_reader(
 
 		items.push(item);
 	}
+
+	reader.state.flags.strict_mode = was_strict;
+
 	Ok(items)
 }
 

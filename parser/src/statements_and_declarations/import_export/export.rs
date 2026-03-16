@@ -1,9 +1,10 @@
-use crate::{
-	ASTNode, Expression, ParseResult, Span, TypeAnnotation, VariableIdentifier, derive_ASTNode,
-	type_annotations::TypeAnnotationFunctionParameters,
-};
+use crate::{ASTNode, ParseResult, Span, derive_ASTNode};
 
-use super::{ImportExportPart, ImportLocation};
+use crate::expressions::Expression;
+use crate::type_annotations::TypeAnnotationFunctionParameters;
+use crate::{TypeAnnotation, VariableIdentifier};
+
+use super::{ImportAttribute, ImportExportName, ImportExportPart, ImportLocation};
 
 use get_field_by_type::GetFieldByType;
 use visitable_derive::Visitable;
@@ -64,11 +65,19 @@ pub enum ExportDeclaration {
 	/// `export { ... }`
 	Parts(Vec<ImportExportPart<ExportDeclaration>>, Span),
 	/// `export * as x from "..."`
-	ImportToExportAll { r#as: Option<VariableIdentifier>, from: ImportLocation, position: Span },
+	ImportToExportAll {
+		// r#as: Option<VariableIdentifier>,
+		// under proposal this can be a string
+		r#as: Option<ImportExportName>,
+		from: ImportLocation,
+		with: Option<ImportAttribute>,
+		position: Span,
+	},
 	/// `export { ... } from "..."`
 	ImportToExportParts {
 		parts: Vec<ImportExportPart<super::import::ImportDeclaration>>,
 		from: ImportLocation,
+		with: Option<ImportAttribute>,
 		type_definitions_only: bool,
 		position: Span,
 	},
@@ -86,6 +95,127 @@ pub enum ExportDeclaration {
 	},
 }
 
+pub(crate) fn export_declaration_from_reader_after_export_keyword(
+	start: source_map::Start,
+	reader: &mut crate::Lexer,
+) -> ParseResult<ExportDeclaration> {
+	if reader.is_keyword_advance("default") {
+		let edge_case = reader.get_options().type_annotations.is_definition_file()
+			&& reader.starts_with_function_header();
+		// Always have == .d.ts file here
+		// Unfortuantly have to do quite a bit of parsing here
+		if edge_case {
+			let is_async = reader.is_operator_advance("async");
+			let _ = reader.expect_keyword("function");
+
+			let identifier = if reader.is_operator("(") {
+				None
+			} else {
+				Some(VariableIdentifier::from_reader(reader)?)
+			};
+
+			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
+
+			let return_type = if reader.is_operator_advance(":") {
+				Some(TypeAnnotation::from_reader(reader)?)
+			} else {
+				None
+			};
+
+			let position = start.union(reader.get_end());
+			Ok(ExportDeclaration::TSDefaultFunctionDeclaration {
+				position,
+				is_async,
+				identifier,
+				parameters,
+				return_type,
+			})
+		} else {
+			let expression = Expression::from_reader(reader)?;
+			// TODO check expression here
+			let position = start.union(expression.get_position());
+			Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
+		}
+	} else if reader.is_operator_advance("*") {
+		let r#as = if reader.is_keyword_advance("as") {
+			Some(ImportExportName::from_reader(reader)?.0)
+		} else {
+			None
+		};
+
+		let start = reader.expect_keyword("from")?;
+		// TODO temp
+		let from = ImportLocation::from_reader(reader)?;
+		let end = reader.get_end();
+		let position = start.union(end);
+
+		let with = reader
+			.is_operator_advance("with")
+			.then(|| ImportAttribute::from_reader(reader))
+			.transpose()?;
+
+		Ok(ExportDeclaration::ImportToExportAll { r#as, from, position, with })
+	} else if reader.is_operator_advance("{") {
+		let type_definitions_only = false;
+		let (parts, _) =
+			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
+
+		if reader.is_keyword_advance("from") {
+			let from = ImportLocation::from_reader(reader)?;
+
+			let parts: Vec<_> = parts.into_iter().map(ImportExportPart::into_import_form).collect();
+
+			let with = reader
+				.is_operator_advance("with")
+				.then(|| ImportAttribute::from_reader(reader))
+				.transpose()?;
+			let position = start.union(reader.get_end());
+
+			Ok(ExportDeclaration::ImportToExportParts {
+				parts,
+				from,
+				type_definitions_only,
+				with,
+				position,
+			})
+		} else {
+			let position = start.union(reader.get_end());
+			Ok(ExportDeclaration::Parts(parts, position))
+		}
+	} else if reader.parse_type_annotations() && reader.is_keyword_advance("type") {
+		reader.expect_operator("{")?;
+		let type_definitions_only = true;
+
+		let (parts, _) =
+			crate::bracketed_items_from_reader::<ImportExportPart<ExportDeclaration>>(reader, "}")?;
+
+		if reader.is_keyword_advance("from") {
+			let from = ImportLocation::from_reader(reader)?;
+
+			let parts: Vec<_> = parts.into_iter().map(ImportExportPart::into_import_form).collect();
+
+			let with = reader
+				.is_operator_advance("with")
+				.then(|| ImportAttribute::from_reader(reader))
+				.transpose()?;
+			let position = start.union(reader.get_end());
+
+			Ok(ExportDeclaration::ImportToExportParts {
+				parts,
+				from,
+				type_definitions_only,
+				with,
+				position,
+			})
+		} else {
+			let position = start.union(reader.get_end());
+			Ok(ExportDeclaration::Parts(parts, position))
+		}
+	} else {
+		Err(crate::lexer::utilities::expected_one_of_items(reader, &["{", "*", "default", "type"]))
+	}
+}
+
 impl ASTNode for ExportDeclaration {
 	fn get_position(&self) -> Span {
 		*self.get()
@@ -93,92 +223,7 @@ impl ASTNode for ExportDeclaration {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("export")?;
-		reader.skip();
-		if reader.is_keyword_advance("default") {
-			let edge_case = reader.get_options().type_definition_module
-				&& crate::lexer::utilities::is_function_header(reader.get_current());
-			// Always have == .d.ts file here
-			// Unfortuantly have to do quite a bit of parsing here
-			if edge_case {
-				let is_async = reader.is_operator_advance("async");
-				let _ = reader.expect_keyword("function");
-
-				let identifier = if reader.is_operator("(") {
-					None
-				} else {
-					Some(VariableIdentifier::from_reader(reader)?)
-				};
-
-				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
-
-				let return_type = if reader.is_operator_advance(":") {
-					Some(TypeAnnotation::from_reader(reader)?)
-				} else {
-					None
-				};
-
-				let position = start.union(reader.get_end());
-				Ok(ExportDeclaration::TSDefaultFunctionDeclaration {
-					position,
-					is_async,
-					identifier,
-					parameters,
-					return_type,
-				})
-			} else {
-				let expression = Expression::from_reader(reader)?;
-				// TODO check expression here
-				let position = start.union(expression.get_position());
-				Ok(ExportDeclaration::Default { expression: Box::new(expression), position })
-			}
-		} else if reader.is_operator_advance("*") {
-			let r#as = if reader.is_keyword_advance("as") {
-				// TODO state.append_keyword_at_pos(reader.next().unwrap().1 .0, TSXKeyword::As);
-				Some(VariableIdentifier::from_reader(reader)?)
-			} else {
-				None
-			};
-
-			let start = reader.expect_keyword("from")?;
-			// TODO temp
-			let from = ImportLocation::from_reader(reader)?;
-			let end = reader.get_end();
-			let position = start.union(end);
-
-			Ok(ExportDeclaration::ImportToExportAll { r#as, from, position })
-		} else if reader.is_operator("{") || reader.is_keyword("type") {
-			let type_definitions_only = reader.is_keyword_advance("type");
-			if reader.after_brackets().starts_with("from") {
-				let out = reader.is_operator_advance("{");
-				debug_assert!(out);
-
-				let (parts, _) =
-					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
-				reader.expect_keyword("from")?;
-
-				let from = ImportLocation::from_reader(reader)?;
-				let position = start.union(reader.get_end());
-				Ok(ExportDeclaration::ImportToExportParts {
-					parts,
-					from,
-					type_definitions_only,
-					position,
-				})
-			} else {
-				let out = reader.is_operator_advance("{");
-				debug_assert!(out);
-				// FUTURE warn about type_definitions_only with type
-				let (parts, _) =
-					crate::bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
-				let position = start.union(reader.get_end());
-				Ok(ExportDeclaration::Parts(parts, position))
-			}
-		} else {
-			Err(crate::lexer::utilities::expected_one_of_items(
-				reader,
-				&["{", "*", "default", "type"],
-			))
-		}
+		export_declaration_from_reader_after_export_keyword(start, reader)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -192,21 +237,28 @@ impl ASTNode for ExportDeclaration {
 			ExportDeclaration::Parts(parts, _) => {
 				super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
 			}
-			ExportDeclaration::ImportToExportAll { r#as, from, position: _ } => {
+			ExportDeclaration::ImportToExportAll { r#as, from, with, position: _ } => {
 				buf.push_str("* ");
 				if let Some(r#as) = r#as {
 					buf.push_str("as ");
 					r#as.to_string_from_buffer(buf, options, local);
 					buf.push(' ');
 				}
-				buf.push_str("from \"");
+				buf.push_str("from");
+				options.push_gap_optionally(buf);
+				buf.push('"');
 				from.to_string_from_buffer(buf);
 				buf.push('"');
+				if let Some(with) = with {
+					buf.push_str("with ");
+					with.to_string_from_buffer(buf, options, local);
+				}
 			}
 			ExportDeclaration::ImportToExportParts {
 				parts,
 				from,
 				type_definitions_only,
+				with,
 				position: _,
 			} => {
 				if *type_definitions_only {
@@ -214,9 +266,16 @@ impl ASTNode for ExportDeclaration {
 				}
 				super::import_export_parts_to_string_from_buffer(parts, buf, options, local);
 				options.push_gap_optionally(buf);
-				buf.push_str("from \"");
+				buf.push_str("from");
+				options.push_gap_optionally(buf);
+				buf.push('"');
 				from.to_string_from_buffer(buf);
 				buf.push('"');
+
+				if let Some(with) = with {
+					buf.push_str("with ");
+					with.to_string_from_buffer(buf, options, local);
+				}
 			}
 			ExportDeclaration::Default { expression, position: _ } => {
 				buf.push_str("default ");

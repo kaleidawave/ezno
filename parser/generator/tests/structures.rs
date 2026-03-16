@@ -39,12 +39,10 @@ fn stmt_with_expr_interpolation() {
             kind: Let,
             declarations: [
                 VariableDeclarationItem {
-                    name: None(
-                        Name(
-                            Standard(
-                                "y",
-                                4..5,
-                            ),
+                    name: Name(
+                        Standard(
+                            "y",
+                            4..5,
                         ),
                     ),
                     type_annotation: None,
@@ -57,7 +55,7 @@ fn stmt_with_expr_interpolation() {
                     position: 4..9,
                 },
             ],
-            position: 0..29,
+            position: 0..28,
         },
     },
 )"#,
@@ -79,12 +77,10 @@ fn stmt_with_var_name_interpolation() {
             kind: Let,
             declarations: [
                 VariableDeclarationItem {
-                    name: None(
-                        Name(
-                            Standard(
-                                "test",
-                                0..0,
-                            ),
+                    name: Name(
+                        Standard(
+                            "test",
+                            0..0,
                         ),
                     ),
                     type_annotation: None,

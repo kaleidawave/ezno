@@ -1,16 +1,21 @@
 use visitable_derive::Visitable;
 
+use crate::functions::{
+	FunctionBased, FunctionBodyTrait, FunctionHeaderTrait, FunctionKind, FunctionParameters,
+	HeadingAndPosition, Parameter, parse_function_body,
+};
 use crate::{
 	ASTNode, Block, Expression, FunctionBase, ParseResult, Span, VariableField, VariableIdentifier,
 	derive_ASTNode,
-	functions::HeadingAndPosition,
-	functions::{FunctionBased, FunctionParameters, Parameter},
 };
 
 #[derive(Debug, Clone, Hash)]
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
+
+// pub struct IsAsync(bool, Span);
+
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsAsync = bool;
 
@@ -23,12 +28,43 @@ const TYPES: &str = r"
 	}
 ";
 
+impl FunctionHeaderTrait for IsAsync {
+	fn is_async(&self) -> bool {
+		*self
+	}
+
+	fn is_generator(&self) -> bool {
+		false
+	}
+
+	// fn get_position(&self) -> Span {
+	// 	self.1
+	// }
+}
+
+impl FunctionBodyTrait for ExpressionOrBlock {
+	fn from_reader_as_function_body(
+		reader: &mut crate::Lexer,
+		directive_allowed: bool,
+	) -> crate::ParseResult<Self> {
+		if reader.is_operator("{") {
+			Block::from_reader_as_function_body(reader, directive_allowed).map(Self::Block)
+		} else {
+			Expression::from_reader(reader).map(Box::new).map(Self::Expression)
+		}
+	}
+}
+
 impl FunctionBased for ArrowFunctionBase {
 	type Name = ();
 	type Header = IsAsync;
 	type Body = ExpressionOrBlock;
 	type LeadingParameter = ();
 	type ParameterVisibility = ();
+
+	fn kind() -> FunctionKind {
+		FunctionKind::default()
+	}
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderArrowFunction(this.body.get_block_id())
@@ -59,12 +95,12 @@ impl FunctionBased for ArrowFunctionBase {
 			FunctionParameters::from_reader(reader)
 		} else {
 			let start = reader.get_start();
-			let name = reader.parse_identifier("arrow function parameter", true)?;
+			let name = reader.parse_identifier("arrow function parameter", true)?.into_owned();
 			let position = start.with_length(name.len());
+			let name = VariableField::Name(VariableIdentifier::Standard(name, position));
 			let parameters = vec![Parameter {
 				visibility: (),
-				name: VariableField::Name(VariableIdentifier::Standard(name.to_owned(), position))
-					.into(),
+				name,
 				type_annotation: None,
 				additionally: None,
 				position,
@@ -89,7 +125,7 @@ impl FunctionBased for ArrowFunctionBase {
 				&& !matches!(
 					additionally,
 					Some(crate::functions::ParameterData::WithDefaultValue(_))
-				) && let VariableField::Name(name, ..) = name.get_ast_ref()
+				) && let VariableField::Name(name, ..) = name
 			{
 				name.to_string_from_buffer(buf, options, local);
 				return;
@@ -133,33 +169,60 @@ impl FunctionBased for ArrowFunctionBase {
 }
 
 impl ArrowFunction {
+	/// Given an `is_async` and an `identifier`, parses the rest of the arrow function
+	///
+	/// ```typescript
+	/// *is_async* *identifier* =>
+	/// //                      ^ expects reader just before `=>` symbol
+	/// ```
 	pub(crate) fn from_reader_with_first_parameter(
 		reader: &mut crate::Lexer,
 		is_async: bool,
-		identifier: VariableIdentifier,
+		name: VariableField,
 	) -> ParseResult<Self> {
-		let position = identifier.get_position();
-		let parameters = vec![Parameter {
-			name: VariableField::Name(identifier).into(),
-			position,
-			visibility: (),
-			type_annotation: None,
-			additionally: None,
-		}];
-		reader.expect_operator("=>")?;
-		let body = ExpressionOrBlock::from_reader(reader)?;
-		let arrow_function = FunctionBase {
-			header: is_async,
-			position: position.union(body.get_position()),
-			name: (),
-			parameters: FunctionParameters {
-				parameters,
-				rest_parameter: None,
+		let position = name.get_position();
+		let parameters = FunctionParameters {
+			leading: (),
+			parameters: vec![Parameter {
+				name,
 				position,
-				leading: (),
-			},
-			return_type: None,
-			type_parameters: None,
+				visibility: (),
+				type_annotation: None,
+				additionally: None,
+			}],
+			rest_parameter: None,
+			position,
+		};
+
+		Self::from_reader_with_parameters(reader, position.get_start(), is_async, None, parameters)
+	}
+
+	pub(crate) fn from_reader_with_parameters(
+		reader: &mut crate::Lexer,
+		start: source_map::Start,
+		is_async: bool,
+		type_parameters: Option<crate::functions::FunctionTypeParameters>,
+		parameters: FunctionParameters<(), ()>,
+	) -> ParseResult<Self> {
+		let return_type = if reader.is_operator_advance(":") {
+			Some(crate::types::TypeAnnotation::from_reader(reader)?)
+		} else {
+			None
+		};
+		reader.expect_operator("=>")?;
+		let body = parse_function_body::<ArrowFunctionBase>(
+			reader,
+			&is_async,
+			ArrowFunctionBase::kind(),
+			!parameters.has_default_or_spread(),
+		)?;
+		let arrow_function = ArrowFunction {
+			header: is_async,
+			position: start.union(body.get_position()),
+			name: (),
+			parameters,
+			return_type,
+			type_parameters,
 			body,
 		};
 		Ok(arrow_function)

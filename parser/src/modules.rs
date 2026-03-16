@@ -12,12 +12,12 @@ use super::{ASTNode, Span};
 pub struct Module {
 	pub hashbang_comment: Option<String>,
 	pub items: Vec<StatementOrDeclaration>,
-	pub span: Span,
+	pub position: Span,
 }
 
 impl ASTNode for Module {
 	fn get_position(&self) -> Span {
-		self.span
+		self.position
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -35,20 +35,23 @@ impl ASTNode for Module {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let span = Span { start: 0, source: (), end: reader.source_size() };
+		let start = reader.get_start();
 		let hashbang_comment = if reader.is_operator_advance("#!") {
 			let hashbang_comment = reader.parse_comment_literal(false)?;
+			if start.0 != 0 {
+				let position = start.union(reader.get_end());
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::TODO("hashbang not start"),
+					position,
+				));
+			}
 			Some(hashbang_comment.to_owned())
 		} else {
 			None
 		};
-		let items = statements_and_declarations_from_reader(reader)?;
-		if reader.is_finished() {
-			Ok(Module { hashbang_comment, items, span })
-		} else {
-			let (found, position) = crate::lexer::utilities::next_item(reader);
-			Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
-		}
+		let items = statements_and_declarations_from_reader(reader, Some(true))?;
+		let position = start.union(reader.get_end());
+		Ok(Module { hashbang_comment, items, position })
 	}
 }
 

@@ -7,6 +7,13 @@ pub enum Context {
 	Octal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ParsedNumberLiteral<'a> {
+	Number(f64),
+	/// FUTURE could be some other type
+	BigInt(&'a str),
+}
+
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type NumberRepresentation = f64;
 
@@ -148,6 +155,7 @@ pub fn parse_number(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()>
 					Ok((ParsedNumberLiteral::Number(value), count))
 				}
 			}
+			Some('n') => Ok((ParsedNumberLiteral::BigInt("0"), 2)),
 			Some(_) | None => Ok((ParsedNumberLiteral::Number(0f64), 1)),
 		}
 	} else {
@@ -155,31 +163,44 @@ pub fn parse_number(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()>
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ParsedNumberLiteral<'a> {
-	Number(f64),
-	/// FUTURE could be some other type
-	BigInt(&'a str),
-}
-
 fn parse_no_specifier(current: &str) -> Result<(ParsedNumberLiteral<'_>, u32), ()> {
-	fn is_not_number_character(chr: char) -> bool {
-		let is_number_character = matches!(chr, '0'..='9' | '.' | '_');
-		!is_number_character
+	fn is_ascii_digit_or_numerical_seperator(c: char) -> bool {
+		c.is_ascii_digit() || matches!(c, '_')
 	}
 
-	let mut count = current.find(is_not_number_character).unwrap_or(current.len());
+	fn number_of_number_characters(current: &str) -> usize {
+		let mut after_decimal = false;
+		for (idx, byte) in current.bytes().enumerate() {
+			if let b'.' = byte {
+				if after_decimal {
+					return idx;
+				}
+				after_decimal = true;
+			} else {
+				// cannot use `is_ascii_digit_or_numerical_seperator` because we have a byte...
+				let is_valid = byte.is_ascii_digit() || byte == b'_';
+				if !is_valid {
+					return idx;
+				}
+			}
+		}
+		current.len()
+	}
+
+	let mut count = number_of_number_characters(current);
 	if current[count..].starts_with(['e', 'E']) {
 		count += 1;
 		if current[count..].starts_with(['-', '+']) {
 			count += 1;
 		}
 		let after = &current[count..];
-		count += after.find(|c: char| !c.is_ascii_digit()).unwrap_or(after.len());
+		count += after
+			.find(|chr: char| !is_ascii_digit_or_numerical_seperator(chr))
+			.unwrap_or(after.len());
 	}
 	let source = &current[..count];
 
-	if current[count..].ends_with('n') {
+	if current[count..].starts_with('n') {
 		// TODO do we need to check decimals and exponents here
 		Ok((ParsedNumberLiteral::BigInt(source), count as u32 + 1))
 	} else {
@@ -240,6 +261,9 @@ mod tests {
 		assert_eq!(parse_number("1_000_000"), Ok((f(1000000f64), 9)));
 		assert_eq!(parse_number("0"), Ok((f(0f64), 1)));
 		assert_eq!(parse_number("0;"), Ok((f(0f64), 1)));
+		assert_eq!(parse_number("0..toString()"), Ok((f(0f64), 2)));
+		assert_eq!(parse_number("1..toString()"), Ok((f(1f64), 2)));
+		assert_eq!(parse_number("10.2._5"), Ok((f(10.2f64), 4)));
 	}
 
 	#[test]
@@ -250,6 +274,7 @@ mod tests {
 
 		assert_eq!(parse_number("4.2e+500"), Ok((f(f64::INFINITY), 8)));
 		assert_eq!(parse_number("4.2e-4000"), Ok((f(0f64), 9)));
+		assert_eq!(parse_number("1.0e-1_0"), Ok((f(1e-10f64), 8)));
 	}
 
 	#[test]
@@ -291,6 +316,7 @@ mod tests {
 
 	#[test]
 	fn big_ints() {
+		assert_eq!(parse_number("10n + "), Ok((n("10"), 3)));
 		assert_eq!(parse_number("9007199254740991n"), Ok((n("9007199254740991"), 17)));
 		assert_eq!(parse_number("0x1fffffffffffffn"), Ok((n("0x1fffffffffffff"), 17)));
 		assert_eq!(parse_number("0o377777777777777777n"), Ok((n("0o377777777777777777"), 21)));
@@ -304,12 +330,12 @@ mod tests {
 /// FUTURE Cow
 #[derive(Debug, Clone)]
 #[apply(crate::derive_ASTNode!)]
-pub struct BigInt {
+pub struct BigIntRepresentation {
 	/// This can contain prefix information etc
 	pub source: String,
 }
 
-impl BigInt {
+impl BigIntRepresentation {
 	#[must_use]
 	pub fn radix(&self) -> u32 {
 		let s = self.source.chars().nth(1);

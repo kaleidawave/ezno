@@ -2,24 +2,21 @@
 
 use std::borrow::Cow;
 
-use parser::{
-	ASTNode, Expression,
-	jsx::{JSXAttribute, JSXElement, JSXElementChildren, JSXNode, JSXRoot},
-};
+use parser::extensions::jsx::{JSXAttribute, JSXElement, JSXElementChildren, JSXNode, JSXRoot};
+use parser::{ASTNode, Expression};
 
 use crate::{
-	CheckingData, Constant, Environment, TypeId,
-	context::invocation::CheckThings,
-	diagnostics::TypeCheckError,
-	features::objects::ObjectBuilder,
+	CheckingData, Constant, Environment, TypeId, context::invocation::CheckThings,
+	diagnostics::TypeCheckError, features::objects::ObjectBuilder,
 	synthesis::expressions::synthesise_expression,
-	types::{
-		calling::{
-			Callable, CalledWithNew, CallingContext, CallingInput, SynthesisedArgument,
-			application_result_to_return_type,
-		},
-		properties::PropertyKey,
+};
+
+use crate::types::{
+	calling::{
+		Callable, CalledWithNew, CallingContext, CallingInput, SynthesisedArgument,
+		application_result_to_return_type,
 	},
+	properties::PropertyKey,
 };
 
 pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
@@ -28,7 +25,9 @@ pub(crate) fn synthesise_jsx_root<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {
 	match jsx_root {
-		JSXRoot::Element(element) => synthesise_jsx_element(element, environment, checking_data),
+		JSXRoot::Document(element, _) | JSXRoot::Element(element) => {
+			synthesise_jsx_element(element, environment, checking_data)
+		}
 		JSXRoot::Fragment(fragment) => {
 			checking_data.raise_unimplemented_error(
 				"JSX fragment",
@@ -419,24 +418,23 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 ) -> TypeId {
 	match child {
 		JSXNode::Element(element) => synthesise_jsx_element(element, environment, checking_data),
-		JSXNode::InterpolatedExpression(expression, _expression_position) => {
-			match &**expression {
-				parser::ast::FunctionArgument::Spread(_, pos) => {
+		JSXNode::InterpolatedExpression(expression, position) => {
+			if let Some(expression) = &expression.0 {
+				let (expression, spread) = expression.value_and_spread_ref();
+				if spread {
 					checking_data.raise_unimplemented_error(
 						"spread JSX child",
-						pos.with_source(environment.get_source()),
+						position.with_source(environment.get_source()),
 					);
 					TypeId::UNDEFINED_TYPE
-				}
-				parser::ast::FunctionArgument::Standard(expression) => {
+				} else {
 					crate::utilities::notify!("Cast JSX interpolated value?");
 					synthesise_expression(expression, environment, checking_data, TypeId::ANY_TYPE)
 				}
-				parser::ast::FunctionArgument::Comment { .. } => {
-					// TODO?
-					TypeId::UNDEFINED_TYPE
-				}
+			} else {
+				TypeId::UNDEFINED_TYPE
 			}
+
 			// function intoNode(data) {
 			// 	if typeof data === "string" || typeof data === "number" {
 			// 		new Text(data)
@@ -472,6 +470,7 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 		JSXNode::TextNode(text, _) => {
 			checking_data.types.new_constant_type(Constant::String(text.clone()))
 		}
+		JSXNode::UnknownExpression(_, _) => todo!(),
 		JSXNode::LineBreak | JSXNode::Comment(..) => {
 			unreachable!("Should have been skipped higher up");
 		}
@@ -485,10 +484,10 @@ fn synthesise_attribute<T: crate::ReadFromFS>(
 ) -> (PropertyKey<'static>, TypeId) {
 	let (key, value) = match attribute {
 		// TODO check property exists ...?
-		JSXAttribute::Static(name, value, _attribute_id) => {
+		JSXAttribute::Static(name, value, _, _) => {
 			(name, checking_data.types.new_constant_type(crate::Constant::String(value.clone())))
 		}
-		JSXAttribute::Dynamic(name, expression, _attribute_id) => {
+		JSXAttribute::Dynamic(name, expression, _) => {
 			if let Expression::ExpressionFunction(_) = &**expression {
 				// TODO temp context
 				environment.context_type.location = Some("client".to_owned());

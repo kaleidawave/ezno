@@ -5,9 +5,75 @@ use codespan_reporting::{
 
 use checker::source_map::{MapFileStore, PathMap, SourceId};
 
-use crate::utilities::MaxDiagnostics;
+use crate::utilities::{print_to_cli, MaxDiagnostics};
 
-fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
+pub(crate) fn report_diagnostics_to_cli<T: PathMap, I>(
+	diagnostics: I,
+	fs: &MapFileStore<T>,
+	compact: bool,
+	maximum: MaxDiagnostics,
+) -> Result<(), codespan_reporting::files::Error>
+where
+	I: IntoIterator<Item = Diagnostic<SourceId>>,
+	I::IntoIter: ExactSizeIterator,
+{
+	let diagnostics = diagnostics.into_iter();
+
+	if let MaxDiagnostics::FixedTo(0) = maximum {
+		let count = diagnostics.len();
+		print_to_cli(format_args!("Found {count} diagnostics"));
+		return Ok(());
+	}
+
+	// TODO custom here
+	let config = Config {
+		display_style: if compact { DisplayStyle::Short } else { DisplayStyle::Rich },
+		..Config::default()
+	};
+
+	#[cfg(not(target_family = "wasm"))]
+	let mut writer = codespan_reporting::term::termcolor::BufferedStandardStream::stderr(
+		codespan_reporting::term::termcolor::ColorChoice::Auto,
+	);
+
+	let files = fs.into_code_span_store();
+	let count = diagnostics.len();
+	let maximum = match maximum {
+		MaxDiagnostics::All => usize::MAX,
+		MaxDiagnostics::FixedTo(n) => n as usize,
+	};
+	let diagnostics = diagnostics.into_iter().take(maximum);
+
+	for diagnostic in diagnostics {
+		#[cfg(target_family = "wasm")]
+		{
+			let mut buffer = codespan_reporting::term::termcolor::Buffer::ansi();
+			emit(&mut buffer, &config, &files, &diagnostic)?;
+			let output =
+				String::from_utf8(buffer.into_inner()).expect("invalid string from diagnostic");
+			crate::utilities::print_to_cli(format_args!("{output}"));
+		}
+
+		#[cfg(not(target_family = "wasm"))]
+		{
+			emit(&mut writer, &config, &files, &diagnostic)?;
+		}
+	}
+
+	#[cfg(not(target_family = "wasm"))]
+	std::io::Write::flush(&mut writer).unwrap();
+
+	if count > maximum {
+		crate::utilities::print_to_cli(format_args!(
+			"... and {difference} other diagnostics",
+			difference = count - maximum
+		));
+	}
+
+	Ok(())
+}
+
+pub(crate) fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 	match kind {
 		checker::DiagnosticKind::Error => Severity::Error,
 		checker::DiagnosticKind::Warning => Severity::Warning,
@@ -17,7 +83,7 @@ fn ezno_diagnostic_to_severity(kind: &checker::DiagnosticKind) -> Severity {
 
 /// If pretty printing, it looks nice to include the message under the label, rather than as a heading. However under
 /// compact mode the label isn't printed, so instead do the opposite in the compact case
-fn checker_diagnostic_to_codespan_diagnostic(
+pub(crate) fn checker_diagnostic_to_codespan_diagnostic(
 	diagnostic: checker::Diagnostic,
 	compact: bool,
 ) -> Diagnostic<SourceId> {
@@ -72,65 +138,4 @@ fn checker_diagnostic_to_codespan_diagnostic(
 			diagnostic
 		}
 	}
-}
-
-pub(crate) fn report_diagnostics_to_cli<T: PathMap, I>(
-	diagnostics: I,
-	fs: &MapFileStore<T>,
-	compact: bool,
-	maximum: MaxDiagnostics,
-) -> Result<(), codespan_reporting::files::Error>
-where
-	I: IntoIterator<Item = checker::Diagnostic>,
-	I::IntoIter: ExactSizeIterator,
-{
-	// TODO custom here
-	let config = Config {
-		display_style: if compact { DisplayStyle::Short } else { DisplayStyle::Rich },
-		..Config::default()
-	};
-
-	#[cfg(not(target_family = "wasm"))]
-	let mut writer = codespan_reporting::term::termcolor::BufferedStandardStream::stderr(
-		codespan_reporting::term::termcolor::ColorChoice::Auto,
-	);
-
-	let files = fs.into_code_span_store();
-	let diagnostics = diagnostics.into_iter();
-	let count = diagnostics.len();
-	let maximum = match maximum {
-		MaxDiagnostics::All => usize::MAX,
-		MaxDiagnostics::FixedTo(n) => n as usize,
-	};
-	let diagnostics = diagnostics.into_iter().take(maximum);
-
-	for diagnostic in diagnostics {
-		let diagnostic = checker_diagnostic_to_codespan_diagnostic(diagnostic, compact);
-
-		#[cfg(target_family = "wasm")]
-		{
-			let mut buffer = codespan_reporting::term::termcolor::Buffer::ansi();
-			emit(&mut buffer, &config, &files, &diagnostic)?;
-			let output =
-				String::from_utf8(buffer.into_inner()).expect("invalid string from diagnostic");
-			crate::utilities::print_to_cli(format_args!("{output}"));
-		}
-
-		#[cfg(not(target_family = "wasm"))]
-		{
-			emit(&mut writer, &config, &files, &diagnostic)?;
-		}
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	std::io::Write::flush(&mut writer).unwrap();
-
-	if count > maximum {
-		crate::utilities::print_to_cli(format_args!(
-			"... and {difference} other errors and warnings",
-			difference = count - maximum
-		));
-	}
-
-	Ok(())
 }

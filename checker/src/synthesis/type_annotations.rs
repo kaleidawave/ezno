@@ -68,10 +68,9 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 		TypeAnnotation::Name(name, position) => {
 			let inner_type_id = synthesise_type_name(name, *position, environment, checking_data);
 			if checking_data.types.get_type_by_id(inner_type_id).get_parameters().is_some() {
-				let name = name.raw();
 				checking_data.diagnostics_container.add_error(
 					TypeCheckError::TypeNeedsTypeArguments(
-						name,
+						&name.name,
 						position.with_source(environment.get_source()),
 					),
 				);
@@ -627,8 +626,8 @@ pub fn synthesise_type_annotation<T: crate::ReadFromFS>(
 			TypeId::ANY_TYPE
 		}
 		// TODO these are all work in progress
-		TypeAnnotation::Decorated(decorator, inner, _) => {
-			crate::utilities::notify!("Unknown decorator skipping {:#?}", decorator.name);
+		TypeAnnotation::Decorated(_decorator, inner, _) => {
+			// crate::utilities::notify!("Unknown decorator skipping {:#?}", decorator.name);
 			synthesise_type_annotation(inner, environment, checking_data)
 		}
 		TypeAnnotation::TemplateLiteral { parts, final_part, .. } => {
@@ -806,31 +805,31 @@ pub fn synthesise_type_name<T: crate::ReadFromFS>(
 	environment: &Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> TypeId {
-	if name.is_namespace_reference() {
-		checking_data.raise_unimplemented_error(
-			"namespace item",
-			position.with_source(environment.get_source()),
-		);
-		TypeId::ERROR_TYPE
-	} else {
-		let name = name.parts().next().unwrap();
-		if let Some(ty) = environment.get_type_from_name(name) {
+	if name.namespace.is_empty() {
+		if let Some(ty) = environment.get_type_from_name(&name.name) {
 			// Warn if it requires parameters. e.g. Array
 			ty
 		} else {
 			let possibles = {
 				let mut possibles =
-					crate::get_closest(environment.get_all_named_types(), name).unwrap_or(vec![]);
+					crate::get_closest(environment.get_all_named_types(), &name.name)
+						.unwrap_or(vec![]);
 				possibles.sort_unstable();
 				possibles
 			};
 			checking_data.diagnostics_container.add_error(TypeCheckError::CouldNotFindType(
-				name,
+				&name.name,
 				possibles,
 				position.with_source(environment.get_source()),
 			));
 			TypeId::ERROR_TYPE
 		}
+	} else {
+		checking_data.raise_unimplemented_error(
+			"namespace reference",
+			position.with_source(environment.get_source()),
+		);
+		TypeId::UNIMPLEMENTED_ERROR_TYPE
 	}
 }
 
@@ -842,16 +841,15 @@ pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<(TypeId, source_map::SpanWithSource)> {
 	let source = environment.get_source();
-	let offset = Some(position.end - 1 - possible_declaration.len() as u32);
 
 	let possible_declaration =
 		possible_declaration.strip_prefix('*').unwrap_or(possible_declaration);
 
-	let annotation = parser::TypeAnnotation::from_string_with_options(
-		possible_declaration.to_owned(),
-		Default::default(),
-		offset,
-	);
+	let mut options = parser::options::ParseOptions::default();
+	options.features.position_offset = position.end - 1 - possible_declaration.len() as u32;
+
+	let annotation =
+		parser::TypeAnnotation::from_string_with_options(possible_declaration.to_owned(), options);
 	if let Ok((annotation, _)) = annotation {
 		Some((
 			synthesise_type_annotation(&annotation, environment, checking_data),
@@ -869,13 +867,14 @@ pub(crate) fn get_annotation_from_declaration<T: crate::ReadFromFS>(
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 ) -> Option<TypeId> {
-	let result = if let Some(annotation) = declaration.type_annotation.as_ref() {
-		Some((
+	let result = declaration.type_annotation.as_ref().map(|annotation| {
+		(
 			synthesise_type_annotation(annotation, environment, checking_data),
 			annotation.get_position().with_source(environment.get_source()),
-		))
-	}
-	// TODO only under config
+		)
+	});
+
+	/*// TODO only under config
 	else if let parser::WithComment::PostfixComment(_item, possible_declaration, position) =
 		&declaration.name
 	{
@@ -886,9 +885,7 @@ pub(crate) fn get_annotation_from_declaration<T: crate::ReadFromFS>(
 			environment,
 			checking_data,
 		)
-	} else {
-		None
-	};
+	} */
 
 	if let Some((ty, span)) = result {
 		let get_position = declaration.get_position();

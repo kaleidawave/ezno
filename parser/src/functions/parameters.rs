@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::{
 	ASTNode, Expression, ParseError, ParseErrors, ParseResult, TypeAnnotation, VariableField,
-	WithComment, derive_ASTNode,
+	derive_ASTNode,
 };
 
 use iterator_endiate::EndiateIteratorExt;
@@ -15,7 +15,7 @@ use visitable_derive::Visitable;
 pub struct Parameter<V> {
 	#[visit_skip_field]
 	pub visibility: V,
-	pub name: WithComment<VariableField>,
+	pub name: VariableField,
 	pub type_annotation: Option<TypeAnnotation>,
 	pub additionally: Option<ParameterData>,
 	pub position: Span,
@@ -31,17 +31,18 @@ impl ParameterVisibility for () {
 
 impl ParameterVisibility for Option<crate::types::Visibility> {
 	fn from_reader(reader: &mut crate::Lexer) -> Option<crate::types::Visibility> {
-		if let Some(Some(keyword)) = reader
-			.get_options()
-			.type_annotations
-			.then(|| reader.is_one_of_keywords_advance(&["private", "public", "protected"]))
-		{
-			Some(match keyword {
-				"private" => crate::types::Visibility::Private,
-				"public" => crate::types::Visibility::Public,
-				"protected" => crate::types::Visibility::Protected,
-				_ => unreachable!(),
-			})
+		let type_annotations = reader.parse_type_annotations();
+
+		if type_annotations && reader.get_current().starts_with('p') {
+			if reader.is_operator_advance("private") {
+				Some(crate::types::Visibility::Private)
+			} else if reader.is_operator_advance("public") {
+				Some(crate::types::Visibility::Public)
+			} else if reader.is_operator_advance("protected") {
+				Some(crate::types::Visibility::Protected)
+			} else {
+				None
+			}
 		} else {
 			None
 		}
@@ -55,13 +56,8 @@ pub enum ParameterData {
 	WithDefaultValue(Box<Expression>),
 }
 
-#[cfg(feature = "extras")]
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type SpreadParameterName = VariableField;
-
-#[cfg(not(feature = "extras"))]
-#[cfg_attr(target_family = "wasm", tsify::declare)]
-pub type SpreadParameterName = crate::VariableIdentifier;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable)]
@@ -79,6 +75,24 @@ pub struct FunctionParameters<L, V> {
 	pub parameters: Vec<Parameter<V>>,
 	pub rest_parameter: Option<Box<SpreadParameter>>,
 	pub position: Span,
+}
+
+impl<L, V> FunctionParameters<L, V> {
+	pub fn is_empty(&self) -> bool {
+		self.parameters.is_empty() && self.rest_parameter.is_none()
+	}
+
+	pub fn is_single(&self) -> bool {
+		self.parameters.len() == 1 && self.rest_parameter.is_none()
+	}
+
+	pub fn has_default_or_spread(&self) -> bool {
+		// TODO Optional
+		self.rest_parameter.is_some()
+			|| self.parameters.iter().any(|param| {
+				matches!(&param.additionally, Some(ParameterData::WithDefaultValue(_)))
+			})
+	}
 }
 
 pub trait LeadingParameter: Send + Sync + Sized + Debug + Clone + 'static {
@@ -175,7 +189,8 @@ where
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let start = reader.expect_start('(')?;
+		let start = reader.get_start();
+		reader.expect_chr('(')?;
 		let mut parameters = Vec::new();
 
 		let mut this_type = None::<ThisParameter>;
@@ -186,22 +201,18 @@ where
 		let mut names: Vec<String> = Vec::new();
 
 		loop {
-			reader.skip();
-			let s = reader.after_comment_literals();
-			if s.starts_with(')') {
-				reader.skip_including_comments();
+			if reader.starts_with(')') {
 				break;
 			}
 
 			let start = reader.get_start();
-
 			if reader.is_operator_advance("...") {
 				let name = SpreadParameterName::from_reader(reader)?;
+
 				let name_position = name.get_position();
 
-				if !reader.get_options().skip_validation {
+				if reader.get_options().features.run_validation && reader.strict_mode() {
 					let mut duplicate = None;
-					#[cfg(feature = "extras")]
 					{
 						name.visit_names(&mut |name| {
 							if duplicate.is_none() {
@@ -212,14 +223,6 @@ where
 							}
 							names.push(name.to_owned());
 						});
-					}
-
-					#[cfg(not(feature = "extras"))]
-					{
-						duplicate = names
-							.iter()
-							.any(|existing| name == &**existing)
-							.then_some(name.clone());
 					}
 
 					if let Some(_duplicate) = duplicate {
@@ -243,31 +246,37 @@ where
 					Some(Box::new(SpreadParameter { name, type_annotation, position }));
 				break;
 			} else if parameters.is_empty() && reader.is_keyword_advance("this") {
-				// Some(Token(_, start)) = reader.conditional_next(|tok| {
-				// options.type_annotations
-				// 	&& reader.expect(TSXToken::Colon)?;
-				reader.expect(':')?;
+				reader.expect_chr(':')?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
 				this_type = Some(ThisParameter { constraint: Box::new(constraint), position });
 			} else if parameters.is_empty() && reader.is_keyword_advance("super") {
-				reader.expect(':')?;
-				// reader.expect(TSXToken::Colon)?;
+				reader.expect_chr(':')?;
 				let constraint = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(constraint.get_position());
 				super_type = Some(SuperParameter { constraint: Box::new(constraint), position });
 			} else {
 				let visibility = V::from_reader(reader);
 
-				let name = WithComment::<VariableField>::from_reader(reader)?;
+				let name = VariableField::from_reader(reader)?;
 
-				let (is_optional, type_annotation) = if reader.is_operator_advance("?:") {
+				// TODO only for arrow functions and others
+				// if let VariableField::Name(ref name, ..) = name
+				// 	&& name == "await"
+				// {
+				// 	return Err(ParseError::new(
+				// 		crate::ParseErrors::TODO("cannot have await parameter here"),
+				// 		name.get_position(),
+				// 	));
+				// }
+
+				let (is_optional, type_annotation) = if reader.is_keyword_advance("?:") {
 					let type_annotation = TypeAnnotation::from_reader(reader)?;
 					(true, Some(type_annotation))
-				} else if reader.is_operator_advance(":") {
+				} else if reader.is_keyword_advance(":") {
 					let type_annotation = TypeAnnotation::from_reader(reader)?;
 					(false, Some(type_annotation))
-				} else if reader.is_operator_advance("?") {
+				} else if reader.is_keyword_advance("?") {
 					(true, None)
 				} else {
 					(false, None)
@@ -303,9 +312,9 @@ where
 
 				let position = name.get_position().union(end_position);
 
-				if !reader.get_options().skip_validation {
+				if reader.get_options().features.run_validation && reader.strict_mode() {
 					let mut duplicate = None;
-					name.get_ast_ref().visit_names(&mut |name| {
+					name.visit_names(&mut |name| {
 						if duplicate.is_none() {
 							duplicate = names
 								.iter()
@@ -335,7 +344,7 @@ where
 				break;
 			}
 		}
-		let close = reader.expect(')')?;
+		let close = reader.expect_chr(')')?;
 		let leading = L::try_make(this_type, super_type)?;
 		let position = start.union(close);
 		Ok(FunctionParameters { leading, parameters, rest_parameter, position })

@@ -29,13 +29,19 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		let start = reader.get_start();
 		reader.expect_keyword("class")?;
 
 		let name = U::class_name_from_reader(reader)?;
 
-		// TODO check name?
+		if let Some("let") = name.as_option_str() {
+			return Err(crate::ParseError::new(
+				crate::ParseErrors::ReservedIdentifier,
+				start.with_length(3),
+			));
+		}
+
+		// TODO type annotations
 		let type_parameters = if reader.is_operator_advance("<") {
 			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
 			Some(params)
@@ -49,6 +55,7 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 			None
 		};
 
+		// TODO type annotations
 		let implements = if reader.is_keyword_advance("implements") {
 			let type_annotation = TypeAnnotation::from_reader(reader)?;
 			let mut implements = vec![type_annotation];
@@ -60,25 +67,62 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 			None
 		};
 
-		reader.expect('{')?;
+		reader.expect_chr('{')?;
+
+		let was_in_class = std::mem::replace(&mut reader.state.flags.in_class, true);
 
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 		loop {
-			reader.skip();
+			// TODO temp fix
+			while reader.is_operator_advance(";") {}
+
 			if reader.starts_with('}') {
 				break;
 			}
-			let value = Decorated::<ClassMember>::from_reader(reader)?;
-			if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
-				reader.expect_semi_colon()?;
-			} else {
-				// Skip anyway
-				let _ = reader.is_operator_advance(";");
+
+			let member = Decorated::<ClassMember>::from_reader(reader)?;
+
+			if reader.get_options().features.run_validation {
+				if let Some(_key) = member.on.get_key() {
+					// let run = if let ClassMember::Method(method) = member.on
+					// 	&& let MethodHeader::Get | MethodHeader::Set = method.header
+					// {
+					// 	false
+					// } else {
+					// 	true
+					// };
+					// if run {
+					// 	for existing_member in &members {
+					// 		if let Some(existing_key) = existing_member.on.get_key()
+					// 			&& key.definitionally_equal(existing_key)
+					// 		{
+					// 			return Err(crate::ParseError::new(
+					// 				crate::ParseErrors::TODO("duplicate class member key"),
+					// 				member.get_position(),
+					// 			));
+					// 		}
+					// 	}
+					// }
+				} else if let ClassMember::Constructor(_) = &member.on {
+					for existing_member in &members {
+						if let ClassMember::Constructor(_) = &existing_member.on {
+							return Err(crate::ParseError::new(
+								crate::ParseErrors::TODO("duplicate constructor"),
+								member.get_position(),
+							));
+						}
+					}
+				}
 			}
-			members.push(value);
+
+			if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &member.on {
+				reader.expect_semi_colon()?;
+			}
+			members.push(member);
 		}
 
-		let end = reader.expect('}')?;
+		let end = reader.expect_chr('}')?;
+		reader.state.flags.in_class = was_in_class;
 		let position = start.union(end);
 
 		Ok(ClassDeclaration { name, type_parameters, extends, implements, members, position })

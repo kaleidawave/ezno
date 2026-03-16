@@ -1,3 +1,4 @@
+use parser::extensions::decorators::Decorator;
 use parser::{ASTNode, Expression};
 use source_map::SourceId;
 
@@ -52,18 +53,21 @@ pub(super) fn type_definition_file<T: crate::ReadFromFS>(
 }
 
 pub(crate) fn get_internal_function_effect_from_decorators(
-	decorators: &[parser::Decorator],
+	decorators: &[Decorator],
 	function_name: &str,
 	environment: &Environment,
 ) -> Option<InternalFunctionEffect> {
 	decorators.iter().find_map(|decorator| {
-		if decorator.name.len() == 1 {
-			let decorator_name = decorator.name.first().map(String::as_str)?;
-			if let "Constant" | "InputOutput" = decorator_name {
-				let (identifier, may_throw) = if let Some(arguments) = decorator.arguments.as_ref()
-				{
-					let identifier = if let Some(Expression::StringLiteral(identifier, _, _)) =
-						arguments.first()
+		if let Expression::FunctionCall { function, arguments, .. } = &decorator.0
+			&& let Expression::VariableReference(name, _) = &**function
+		{
+			if let "Constant" | "InputOutput" = name.as_str() {
+				let (identifier, may_throw) = if arguments.is_empty() {
+					(function_name.to_owned(), None)
+				} else {
+					let identifier = if let Some(argument) = arguments.first()
+						&& let (Expression::StringLiteral(identifier, _, _), false) =
+							argument.value_and_spread_ref()
 					{
 						identifier.clone()
 					} else {
@@ -71,8 +75,10 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 							"first argument to constant or input output should be string literal"
 						);
 					};
-					let may_throw = if let Some(Expression::VariableReference(identifier, _)) =
-						arguments.get(1)
+
+					let may_throw = if let Some(argument) = arguments.get(1)
+						&& let (Expression::VariableReference(identifier, _), false) =
+							argument.value_and_spread_ref()
 					{
 						Some(
 							environment
@@ -82,17 +88,18 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 					} else {
 						None
 					};
+
 					(identifier, may_throw)
-				} else {
-					(function_name.to_owned(), None)
 				};
-				Some(match decorator_name {
+
+				let effect = match name.as_str() {
 					"Constant" => InternalFunctionEffect::Constant { identifier, may_throw },
 					"InputOutput" => InternalFunctionEffect::InputOutput { identifier, may_throw },
 					_ => unreachable!(),
-				})
+				};
+				Some(effect)
 			} else {
-				crate::utilities::notify!("Unknown decorator {:?}", decorator_name);
+				crate::utilities::notify!("Unknown decorator {:?}", name);
 				None
 			}
 		} else {
@@ -101,9 +108,14 @@ pub(crate) fn get_internal_function_effect_from_decorators(
 	})
 }
 
-pub(crate) fn _decorators_to_context(decorators: &[parser::Decorator]) -> Option<String> {
+pub(crate) fn _decorators_to_context(decorators: &[Decorator]) -> Option<String> {
 	decorators.iter().find_map(|dec| {
-		matches!(dec.name.first().map(String::as_str), Some("Server" | "Client"))
-			.then(|| dec.name.first().unwrap().to_owned())
+		if let Expression::VariableReference(name, _) = &dec.0
+			&& matches!(name.as_str(), "Server" | "Client")
+		{
+			Some(name.to_owned())
+		} else {
+			None
+		}
 	})
 }

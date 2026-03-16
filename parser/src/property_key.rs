@@ -1,5 +1,5 @@
 use crate::{
-	Quoted, derive_ASTNode,
+	Quoting, derive_ASTNode,
 	visiting::{Chain, VisitOptions, Visitable},
 };
 use get_field_by_type::GetFieldByType;
@@ -7,9 +7,10 @@ use source_map::Span;
 use std::fmt::Debug;
 use temporary_annex::Annex;
 
-use crate::{ASTNode, Expression, ParseResult, numbers::NumberRepresentation};
+use crate::numbers::{BigIntRepresentation, NumberRepresentation};
+use crate::{ASTNode, Expression, ParseResult};
 
-pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
+pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + PartialEq + Eq + 'static {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;
 
 	fn is_private(&self) -> bool;
@@ -18,7 +19,7 @@ pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
 	fn new_public() -> Self;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
 pub struct AlwaysPublic;
 
@@ -32,8 +33,9 @@ pub struct AlwaysPublic;
 impl PropertyKeyKind for AlwaysPublic {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
-		let name = reader.parse_identifier("property key", false)?;
-		Ok((name.to_owned(), start.with_length(name.len()), Self::new_public()))
+		let name = reader.parse_identifier("property key", false)?.into_owned();
+		let position = start.with_length(name.len());
+		Ok((name, position, Self::new_public()))
 	}
 
 	fn is_private(&self) -> bool {
@@ -63,8 +65,9 @@ impl PropertyKeyKind for PublicOrPrivate {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
 		let publicity = if reader.is_operator_advance("#") { Self::Private } else { Self::Public };
-		let name = reader.parse_identifier("property key", false)?;
-		Ok((name.to_owned(), start.with_length(name.len()), publicity))
+		let name = reader.parse_identifier("property key", false)?.into_owned();
+		let position = start.with_length(name.len());
+		Ok((name, position, publicity))
 	}
 
 	fn is_private(&self) -> bool {
@@ -82,8 +85,10 @@ impl PropertyKeyKind for PublicOrPrivate {
 #[get_field_by_type_target(Span)]
 pub enum PropertyKey<T: PropertyKeyKind> {
 	Identifier(String, Span, T),
-	StringLiteral(String, Quoted, Span),
+	StringLiteral(String, Quoting, Span),
 	NumberLiteral(NumberRepresentation, Span),
+	// proposal (pls not)
+	BigIntLiteral(BigIntRepresentation, Span),
 	/// Includes anything in the `[...]` maybe a symbol
 	Computed(Box<Expression>, Span),
 }
@@ -96,9 +101,9 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 		}
 	}
 
-	pub fn as_str(&self) -> Option<&str> {
+	pub fn as_option_str(&self) -> Option<&str> {
 		match self {
-			Self::Identifier(item, _, _) | Self::StringLiteral(item, _, _) => Some(item),
+			Self::Identifier(item, ..) | Self::StringLiteral(item, ..) => Some(item),
 			_ => None,
 		}
 	}
@@ -106,11 +111,27 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 
 impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
-		match self {
-			PropertyKey::Identifier(name, _, _) | PropertyKey::StringLiteral(name, _, _) => {
-				name == other
-			}
-			PropertyKey::NumberLiteral(_, _) | PropertyKey::Computed(_, _) => false,
+		self.as_option_str().is_some_and(|key| key == other)
+	}
+}
+
+impl<U: PropertyKeyKind> PropertyKey<U> {
+	#[must_use]
+	pub fn new_identifier(name: String, position: Span) -> Self {
+		// TODO if name is off or starts with '#' then do something here
+		PropertyKey::Identifier(name, position, U::new_public())
+	}
+
+	#[must_use]
+	pub fn definitionally_equal(&self, other: &Self) -> bool {
+		match (self, other) {
+			(
+				Self::Identifier(name1, _pos1, private1),
+				Self::Identifier(name2, _pos2, private2),
+			) => name1 == name2 && private1 == private2,
+			(Self::StringLiteral(name1, ..), Self::StringLiteral(name2, ..)) => name1 == name2,
+			(Self::NumberLiteral(name1, ..), Self::NumberLiteral(name2, ..)) => name1 == name2,
+			_ => false,
 		}
 	}
 }
@@ -122,21 +143,28 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
-		if reader.starts_with('"') || reader.starts_with('\'') {
-			let (content, quoted, width) = reader.parse_string_literal()?;
+		if reader.starts_with_string_delimeter() {
+			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
-			Ok(Self::StringLiteral(content.into_owned(), quoted, position))
+			Ok(Self::StringLiteral(content.into_owned(), quoting, position))
 		} else if reader.starts_with_number() {
 			let (value, length) = reader.parse_number_literal()?;
 			let position = start.with_length(length as usize);
-			if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
-				Ok(Self::NumberLiteral(value, position))
-			} else {
-				Err(crate::ParseError::new(crate::ParseErrors::BigIntNotAllowedHere, position))
+			match value {
+				crate::numbers::ParsedNumberLiteral::Number(value) => {
+					Ok(Self::NumberLiteral(value, position))
+				}
+				// reader.get_options().extras.big_int_object_keys
+				crate::numbers::ParsedNumberLiteral::BigInt(value) => Ok(Self::BigIntLiteral(
+					BigIntRepresentation { source: value.to_owned() },
+					position,
+				)), // _ => {
+				    // 	Err(crate::ParseError::new(crate::ParseErrors::BigIntNotAllowedHere, position))
+				    // }
 			}
 		} else if reader.is_operator_advance("[") {
 			let expression = Expression::from_reader(reader)?;
-			let end = reader.expect(']')?;
+			let end = reader.expect_chr(']')?;
 			Ok(Self::Computed(Box::new(expression), start.union(end)))
 		} else {
 			let (name, position, private) = U::parse_identifier(reader)?;
@@ -153,10 +181,11 @@ impl<U: PropertyKeyKind> ASTNode for PropertyKey<U> {
 		match self {
 			Self::Identifier(ident, _pos, _) => buf.push_str(ident.as_str()),
 			Self::NumberLiteral(number, _) => buf.push_str(&number.to_string()),
-			Self::StringLiteral(string, quoted, _) => {
-				buf.push(quoted.as_char());
+			Self::BigIntLiteral(number, _) => buf.push_str(&number.source),
+			Self::StringLiteral(string, quoting, _) => {
+				buf.push(quoting.as_char());
 				buf.push_str(string.as_str());
-				buf.push(quoted.as_char());
+				buf.push(quoting.as_char());
 			}
 			Self::Computed(expression, _) => {
 				buf.push('[');

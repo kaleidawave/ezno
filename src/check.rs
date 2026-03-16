@@ -1,4 +1,4 @@
-use crate::reporting::report_diagnostics_to_cli;
+use crate::reporting::{checker_diagnostic_to_codespan_diagnostic, report_diagnostics_to_cli};
 use crate::utilities::{print_to_cli, MaxDiagnostics};
 pub use checker::{CheckOutput, TypeCheckOptions};
 use std::path::{Path, PathBuf};
@@ -39,39 +39,27 @@ pub fn check_and_report<T: crate::ReadFromFS>(
 	let CheckOutput { diagnostics, module_contents, chronometer, types, .. } = result;
 
 	let diagnostics_count = diagnostics.count();
+	let found_error = diagnostics.contains_error();
 	let current = timings.then(std::time::Instant::now);
 
-	let result = if diagnostics.contains_error() {
-		if let MaxDiagnostics::FixedTo(0) = max_diagnostics {
-			let count = diagnostics.into_iter().count();
-			print_to_cli(format_args!("Found {count} type errors and warnings",))
-		} else {
-			report_diagnostics_to_cli(
-				diagnostics,
-				&module_contents,
-				compact_diagnostics,
-				max_diagnostics,
-			)
-			.unwrap();
-		}
+	let diagnostics = diagnostics.into_iter().map(|diagnostic| {
+		checker_diagnostic_to_codespan_diagnostic(diagnostic, compact_diagnostics)
+	});
+
+	report_diagnostics_to_cli(diagnostics, &module_contents, compact_diagnostics, max_diagnostics)
+		.unwrap();
+
+	let result = if found_error {
 		std::process::ExitCode::FAILURE
 	} else {
-		// May be warnings or information here
-		report_diagnostics_to_cli(
-			diagnostics,
-			&module_contents,
-			compact_diagnostics,
-			max_diagnostics,
-		)
-		.unwrap();
 		print_to_cli(format_args!("No type errors found 🎉"));
 		std::process::ExitCode::SUCCESS
 	};
 
 	#[cfg(not(target_family = "wasm"))]
 	if timings {
-		let reporting = current.unwrap().elapsed();
 		let checker::Chronometer { lines, cached, fs, parse, check, narrowing } = chronometer;
+		let reporting = current.unwrap().elapsed();
 		let type_count = types.count_of_types();
 
 		eprintln!("---");

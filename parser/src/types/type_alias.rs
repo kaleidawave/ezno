@@ -32,7 +32,7 @@ impl ASTNode for TypeAlias {
 			None
 		};
 
-		reader.expect('=')?;
+		reader.expect_chr('=')?;
 		let references = TypeAnnotation::from_reader(reader)?;
 		let position = start.union(references.get_position());
 

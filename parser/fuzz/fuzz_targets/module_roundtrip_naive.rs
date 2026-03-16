@@ -1,6 +1,6 @@
 #![no_main]
 
-use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions};
+use ezno_parser::{ASTNode, Module, ParseOptions, ToStringOptions, options::TypeAnnotationOption};
 use libfuzzer_sys::{fuzz_target, Corpus};
 use pretty_assertions::assert_eq;
 use std::str;
@@ -11,26 +11,17 @@ use std::str;
 fn do_fuzz(data: &str) -> Corpus {
 	let input = data.trim_start();
 
-	let parse_options = ParseOptions {
-		jsx: false,
-		type_annotations: false,
-		// fixes some strange ; issues in asserting outputs same
-		retain_blank_lines: false,
-		partial_syntax: false,
-		..Default::default()
-	};
+	let parse_options = ParseOptions { type_annotations: TypeAnnotationOption::AsErrors, ..ParseOptions::default() };
 
-	let Ok(module1) = Module::from_string(input.to_owned(), parse_options) else {
+	let Ok(module1) = Module::from_string_with_options(input.to_owned(), parse_options) else {
 		return Corpus::Reject;
 	};
 
-	// Comments in weird places currently cause printing issues
-	// { comments: ezno_parser::Comments::None, ..Default };
 	let to_string_options = ToStringOptions::default();
 
 	let output1 = module1.to_string(&to_string_options);
 
-	let module2 = match Module::from_string(output1.to_owned(), parse_options) {
+	let module2 = match Module::from_string_with_options(output1.to_owned(), parse_options) {
 		Ok(module2) => module2,
 		Err(error) => {
 			panic!("input: `{input}`\noutput1: `{output1}`\n\nThis parse should not error because it was just parsed above. \nerror: `{:?}`", error);

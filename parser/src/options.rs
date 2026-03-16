@@ -1,128 +1,150 @@
-/// Options to customize parsing
-#[allow(unused)]
-#[derive(Copy, Clone)]
-// TODO: Can be refactored with bit to reduce memory
-#[allow(clippy::struct_excessive_bools)]
+#[derive(Copy, Clone, Default)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+pub enum TypeAnnotationOption {
+	/// They are parser but considered as an error
+	AsErrors,
+	#[default]
+	Allowed,
+	/// for definition module. this has some effect on parsing
+	Definitions,
+}
+
+impl TypeAnnotationOption {
+	#[must_use]
+	pub fn type_annotations(&self) -> bool {
+		matches!(self, Self::Allowed | Self::Definitions)
+	}
+
+	#[must_use]
+	pub fn is_definition_file(&self) -> bool {
+		matches!(self, Self::Definitions)
+	}
+}
+
+/// TODO could split up even more
+/// TODO Can be refactored with bit to reduce memory
+#[derive(Copy, Clone, Default)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
 pub struct ParseOptions {
-	/// allow type annotations
-	pub type_annotations: bool,
-	/// just definition file
-	pub type_definition_module: bool,
-	/// JSX options
-	pub jsx: JSXOptions,
-	/// Parses decorators on items
+	pub type_annotations: TypeAnnotationOption,
+	pub comments: CommentsOption,
+	/// None => Disabled
+	pub jsx: Option<JSX>,
 	pub decorators: bool,
-	/// Skip **all** comments from the AST
-	pub comments: Comments,
-	/// See [`crate::extensions::is_expression::IsExpression`] & is operator
-	pub is_expressions: bool,
-	/// Allows functions to be prefixed with 'server' and `generator`
-	pub custom_function_headers: bool,
-	/// Useful for LSP information
-	pub record_keyword_positions: bool,
-	/// For the generator
-	pub interpolation_points: bool,
-	/// Extra
-	pub destructuring_type_annotation: bool,
-	/// Extra
-	pub reversed_imports: bool,
-	/// Extra
-	pub extra_operators: bool,
-	/// Extra. Enables unique symbols, class names
-	pub extra_type_annotations: bool,
-	/// Extra
-	pub enum_members_as_data_types: bool,
-	/// For formatting
-	pub retain_blank_lines: bool,
-	/// For LSP
-	pub partial_syntax: bool,
-	/// Skips checking some syntatical errors (that should be runtime errors)
-	pub skip_validation: bool,
-}
-
-/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
-#[allow(unused)]
-#[derive(Copy, Clone)]
-// TODO: Can be refactored with bit to reduce memory
-#[allow(clippy::struct_excessive_bools)]
-#[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
-#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
-pub struct JSXOptions {
-	pub enable_jsx: bool,
-	/// Allow custom characters in JSX attributes
-	pub special_jsx_attributes: bool,
-	/// JSX with modifications
-	pub top_level_html: bool,
-	/// Attributes are JavaScript expressions (al)
-	pub attributes_as_expressions: bool,
-}
-
-impl Default for JSXOptions {
-	fn default() -> Self {
-		JSXOptions {
-			enable_jsx: true,
-			special_jsx_attributes: true,
-			top_level_html: false,
-			attributes_as_expressions: false,
-		}
-	}
+	pub top_level_await: bool,
+	pub strict_mode: bool,
+	// ---
+	#[cfg(feature = "extras")]
+	pub extras: Extras,
+	pub features: Features,
 }
 
 impl ParseOptions {
 	#[must_use]
-	pub fn all_features() -> Self {
+	pub fn all() -> Self {
 		Self {
-			type_annotations: true,
-			type_definition_module: false,
-			jsx: JSXOptions {
-				enable_jsx: true,
-				special_jsx_attributes: true,
-				top_level_html: true,
-				attributes_as_expressions: true,
-			},
-			comments: Comments::All,
+			type_annotations: TypeAnnotationOption::Allowed,
+			comments: CommentsOption::All,
+			jsx: Some(JSX::all()),
 			decorators: true,
-			custom_function_headers: true,
-			is_expressions: true,
-			record_keyword_positions: true,
-			// Only used in the AST-generator
-			interpolation_points: false,
-			partial_syntax: true,
-			destructuring_type_annotation: true,
-			extra_operators: true,
-			retain_blank_lines: true,
-			reversed_imports: true,
-			enum_members_as_data_types: true,
-			extra_type_annotations: true,
-			skip_validation: false,
+			strict_mode: true,
+			top_level_await: true,
+			#[cfg(feature = "extras")]
+			extras: Extras::all(),
+			// just syntax all not feature all
+			features: Features::default(),
 		}
 	}
 }
 
-// TODO unsure about some of these defaults, may change in future
-impl Default for ParseOptions {
-	fn default() -> Self {
+/// TODO JSX, TypeScript, decorators etc
+#[cfg(feature = "extras")]
+#[derive(Copy, Clone, Default)]
+#[expect(clippy::struct_excessive_bools)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+pub struct Extras {
+	pub is_expressions: bool,
+	pub enum_members_as_data_types: bool,
+	/// adds pipe and
+	pub extra_operators: bool,
+	/// This breaks JavaScript
+	pub destructuring_type_annotation: bool,
+	pub custom_function_headers: bool,
+	/// for nunjucks (and the fearless)
+	pub keyword_logical_operators: bool,
+	/// yes
+	pub reversed_imports: bool,
+	/// Enables single parameter annotations, class + fields and symbol names
+	pub additional_type_annotations: bool,
+	/// pending proposal
+	pub big_int_object_keys: bool,
+}
+
+#[cfg(feature = "extras")]
+impl Extras {
+	#[must_use]
+	pub fn all() -> Self {
 		Self {
-			jsx: JSXOptions::default(),
-			type_annotations: true,
-			type_definition_module: false,
-			comments: Comments::All,
-			decorators: true,
-			custom_function_headers: false,
-			is_expressions: false,
-			record_keyword_positions: false,
-			interpolation_points: false,
-			partial_syntax: false,
-			destructuring_type_annotation: false,
-			extra_operators: false,
-			retain_blank_lines: false,
-			reversed_imports: false,
-			enum_members_as_data_types: false,
-			// TODO this should be fine right?
-			extra_type_annotations: false,
-			skip_validation: false,
+			is_expressions: true,
+			enum_members_as_data_types: true,
+			extra_operators: true,
+			destructuring_type_annotation: true,
+			custom_function_headers: true,
+			reversed_imports: true,
+			additional_type_annotations: true,
+			keyword_logical_operators: true,
+			big_int_object_keys: true,
+		}
+	}
+}
+
+#[derive(Copy, Clone, Default)]
+#[expect(clippy::struct_excessive_bools)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+pub struct Features {
+	/// Allows missing syntax in certain positions (see specification)
+	pub partial_syntax: bool,
+	/// Certain expressions
+	pub interpolation_points: bool,
+	pub record_keyword_positions: bool,
+	/// For formatting
+	pub retain_blank_lines: bool,
+	pub run_validation: bool,
+	pub section_of_source: bool,
+	pub position_offset: u32,
+}
+
+/// Parsing of [JSX](https://facebook.github.io/jsx/) (includes some additions)
+#[allow(unused)]
+#[derive(Copy, Clone, Default)]
+// TODO: Can be refactored with bit to reduce memory
+#[allow(clippy::struct_excessive_bools)]
+#[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize), serde(default))]
+#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
+pub struct JSX {
+	/// Allow custom characters in JSX attributes
+	pub special_jsx_attributes: bool,
+	/// JSX with modifications
+	pub top_level_html: bool,
+	/// Attribute values are JavaScript expressions (strings are retained, but unquoted items
+	/// become variable references)
+	pub attributes_as_expressions: bool,
+	/// allow interpolations that start with unknown characters
+	pub accept_unknown_expressions: bool,
+}
+
+impl JSX {
+	#[must_use]
+	pub fn all() -> Self {
+		Self {
+			special_jsx_attributes: true,
+			top_level_html: true,
+			attributes_as_expressions: true,
+			accept_unknown_expressions: true,
 		}
 	}
 }
@@ -143,7 +165,7 @@ pub struct ToStringOptions {
 	pub include_type_annotations: bool,
 	/// TODO unsure about this
 	pub include_decorators: bool,
-	pub comments: Comments,
+	pub comments: CommentsOption,
 	pub indent_with: String,
 	/// If false, panics if sees JSX
 	pub expect_jsx: bool,
@@ -163,7 +185,7 @@ impl Default for ToStringOptions {
 			include_type_annotations: false,
 			single_statement_on_new_line: true,
 			include_decorators: false,
-			comments: Comments::All,
+			comments: CommentsOption::All,
 			expect_jsx: false,
 			trailing_semicolon: false,
 			expect_markers: false,
@@ -178,7 +200,7 @@ impl ToStringOptions {
 	pub fn minified() -> Self {
 		ToStringOptions {
 			pretty: false,
-			comments: Comments::None,
+			comments: CommentsOption::None,
 			indent_with: String::new(),
 			..Default::default()
 		}
@@ -216,7 +238,7 @@ impl ToStringOptions {
 #[derive(Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Deserialize))]
 #[cfg_attr(target_family = "wasm", derive(tsify::Tsify))]
-pub enum Comments {
+pub enum CommentsOption {
 	#[default]
 	All,
 	/// Only multiline comments starting with `/**`
@@ -224,13 +246,13 @@ pub enum Comments {
 	None,
 }
 
-impl Comments {
+impl CommentsOption {
 	/// Whether to include comment in source
 	pub(crate) fn should_add_comment(self, content: &str) -> bool {
 		match self {
-			Comments::All => true,
-			Comments::None => false,
-			Comments::JustDocumentation => {
+			CommentsOption::All => true,
+			CommentsOption::None => false,
+			CommentsOption::JustDocumentation => {
 				content.starts_with('*') || content.trim_start().starts_with('@')
 			}
 		}

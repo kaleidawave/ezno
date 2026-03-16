@@ -5,31 +5,51 @@ use get_field_by_type::GetFieldByType;
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{Marker, ParseError, ParseErrors, Quoted, derive_ASTNode};
+use crate::{Marker, Quoting, derive_ASTNode};
 
+/// Import and export parts are very similar but have their parts reversed
 pub trait ImportOrExport: std::fmt::Debug + Clone + Sync + Send + 'static {
+	/// Whether name registe
 	const PREFIX: bool;
 }
 
+// import { decl as alias }
 impl ImportOrExport for import::ImportDeclaration {
 	const PREFIX: bool = true;
 }
 
+// export { decl as alias }
 impl ImportOrExport for export::ExportDeclaration {
 	const PREFIX: bool = false;
 }
 
+/// These are actually separate, but we will allow it
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#syntax>
 #[derive(Debug, Clone, Visitable, GetFieldByType)]
 #[get_field_by_type_target(Span)]
 #[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 pub struct ImportExportPart<T: ImportOrExport> {
 	pub just_type: bool,
-	pub name: crate::VariableIdentifier,
+	/// Strings here are against specification for imports
+	pub name: ImportExportName,
 	pub alias: Option<ImportExportName>,
 	pub position: Span,
 	#[visit_skip_field]
 	pub _marker: std::marker::PhantomData<T>,
+}
+
+// TODO I think this okay
+impl ImportExportPart<export::ExportDeclaration> {
+	#[must_use]
+	pub fn into_import_form(self) -> ImportExportPart<import::ImportDeclaration> {
+		ImportExportPart {
+			just_type: self.just_type,
+			name: self.name,
+			alias: self.alias,
+			position: self.position,
+			_marker: Default::default(),
+		}
+	}
 }
 
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
@@ -52,10 +72,11 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 		let just_type = reader.is_keyword_advance("type");
 
 		if U::PREFIX {
-			let (alias, position) = ImportExportName::from_reader(reader)?;
+			let (name, position) = ImportExportName::from_reader(reader)?;
 			if reader.is_keyword_advance("as") {
-				let name = crate::VariableIdentifier::from_reader(reader)?;
-				let position = position.union(name.get_position());
+				let alias = name;
+				let (name, end) = ImportExportName::from_reader(reader)?;
+				let position = position.union(end);
 				Ok(Self {
 					just_type,
 					name,
@@ -63,19 +84,11 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 					position,
 					_marker: Default::default(),
 				})
-			} else if let ImportExportName::Reference(name) = alias {
-				let name = crate::VariableIdentifier::Standard(name, position);
-				Ok(Self { just_type, name, alias: None, position, _marker: Default::default() })
 			} else {
-				let (found, position) = crate::lexer::utilities::next_item(reader);
-				Err(ParseError::new(
-					ParseErrors::ExpectedKeyword { expected: "as", found },
-					position,
-				))
+				Ok(Self { just_type, name, alias: None, position, _marker: Default::default() })
 			}
 		} else {
-			let name = crate::VariableIdentifier::from_reader(reader)?;
-			let mut position = name.get_position();
+			let (name, mut position) = ImportExportName::from_reader(reader)?;
 			let alias = if reader.is_keyword_advance("as") {
 				let (alias, end) = ImportExportName::from_reader(reader)?;
 				position = position.union(end);
@@ -93,7 +106,7 @@ impl<U: ImportOrExport> crate::ASTNode for ImportExportPart<U> {
 		options: &crate::ToStringOptions,
 		local: crate::LocalToStringInformation,
 	) {
-		if self.just_type && options.include_type_annotations {
+		if self.just_type {
 			buf.push_str("type ");
 		}
 		if let Some(ref alias) = self.alias {
@@ -126,8 +139,11 @@ fn import_export_parts_to_string_from_buffer<T: source_map::ToString, U: ImportO
 	options.push_gap_optionally(buf);
 	if options.pretty {
 		let mut parts: Vec<&ImportExportPart<U>> = parts.iter().collect();
-		parts.sort_unstable_by_key(|part| part.name.as_option_str().unwrap_or_default());
+		parts.sort_unstable_by_key(|part| part.name.as_str());
 		for (at_end, part) in parts.iter().endiate() {
+			if part.just_type && !options.include_type_annotations {
+				continue;
+			}
 			part.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push(',');
@@ -136,6 +152,9 @@ fn import_export_parts_to_string_from_buffer<T: source_map::ToString, U: ImportO
 		}
 	} else {
 		for (at_end, part) in parts.iter().endiate() {
+			if part.just_type && !options.include_type_annotations {
+				continue;
+			}
 			part.to_string_from_buffer(buf, options, local);
 			if !at_end {
 				buf.push(',');
@@ -158,11 +177,12 @@ impl<U: ImportOrExport> self_rust_tokenize::SelfRustTokenize for ImportExportPar
 }
 
 /// TODO `default` should have its own variant?
+/// `ModuleExportName`
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum ImportExportName {
 	Reference(String),
-	Quoted(String, Quoted),
+	Quoted(String, Quoting),
 	/// For typing here
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
@@ -173,22 +193,24 @@ pub enum ImportExportName {
 impl ImportExportName {
 	// TODO remove Span return
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<(Self, Span)> {
-		reader.skip();
 		let start = reader.get_start();
 		if reader.starts_with_string_delimeter() {
-			let (content, quoted, width) = reader.parse_string_literal()?;
+			let (content, quoting, width) = reader.parse_string_literal()?;
 			let position = start.with_length(width as usize);
-			Ok((ImportExportName::Quoted(content.into_owned(), quoted), position))
+			Ok((ImportExportName::Quoted(content.into_owned(), quoting), position))
 		} else if reader.is_keyword_advance("default") {
 			// TODO separate identifier
-			Ok((ImportExportName::Reference("default".into()), start.with_length("default".len())))
-		} else if reader.is_operator(",") {
+			let position = start.with_length("default".len());
+			Ok((ImportExportName::Reference("default".into()), position))
+		} else if reader.starts_with(',') {
 			let position = start.with_length(0);
 			let marker = reader.new_partial_point_marker(position);
 			Ok((ImportExportName::Marker(marker), position))
 		} else {
-			let identifier = reader.parse_identifier("import or export alias", false)?.to_owned();
-			if reader.get_options().interpolation_points && identifier == crate::marker::MARKER {
+			let identifier = reader.parse_identifier("import or export alias", false)?.into_owned();
+			if reader.get_options().features.interpolation_points
+				&& identifier == crate::marker::MARKER
+			{
 				let position = start.with_length(0);
 				Ok((ImportExportName::Marker(reader.new_partial_point_marker(position)), position))
 			} else {
@@ -214,12 +236,19 @@ impl ImportExportName {
 			ImportExportName::Marker(_) => {}
 		}
 	}
+
+	pub(crate) fn as_str(&self) -> &str {
+		match self {
+			Self::Reference(on) | Self::Quoted(on, _) => on,
+			Self::Marker(..) => "",
+		}
+	}
 }
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone)]
 pub enum ImportLocation {
-	Quoted(String, Quoted),
+	Quoting(String, Quoting),
 	#[cfg_attr(feature = "self-rust-tokenize", self_tokenize_field(0))]
 	Marker(
 		#[cfg_attr(target_family = "wasm", tsify(type = "Marker<ImportLocation>"))] Marker<Self>,
@@ -229,7 +258,7 @@ pub enum ImportLocation {
 impl ImportLocation {
 	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		// let _existing = r#"if let (true, Some(start), Some(Token(peek, at))) =
-		// 	(options.partial_syntax, start, reader.peek())
+		// 	(options.features.partial_syntax, start, reader.peek())
 		// {
 		// 	let next_is_not_location_like = peek.is_statement_or_declaration_start()
 		// 		&& state
@@ -243,7 +272,7 @@ impl ImportLocation {
 		// 		));
 		// 	}
 		// }
-		// else if options.interpolation_points
+		// else if options.features.interpolation_points
 		// 	&& matches!(&token.0, TSXToken::Identifier(i) if i == crate::marker::MARKER)
 		// {
 		// Ok((Self::Marker(state.new_partial_point_marker(token.1)), source_map::End(token.1 .0)))
@@ -253,19 +282,17 @@ impl ImportLocation {
 		// 	token.1.with_length(0),
 		// ))
 
-		reader.skip();
-
 		let _start = reader.get_start();
-		let (content, quoted, _width) = reader.parse_string_literal()?;
-		Ok(ImportLocation::Quoted(content.into_owned(), quoted))
+		let (content, quoting, _width) = reader.parse_string_literal()?;
+		Ok(ImportLocation::Quoting(content.into_owned(), quoting))
 	}
 
 	pub(crate) fn to_string_from_buffer<T: source_map::ToString>(&self, buf: &mut T) {
 		match self {
-			ImportLocation::Quoted(inner, quoted) => {
-				buf.push(quoted.as_char());
+			ImportLocation::Quoting(inner, quoting) => {
+				buf.push(quoting.as_char());
 				buf.push_str(inner);
-				buf.push(quoted.as_char());
+				buf.push(quoting.as_char());
 			}
 			ImportLocation::Marker(_) => {}
 		}
@@ -274,6 +301,106 @@ impl ImportLocation {
 	/// Can be `None` if self is a marker point
 	#[must_use]
 	pub fn get_path(&self) -> Option<&str> {
-		if let Self::Quoted(name, _) = self { Some(name) } else { None }
+		if let Self::Quoting(name, _) = self { Some(name) } else { None }
+	}
+
+	/// Can be `None` if self is a marker point
+	#[must_use]
+	pub fn from_path(path: &str) -> Self {
+		Self::Quoting(path.to_owned(), Quoting::Double)
+	}
+}
+
+impl ImportLocation {
+	#[must_use]
+	pub fn as_str(&self) -> &str {
+		if let Self::Quoting(value, _) = self { value } else { "" }
+	}
+}
+
+// TODO T: AsRef<str>,
+impl From<String> for ImportLocation {
+	fn from(value: String) -> Self {
+		Self::Quoting(value, Quoting::default())
+	}
+}
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, Default, Clone, Copy)]
+pub enum ImportKind {
+	#[default]
+	Standard,
+	#[cfg(feature = "extras")]
+	Deferred,
+	#[cfg(feature = "full-typescript")]
+	TypeOnly,
+}
+
+impl ImportKind {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
+		if cfg!(feature = "extras") && reader.is_keyword_advance("defer") {
+			Self::Deferred
+		} else if cfg!(feature = "extras") && reader.is_keyword_advance("type") {
+			Self::TypeOnly
+		} else {
+			Self::Standard
+		}
+	}
+
+	/// fallback case
+	pub(crate) fn as_identifier(self) -> Option<&'static str> {
+		match self {
+			#[cfg(feature = "extras")]
+			ImportKind::Deferred => Some("defer"),
+			#[cfg(feature = "full-typescript")]
+			ImportKind::TypeOnly => Some("type"),
+			ImportKind::Standard => None,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Visitable)]
+#[apply(derive_ASTNode)]
+pub struct ImportAttribute(pub crate::expressions::ObjectLiteral);
+
+impl crate::ASTNode for ImportAttribute {
+	fn get_position(&self) -> crate::Span {
+		self.0.get_position()
+	}
+
+	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
+		let ol = crate::expressions::ObjectLiteral::from_reader(reader)?;
+
+		for member in &ol.members {
+			// TODO filter comments
+			let is_okay =
+				if let crate::expressions::object_literal::ObjectLiteralMember::Property {
+					key: _,
+					assignment: false,
+					value,
+					position: _,
+				} = member
+				{
+					matches!(value, crate::Expression::StringLiteral(..))
+				} else {
+					false
+				};
+			if !is_okay {
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::InvalidImportAttribute,
+					ol.get_position(),
+				));
+			}
+		}
+		Ok(Self(ol))
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		self.0.to_string_from_buffer(buf, options, local)
 	}
 }

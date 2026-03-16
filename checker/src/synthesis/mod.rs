@@ -61,8 +61,11 @@ impl crate::ASTImplementation for EznoParser {
 		string: String,
 		options: Self::ParseOptions,
 	) -> Result<Self::Module<'static>, Self::ParseError> {
-		<parser::Module as parser::ASTNode>::from_string(string, options)
-			.map_err(|err| (err, source_id))
+		let result = <parser::Module as parser::ASTNode>::from_string_with_options(string, options);
+		match result {
+			Ok((node, _state)) => Ok(node),
+			Err(err) => Err((err, source_id)),
+		}
 	}
 
 	fn definition_module_from_string(
@@ -70,10 +73,16 @@ impl crate::ASTImplementation for EznoParser {
 		source_id: SourceId,
 		string: String,
 	) -> Result<Self::DefinitionFile<'static>, Self::ParseError> {
-		let options = ParseOptions { type_definition_module: true, ..Default::default() };
+		let options = ParseOptions {
+			type_annotations: parser::options::TypeAnnotationOption::Definitions,
+			..Default::default()
+		};
 
-		<parser::Module as parser::ASTNode>::from_string(string, options)
-			.map_err(|err| (err, source_id))
+		let result = <parser::Module as parser::ASTNode>::from_string_with_options(string, options);
+		match result {
+			Ok((node, _state)) => Ok(node),
+			Err(err) => Err((err, source_id)),
+		}
 	}
 
 	fn synthesise_module<T: crate::ReadFromFS>(
@@ -142,20 +151,32 @@ impl crate::ASTImplementation for EznoParser {
 		extra_syntax: bool,
 		parse_comments: bool,
 		lsp_mode: bool,
+		is_jsx: bool,
 	) -> Self::ParseOptions {
 		parser::ParseOptions {
 			comments: if parse_comments {
-				parser::Comments::JustDocumentation
+				parser::CommentsOption::JustDocumentation
 			} else {
-				parser::Comments::None
+				parser::CommentsOption::None
 			},
-			type_annotations: !is_js,
-			partial_syntax: lsp_mode,
-			// TODO
-			retain_blank_lines: lsp_mode,
-			is_expressions: extra_syntax,
-			// TODO
-			skip_validation: true,
+			type_annotations: if is_js {
+				parser::options::TypeAnnotationOption::AsErrors
+			} else {
+				parser::options::TypeAnnotationOption::Allowed
+			},
+			features: parser::options::Features {
+				partial_syntax: lsp_mode,
+				retain_blank_lines: lsp_mode,
+				// this will be checked by the checker
+				run_validation: false,
+				..Default::default()
+			},
+			jsx: if is_jsx { Some(Default::default()) } else { None },
+			extras: if extra_syntax {
+				parser::options::Extras::all()
+			} else {
+				parser::options::Extras::default()
+			},
 			..Default::default()
 		}
 	}
@@ -189,7 +210,7 @@ impl crate::ASTImplementation for EznoParser {
 					stmt.get_position().with_source(environment.get_source()),
 				);
 			}
-			ForLoopStatementInitialiser::VarStatement(stmt) => {
+			ForLoopStatementInitialiser::VarVariableStatement(stmt) => {
 				checking_data.raise_unimplemented_error(
 					"var in for statement initiliser",
 					stmt.get_position().with_source(environment.get_source()),
@@ -259,6 +280,7 @@ pub(super) fn parser_property_key_to_checker_property_key<
 				PropertyKey::Type(TypeId::ANY_TYPE)
 			}
 		}
+		ParserPropertyKey::BigIntLiteral(_, _) => todo!(),
 	}
 }
 

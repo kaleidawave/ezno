@@ -24,9 +24,17 @@ fn token_stream_to_ast_node<T: ezno_parser::ASTNode + self_rust_tokenize::SelfRu
 	let mut marker_items = Vec::new();
 	parse_token_stream(item.into_iter(), &mut string_to_parse, &mut marker_items);
 
-	let options = ezno_parser::ParseOptions { interpolation_points: true, ..Default::default() };
+	let options = ezno_parser::ParseOptions {
+		features: ezno_parser::options::Features {
+			interpolation_points: true,
+			..Default::default()
+		},
+		jsx: Some(Default::default()),
+		..Default::default()
+	};
+
 	let parse_result =
-		<T as ezno_parser::ASTNode>::from_string_with_options(string_to_parse, options, None);
+		<T as ezno_parser::ASTNode>::from_string_with_options(string_to_parse, options);
 
 	let node = match parse_result {
 		Ok((node, _state)) => node,

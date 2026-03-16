@@ -1,5 +1,7 @@
 use super::{Expression, MultipleExpression};
-use crate::{ASTNode, ParseError, ParseErrors, ParseResult, Span, derive_ASTNode};
+use crate::{
+	ASTNode, ParseError, ParseErrors, ParseResult, Span, derive_ASTNode, strings::escape_character,
+};
 use visitable_derive::Visitable;
 
 #[apply(derive_ASTNode)]
@@ -71,6 +73,7 @@ impl ASTNode for TemplateLiteral {
 	}
 }
 
+/// A generic function for both expression level interpolation and type annotation bindings
 pub fn parse_template_literal<T: ASTNode>(
 	reader: &mut crate::Lexer,
 	start: source_map::Start,
@@ -82,7 +85,7 @@ pub fn parse_template_literal<T: ASTNode>(
 		if current.starts_with("${") {
 			reader.advance(2);
 			let expression = T::from_reader(reader)?;
-			reader.expect('}')?;
+			reader.expect_closing_bracket()?;
 			parts.push((std::mem::take(&mut last_part).into_owned(), expression));
 		} else {
 			let mut buf = std::borrow::Cow::Borrowed("");
@@ -90,6 +93,8 @@ pub fn parse_template_literal<T: ASTNode>(
 			let delimeters = current.match_indices(chars);
 
 			// Mirrors string parsing (strings.rs@parse_string) but modified for `${`
+
+			let mut unknown_escapes = Vec::new();
 
 			let mut last = 0;
 			for (idx, matched) in delimeters {
@@ -107,21 +112,15 @@ pub fn parse_template_literal<T: ASTNode>(
 					let chr = immediate.chars().next();
 					if let Some(chr) = chr {
 						let after = &immediate[chr.len_utf8()..];
-						let result = crate::strings::escape_character(chr, after, buf.to_mut());
-						match result {
-							Ok(offset) => {
-								// Skip others
-								last = idx + 1 + offset;
-							}
-							Err(()) => {
-								return Err(ParseError::new(
-									ParseErrors::InvalidStringLiteral,
-									start.with_length(idx),
-								));
-							}
+						let result = escape_character(chr, after, buf.to_mut());
+						if let Ok(offset) = result {
+							// Skip others
+							last = idx + 1 + offset;
+						} else {
+							unknown_escapes.push(idx as u32);
+							last = idx + 1;
 						}
 					} else {
-						eprintln!("Expected end");
 						return Err(ParseError::new(
 							ParseErrors::InvalidStringLiteral,
 							start.with_length(idx),

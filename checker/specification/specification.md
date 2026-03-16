@@ -1,3 +1,7 @@
+---
+lists-to-code-blocks: true
+---
+
 ## Specification
 
 See [./README.md](README.md) for details about how `specification.md` works
@@ -4562,7 +4566,7 @@ function func(param: number | Array<string>) {
 
 - Expected null, found Array\<string>
 
-#### Number `isNan`
+#### Number `isNaN`
 
 ```ts
 function func(param: number) {
@@ -5074,6 +5078,8 @@ export const the = ((4 satisfies 1),3);
 - Expected string, found true
 
 > The fact the `Expected 1, found 4` only occurs once means that the module was only synthesised once
+
+> TODO should have some mutable aspect to it
 
 #### Use export in scope
 

@@ -1,47 +1,158 @@
-use crate::{
-	Span,
-	errors::{ParseError, ParseErrors},
-	marker::Marker,
-	options::ParseOptions,
-};
+use crate::Span;
+use crate::errors::{ParseError, ParseErrors};
+use crate::marker::Marker;
+use crate::options::ParseOptions;
 
-// TODO state for "use strict" etc?
-// TODO hold Keywords map, markers, syntax errors etc
-#[derive(Default)]
-pub struct ParsingState {
-	last_new_lines: u32,
-	markers: Vec<Span>,
+// #[derive(Default, Debug, Clone, Copy)]
+// pub struct FunctionModifiers {
+// 	pub in_async: bool,
+// 	pub in_generator: bool,
+// }
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct ParsingFlags {
+	pub(crate) strict_mode: bool,
+	pub(crate) in_async: bool,
+	pub(crate) in_generator: bool,
+	/// TODO invert
+	pub(crate) top_level: bool,
+	/// for `return` checking
+	pub(crate) function: Option<crate::functions::FunctionKind>,
+	pub(crate) in_class: bool,
+	/// for `arguments` checking
+	pub(crate) in_ternary_or_class_field: bool,
+}
+
+// TODO Vec<u32> for keywords?
+#[derive(Default, Debug)]
+pub struct ParseState {
+	blank_lines: u32,
+	comment_lines: u32,
+	pub markers: Vec<Span>,
+	pub constant_imports: Vec<String>,
+	pub errors: Vec<ParseError>,
+	/// label chains break via classes functions etc
+	pub(crate) label_boundary: usize,
+	pub(crate) labels: Vec<(String, bool)>,
+
+	pub(crate) flags: ParsingFlags,
+
+	/// the current position into the script
+	pub head: u32,
+	pub last: u32,
 }
 
 pub struct Lexer<'a> {
-	// last: u32,
-	pub(crate) head: u32,
+	/// the original source, must start with the content... (aka offset has no effect)
 	script: &'a str,
-
+	/// Used to offset position markers.
+	/// For example parsing the contents of a script tag need the positions shifted
+	offset: u32,
+	/// options
 	options: ParseOptions,
-	state: ParsingState,
+	pub(crate) state: ParseState,
+}
+
+const fn is_whitespace_ascii(byte: u8) -> bool {
+	matches!(byte, b'\t' | b' ' | 0b0000_1011 | 0b0000_1100)
+}
+
+const fn is_whitespace_char_three_bytes(chr: char) -> bool {
+	matches!(
+		chr,
+		'\u{FEFF}'
+			| '\u{1680}'
+			| '\u{2000}'
+			| '\u{2001}'
+			| '\u{2002}'
+			| '\u{2003}'
+			| '\u{2004}'
+			| '\u{2005}'
+			| '\u{2006}'
+			| '\u{2007}'
+			| '\u{2008}'
+			| '\u{2009}'
+			| '\u{200A}'
+			| '\u{202F}'
+			| '\u{205F}'
+			| '\u{3000}'
+	)
 }
 
 #[allow(clippy::manual_find)]
 impl<'a> Lexer<'a> {
-	// (crate)
 	#[must_use]
-	pub fn new(script: &'a str, _offset: Option<u32>, options: ParseOptions) -> Self {
+	pub(crate) fn new(script: &'a str, offset: u32, options: ParseOptions) -> Self {
 		if script.len() > u32::MAX as usize {
 			todo!()
 			// return Err((LexingErrors::CannotLoadLargeFile(script.len()), source_map::Nullable::NULL));
 		}
-		// TODO offset.unwrap_or_default(),
-		let state = ParsingState::default();
-		Lexer { options, state, script, head: 0 }
+
+		let mut state = ParseState::default();
+
+		// TODO what about nested
+		state.flags.top_level = true;
+		state.flags.in_async = options.top_level_await;
+		state.flags.strict_mode = options.strict_mode;
+
+		let mut reader = Lexer { script, offset, options, state };
+		reader.skip_including_comments();
+		reader
+	}
+
+	/// This is for lookahead
+	pub(crate) fn try_parse<T, U>(
+		&mut self,
+		cb: impl for<'b> FnOnce(&'b mut Lexer<'a>) -> Result<T, U>,
+	) -> Result<T, U> {
+		let mut forked = Lexer {
+			script: self.script,
+			offset: self.offset,
+			options: self.options,
+			state: ParseState {
+				head: self.state.head,
+				flags: self.state.flags.clone(),
+				..ParseState::default()
+			},
+		};
+		let result = cb(&mut forked);
+		match result {
+			Ok(node) => {
+				// If okay, we merge the good parse state here
+				let ParseState {
+					head,
+					blank_lines,
+					comment_lines,
+					last,
+					mut markers,
+					mut constant_imports,
+					labels: _,
+					label_boundary: _,
+					errors: _,
+					flags: _,
+				} = forked.state;
+				self.state.head = head;
+				self.state.blank_lines = blank_lines;
+				self.state.comment_lines = comment_lines;
+				self.state.last = last;
+				self.state.markers.append(&mut markers);
+				self.state.constant_imports.append(&mut constant_imports);
+				Ok(node)
+			}
+			Err(err) => Err(err),
+		}
 	}
 
 	#[must_use]
-	pub fn get_options(&self) -> &ParseOptions {
+	pub(crate) fn get_options(&self) -> &ParseOptions {
 		&self.options
 	}
 
-	pub fn new_partial_point_marker<T>(&mut self, span: Span) -> Marker<T> {
+	pub(crate) fn strict_mode(&self) -> bool {
+		self.state.flags.strict_mode || self.state.flags.in_class
+	}
+
+	pub(crate) fn new_partial_point_marker<T>(&mut self, span: Span) -> Marker<T> {
 		let idx = self.state.markers.len() as u8;
 		self.state.markers.push(span);
 		Marker(idx, std::marker::PhantomData)
@@ -49,174 +160,211 @@ impl<'a> Lexer<'a> {
 
 	/// Just used for specific things, not all annotations
 	#[must_use]
-	pub fn parse_type_annotations(&self) -> bool {
-		self.options.type_annotations
+	pub(crate) fn parse_type_annotations(&self) -> bool {
+		self.options.type_annotations.type_annotations()
 	}
 
-	// TODO want to remove where public
 	#[must_use]
 	pub(crate) fn get_current(&self) -> &'a str {
-		&self.script[self.head as usize..]
+		unsafe { self.script.get_unchecked(self.state.head as usize..) }
 	}
 
 	#[must_use]
-	pub fn source_size(&self) -> u32 {
+	#[allow(unused)]
+	#[cfg(debug_assertions)]
+	pub(crate) fn get_current_short(&self) -> &'a str {
+		&self.script
+			[self.state.head as usize..(self.state.head as usize + 8).min(self.script.len())]
+	}
+
+	#[must_use]
+	pub(crate) fn source_size(&self) -> u32 {
 		self.script.len() as u32
 	}
 
 	#[must_use]
-	pub fn is_finished(&self) -> bool {
-		self.head >= self.source_size()
+	pub(crate) fn is_finished(&self) -> bool {
+		self.state.head >= self.source_size()
 	}
 
 	#[must_use]
-	pub fn left_to_parse(&self) -> u32 {
-		self.source_size().saturating_sub(self.head)
+	pub(crate) fn last_was_from_new_line(&self) -> u32 {
+		self.state.blank_lines
 	}
 
-	#[must_use]
-	pub fn get_some_current(&self) -> (&'a str, usize) {
-		(
-			&self.script
-				[self.head as usize..std::cmp::min(self.script.len(), self.head as usize + 20)],
-			self.head as usize,
-		)
-	}
-
-	#[must_use]
-	pub fn last_was_from_new_line(&self) -> u32 {
-		self.state.last_new_lines
-	}
-
-	pub fn skip(&mut self) {
-		let current = self.get_current();
-		if current.starts_with(char::is_whitespace) {
-			let start = self.head;
-			self.state.last_new_lines = 0;
-
-			for (idx, chr) in current.char_indices() {
-				if !chr.is_whitespace() {
-					self.head = start + idx as u32;
-					return;
+	fn skip_including_comments(&mut self) {
+		self.state.last = self.state.head;
+		while (self.state.head as usize) < self.script.len() {
+			let first_byte: u8 =
+				unsafe { *self.script.as_bytes().get_unchecked(self.state.head as usize) };
+			if is_whitespace_ascii(first_byte) {
+				self.state.head += 1;
+			} else if let b'\r' = first_byte {
+				self.state.head += 1;
+				if !self.get_current().starts_with('\n') {
+					self.state.blank_lines += 1;
 				}
-				if let '\n' = chr {
-					self.state.last_new_lines += 1;
+			} else if let b'\n' = first_byte {
+				self.state.head += 1;
+				self.state.blank_lines += 1;
+			} else if first_byte >= 0x80 {
+				let current = self.get_current();
+				if current.starts_with('\u{00A0}') {
+					self.state.head += 2;
+				} else if current.starts_with(is_whitespace_char_three_bytes) {
+					self.state.head += 3;
+				} else if current.starts_with('\u{FEFF}') {
+					self.state.head += 3;
+				} else if current.starts_with(['\u{2028}', '\u{2029}']) {
+					// Line Separator <LS> or Paragraph Separator <LS>
+					self.state.blank_lines += 1;
+					self.state.head += 3;
+				} else {
+					break;
 				}
+			} else if first_byte == b'/' {
+				let current = self.get_current();
+				if let Some(rest) = current.strip_prefix("//") {
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.state.head += 2 + idx as u32;
+					self.state.comment_lines += 1;
+
+					let _comment = &rest[..idx];
+				} else if let Some(rest) = current.strip_prefix("/*") {
+					if let Some(idx) = rest.find("*/") {
+						self.state.head += 4 + idx as u32;
+						let comment = &rest[..idx];
+						if comment.contains(NEW_LINE_CHARACTERS) {
+							self.state.comment_lines += 1;
+						}
+						// return ParseError::new(ParseErrors::UnexpectedEnd, position)
+					} else {
+						// TODO error
+						self.state.head += current.len() as u32;
+					}
+				} else {
+					break;
+				}
+			} else if first_byte == b'<' {
+				let current = self.get_current();
+				if let Some(rest) = current.strip_prefix("<!--") {
+					// TODO last was new line?
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.state.comment_lines += 1;
+
+					self.state.head += 4 + idx as u32;
+					let _comment = &rest[..idx];
+				} else {
+					break;
+				}
+			} else if first_byte == b'-' {
+				let current = self.get_current();
+				if let Some(rest) = current.strip_prefix("-->") {
+					// TODO last was new line?
+					let idx = rest.find('\n').unwrap_or(rest.len());
+					self.state.comment_lines += 1;
+
+					self.state.head += 3 + idx as u32;
+					let _comment = &rest[..idx];
+				} else {
+					break;
+				}
+			} else {
+				break;
 			}
-
-			// Else if
-			self.head += current.len() as u32;
 		}
 	}
 
-	pub fn skip_including_comments(&mut self) {
-		// TODO
-		self.skip();
+	/// TODO wip
+	pub(crate) fn last_was_whitespace(&self) -> bool {
+		if let Some(before) = self.script.get(..self.state.head as usize) {
+			before.ends_with(char::is_whitespace)
+		} else {
+			false
+		}
 	}
 
-	pub fn is_keyword(&mut self, keyword: &str) -> bool {
-		self.skip();
+	pub(crate) fn is_keyword(&self, keyword: &str) -> bool {
 		let current = self.get_current();
-		let length = keyword.len();
-		current.starts_with(keyword)
-			&& current[length..]
-				.chars()
-				.next()
-				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
+		if let Some(rest) = current.strip_prefix(keyword) {
+			!rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
+		} else {
+			false
+		}
 	}
 
-	pub fn is_keyword_advance(&mut self, keyword: &str) -> bool {
-		self.skip();
+	pub(crate) fn is_keyword_advance(&mut self, keyword: &str) -> bool {
 		let current = self.get_current();
-		let length = keyword.len();
-		if current.starts_with(keyword)
-			&& current[length..]
-				.chars()
-				.next()
-				.is_none_or(|chr| !utilities::is_valid_identifier(chr))
+		if let Some(rest) = current.strip_prefix(keyword)
+			&& !rest.starts_with(|chr: char| utilities::is_identifier_continutation(chr))
 		{
-			self.state.last_new_lines = 0;
-			self.head += length as u32;
+			self.state.blank_lines = 0;
+			self.state.comment_lines = 0;
+			self.state.head += keyword.len() as u32;
+			self.skip_including_comments();
 			true
 		} else {
 			false
 		}
 	}
 
-	// Does not advance
-	#[must_use]
-	pub fn is_one_of_keywords<'b>(&self, keywords: &'static [&'b str]) -> Option<&'b str> {
-		let current = self.get_current();
-		for item in keywords {
-			if current.starts_with(item)
-				&& current[item.len()..]
-					.chars()
-					.next()
-					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
-			{
-				return Some(item);
-			}
-		}
-		None
+	pub(crate) fn is_operator(&self, operator: &str) -> bool {
+		self.get_current().starts_with(operator)
 	}
 
-	pub fn is_one_of_keywords_advance<'b>(
-		&mut self,
-		keywords: &'static [&'b str],
-	) -> Option<&'b str> {
+	pub(crate) fn is_operator_advance(&mut self, operator: &str) -> bool {
 		let current = self.get_current();
-		for item in keywords {
-			if current.starts_with(item)
-				&& current[item.len()..]
-					.chars()
-					.next()
-					.is_none_or(|chr| !utilities::is_valid_identifier(chr))
-			{
-				self.head += item.len() as u32;
-				return Some(item);
-			}
+		if current.starts_with(operator) {
+			self.state.blank_lines = 0;
+			self.state.comment_lines = 0;
+			self.state.head += operator.len() as u32;
+			self.skip_including_comments();
+			true
+		} else {
+			false
 		}
-		None
 	}
 
-	pub fn expect_start(&mut self, chr: char) -> Result<source_map::Start, ParseError> {
-		self.skip();
+	pub(crate) fn expect_chr(&mut self, chr: char) -> Result<source_map::End, ParseError> {
 		let current = self.get_current();
 		if current.starts_with(chr) {
-			let start = source_map::Start(self.head);
-			self.head += chr.len_utf8() as u32;
-			Ok(start)
+			self.state.head += chr.len_utf8() as u32;
+			let end = self.state.head;
+			self.skip_including_comments();
+			Ok(source_map::End(end))
 		} else {
 			let position = self.get_start().with_length(chr.len_utf8());
 			let reason = ParseErrors::UnexpectedCharacter {
-				expected: &[chr],
+				// TODO single version
+				expected: &['?'],
 				found: current.chars().next(),
 			};
 			Err(ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect(&mut self, chr: char) -> Result<source_map::End, ParseError> {
-		self.skip();
-		let current = self.get_current();
-		if current.starts_with(chr) {
-			self.head += chr.len_utf8() as u32;
-			Ok(source_map::End(self.head))
+	/// Same as above, but do not advance as to lose any whitespace in the literal parts
+	/// of template literals and JSX children
+	pub(crate) fn expect_closing_bracket(&mut self) -> Result<source_map::End, ParseError> {
+		if self.get_current().starts_with('}') {
+			self.state.head += 1;
+			// self.skip_including_comments();
+			Ok(source_map::End(self.state.head))
 		} else {
-			let position = self.get_start().with_length(chr.len_utf8());
+			let position = self.get_start().with_length(1);
 			let reason = ParseErrors::UnexpectedCharacter {
-				expected: &[chr],
-				found: current.chars().next(),
+				expected: &['}'],
+				found: self.get_current().chars().next(),
 			};
 			Err(ParseError::new(reason, position))
 		}
 	}
 
-	pub fn expect_operator(&mut self, expected: &'static str) -> Result<(), ParseError> {
-		self.skip();
+	pub(crate) fn expect_operator(&mut self, expected: &'static str) -> Result<(), ParseError> {
 		let current = self.get_current();
 		if current.starts_with(expected) {
-			self.head += expected.len() as u32;
+			self.state.head += expected.len() as u32;
+			self.skip_including_comments();
 			Ok(())
 		} else {
 			let (found, position) = utilities::next_item(self);
@@ -225,15 +373,15 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub fn expect_keyword(
+	pub(crate) fn expect_keyword(
 		&mut self,
 		expected: &'static str,
 	) -> Result<source_map::Start, ParseError> {
-		self.skip();
 		let current = self.get_current();
 		if current.starts_with(expected) {
-			let start = source_map::Start(self.head);
-			self.head += expected.len() as u32;
+			let start = source_map::Start(self.offset + self.state.head);
+			self.state.head += expected.len() as u32;
+			self.skip_including_comments();
 			Ok(start)
 		} else {
 			let (found, position) = utilities::next_item(self);
@@ -242,12 +390,8 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub fn is_no_advance(&mut self, chr: char) -> Result<(), ()> {
-		if self.get_current().starts_with(chr) { Ok(()) } else { Err(()) }
-	}
-
 	#[must_use]
-	pub fn is_one_of<'b>(&self, items: &[&'b str]) -> Option<&'b str> {
+	pub(crate) fn is_one_of<'b>(&self, items: &[&'b str]) -> Option<&'b str> {
 		let current = self.get_current();
 		for item in items {
 			if current.starts_with(item) {
@@ -259,7 +403,7 @@ impl<'a> Lexer<'a> {
 
 	// Does not advance
 	#[must_use]
-	pub fn is_one_of_operators<'b>(&self, operators: &'static [&'b str]) -> Option<&'b str> {
+	pub(crate) fn is_one_of_operators<'b>(&self, operators: &'static [&'b str]) -> Option<&'b str> {
 		let current = self.get_current();
 		for item in operators {
 			if current.starts_with(item) {
@@ -270,36 +414,51 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	pub fn starts_with(&self, chr: char) -> bool {
+	pub(crate) fn starts_with(&self, chr: char) -> bool {
 		self.get_current().starts_with(chr)
 	}
 
 	#[must_use]
-	pub fn starts_with_slice(&self, slice: &str) -> bool {
+	pub(crate) fn starts_with_slice(&self, slice: &str) -> bool {
 		self.get_current().starts_with(slice)
 	}
 
 	/// Can't do `-` and `+` because they are valid expression prefixed
 	/// TODO `.` if not number etc.
 	#[must_use]
-	pub fn starts_with_expression_delimiter(&self) -> bool {
+	#[allow(clippy::match_like_matches_macro)]
+	pub(crate) fn starts_with_expression_delimiter(&self) -> bool {
 		let current = self.get_current();
-		IntoIterator::into_iter(["=", ",", ":", "?", "]", ")", "}", ";"])
-			.any(|expression_delimiter| current.starts_with(expression_delimiter))
+		if current.starts_with(['=', ',', ':', '?', ';', '.', ']', ')', '}']) {
+			true
+		} else {
+			self.is_keyword("instanceof")
+		}
 	}
 
 	#[must_use]
-	pub fn starts_with_statement_or_declaration_on_new_line(&self) -> bool {
+	#[allow(clippy::match_like_matches_macro)]
+	pub(crate) fn starts_with_expression_delimiter_or_open_bracket(&self) -> bool {
 		let current = self.get_current();
-		if self.state.last_new_lines > 0 {
+		if current.starts_with(['=', ',', ':', ';', '.', '?', ']', ')', '}', '[', '(', '{']) {
+			true
+		} else {
+			self.is_keyword("instanceof")
+		}
+	}
+
+	#[must_use]
+	pub(crate) fn starts_with_statement_or_declaration_on_new_line(&self) -> bool {
+		let current = self.get_current();
+		if (self.state.blank_lines + self.state.comment_lines) > 0 {
 			// `class` and `function` are actual expressions...
 			let statement_or_declaration_prefixes =
 				&["const", "let", "function", "class", "if", "for", "while"];
 			for prefix in statement_or_declaration_prefixes {
-				// Starts with prefix and is not other identifer
-				let not_identifer = current.starts_with(prefix)
-					&& !current[prefix.len()..].starts_with(utilities::is_valid_identifier);
-				if not_identifer {
+				// Starts with prefix and is not other identifier
+				let not_identifier = current.starts_with(prefix)
+					&& !current[prefix.len()..].starts_with(utilities::is_identifier_start);
+				if not_identifier {
 					return true;
 				}
 			}
@@ -309,248 +468,177 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub fn is_operator(&mut self, operator: &str) -> bool {
-		self.skip();
-		self.starts_with_slice(operator)
-	}
-
-	pub fn is_operator_advance(&mut self, operator: &str) -> bool {
-		self.skip();
-		let current = self.get_current();
-		let matches = current.starts_with(operator);
-		if matches {
-			self.state.last_new_lines = 0;
-			self.head += operator.len() as u32;
-		}
-		matches
+	pub(crate) fn if_not_expression_like(&self) -> bool {
+		self.starts_with_expression_delimiter()
+			|| self.starts_with_statement_or_declaration_on_new_line()
 	}
 
 	#[must_use]
-	pub fn get_start(&self) -> source_map::Start {
-		source_map::Start(self.head)
+	pub(crate) fn get_start(&self) -> source_map::Start {
+		source_map::Start(self.offset + self.state.head)
 	}
 
+	/// use last rather than head for whitespace and comment reasons
 	#[must_use]
-	pub fn get_end(&self) -> source_map::End {
-		source_map::End(self.head)
+	pub(crate) fn get_end(&self) -> source_map::End {
+		source_map::End(self.offset + self.state.last)
 	}
 
-	pub fn advance(&mut self, count: u32) {
-		self.state.last_new_lines = 0;
-		self.head += count;
+	pub(crate) fn advance(&mut self, count: u32) {
+		self.state.blank_lines = 0;
+		self.state.comment_lines = 0;
+		self.state.head += count;
+		self.skip_including_comments();
 	}
 
-	pub fn parse_identifier(
+	pub(crate) fn parse_identifier(
 		&mut self,
 		location: &'static str,
 		check_reserved: bool,
-	) -> Result<&'a str, ParseError> {
-		enum State {
-			Standard,
-			StartOfUnicode,
-			UnicodeEscape(u8),
-			UnicodeBracedEscape { first_bracket: bool },
+	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+		fn valid_start_character(chr: char) -> bool {
+			unicode_id_start::is_id_start(chr) || matches!(chr, '\\' | '_' | '$')
 		}
 
-		self.skip();
-		let current = self.get_current();
+		fn valid_continue_character(chr: char) -> bool {
+			unicode_id_start::is_id_continue(chr) || chr == '$'
+		}
+
 		let start = self.get_start();
-		let mut iter = current.char_indices();
-		let mut state = State::Standard;
-		if let Some((_, chr)) = iter.next() {
-			if let '\\' = chr {
-				state = State::StartOfUnicode;
-			} else {
-				// Note `is_alphabetic` here
-				let first_is_valid = chr.is_alphabetic() || chr == '_' || chr == '$';
-				if !first_is_valid {
-					return Err(ParseError::new(
-						ParseErrors::ExpectedIdentifier { location },
-						start.with_length(chr.len_utf8()),
-					));
-				}
-			}
-		} else {
+		let current = self.get_current();
+
+		if !current.starts_with(valid_start_character) {
 			return Err(ParseError::new(
 				ParseErrors::ExpectedIdentifier { location },
-				start.with_length(0),
+				start.with_length(1),
 			));
 		}
 
-		for (idx, chr) in iter {
-			match state {
-				State::UnicodeEscape(steps) => {
-					if !matches!(chr, '0'..='9' | 'A'..='F') {
-						return Err(ParseError::new(
-							ParseErrors::InvalidUnicodeCodePointInIdentifier,
-							start.with_length(idx + chr.len_utf8()),
-						));
-					}
-					if steps == 1 {
-						state = State::Standard;
-					} else {
-						state = State::UnicodeEscape(steps - 1);
-					}
+		let mut last = 0;
+		let mut value = std::borrow::Cow::Borrowed("");
+		for (idx, chr) in current.char_indices() {
+			if !valid_continue_character(chr) {
+				if idx < last {
+					continue;
 				}
-				State::UnicodeBracedEscape { ref mut first_bracket } => {
-					if *first_bracket {
-						if chr == '}' {
-							state = State::Standard;
-						} else if !matches!(chr, '0'..='9' | 'A'..='F') {
-							return Err(ParseError::new(
-								ParseErrors::InvalidUnicodeCodePointInIdentifier,
-								start.with_length(idx + chr.len_utf8()),
-							));
-						}
-					} else if chr == '{' {
-						*first_bracket = true;
-					} else {
-						return Err(ParseError::new(
-							ParseErrors::InvalidUnicodeCodePointInIdentifier,
-							start.with_length(idx + chr.len_utf8()),
-						));
-					}
-				}
-				State::StartOfUnicode => {
-					if let 'u' = chr {
-						let next_char = current[(idx + 1)..].chars().next();
-						state = if let Some('{') = next_char {
-							State::UnicodeBracedEscape { first_bracket: false }
-						} else if let Some('0'..='9' | 'A'..='F') = next_char {
-							State::UnicodeEscape(4)
+				value += &current[last..idx];
+				if let '\\' = chr {
+					if let Some(after) = &current[idx + 1..].strip_prefix('u')
+						&& let Ok((chr, width)) =
+							crate::strings::parse_unicode_escape_sequence(after)
+					{
+						if valid_continue_character(chr) {
+							value.to_mut().push(chr);
+							last = idx + 2 + width;
 						} else {
+							// TODO invalid char etc
 							return Err(ParseError::new(
-								ParseErrors::InvalidUnicodeCodePointInIdentifier,
-								start.with_length(idx + chr.len_utf8()),
+								ParseErrors::ExpectedIdentifier { location },
+								start.with_length(idx),
 							));
-						};
+						}
 					} else {
 						return Err(ParseError::new(
-							ParseErrors::InvalidUnicodeCodePointInIdentifier,
-							start.with_length(idx + chr.len_utf8()),
+							ParseErrors::ExpectedIdentifier { location },
+							start.with_length(idx),
 						));
 					}
-				}
-				State::Standard => {
-					if let '\\' = chr {
-						state = State::StartOfUnicode;
-					} else {
-						// Note `is_alphanumeric` here
-						let is_valid = chr.is_alphanumeric() || chr == '_' || chr == '$';
-						// Expanded type names can contains '.'
-						let valid_type_name = location == "type name" && chr == '.';
-						if !is_valid && !valid_type_name {
-							let value = &current[..idx];
-							let is_invalid = check_reserved
-								&& !crate::lexer::utilities::is_valid_variable_identifier(value);
-							let result = if is_invalid {
-								Err(ParseError::new(
-									ParseErrors::ReservedIdentifier,
-									start.with_length(value.len()),
-								))
-							} else {
-								self.head += idx as u32;
-								Ok(value)
-							};
-							return result;
-						}
-					}
+				} else {
+					last = idx;
+					break;
 				}
 			}
 		}
+		// if not advanced
+		if last == 0 {
+			value += current;
+			last = current.len();
+		}
+		self.advance(last as u32);
+		// if check_reserved {
+		// 	let is_invalid = if self.strict_mode() && utilities::is_strict_mode_reserved_word(&value) {
+		// 		true
+		// 	} else {
+		// 		"enum" == value
+		// 	};
+		// 	if is_invalid {
+		// 		return Err(ParseError::new(
+		// 			ParseErrors::ReservedIdentifier,
+		// 			start.with_length(value.len()),
+		// 		));
+		// 	}
+		// }
 
-		if !matches!(state, State::Standard) {
-			return Err(ParseError::new(
-				ParseErrors::InvalidUnicodeCodePointInIdentifier,
-				start.with_length(current.len()),
-			));
+		if check_reserved {
+			// dbg!(&value);
+			let is_reserved = utilities::is_reserved_word(&value, self.strict_mode())
+				|| (self.state.flags.in_async && value == "await")
+				|| ((self.state.flags.in_generator && self.strict_mode()) && value == "yield");
+
+			if is_reserved {
+				return Err(ParseError::new(
+					ParseErrors::ReservedIdentifier,
+					start.with_length(last),
+				));
+			}
 		}
 
-		// If left over
-		let is_invalid =
-			check_reserved && !crate::lexer::utilities::is_valid_variable_identifier(current);
-		if is_invalid {
-			Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(current.len())))
-		} else {
-			self.head += current.len() as u32;
-			Ok(current)
-		}
+		Ok(value)
 	}
 
 	// Will append the length on `until`
-	pub fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
+	pub(crate) fn parse_until(&mut self, until: &str) -> Result<&'a str, ()> {
 		let current = self.get_current();
-		for (idx, _) in current.char_indices() {
-			if current[idx..].starts_with(until) {
-				self.head += (idx + until.len()) as u32;
+		if let "\n" = until {
+			// TODO WIP
+			let idx = current.find(NEW_LINE_CHARACTERS).unwrap_or(current.len());
+			self.state.head += idx as u32;
+			self.skip_including_comments();
+			Ok(&current[..idx])
+		} else {
+			let idx = current.find(until);
+			if let Some(idx) = idx {
+				self.state.head += (idx + until.len()) as u32;
+				self.skip_including_comments();
 				// TODO temp fix
-				if let "\n" = until {
-					self.head -= 1;
-				}
-				return Ok(&current[..idx]);
+				Ok(&current[..idx])
+			} else {
+				Err(())
 			}
 		}
+	}
 
-		// Fix for at the end stuff
-		if let "\n" = until {
-			self.head += current.len() as u32;
-			Ok(current)
+	// For JSX attributes and content. Also returns which one of `possibles` matched
+	pub(crate) fn parse_until_one_of_advance(
+		&mut self,
+		possibles: &[char],
+	) -> Result<(&'a str, &'a str), ()> {
+		let current = self.get_current();
+		if let Some((idx, until)) = current.match_indices(possibles).next() {
+			self.state.head += (idx + 1) as u32;
+			self.skip_including_comments();
+			Ok((&current[..idx], until))
 		} else {
 			Err(())
 		}
 	}
 
-	// For comments etc
-	pub fn parse_until_no_advance(&mut self, until: &str) -> Result<&'a str, ()> {
-		let current = self.get_current();
-		for (idx, _) in current.char_indices() {
-			if current[idx..].starts_with(until) {
-				self.head += idx as u32;
-				return Ok(&current[..idx]);
-			}
-		}
-		Err(())
-	}
-
-	// For JSX attributes and content. Also returns which one of `possibles` matched
-	pub fn parse_until_one_of_advance(
+	pub(crate) fn parse_until_one_of_no_advance(
 		&mut self,
-		possibles: &[&'static str],
-	) -> Result<(&'a str, &'static str), ()> {
+		possibles: &[char],
+	) -> Result<(&'a str, &'a str), ()> {
 		let current = self.get_current();
-		for (i, _) in current.char_indices() {
-			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
-				self.head += (i + until.len()) as u32;
-				return Ok((&current[..i], until));
-			}
+		if let Some((idx, until)) = current.match_indices(possibles).next() {
+			self.state.head += idx as u32;
+			self.skip_including_comments();
+			Ok((&current[..idx], until))
+		} else {
+			Err(())
 		}
-		Err(())
-	}
-
-	/// Similar to `parse_until_one_of_advance`. Does not add the matched lenght to head
-	pub fn parse_until_one_of_no_advance(
-		&mut self,
-		possibles: &[&'static str],
-	) -> Result<(&'a str, &'static str), ()> {
-		self.state.last_new_lines = 0;
-		let current = self.get_current();
-		for (i, chr) in current.char_indices() {
-			if let Some(until) = possibles.iter().find(|s| current[i..].starts_with(**s)) {
-				self.head += i as u32;
-				let content = &current[..i];
-				// self.state.last_new_lines =
-				//    content.chars().filter(|char| matches!(char, '\n')).count() as u32;
-				return Ok((content, until));
-			}
-			if let '\n' = chr {
-				self.state.last_new_lines += 1;
-			}
-		}
-		Err(())
 	}
 
 	#[must_use]
-	pub fn starts_with_number(&self) -> bool {
+	pub(crate) fn starts_with_number(&self) -> bool {
 		let bytes = self.get_current().as_bytes();
 		if let Some(start) = bytes.first() {
 			if start.is_ascii_digit() {
@@ -570,11 +658,11 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[allow(clippy::single_match_else)]
-	pub fn parse_number_literal(
+	pub(crate) fn parse_number_literal(
 		&mut self,
 	) -> Result<(crate::numbers::ParsedNumberLiteral<'a>, u32), ParseError> {
-		let value = self.get_current();
-		let result = crate::numbers::parse_number(value);
+		let current = self.get_current();
+		let result = crate::numbers::parse_number(current);
 		match result {
 			Ok((value, count)) => {
 				self.advance(count);
@@ -589,225 +677,156 @@ impl<'a> Lexer<'a> {
 	}
 
 	#[must_use]
-	pub fn starts_with_string_delimeter(&self) -> bool {
-		self.starts_with('"') || self.starts_with('\'')
+	pub(crate) fn starts_with_string_delimeter(&self) -> bool {
+		self.get_current().starts_with(['"', '\''])
 	}
 
+	/// expects current to start with string delimeter
 	#[allow(clippy::single_match_else)]
-	pub fn parse_string_literal(
+	pub(crate) fn parse_string_literal(
 		&mut self,
-	) -> Result<(std::borrow::Cow<'a, str>, crate::strings::Quoted, u32), ParseError> {
+	) -> Result<(std::borrow::Cow<'a, str>, crate::strings::Quoting, u32), ParseError> {
 		let value = self.get_current();
 		let result = crate::strings::parse_string(value);
+		let position = self.get_start().with_length(1);
+
 		match result {
-			Ok((value, quoted, count)) => {
-				self.advance(count);
-				Ok((value, quoted, count))
+			Ok(crate::strings::ParseStringOutput {
+				value,
+				quoting,
+				source_length,
+				unknown_escapes,
+				uses_octal,
+			}) => {
+				if uses_octal && self.strict_mode() {
+					// TODO better
+					return Err(ParseError::new(ParseErrors::InvalidStringLiteral, position));
+				}
+
+				if !unknown_escapes.is_empty() {
+					// TODO better
+					return Err(ParseError::new(ParseErrors::InvalidStringLiteral, position));
+				}
+
+				// TODO add unknown escapes to warnings (or errors on strict mode)
+				self.advance(source_length);
+				Ok((value, quoting, source_length))
 			}
 			Err(_) => {
 				// TODO ...
-				let span = self.get_start().with_length(1);
-				Err(ParseError::new(ParseErrors::InvalidStringLiteral, span))
+				Err(ParseError::new(ParseErrors::InvalidStringLiteral, position))
 			}
 		}
 	}
 
 	/// Returns content and flags. Flags can be empty
-	pub fn parse_regex_literal(&mut self) -> Result<(&'a str, &'a str), ParseError> {
-		let mut escaped = false;
-		let mut in_set = false;
-		self.skip();
-		let current = self.get_current();
-		let mut chars = current.char_indices();
-		assert!(chars.next().is_some_and(|(_idx, chr)| chr == '/'));
-		let start = self.get_start();
+	pub(crate) fn parse_regex_literal(&mut self) -> Result<(&'a str, &'a str), ParseError> {
+		fn valid_regexp_flag(chr: char) -> bool {
+			// TODO specify via reader.get_options()
+			const EXTRA_REGEX_FLAGS: bool = true;
 
-		let mut regex_content = 1;
-		let mut found_end_slash = false;
-
-		for (idx, chr) in chars.by_ref() {
-			match chr {
-				'/' if !escaped && !in_set => {
-					regex_content = idx;
-					found_end_slash = true;
-					break;
-				}
-				'\\' if !escaped => {
-					escaped = true;
-				}
-				'[' => {
-					in_set = true;
-				}
-				']' if in_set => {
-					in_set = false;
-				}
-				'\n' => {
-					return Err(ParseError::new(
-						ParseErrors::InvalidRegularExpression,
-						start.with_length(idx),
-					));
-				}
-				_ => {
-					escaped = false;
-				}
+			if let 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y' = chr {
+				true
+			} else if let 'v' = chr
+				&& EXTRA_REGEX_FLAGS
+			{
+				true
+			} else {
+				false
 			}
 		}
 
-		if !found_end_slash {
-			return Err(ParseError::new(
-				ParseErrors::InvalidRegularExpression,
-				start.with_length(current.len()),
-			));
+		fn find_end_of_regexp(on: &str) -> Option<usize> {
+			fn is_escaped_at(on: &str, at: usize) -> bool {
+				on[..at].bytes().rev().take_while(|chr: &u8| *chr == b'\\').count() % 2 == 1
+			}
+
+			// For character classes
+			let mut upto = 0;
+			for (idx, matched) in on.match_indices(['[', '/']) {
+				if upto > idx || is_escaped_at(on, idx) {
+					continue;
+				} else if let "[" = matched {
+					let after = &on[idx..][1..];
+					let (offset, _) =
+						after.match_indices(']').find(|(idx, _)| !is_escaped_at(after, *idx))?;
+					upto = idx + offset + 2;
+				} else {
+					return Some(idx);
+				}
+			}
+			None
 		}
 
-		let regex = &current[1..regex_content];
-		self.head += 2 + regex.len() as u32;
-		let regex_end = regex_content + '/'.len_utf8();
+		let on = self.get_current();
+		let Some(on) = on.strip_prefix('/') else {
+			return Err(ParseError::new(
+				ParseErrors::TODO("expected /"),
+				self.get_start().with_length(1),
+			));
+		};
 
-		let first_non_char = chars
-			.find_map(|(idx, chr)| (!chr.is_alphabetic()).then_some(idx))
-			.unwrap_or(current.len());
+		let Some(advance) = find_end_of_regexp(on) else {
+			return Err(ParseError::new(
+				ParseErrors::TODO("no end to regexp"),
+				self.get_start().with_length(1),
+			));
+		};
 
-		let regex_flags = &current[regex_end..first_non_char];
+		let regex = &on[..advance];
+		self.state.head += 2 + advance as u32;
 
-		let invalid_flag =
-			regex_flags.chars().any(|chr| !matches!(chr, 'd' | 'g' | 'i' | 'm' | 's' | 'u' | 'y'));
+		let on = self.get_current();
+		let (flags, _) = on.split_once(|c: char| !c.is_ascii_lowercase()).unwrap_or((on, ""));
+
+		let invalid_flag = flags.contains(|chr: char| !valid_regexp_flag(chr));
 		if invalid_flag {
 			Err(ParseError::new(
 				ParseErrors::InvalidRegexFlag,
-				self.get_start().with_length(regex_flags.len()),
+				self.get_start().with_length(flags.len()),
 			))
 		} else {
-			self.head += regex_flags.len() as u32;
-			Ok((regex, regex_flags))
+			self.state.head += flags.len() as u32;
+			self.skip_including_comments();
+			Ok((regex, flags))
 		}
 	}
 
 	/// Expects that `//` or `/*` has been parsed
-	pub fn parse_comment_literal(&mut self, is_multiline: bool) -> Result<&'a str, ParseError> {
+	pub(crate) fn parse_comment_literal(
+		&mut self,
+		is_multiline: bool,
+	) -> Result<&'a str, ParseError> {
 		if is_multiline {
-			self.parse_until("*/").map_err(|()| {
+			let result = self.parse_until("*/");
+			if let Ok(content) = result {
+				// WIP
+				if content.contains(NEW_LINE_CHARACTERS) {
+					self.state.comment_lines += 1;
+				}
+				Ok(content)
+			} else {
 				// TODO might be a problem
 				let position = self.get_start().with_length(self.get_current().len());
-				ParseError::new(ParseErrors::UnexpectedEnd, position)
-			})
+				Err(ParseError::new(ParseErrors::UnexpectedEnd, position))
+			}
 		} else {
+			self.state.comment_lines += 1;
 			Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
 		}
 	}
 
-	/// Note scans after multiple comments
-	#[must_use]
-	pub fn after_comment_literals(&self) -> &str {
-		let mut current = self.get_current().trim_start();
-		loop {
-			if current.starts_with("//") {
-				current = current[current.find('\n').unwrap_or(current.len())..].trim_start();
-			} else if current.starts_with("/*") {
-				current = current[current.find("*/").unwrap_or(current.len())..].trim_start();
-			} else {
-				return current;
-			}
-		}
-	}
-
-	// TODO also can exit if there is `=` or `:` and = 0 in some examples
-	#[must_use]
-	pub fn after_brackets(&self) -> &'a str {
-		use crate::Quoted;
-
-		enum State {
-			None,
-			Comment,
-			StringLiteral { escaped: bool, quoted: crate::Quoted },
-			// TemplateLiteral { escaped: bool },
-			// RegexLiteral { escaped: bool },
-			MultilineComment,
-		}
-
-		let current = self.get_current();
-
-		let mut bracket_count: u32 = 0;
-		let mut open_chevrons = 0u64;
-		let mut state = State::None;
-
-		// TODO account for string literals and comments
-		// TODO account for utf16
-		for (idx, chr) in current.char_indices() {
-			match state {
-				State::None => {
-					if let '(' | '{' | '[' | '<' = chr {
-						open_chevrons <<= 1;
-						open_chevrons |= u64::from(chr == '<');
-						bracket_count += 1;
-						// dbg!(chr, bracket_count);
-					} else if let ')' | '}' | ']' | '>' = chr {
-						// TODO WIP
-						let last_was_open_chevron = (open_chevrons & 1) != 0;
-						if let '>' = chr {
-							if !last_was_open_chevron {
-								continue;
-							}
-							// ...
-						} else if last_was_open_chevron {
-							// Extra removal
-							open_chevrons >>= 1;
-							bracket_count = bracket_count.saturating_sub(1);
-						}
-
-						open_chevrons >>= 1;
-						bracket_count = bracket_count.saturating_sub(1);
-						// dbg!(chr, bracket_count, last_was_open_chevron);
-						if bracket_count == 0 {
-							return current[(idx + 1)..].trim_start();
-						}
-					} else if let '"' = chr {
-						state = State::StringLiteral { escaped: false, quoted: Quoted::Double };
-					} else if let '\'' = chr {
-						state = State::StringLiteral { escaped: false, quoted: Quoted::Single };
-					} else if let '/' = chr {
-						if current[idx..].starts_with("/*") {
-							state = State::MultilineComment;
-						} else if current[idx..].starts_with("//") {
-							state = State::Comment;
-						}
-					}
-				}
-				State::StringLiteral { ref mut escaped, quoted } => {
-					if *escaped {
-						*escaped = false;
-						continue;
-					}
-					if let '\\' = chr {
-						*escaped = true;
-					} else if let (Quoted::Double, '"') | (Quoted::Single, '\'') = (quoted, chr) {
-						state = State::None;
-					}
-				}
-				State::Comment => {
-					if let '\n' = chr {
-						state = State::None;
-					}
-				}
-				State::MultilineComment => {
-					if current[idx..].starts_with("*/") {
-						state = State::None;
-					}
-				}
-			}
-		}
-
-		// Return empty slice
-		Default::default()
+	pub(crate) fn parse_html_comment_literal(&mut self) -> Result<&'a str, ParseError> {
+		Ok(self.parse_until("\n").expect("Always should have found end of line or file"))
 	}
 
 	#[must_use]
-	pub fn after_identifier(&self) -> &'a str {
+	pub(crate) fn after_identifier(&self) -> &'a str {
 		self.after_identifier_offset(0)
 	}
 
 	#[must_use]
-	pub fn after_identifier_offset(&self, offset: usize) -> &'a str {
+	pub(crate) fn after_identifier_offset(&self, offset: usize) -> &'a str {
 		let current = &self.get_current().trim_start()[offset..];
 
 		if let Some(idx) = current.find(|chr: char| !(chr.is_alphanumeric() || chr == '_')) {
@@ -818,61 +837,14 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	// TODO WIP. for for loops
-	#[must_use]
-	pub fn after_variable_start(&self) -> &'a str {
-		let mut current = self.get_current().trim_start();
-		if current.starts_with("const") {
-			current = current["const".len()..].trim_start();
-		} else if current.starts_with("let") {
-			current = current["let".len()..].trim_start();
-		} else if current.starts_with("var") {
-			current = current["var".len()..].trim_start();
-		} else if current.starts_with("using") {
-			current = current["using".len()..].trim_start();
-		}
-
-		if current.starts_with('{') || current.starts_with('[') {
-			let mut paren_count: u32 = 0;
-			// TODO account for string literals and comments
-			for (idx, chr) in current.as_bytes().iter().enumerate() {
-				if let b'(' | b'{' | b'[' | b'<' = chr {
-					paren_count += 1;
-				} else if let b')' | b'}' | b']' | b'>' = chr {
-					paren_count = paren_count.saturating_sub(1);
-					if paren_count == 0 {
-						return current[(idx + 1)..].trim_start();
-					}
-				}
-			}
-		} else {
-			// let mut paren_count: u32 = 0;
-			let mut chars = current.as_bytes().iter().enumerate();
-			for (_, chr) in chars.by_ref() {
-				if !chr.is_ascii_whitespace() {
-					break;
-				}
-			}
-			for (idx, chr) in chars {
-				if !chr.is_ascii_alphanumeric() {
-					return current[idx..].trim_start();
-				}
-			}
-		}
-		// Return empty slice
-		Default::default()
-	}
-
 	/// Part of [ASI](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#automatic_semicolon_insertion)
-	pub fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
-		// TODO order
-		let semi_colon_like = self.starts_with_slice("//")
-			|| self.is_operator_advance(";")
-			|| self.last_was_from_new_line() > 0
-			|| self.is_operator("}")
-			// TODO what about spaces
-			|| self.starts_with_slice("\n")
-			|| self.is_finished();
+	pub(crate) fn expect_semi_colon(&mut self) -> Result<(), ParseError> {
+		let semi_colon_like = self.state.blank_lines > 0
+			|| self.state.comment_lines > 0
+			|| self.is_finished()
+			|| self.starts_with_slice("//")
+			|| self.starts_with_slice("}")
+			|| self.is_operator_advance(";");
 
 		if semi_colon_like {
 			Ok(())
@@ -883,88 +855,102 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	pub fn is_semi_colon(&mut self) -> bool {
-		self.skip();
+	pub(crate) fn is_semi_colon(&self) -> bool {
 		self.starts_with('}')
 			|| self.starts_with(';')
 			|| self.last_was_from_new_line() > 0
 			|| self.is_finished()
 	}
-}
 
-pub(crate) mod utilities {
-	pub fn is_arrow_function(
-		reader: &mut super::Lexer,
-	) -> (bool, Option<crate::types::TypeAnnotation>) {
-		let after_brackets = trim_whitespace_not_newlines(reader.after_brackets());
-		if after_brackets.starts_with("=>") {
-			(true, None)
-		} else if reader.options.type_annotations && after_brackets.starts_with(':') {
-			// TODO WIP implementation
-			let save_point = reader.head;
-			let after = reader.left_to_parse() - after_brackets.len() as u32;
-			reader.head += after as u32 + 1;
-			// TODO: I hate this!!
-			// Can double allocate for expressions build up bad information
-			let annotation = crate::types::TypeAnnotation::from_reader_with_precedence(
-				reader,
-				crate::types::type_annotations::TypeOperatorKind::ReturnType,
-			);
-			let starts_with_arrow = reader.starts_with_slice("=>");
-			reader.head = save_point;
-			if let (true, Ok(annotation)) = (starts_with_arrow, annotation) {
-				(true, Some(annotation))
-			} else {
-				(false, None)
-			}
+	pub(crate) fn accept_semi_colon(&mut self) {
+		self.is_operator_advance(";");
+		self.state.blank_lines = 1;
+	}
+
+	pub(crate) fn starts_with_function_header(&self) -> bool {
+		if self.is_keyword("async") || self.is_keyword("function") {
+			true
 		} else {
-			(false, None)
+			#[cfg(feature = "extras")]
+			if self.get_options().extras.custom_function_headers {
+				return self.is_keyword("generator")
+					|| self.is_keyword("worker")
+					|| self.is_keyword("server")
+					|| self.is_keyword("test");
+			}
+			false
 		}
 	}
 
-	pub fn is_valid_identifier(chr: char) -> bool {
-		// TODO `\\` for unicode identifiers
-		chr.is_alphanumeric() || chr == '_' || chr == '$' || chr == '\\'
+	pub(crate) fn push_label(&mut self, name: String, on_iteration_item: bool) {
+		self.state.labels.push((name, on_iteration_item));
 	}
 
-	pub fn is_reserved_word(identifier: &str) -> bool {
-		matches!(
-			identifier,
-			"enum"
-				| "implements"
-				| "interface"
-				| "let" | "package"
-				| "private" | "protected"
-				| "public" | "static"
+	pub(crate) fn pop_label(&mut self) {
+		self.state.labels.pop();
+	}
+
+	/// returns `on_iteration_item`
+	pub(crate) fn contains_label(&self, label: &str) -> Option<bool> {
+		self.state.labels.iter().skip(self.state.label_boundary).find_map(
+			|(name, on_iteration_item)| (name.as_str() == label).then_some(*on_iteration_item),
 		)
 	}
+}
 
-	pub fn is_valid_variable_identifier(identifier: &str) -> bool {
-		let is_invalid = matches!(
+const NEW_LINE_CHARACTERS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
+
+pub(crate) mod utilities {
+	pub(crate) fn is_identifier_start(chr: char) -> bool {
+		unicode_id_start::is_id_start(chr) || chr == '$'
+	}
+
+	pub(crate) fn is_identifier_continutation(chr: char) -> bool {
+		// TODO `\\` for unicode identifiers
+		unicode_id_start::is_id_continue(chr) || chr == '$' || chr == '\\'
+	}
+
+	pub(crate) fn is_reserved_word(identifier: &str, strict_mode: bool) -> bool {
+		// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#reserved_words
+		let reserved = matches!(
 			identifier,
-			"const"
-				| "var" | "if"
-				| "else" | "for"
-				| "while" | "do"
-				| "switch" | "class"
-				| "function" | "new"
-				| "super" | "case"
-				| "return" | "continue"
-				| "break" | "import"
-				| "export" | "default"
-				| "in" | "typeof"
-				| "instanceof"
-				| "void" | "delete"
-				| "debugger" | "try"
-				| "catch" | "finally"
-				| "throw" | "extends"
+			"break"
+				| "case" | "catch"
+				| "class" | "const"
+				| "continue" | "debugger"
+				| "default" | "delete"
+				| "do" | "else"
+				| "export" | "extends"
+				| "false" | "finally"
+				| "for" | "function"
+				| "if" | "import"
+				| "in" | "instanceof"
+				| "new" | "null"
+				| "return" | "super"
+				| "switch" | "this"
+				| "throw" | "true"
+				| "try" | "typeof"
+				| "var" | "void"
+				| "while" | "with"
 		);
-
-		!is_invalid
+		if reserved {
+			true
+		} else if strict_mode {
+			matches!(
+				identifier,
+				"implements"
+					| "interface" | "let"
+					| "package" | "private"
+					| "protected" | "public"
+					| "static"
+			)
+		} else {
+			false
+		}
 	}
 
 	// TODO move
-	pub fn next_empty_occurance(on: &str) -> usize {
+	pub(crate) fn next_empty_occurance(on: &str) -> usize {
 		let mut chars = on.char_indices();
 		let is_text = chars.next().is_some_and(|(_, chr)| chr.is_alphabetic());
 		for (idx, chr) in chars {
@@ -978,48 +964,19 @@ pub(crate) mod utilities {
 		0
 	}
 
-	pub fn trim_whitespace_not_newlines(on: &str) -> &str {
-		let chars = on.char_indices();
-		let mut idx = 0;
-		for (at, chr) in chars {
-			idx = at;
-			if !chr.is_whitespace() || chr == '\n' {
-				break;
-			}
-		}
-		&on[idx..]
-	}
-
-	pub fn is_function_header(slice: &str) -> bool {
-		let slice = slice.trim_start();
-		// TODO
-		let extras = true;
-		slice.starts_with("async ")
-			|| {
-				slice.starts_with("function")
-					&& !slice["function".len()..].chars().next().is_some_and(is_valid_identifier)
-			} || (extras && {
-			// TODO + after is "function"
-			slice.starts_with("generator ")
-				|| slice.starts_with("worker ")
-				|| slice.starts_with("server ")
-				|| slice.starts_with("test ")
-		})
-	}
-
 	/// TODO this could be set to collect, rather than breaking (<https://github.com/kaleidawave/ezno/issues/203>)
-	pub fn assert_type_annotations(
+	pub(crate) fn assert_type_annotations(
 		reader: &super::Lexer,
 		position: crate::Span,
 	) -> crate::ParseResult<()> {
-		if reader.get_options().type_annotations {
+		if reader.get_options().type_annotations.type_annotations() {
 			Ok(())
 		} else {
 			Err(crate::ParseError::new(crate::ParseErrors::TypeAnnotationUsed, position))
 		}
 	}
 
-	pub fn next_item<'a>(reader: &super::Lexer<'a>) -> (&'a str, crate::Span) {
+	pub(crate) fn next_item<'a>(reader: &super::Lexer<'a>) -> (&'a str, crate::Span) {
 		let current = reader.get_current();
 		let until_empty = self::next_empty_occurance(current);
 		let position = reader.get_start().with_length(until_empty);
@@ -1027,7 +984,7 @@ pub(crate) mod utilities {
 		(found, position)
 	}
 
-	pub fn expected_one_of_items(
+	pub(crate) fn expected_one_of_items(
 		reader: &super::Lexer,
 		expected: &'static [&'static str],
 	) -> crate::ParseError {
@@ -1038,22 +995,22 @@ pub(crate) mod utilities {
 		crate::ParseError::new(reason, position)
 	}
 
-	pub fn get_not_identifier_length(reader: &super::Lexer) -> Option<usize> {
-		let on = reader.get_current();
-		for (idx, c) in on.char_indices() {
-			if c == '#' || crate::lexer::utilities::is_valid_identifier(c) {
-				return None;
-			} else if !c.is_whitespace() {
-				let after = &on[idx..];
-				return if after.starts_with("//") || after.starts_with("/*") {
-					None
-				} else {
-					Some(idx)
-				};
-			}
-		}
+	// pub(crate) fn get_not_identifier_length(reader: &super::Lexer) -> Option<usize> {
+	// 	let on = reader.get_current();
+	// 	for (idx, c) in on.char_indices() {
+	// 		if c == '#' || crate::lexer::utilities::is_identifier_continutation(c) {
+	// 			return None;
+	// 		} else if !c.is_whitespace() {
+	// 			let after = &on[idx..];
+	// 			return if after.starts_with("//") || after.starts_with("/*") {
+	// 				None
+	// 			} else {
+	// 				Some(idx)
+	// 			};
+	// 		}
+	// 	}
 
-		// Else nothing exists
-		Some(0)
-	}
+	// 	// Else nothing exists
+	// 	Some(0)
+	// }
 }

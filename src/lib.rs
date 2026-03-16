@@ -10,6 +10,9 @@ pub(crate) mod utilities;
 pub mod cli;
 pub mod transformers;
 
+pub use checker;
+pub use parser;
+
 pub use build::build;
 pub use check::check;
 pub(crate) use checker::ReadFromFS;
@@ -19,7 +22,7 @@ pub use parser::{source_map, ASTNode, ToStringOptions};
 use parser::{Module, ParseError};
 
 pub fn prettifier(input: String) -> Result<String, ParseError> {
-	let module = Module::from_string(input, Default::default())?;
+	let module = Module::from_string(input)?;
 	Ok(module.to_string(&ToStringOptions::default()))
 }
 

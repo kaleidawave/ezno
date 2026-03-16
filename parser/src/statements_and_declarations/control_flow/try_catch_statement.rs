@@ -1,12 +1,11 @@
 use crate::{
-	ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField, WithComment,
-	derive_ASTNode,
+	ASTNode, Block, ParseError, ParseErrors, TypeAnnotation, VariableField, derive_ASTNode,
 };
 use source_map::Span;
 use visitable_derive::Visitable;
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]
-pub type ExceptionVarField = WithComment<VariableField>;
+pub type ExceptionVarField = VariableField;
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -37,7 +36,7 @@ impl ASTNode for TryCatchStatement {
 
 			// Optional exception variable field `catch (e)`
 			if reader.is_operator_advance("(") {
-				let variable_field = WithComment::<VariableField>::from_reader(reader)?;
+				let variable_field = VariableField::from_reader(reader)?;
 
 				// Optional type reference `catch (e: type)`
 				let exception_var_type: Option<TypeAnnotation> = if reader.is_operator_advance(":")
@@ -53,7 +52,7 @@ impl ASTNode for TryCatchStatement {
 				};
 				exception_var = Some((variable_field, exception_var_type));
 
-				reader.expect(')')?;
+				reader.expect_chr(')')?;
 			}
 
 			catch_inner = Some(Block::from_reader(reader)?);

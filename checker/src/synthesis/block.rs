@@ -29,7 +29,6 @@ pub(super) fn synthesise_block<T: crate::ReadFromFS>(
 			StatementOrDeclaration::Comment(..)
 				| StatementOrDeclaration::MultiLineComment(..)
 				| StatementOrDeclaration::Empty(..)
-				| StatementOrDeclaration::AestheticSemiColon(..)
 				| StatementOrDeclaration::Function(..)
 		)
 	}) {

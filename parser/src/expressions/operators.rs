@@ -21,6 +21,10 @@ pub enum BinaryOperator {
     GreaterThan, LessThan, LessThanEqual, GreaterThanEqual,
 
     LogicalAnd, LogicalOr,
+	#[cfg(feature="extras")]
+    LogicalAndKeyword,
+	#[cfg(feature="extras")]
+	LogicalOrKeyword,
     NullCoalescing,
 
 	Comma,
@@ -49,7 +53,11 @@ impl BinaryOperator {
 	pub fn is_rhs_conditional_evaluation(&self) -> bool {
 		matches!(
 			self,
-			BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr | BinaryOperator::NullCoalescing
+			BinaryOperator::LogicalAnd
+				| BinaryOperator::LogicalOr
+				| BinaryOperator::LogicalOrKeyword
+				| BinaryOperator::LogicalAndKeyword
+				| BinaryOperator::NullCoalescing
 		)
 	}
 }
@@ -75,6 +83,9 @@ pub enum UnaryOperator {
     Plus, Negation,
     BitwiseNot, LogicalNot,
     Await, TypeOf, Void, Delete,
+
+	/// little bit weird
+	Spread
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -147,7 +158,9 @@ impl Operator for BinaryOperator {
 			BinaryOperator::Remainder => "%",
 			BinaryOperator::NullCoalescing => "??",
 			BinaryOperator::LogicalAnd => "&&",
+			BinaryOperator::LogicalAndKeyword => " and ",
 			BinaryOperator::LogicalOr => "||",
+			BinaryOperator::LogicalOrKeyword => " or ",
 			BinaryOperator::BitwiseShiftLeft => "<<",
 			BinaryOperator::BitwiseShiftRight => ">>",
 			BinaryOperator::BitwiseShiftRightUnsigned => ">>>",
@@ -183,8 +196,10 @@ impl Operator for BinaryOperator {
 			BinaryOperator::BitwiseAnd => 8,
 			BinaryOperator::BitwiseXOr => 7,
 			BinaryOperator::BitwiseOr => 6,
-			BinaryOperator::LogicalAnd => 5,
-			BinaryOperator::NullCoalescing | BinaryOperator::LogicalOr => 4,
+			BinaryOperator::LogicalAnd | BinaryOperator::LogicalAndKeyword => 5,
+			BinaryOperator::NullCoalescing
+			| BinaryOperator::LogicalOr
+			| BinaryOperator::LogicalOrKeyword => 4,
 			BinaryOperator::Comma => 1,
 		}
 	}
@@ -209,6 +224,7 @@ impl Operator for UnaryOperator {
 			UnaryOperator::Await => "await ",
 			UnaryOperator::TypeOf => "typeof ",
 			UnaryOperator::Void => "void ",
+			UnaryOperator::Spread => "... ",
 		}
 	}
 
@@ -222,6 +238,7 @@ impl Operator for UnaryOperator {
 			| UnaryOperator::LogicalNot
 			| UnaryOperator::Plus
 			| UnaryOperator::Negation => 14,
+			UnaryOperator::Spread => 2,
 		}
 	}
 
@@ -252,7 +269,7 @@ impl Operator for BinaryAssignmentOperator {
 	}
 
 	fn precedence(&self) -> u8 {
-		ASSIGNMENT_PRECEDENCE
+		super::precedence::ASSIGNMENT_PRECEDENCE
 	}
 
 	fn associativity_direction(&self) -> AssociativityDirection {
@@ -349,17 +366,3 @@ impl TryFrom<BinaryOperator> for BinaryAssignmentOperator {
 		}
 	}
 }
-
-// Operator precedences that aren't registered under operator trait
-pub(crate) const COMMA_PRECEDENCE: u8 = 1;
-pub(crate) const CONDITIONAL_TERNARY_PRECEDENCE: u8 = 2;
-pub(crate) const ARROW_FUNCTION_PRECEDENCE: u8 = 2;
-pub(crate) const ASSIGNMENT_PRECEDENCE: u8 = 2;
-pub(crate) const YIELD_OPERATORS_PRECEDENCE: u8 = 2;
-pub(crate) const RELATION_PRECEDENCE: u8 = 10;
-pub(crate) const CONSTRUCTOR_WITHOUT_PARENTHESIS_PRECEDENCE: u8 = 17;
-pub(crate) const MEMBER_ACCESS_PRECEDENCE: u8 = 18;
-pub(crate) const INDEX_PRECEDENCE: u8 = 18;
-pub(crate) const FUNCTION_CALL_PRECEDENCE: u8 = 18;
-pub(crate) const CONSTRUCTOR_PRECEDENCE: u8 = 18;
-pub(crate) const PARENTHESIZED_EXPRESSION_AND_LITERAL_PRECEDENCE: u8 = 19;

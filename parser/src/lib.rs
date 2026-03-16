@@ -3,34 +3,28 @@
 #![warn(clippy::must_use_candidate)]
 
 mod block;
-mod comments;
 mod errors;
 pub mod expressions;
-mod extensions;
+pub mod extensions;
 pub mod functions;
 pub mod generator_helpers;
 mod lexer;
 pub mod marker;
-mod modules;
+pub mod modules;
 pub mod numbers;
 pub mod options;
 pub mod property_key;
 pub mod statements_and_declarations;
 pub mod strings;
 pub mod types;
-mod variable_fields;
+pub mod variable_fields;
 pub mod visiting;
 
 pub use block::{Block, BlockLike, BlockLikeMut, BlockOrSingleStatement};
-pub use comments::WithComment;
 pub use marker::Marker;
 
 pub use errors::{ParseError, ParseErrors, ParseResult};
-pub use expressions::{Expression, MultipleExpression, PropertyReference};
-pub use extensions::{
-	decorators::{Decorated, Decorator},
-	is_expression, jsx,
-};
+pub use expressions::{Expression, MultipleExpression, PropertyReference, operators};
 pub use functions::FunctionBody;
 pub use functions::{FunctionBase, FunctionBased, FunctionHeader};
 pub use generator_helpers::IntoAST;
@@ -38,18 +32,20 @@ pub use modules::Module;
 pub use options::*;
 pub use property_key::PropertyKey;
 pub use source_map::{self, SourceId, Span};
-pub use statements_and_declarations::{Statement, StatementOrDeclaration};
-pub use strings::Quoted;
+pub use statements_and_declarations::{Statement, StatementOrDeclaration, control_flow, variables};
+pub use strings::Quoting;
 pub use types::{
 	type_annotations::{self, TypeAnnotation},
 	type_declarations::{self, TypeParameter},
 };
-pub use variable_fields::*;
+pub use variable_fields::{VariableField, VariableIdentifier};
 
 pub(crate) use lexer::Lexer;
 pub(crate) use visiting::{
 	Chain, ChainVariable, VisitOptions, Visitable, VisitorMutReceiver, VisitorReceiver,
 };
+
+pub use lexer::ParseState;
 
 #[macro_use]
 extern crate macro_rules_attribute;
@@ -103,42 +99,50 @@ impl LocalToStringInformation {
 /// serializing to string from options.
 pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 	/// From string, with default impl to call abstract method `from_reader`
-	fn from_string(script: String, options: ParseOptions) -> ParseResult<Self> {
-		Self::from_string_with_options(script, options, None).map(|(ast, _)| ast)
+	fn from_string(script: String) -> ParseResult<Self> {
+		Self::from_string_with_options(script, ParseOptions::default()).map(|(ast, _)| ast)
 	}
 
 	fn from_string_with_options(
 		script: String,
 		options: ParseOptions,
-		offset: Option<u32>,
-	) -> ParseResult<(Self, ParsingState)> {
-		let line_starts = source_map::LineStarts::new(script.as_str());
-		#[allow(clippy::cast_possible_truncation)]
-		let length_of_source = script.len() as u32;
+	) -> ParseResult<(Self, ParseState)> {
+		let mut reader = crate::Lexer::new(&script, options.features.position_offset, options);
 
-		let state = ParsingState {
-			line_starts,
-			length_of_source,
-			constant_imports: Default::default(),
-			keyword_positions: options.record_keyword_positions.then_some(KeywordPositions::new()),
-			partial_points: Default::default(),
-		};
-		let mut reader = crate::Lexer::new(&script, offset, options);
+		let node = Self::from_reader(&mut reader)?;
 
-		let result = Self::from_reader(&mut reader).map(|ok| (ok, state))?;
-
-		if reader.is_finished() {
-			Ok(result)
+		if options.features.section_of_source || reader.is_finished() {
+			Ok((node, reader.state))
 		} else {
 			let (found, position) = crate::lexer::utilities::next_item(&reader);
 			Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
 		}
 	}
+	// /// From string, with default impl to call abstract method `from_reader`
+	// fn from_str<'s>(script: &'s str) -> ParseResult<'s, Self> {
+	// 	Self::from_str_with_options(script, ParseOptions::default()).map(|(ast, _)| ast)
+	// }
+
+	// fn from_str_with_options<'s>(
+	// 	script: &'s str,
+	// 	options: ParseOptions,
+	// ) -> ParseResult<(Self, ParseState)> {
+	// 	let mut reader = crate::Lexer::new(script, options.features.position_offset, options);
+
+	// 	let node = Self::from_reader(&mut reader)?;
+
+	// 	if options.features.section_of_source || reader.is_finished() {
+	// 		Ok((node, reader.state))
+	// 	} else {
+	// 		let (found, position) = crate::lexer::utilities::next_item(&reader);
+	// 		Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
+	// 	}
+	// }
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
 	fn get_position(&self) -> Span;
 
-	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
+	fn from_reader<'b, 's>(reader: &'b mut crate::Lexer<'s>) -> ParseResult<Self>;
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
@@ -156,101 +160,13 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 	}
 }
 
-#[derive(Debug)]
-pub struct ParsingState {
-	pub line_starts: source_map::LineStarts,
-	pub length_of_source: u32,
-	/// TODO as multithreaded channel + record is dynamic exists
-	pub constant_imports: Vec<String>,
-	pub keyword_positions: Option<KeywordPositions>,
-	pub partial_points: Vec<source_map::Start>,
-}
-
-// impl ParsingState {
-// 	pub(crate) fn expect_keyword(
-// 		&mut self,
-// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-// 		kw: TSXKeyword,
-// 	) -> crate::ParseResult<TokenStart> {
-// 		let start = reader.expect(TSXToken::Keyword(kw))?;
-// 		self.append_keyword_at_pos(start.0, kw);
-// 		Ok(start)
-// 	}
-
-// 	pub(crate) fn optionally_expect_keyword(
-// 		&mut self,
-// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-// 		kw: TSXKeyword,
-// 	) -> Option<Span> {
-// 		if let Some(Token(t, start)) = reader.conditional_next(|t| *t == TSXToken::Keyword(kw)) {
-// 			self.append_keyword_at_pos(start.0, kw);
-// 			Some(start.with_length(t.length() as usize))
-// 		} else {
-// 			None
-// 		}
-// 	}
-
-// 	pub(crate) fn expect_keyword_get_full_span(
-// 		&mut self,
-// 		reader: &mut impl TokenReader<TSXToken, crate::TokenStart>,
-// 		kw: TSXKeyword,
-// 	) -> crate::ParseResult<Span> {
-// 		let start = reader.expect(TSXToken::Keyword(kw))?;
-// 		self.append_keyword_at_pos(start.0, kw);
-// 		Ok(start.with_length(kw.length() as usize))
-// 	}
-
-// 	fn append_keyword_at_pos(&mut self, start: u32, kw: TSXKeyword) {
-// 		if let Some(ref mut keyword_positions) = self.keyword_positions {
-// 			keyword_positions.0.push((start, kw));
-// 		}
-// 	}
-
-// 	fn new_partial_point_marker<T>(&mut self, at: source_map::Start) -> Marker<T> {
-// 		let id = self.partial_points.len();
-// 		self.partial_points.push(at);
-// 		Marker(u8::try_from(id).expect("more than 256 markers"), Default::default())
-// 	}
-// 2}
-
-/// As parsing is forwards, this is ordered
-type TSXKeyword = &'static str;
-
-#[derive(Debug)]
-pub struct KeywordPositions(Vec<(u32, TSXKeyword)>);
-
-impl KeywordPositions {
-	#[must_use]
-	#[allow(clippy::cast_possible_truncation)]
-	pub fn try_get_keyword_at_position(&self, pos: u32) -> Option<TSXKeyword> {
-		// binary search
-		let mut l: u32 = 0;
-		let mut r: u32 = self.0.len() as u32 - 1u32;
-		while l <= r {
-			let m = (l + r) >> 1;
-			let (kw_pos, kw) = self.0[m as usize];
-			if kw_pos <= pos && pos < (kw_pos + kw.len() as u32) {
-				return Some(kw);
-			} else if pos > kw_pos {
-				l = m + 1;
-			} else if pos < kw_pos {
-				r = m - 1;
-			}
-		}
-		None
-	}
-
-	fn new() -> Self {
-		Self(Default::default())
-	}
-}
-
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
 pub trait ExpressionOrStatementPosition: Clone + std::fmt::Debug + Sync + Send + 'static {
-	type FunctionBody: ASTNode;
+	type FunctionBody: functions::FunctionBodyTrait;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
+
 	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
 
 	fn as_option_variable_identifier(&self) -> Option<&VariableIdentifier>;
@@ -314,18 +230,21 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	type FunctionBody = Block;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		let is_not_name = reader.is_finished() || reader.is_one_of(&["(", "{", "[", "<"]).is_some();
-		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
-		Ok(Self(inner))
+		if is_not_name {
+			Ok(Self(None))
+		} else {
+			let identifier = VariableIdentifier::from_reader(reader)?;
+			Ok(Self(Some(identifier)))
+		}
 	}
 
 	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		reader.skip();
 		// TODO "implements" is TS syntax (reader options)
 		let is_not_name = reader.is_finished()
-			|| reader.is_one_of_keywords(&["extends", "implements"]).is_some()
-			|| reader.is_one_of(&["(", "{", "[", "<"]).is_some();
+			|| reader.is_keyword("extends")
+			|| reader.is_keyword("implements")
+			|| reader.get_current().starts_with(['(', '{', '[', '<']);
 		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
 		Ok(Self(inner))
 	}
@@ -349,6 +268,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 pub trait ListItem: Sized {
 	type LAST;
+
 	const LAST_PREFIX: Option<&'static str> = None;
 
 	#[allow(unused)]
@@ -365,6 +285,8 @@ pub trait ListItem: Sized {
 /// Parses items surrounded in `{`, `[`, `(`, etc.
 ///
 /// Supports trailing commas. But **does not create** *empty* like items afterwards
+///
+/// Expects that the start character has been read
 pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 	reader: &mut crate::Lexer,
 	end: &'static str,
@@ -374,8 +296,6 @@ pub(crate) fn bracketed_items_from_reader<T: ASTNode + ListItem>(
 		if (T::skip_trailing() || nodes.is_empty()) && reader.is_operator_advance(end) {
 			return Ok((nodes, None));
 		}
-
-		reader.skip();
 
 		if T::LAST_PREFIX.is_some_and(|l| reader.starts_with_slice(l)) {
 			let last = T::parse_last_item(reader)?;
@@ -485,10 +405,12 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 
 /// Re-exports or generator and general use
 pub mod ast {
+	// TODO improve
 	pub use crate::{
-		Block, Decorated, ExpressionPosition, PropertyKey, StatementOrDeclaration,
-		StatementPosition, VariableField, VariableIdentifier, WithComment,
+		Block, ExpressionPosition, PropertyKey, StatementOrDeclaration, StatementPosition,
+		VariableField, VariableIdentifier,
 		expressions::*,
+		extensions::decorators::Decorated,
 		extensions::jsx::*,
 		functions::{
 			FunctionBase, FunctionBody, FunctionHeader, FunctionParameters, MethodHeader,

@@ -1,34 +1,29 @@
-use std::iter;
-
-use parser::{
-	ASTNode, Decorated, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier,
-	statements_and_declarations::{
-		DeclareVariableDeclaration, ExportDeclaration, StatementOrDeclaration,
-		import::ImportedItems,
-		import_export::{ImportExportName, ImportExportPart, ImportOrExport},
-		variables::{VariableDeclaration, VariableDeclarationKeyword},
-	},
+use parser::extensions::decorators::Decorated;
+use parser::functions::FunctionHeaderTrait;
+use parser::statements_and_declarations::import_export::{
+	ImportExportName, ImportExportPart, ImportKind as ParserImportKind, ImportOrExport,
 };
-
-use crate::{
-	CheckingData, ReadFromFS, TypeId,
-	context::{Environment, VariableRegisterArguments, environment::DeclareInterfaceResult},
-	diagnostics::TypeCheckError,
-	features::{
-		functions::{
-			SynthesisableFunction, synthesise_declare_statement_function,
-			synthesise_hoisted_statement_function,
-		},
-		modules::{ImportKind, NamePair, import_items},
-		variables::VariableMutability,
-	},
-	synthesis::type_annotations::get_annotation_from_declaration,
+use parser::statements_and_declarations::variables::{
+	VariableDeclaration, VariableDeclarationKeyword,
 };
-
-use super::{
-	EznoParser, definitions::get_internal_function_effect_from_decorators,
-	variables::register_variable,
+use parser::statements_and_declarations::{
+	DeclareVariableDeclaration, ExportDeclaration, StatementOrDeclaration, import::ImportedItems,
 };
+use parser::{ASTNode, ExpressionOrStatementPosition, StatementPosition, VariableIdentifier};
+
+use crate::context::{Environment, VariableRegisterArguments, environment::DeclareInterfaceResult};
+use crate::synthesis::type_annotations::get_annotation_from_declaration;
+use crate::{CheckingData, ReadFromFS, TypeId, diagnostics::TypeCheckError};
+
+use crate::features::functions::{
+	SynthesisableFunction, synthesise_declare_statement_function,
+	synthesise_hoisted_statement_function,
+};
+use crate::features::modules::{ImportKind, NamePair, import_items};
+use crate::features::variables::VariableMutability;
+
+use super::definitions::get_internal_function_effect_from_decorators;
+use super::variables::register_variable;
 
 pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	items: &[StatementOrDeclaration],
@@ -39,7 +34,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 	for item in items {
 		if let parser::StatementOrDeclaration::Class(item) = item {
 			let class = &item.on.item;
-			let result = environment.declare_class::<EznoParser>(
+			let result = environment.declare_class::<super::EznoParser>(
 				class.name.as_option_str().unwrap_or_default(),
 				class.type_parameters.as_deref(),
 				// class.extends.as_deref(),
@@ -80,7 +75,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			}
 
 			// TODO WIP implementation
-			let result = environment.declare_alias::<EznoParser>(
+			let result = environment.declare_alias::<super::EznoParser>(
 				&r#enum.name,
 				None,
 				r#enum.get_position(),
@@ -108,7 +103,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			}
 		} else if let StatementOrDeclaration::Interface(item) = item {
 			let interface = &item.on.item;
-			let result = environment.declare_interface::<EznoParser>(
+			let result = environment.declare_interface::<super::EznoParser>(
 				interface.name.as_option_str().unwrap_or_default(),
 				interface.type_parameters.as_deref(),
 				interface.extends.as_deref(),
@@ -148,7 +143,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 			}
 		} else if let StatementOrDeclaration::TypeAlias(item) = item {
 			let alias = &item.on.item;
-			let result = environment.declare_alias::<EznoParser>(
+			let result = environment.declare_alias::<super::EznoParser>(
 				alias.name.as_option_str().unwrap_or_default(),
 				alias.parameters.as_deref(),
 				// &alias.references,
@@ -183,12 +178,9 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				),
 				StatementOrDeclaration::Import(import) => {
 					let items = match &import.items {
-						ImportedItems::Parts(parts) => {
-							crate::utilities::notify!("{:?}", parts);
-							crate::features::modules::ImportKind::Parts(
-								parts.iter().flatten().filter_map(part_to_name_pair),
-							)
-						}
+						ImportedItems::Parts(parts) => crate::features::modules::ImportKind::Parts(
+							parts.iter().flatten().filter_map(part_to_name_pair),
+						),
 						ImportedItems::All { under } => match under {
 							VariableIdentifier::Standard(under, position) => {
 								crate::features::modules::ImportKind::All {
@@ -218,25 +210,26 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						items,
 						checking_data,
 						false,
-						import.is_type_annotation_import_only,
+						matches!(import.kind, ParserImportKind::TypeOnly),
 					);
 				}
 				StatementOrDeclaration::Export(item) => {
 					let Decorated { on: exported, .. } = &**item;
 					match exported {
-						ExportDeclaration::ImportToExportAll { r#as, from, position } => {
+						ExportDeclaration::ImportToExportAll { r#as, from, with: _, position } => {
 							let kind = match r#as {
-								Some(VariableIdentifier::Standard(name, position)) => {
-									ImportKind::All { under: name, position: *position }
-								}
-								Some(VariableIdentifier::Marker(_, _)) => {
+								Some(
+									ImportExportName::Reference(name)
+									| ImportExportName::Quoted(name, _),
+								) => ImportKind::All { under: name, position: *position },
+								Some(ImportExportName::Marker(_)) => {
 									// TODO
 									continue;
 								}
 								None => ImportKind::Everything,
 							};
 
-							import_items::<iter::Empty<_>, _, _>(
+							import_items::<std::iter::Empty<_>, _, _>(
 								environment,
 								from.get_path().unwrap(),
 								*position,
@@ -253,8 +246,21 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							from,
 							type_definitions_only,
 							position,
+							with: _with,
 						} => {
-							let parts = parts.iter().filter_map(part_to_name_pair);
+							let parts = parts
+								.iter()
+								.filter_map(part_to_name_pair)
+								.map(|NamePair { value, r#as, position }| NamePair {
+									value: r#as,
+									r#as: value,
+									position,
+								})
+								.inspect(|part| {
+									dbg!(part);
+								});
+
+							let also_export = true;
 
 							import_items(
 								environment,
@@ -263,7 +269,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 								None,
 								crate::features::modules::ImportKind::Parts(parts),
 								checking_data,
-								true,
+								also_export,
 								*type_definitions_only,
 							);
 						}
@@ -460,7 +466,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					{
 						// TODO
 						if let Some(ref extends) = ast_parameter.extends {
-							let new_to = EznoParser::synthesise_type_annotation(
+							let new_to = super::EznoParser::synthesise_type_annotation(
 								extends,
 								&mut sub_environment,
 								checking_data,
@@ -472,13 +478,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// TODO cyclic checking
 					if let Some(ref extends) = interface.extends {
 						let mut iter = extends.iter();
-						let mut extends = EznoParser::synthesise_type_annotation(
+						let mut extends = super::EznoParser::synthesise_type_annotation(
 							iter.next().unwrap(),
 							&mut sub_environment,
 							checking_data,
 						);
 						for annotation in iter {
-							let new = EznoParser::synthesise_type_annotation(
+							let new = super::EznoParser::synthesise_type_annotation(
 								annotation,
 								&mut sub_environment,
 								checking_data,
@@ -508,13 +514,13 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 					// TODO cyclic checking
 					if let Some(ref extends) = interface.extends {
 						let mut iter = extends.iter();
-						let mut extends = EznoParser::synthesise_type_annotation(
+						let mut extends = super::EznoParser::synthesise_type_annotation(
 							iter.next().unwrap(),
 							environment,
 							checking_data,
 						);
 						for annotation in iter {
-							let new = EznoParser::synthesise_type_annotation(
+							let new = super::EznoParser::synthesise_type_annotation(
 								annotation,
 								environment,
 								checking_data,
@@ -581,7 +587,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 							checking_data,
 						);
 						register_variable(
-							declaration.name.get_ast_ref(),
+							&declaration.name,
 							environment,
 							checking_data,
 							VariableRegisterArguments {
@@ -637,7 +643,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						));
 
 						register_variable(
-							declaration.name.get_ast_ref(),
+							&declaration.name,
 							environment,
 							checking_data,
 							VariableRegisterArguments {
@@ -777,15 +783,19 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 pub(super) fn part_to_name_pair<T: ImportOrExport>(
 	item: &ImportExportPart<T>,
 ) -> Option<NamePair<'_>> {
-	if let VariableIdentifier::Standard(ref name, position) = item.name {
-		let value = match &item.alias {
-			Some(ImportExportName::Reference(item) | ImportExportName::Quoted(item, _)) => item,
+	if let ImportExportName::Reference(name) | ImportExportName::Quoted(name, _) = &item.name {
+		let name = name.as_str();
+		let value: &str = match &item.alias {
+			Some(ImportExportName::Reference(item) | ImportExportName::Quoted(item, _)) => {
+				item.as_str()
+			}
 			Some(ImportExportName::Marker(_)) => {
 				// TODO I think okay
 				return None;
 			}
 			None => name,
 		};
+		let position = item.position;
 		if T::PREFIX {
 			Some(NamePair { value, r#as: name, position })
 		} else {
@@ -809,7 +819,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 					get_annotation_from_declaration(declaration, environment, checking_data);
 
 				register_variable(
-					declaration.name.get_ast_ref(),
+					&declaration.name,
 					environment,
 					checking_data,
 					VariableRegisterArguments {
@@ -828,7 +838,7 @@ pub(super) fn hoist_variable_declaration<T: ReadFromFS>(
 					get_annotation_from_declaration(declaration, environment, checking_data);
 
 				register_variable(
-					declaration.name.get_ast_ref(),
+					&declaration.name,
 					environment,
 					checking_data,
 					VariableRegisterArguments {

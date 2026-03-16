@@ -1,27 +1,77 @@
 use std::borrow::Cow;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StringError {
-	InvalidStart,
-	InvalidDelimeter,
-	// TODO
-	InvalidCharacter,
+/// What surrounds string content
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[apply(crate::derive_ASTNode!)]
+#[derive(Default)]
+pub enum Quoting {
+	Single,
+	#[default]
+	Double,
 }
 
-pub fn parse_string(current: &str) -> Result<(Cow<'_, str>, Quoted, u32), StringError> {
-	let (delimeter, quoted) = if current.starts_with('"') {
-		('"', Quoted::Double)
+impl Quoting {
+	#[must_use]
+	pub fn as_char(self) -> char {
+		match self {
+			Quoting::Single => '\'',
+			Quoting::Double => '"',
+		}
+	}
+
+	#[must_use]
+	pub fn from_char(chr: char) -> Result<Self, char> {
+		match chr {
+			'\'' => Ok(Quoting::Single),
+			'"' => Ok(Quoting::Double),
+			chr => Err(chr),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StringError {
+	EmptyBuffer,
+	/// Bad first character
+	InvalidStart(char),
+	/// The buffer contains no end
+	NoDelimeter,
+}
+
+#[derive(PartialEq, Debug)]
+pub struct ParseStringOutput<'a> {
+	/// may have been transformed
+	pub value: Cow<'a, str>,
+	pub quoting: Quoting,
+	/// used to advance read head
+	pub source_length: u32,
+	/// relative offsets of unknown escapes
+	pub unknown_escapes: Vec<u32>,
+	/// error in strict mode
+	pub uses_octal: bool,
+}
+
+/// expects current to start with string delimeter
+pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError> {
+	let (delimeter, quoting) = if current.starts_with('"') {
+		('"', Quoting::Double)
 	} else if current.starts_with('\'') {
-		('\'', Quoted::Single)
+		('\'', Quoting::Single)
+	} else if let Some(first) = current.chars().next() {
+		return Err(StringError::InvalidStart(first));
 	} else {
-		return Err(StringError::InvalidStart);
+		return Err(StringError::EmptyBuffer);
 	};
 
-	let chars: [char; _] = [delimeter, '\\', '\u{000A}', '\u{000D}', '\u{2028}', '\u{2029}'];
+	// All code points may appear literally in a string literal except for the closing quote code points, U+005C (REVERSE SOLIDUS), U+000D (CARRIAGE RETURN), and U+000A (LINE FEED)
+	let chars: [char; _] = [delimeter, '\\', '\u{000A}', '\u{000D}'];
 
 	let mut buf = Cow::Borrowed("");
 	let current = &current[1..];
 	let delimeters = current.match_indices(chars);
+
+	let mut unknown_escapes = Vec::new();
+	let mut uses_octal = false;
 
 	let mut last = 0;
 	for (idx, matched) in delimeters {
@@ -30,75 +80,61 @@ pub fn parse_string(current: &str) -> Result<(Cow<'_, str>, Quoted, u32), String
 		}
 		buf += &current[last..idx];
 
+		// this is okay because delimeter is dynamic...
 		if let "\"" | "'" = matched {
-			return Ok((buf, quoted, idx as u32 + 2));
+			let output = ParseStringOutput {
+				value: buf,
+				quoting,
+				source_length: idx as u32 + 2,
+				unknown_escapes,
+				uses_octal,
+			};
+			return Ok(output);
 		} else if matched == "\\" {
 			let immediate = &current[idx + 1..];
 			let chr = immediate.chars().next();
 			if let Some(chr) = chr {
 				let after = &immediate[chr.len_utf8()..];
+				if matches!(chr, '1'..='9')
+					|| (chr == '0' && after.starts_with(|c: char| c.is_ascii_digit()))
+				{
+					uses_octal = true;
+				}
 				let result = escape_character(chr, after, buf.to_mut());
-				match result {
-					Ok(offset) => {
-						// Skip others
-						last = idx + 1 + offset;
-					}
-					Err(()) => {
-						return Err(StringError::InvalidCharacter);
-					}
+				if let Ok(offset) = result {
+					// Skip others
+					last = idx + 1 + offset;
+				} else {
+					unknown_escapes.push(idx as u32);
+					last = idx + 1;
 				}
 			} else {
-				eprintln!("Expected end");
-				return Err(StringError::InvalidCharacter);
+				return Err(StringError::NoDelimeter);
 			}
 		} else {
-			eprintln!("Expected matched but got {matched:?}");
-			return Err(StringError::InvalidCharacter);
+			return Err(StringError::NoDelimeter);
 		}
 	}
 
-	Err(StringError::InvalidCharacter)
+	Err(StringError::NoDelimeter)
 }
 
-// What surrounds a string
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[apply(crate::derive_ASTNode!)]
-pub enum Quoted {
-	Single,
-	Double,
+#[derive(Debug)]
+pub enum EscapeError {
+	UnknownEscape(char),
+	// Either not length, or bad character
+	InvalidHexadecimalSequence,
+	// Missing } etc
+	InvalidUnicodeSequence,
+	HexadecimalNotValidCharacter { code: u32 },
 }
 
-impl Quoted {
-	#[must_use]
-	pub fn as_char(self) -> char {
-		match self {
-			Quoted::Single => '\'',
-			Quoted::Double => '"',
-		}
-	}
-}
-
-/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences>
-/// `Ok(true) = skip_next`
-pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usize, ()> {
-	fn parse_hex(on: &str) -> Result<u32, ()> {
-		let mut value = 0u32;
-		for byte in on.bytes() {
-			value <<= 4; // log2(16) = 4
-			let code = match byte {
-				b'0'..=b'9' => u32::from(byte - b'0'),
-				b'a'..=b'f' => u32::from(byte - b'a') + 10,
-				b'A'..=b'F' => u32::from(byte - b'A') + 10,
-				byte => {
-					eprintln!("bad char {byte:?}!");
-					return Err(());
-				}
-			};
-			value |= code;
-		}
-		Ok(value)
-	}
-
+/// Appends an [escape sequence](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences) to `buf` based on the character `chr` after the backslash and any characters in `after`
+///
+/// # Errors
+///
+/// See [`EscapeError`]
+pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usize, EscapeError> {
 	match chr {
 		'\'' | '\"' | '`' | '\\' => {
 			buf.push(chr);
@@ -114,10 +150,6 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 		}
 		'r' => {
 			buf.push('\r');
-			Ok(1)
-		}
-		'0' => {
-			buf.push('\0');
 			Ok(1)
 		}
 		'v' => {
@@ -145,116 +177,161 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 		// Hexadecimal escape sequences
 		'x' => {
 			if let Some(hex_code) = after.get(..2) {
-				let code = parse_hex(hex_code)?;
+				let Ok(code) = u32::from_str_radix(hex_code, 16) else {
+					return Err(EscapeError::InvalidHexadecimalSequence);
+				};
 				if let Some(chr) = char::from_u32(code) {
 					buf.push(chr);
 					Ok(hex_code.len() + 1)
 				} else {
-					Err(())
+					Err(EscapeError::HexadecimalNotValidCharacter { code })
 				}
 			} else {
-				Err(())
+				Err(EscapeError::InvalidHexadecimalSequence)
+			}
+		}
+		// Octal escape sequences
+		'0'..='9' => {
+			let (code, _) = after.split_once(|c: char| !c.is_ascii_digit()).unwrap_or((after, ""));
+			// Not octal
+			if code == "0" {
+				buf.push('\0');
+				Ok(1)
+			} else {
+				let octal_code = code;
+				let Ok(code) = u32::from_str_radix(octal_code, 8) else {
+					return Err(EscapeError::InvalidHexadecimalSequence);
+				};
+				if let Some(chr) = char::from_u32(code) {
+					buf.push(chr);
+					Ok(octal_code.len() + 1)
+				} else {
+					// TODO octal
+					Err(EscapeError::HexadecimalNotValidCharacter { code })
+				}
 			}
 		}
 		// Unicode escape sequences
 		'u' => {
-			if let Some(after) = after.strip_prefix('{') {
-				if let Some((inner, _)) = after.split_once('}') {
-					// TODO I think this can be multiple characters
-					let code = parse_hex(inner)?;
-					if let Some(chr) = char::from_u32(code) {
-						buf.push(chr);
-						Ok(3 + inner.len())
-					} else {
-						eprintln!("bad code {inner:?}");
-						Err(())
-					}
-				} else {
-					Err(())
-				}
-			} else if let Some(inner) = after.get(0..4) {
-				// TODO no early return here
-				let higher = parse_hex(inner)?;
-				// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
-				let surrogate = after.get(4..10).and_then(|after| after.strip_prefix("\\u"));
-				let (code, count) = if let Some(inner) = surrogate {
-					// TODO no early return here
-					let lower = parse_hex(inner)?;
-					if lower < 0xDC00 || higher < 0xD800 {
-						return Err(());
-					}
-					// 10000_16 + (H − D800_16) × 400_16 + (L − DC00_16)
-					let code = 0x10000 + 0x400 * (higher - 0xD800) + (lower - 0xDC00);
-					(code, 11)
-				} else {
-					(higher, 5)
-				};
-				if let Some(chr) = char::from_u32(code) {
-					buf.push(chr);
-					Ok(count)
-				} else {
-					buf.push('\u{FFFD}');
-					eprintln!("TODO warning here {inner:?}");
-					Ok(count)
-				}
+			let (chr, width) = parse_unicode_escape_sequence(after)?;
+			buf.push(chr);
+			Ok(1 + width)
+		}
+		chr => Err(EscapeError::UnknownEscape(chr)),
+	}
+}
+
+/// For string and (some reason) identifiers.
+/// Parses from after `u` character
+pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), EscapeError> {
+	if let Some(on) = on.strip_prefix('{') {
+		if let Some((inner, _)) = on.split_once('}') {
+			// TODO I think this can be multiple characters
+			let Ok(code) = u32::from_str_radix(inner, 16) else {
+				return Err(EscapeError::InvalidHexadecimalSequence);
+			};
+			if let Some(chr) = char::from_u32(code) {
+				Ok((chr, 2 + inner.len()))
 			} else {
-				Err(())
+				Err(EscapeError::HexadecimalNotValidCharacter { code })
 			}
+		} else {
+			Err(EscapeError::InvalidUnicodeSequence)
 		}
-		chr => {
-			eprintln!("unexpected escape {chr:?}");
-			Ok(0)
+	} else if let Some(lead) = on.get(0..4) {
+		// TODO no early return here
+		let Ok(lead) = u32::from_str_radix(lead, 16) else {
+			return Err(EscapeError::InvalidHexadecimalSequence);
+		};
+		// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
+		let surrogate = on.get(4..10).and_then(|on| on.strip_prefix("\\u"));
+		let (code, count) = if let Some(trail) = surrogate
+			&& !trail.starts_with('{')
+		{
+			// TODO no early return here
+			let Ok(trail) = u32::from_str_radix(trail, 16) else {
+				return Err(EscapeError::InvalidHexadecimalSequence);
+			};
+			if (0xD800..=0xDBFF).contains(&lead) && (0xDC00..=0xDFFF).contains(&trail) {
+				// https://tc39.es/ecma262/#sec-utf16decodesurrogatepair
+				// "Let cp be (lead - 0xD800) × 0x400 + (trail - 0xDC00) + 0x10000"
+				let code = (lead - 0xD800) * 0x400 + (trail - 0xDC00) + 0x10000;
+				(code, 10)
+			} else {
+				// FUTURE not sure? "a" => single?
+				// "A code unit that is not a leading surrogate and not a trailing surrogate is interpreted as a
+				// code point with the same value"
+				// and
+				// "A code unit that is a leading surrogate or trailing surrogate, but is not part of a surrogate
+				// pair, is interpreted as a code point with the same value."
+				(lead, 4)
+			}
+		} else {
+			(lead, 4)
+		};
+		if let Some(chr) = char::from_u32(code) {
+			Ok((chr, count))
+		} else {
+			Err(EscapeError::HexadecimalNotValidCharacter { code })
 		}
+	} else {
+		Err(EscapeError::InvalidUnicodeSequence)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{Quoted, parse_string};
-	use std::borrow::Cow::Borrowed as b;
+	use super::{
+		ParseStringOutput,
+		Quoting::{self, Double, Single},
+		parse_string,
+	};
+
+	fn pso<'a>(on: &'a str, quoting: Quoting, source_length: usize) -> ParseStringOutput<'a> {
+		ParseStringOutput {
+			value: std::borrow::Cow::Borrowed(on),
+			quoting,
+			source_length: source_length as u32,
+			unknown_escapes: Vec::default(),
+		}
+	}
 
 	#[test]
-	fn quoted() {
-		assert_eq!(parse_string("'Hello World'"), Ok((b("Hello World"), Quoted::Single, 13)));
-		assert_eq!(
-			parse_string("'Hello World'.length"),
-			Ok((b("Hello World"), Quoted::Single, 13))
-		);
+	fn quoting() {
+		assert_eq!(parse_string("'Hello World'"), Ok(pso("Hello World", Single, 13)));
+		assert_eq!(parse_string("'Hello World'.length"), Ok(pso("Hello World", Single, 13)));
 
-		assert_eq!(parse_string("\"Hello World\""), Ok((b("Hello World"), Quoted::Double, 13)));
-		assert_eq!(
-			parse_string("\"Hello World\".length"),
-			Ok((b("Hello World"), Quoted::Double, 13))
-		);
+		assert_eq!(parse_string("\"Hello World\""), Ok(pso("Hello World", Double, 13)));
+		assert_eq!(parse_string("\"Hello World\".length"), Ok(pso("Hello World", Double, 13)));
 	}
 
 	#[test]
 	fn escape_sequences() {
-		assert_eq!(parse_string("'\\r\\n\\t'"), Ok((b("\r\n\t"), Quoted::Single, 8)));
+		assert_eq!(parse_string("'\\r\\n\\t'"), Ok(pso("\r\n\t", Single, 8)));
 		assert_eq!(
 			parse_string("'\\0\\v\\b\\f'"),
-			Ok((b("\0\u{000B}\u{0008}\u{000C}"), Quoted::Single, 10))
+			Ok(pso("\0\u{000B}\u{0008}\u{000C}", Single, 10))
 		);
 	}
 
 	#[test]
 	fn hex_specifier() {
-		assert_eq!(parse_string("'\\x41'"), Ok((b("A"), Quoted::Single, 6)));
-		assert_eq!(parse_string("'\\x415'"), Ok((b("A5"), Quoted::Single, 7)));
+		assert_eq!(parse_string("'\\x41'"), Ok(pso("A", Single, 6)));
+		assert_eq!(parse_string("'\\x415'"), Ok(pso("A5", Single, 7)));
 	}
 
 	#[test]
 	fn unicode() {
-		assert_eq!(parse_string("'\\u{1f600}'"), Ok((b("😀"), Quoted::Single, 11)));
+		assert_eq!(parse_string("'\\u{1f600}'"), Ok(pso("😀", Single, 11)));
 
-		assert_eq!(parse_string("'\\u{2f804}'"), Ok((b("你"), Quoted::Single, 11)));
-		assert_eq!(parse_string("'\\uD87E\\uDC04'"), Ok((b("你"), Quoted::Single, 14)));
+		assert_eq!(parse_string("'\\u{2f804}'"), Ok(pso("你", Single, 11)));
+		assert_eq!(parse_string("'\\uD87E\\uDC04'"), Ok(pso("你", Single, 14)));
 
 		// TODO more
 	}
 
 	#[test]
 	fn whitespace() {
-		assert_eq!(parse_string("'a\\\nb'"), Ok((b("ab"), Quoted::Single, 6)));
+		assert_eq!(parse_string("'a\\\nb'"), Ok(pso("ab", Single, 6)));
 	}
 }

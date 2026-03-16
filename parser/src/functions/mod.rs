@@ -27,12 +27,37 @@ pub mod bases {
 	};
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub enum FunctionKind {
+	#[default]
+	Default,
+	/// for `super` checking
+	Constructor,
+	/// for `super.` checking
+	Method,
+}
+
 pub type HeadingAndPosition<T> = <T as FunctionBased>::Header;
+
+pub trait FunctionHeaderTrait: Debug + Clone + Send + Sync {
+	fn is_async(&self) -> bool;
+
+	fn is_generator(&self) -> bool;
+
+	// fn get_position(&self) -> Span;
+}
+
+pub trait FunctionBodyTrait: ASTNode + Send + Sync {
+	fn from_reader_as_function_body(
+		reader: &mut crate::Lexer,
+		directive_allowed: bool,
+	) -> ParseResult<Self>;
+}
 
 /// Specialization information for [`FunctionBase`]
 pub trait FunctionBased: Debug + Clone + Send + Sync {
 	/// Includes a keyword and/or modifiers
-	type Header: Debug + Clone + Send + Sync;
+	type Header: FunctionHeaderTrait;
 
 	/// A name of the function
 	type Name: Debug + Clone + Send + Sync;
@@ -54,10 +79,12 @@ pub trait FunctionBased: Debug + Clone + Send + Sync {
 	type ParameterVisibility: ParameterVisibility + serde::Serialize;
 
 	/// The body of the function
-	type Body: ASTNode;
+	type Body: FunctionBodyTrait;
 
 	/// For debugging only
 	fn get_name(name: &Self::Name) -> Option<&str>;
+
+	fn kind() -> FunctionKind;
 
 	fn header_and_name_from_reader(
 		reader: &mut crate::Lexer,
@@ -131,6 +158,34 @@ pub trait FunctionBased: Debug + Clone + Send + Sync {
 	);
 }
 
+pub(crate) fn parse_function_body<T: FunctionBased>(
+	reader: &mut crate::Lexer,
+	header: &T::Header,
+	kind: FunctionKind,
+	parameters_has_default_or_spread: bool,
+) -> ParseResult<T::Body> {
+	let label_boundary =
+		std::mem::replace(&mut reader.state.label_boundary, reader.state.labels.len());
+	let was_async = std::mem::replace(&mut reader.state.flags.in_async, header.is_async());
+	let was_generator =
+		std::mem::replace(&mut reader.state.flags.in_generator, header.is_generator());
+	// WIP
+	let kind = if let Some(FunctionKind::Constructor) = reader.state.flags.function {
+		FunctionKind::Constructor
+	} else {
+		kind
+	};
+	let was_function = std::mem::replace(&mut reader.state.flags.function, Some(kind));
+	let body = T::Body::from_reader_as_function_body(reader, parameters_has_default_or_spread)?;
+	reader.state.label_boundary = label_boundary;
+	reader.state.flags.in_async = was_async;
+	reader.state.flags.in_generator = was_generator;
+	reader.state.flags.function = was_function;
+	Ok(body)
+}
+
+pub type FunctionTypeParameters = Vec<TypeParameter>;
+
 /// Base for all function based structures with bodies (no interface, type reference etc)
 #[derive(Debug, Clone, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -139,7 +194,7 @@ pub trait FunctionBased: Debug + Clone + Send + Sync {
 pub struct FunctionBase<T: FunctionBased> {
 	pub header: T::Header,
 	pub name: T::Name,
-	pub type_parameters: Option<Vec<TypeParameter>>,
+	pub type_parameters: Option<FunctionTypeParameters>,
 	pub parameters: FunctionParameters<T::LeadingParameter, T::ParameterVisibility>,
 	pub return_type: Option<TypeAnnotation>,
 	pub body: T::Body,
@@ -208,14 +263,17 @@ impl<T: FunctionBased> FunctionBase<T> {
 		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
-		// TODO header.get_start else here
 		let start = reader.get_start();
+		// let start = header.get_start();
 		let type_parameters = if reader.is_operator_advance("<") {
 			Some(bracketed_items_from_reader(reader, ">").map(|(params, _)| params)?)
 		} else {
 			None
 		};
+		// TODO insert into below?
+
 		let parameters = T::parameters_from_reader(reader)?;
+
 		let return_type = if reader.is_operator_advance(":") {
 			let precedence = if let Some("=>") = T::get_parameter_body_boundary_slice() {
 				crate::types::type_annotations::TypeOperatorKind::ReturnType
@@ -227,10 +285,16 @@ impl<T: FunctionBased> FunctionBase<T> {
 			None
 		};
 		// TODO options.type_annotations
+
 		if let Some(slice) = T::get_parameter_body_boundary_slice() {
 			reader.expect_operator(slice)?;
 		}
-		let body = T::Body::from_reader(reader)?;
+		let body = parse_function_body::<T>(
+			reader,
+			&header,
+			T::kind(),
+			!parameters.has_default_or_spread(),
+		)?;
 		let body_pos = body.get_position();
 		// TODO body.is_null
 		let end_pos = if body_pos.is_null() {
@@ -289,6 +353,7 @@ where
 pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>);
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
+
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
 #[allow(dead_code)]
 const TYPES_EXPRESSION_FUNCTION: &str = r"
@@ -308,6 +373,10 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	type ParameterVisibility = ();
 	type Body = T::FunctionBody;
 
+	fn kind() -> FunctionKind {
+		FunctionKind::default()
+	}
+
 	fn has_body(body: &Self::Body) -> bool {
 		T::has_function_body(body)
 	}
@@ -320,7 +389,7 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 		reader: &mut crate::Lexer,
 	) -> ParseResult<(HeadingAndPosition<Self>, Self::Name)> {
 		let header = FunctionHeader::from_reader(reader)?;
-		reader.skip_including_comments();
+
 		let name = T::from_reader(reader)?;
 		Ok((header, name))
 	}
@@ -383,7 +452,7 @@ pub enum FunctionLocationModifier {
 #[derive(Debug, Clone)]
 #[apply(derive_ASTNode)]
 pub enum FunctionHeader {
-	VirginFunctionHeader {
+	BasicFunctionHeader {
 		is_async: bool,
 		#[cfg(feature = "extras")]
 		location: Option<FunctionLocationModifier>,
@@ -403,55 +472,15 @@ pub enum FunctionHeader {
 impl ASTNode for FunctionHeader {
 	fn get_position(&self) -> Span {
 		match self {
-			FunctionHeader::VirginFunctionHeader { position, .. } => *position,
+			FunctionHeader::BasicFunctionHeader { position, .. } => *position,
 			#[cfg(feature = "extras")]
 			FunctionHeader::ChadFunctionHeader { position, .. } => *position,
 		}
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		#[cfg(feature = "extras")]
-		fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier> {
-			if reader.is_keyword_advance("server") {
-				Some(FunctionLocationModifier::Server)
-			} else if reader.is_keyword_advance("worker") {
-				Some(FunctionLocationModifier::Worker)
-			} else if reader.is_keyword_advance("test") {
-				Some(FunctionLocationModifier::Test)
-			} else {
-				None
-			}
-		}
-
-		let start = reader.get_start();
-		let is_async = reader.is_keyword_advance("async");
-
-		#[cfg(feature = "extras")]
-		if reader.get_options().custom_function_headers && reader.is_keyword_advance("generator") {
-			let location = parse_location(reader);
-			let _ = reader.expect_keyword("function")?;
-			return Ok(Self::ChadFunctionHeader {
-				is_async,
-				location,
-				position: start.union(reader.get_end()),
-			});
-		}
-
-		#[cfg(feature = "extras")]
-		let location = if reader.get_options().custom_function_headers {
-			parse_location(reader)
-		} else {
-			None
-		};
-		let _ = reader.expect_keyword("function")?;
-		let is_generator = reader.is_operator_advance("*");
-		Ok(Self::VirginFunctionHeader {
-			is_async,
-			is_generator,
-			position: start.union(reader.get_end()),
-			#[cfg(feature = "extras")]
-			location,
-		})
+		let initial = Self::from_reader_initial(reader)?;
+		initial.to_full(reader)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -472,37 +501,9 @@ impl ASTNode for FunctionHeader {
 	}
 }
 
-impl FunctionHeader {
-	#[must_use]
-	pub fn is_generator(&self) -> bool {
-		match self {
-			FunctionHeader::VirginFunctionHeader { is_generator, .. } => *is_generator,
-			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { .. } => true,
-		}
-	}
-
-	#[must_use]
-	pub fn is_async(&self) -> bool {
-		match self {
-			FunctionHeader::VirginFunctionHeader { is_async, .. } => *is_async,
-			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { is_async, .. } => *is_async,
-		}
-	}
-
-	#[cfg(feature = "extras")]
-	#[must_use]
-	pub fn get_location(&self) -> Option<&FunctionLocationModifier> {
-		match self {
-			FunctionHeader::VirginFunctionHeader { location, .. }
-			| FunctionHeader::ChadFunctionHeader { location, .. } => location.as_ref(),
-		}
-	}
-
-	#[must_use]
-	pub fn empty() -> Self {
-		Self::VirginFunctionHeader {
+impl Default for FunctionHeader {
+	fn default() -> Self {
+		Self::BasicFunctionHeader {
 			is_async: false,
 			#[cfg(feature = "extras")]
 			location: None,
@@ -510,6 +511,163 @@ impl FunctionHeader {
 			position: source_map::Nullable::NULL,
 		}
 	}
+}
+
+fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier> {
+	if reader.is_keyword_advance("server") {
+		Some(FunctionLocationModifier::Server)
+	} else if reader.is_keyword_advance("worker") {
+		Some(FunctionLocationModifier::Worker)
+	} else if reader.is_keyword_advance("test") {
+		Some(FunctionLocationModifier::Test)
+	} else {
+		None
+	}
+}
+
+impl FunctionHeader {
+	pub(crate) fn from_reader_initial(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		let start = reader.get_start();
+
+		#[cfg(feature = "extras")]
+		let is_async = reader.is_keyword_advance("async");
+
+		#[cfg(feature = "extras")]
+		if reader.get_options().extras.custom_function_headers
+			&& reader.is_keyword_advance("generator")
+		{
+			return Ok(Self::ChadFunctionHeader {
+				is_async,
+				location: None,
+				position: start.union(reader.get_end()),
+			});
+		}
+
+		#[cfg(feature = "extras")]
+		let location = if reader.get_options().extras.custom_function_headers {
+			parse_location(reader)
+		} else {
+			None
+		};
+
+		Ok(Self::BasicFunctionHeader {
+			is_async,
+			is_generator: false,
+			position: start.union(reader.get_end()),
+			#[cfg(feature = "extras")]
+			location,
+		})
+	}
+
+	pub(crate) fn to_full(mut self, reader: &mut crate::Lexer) -> ParseResult<Self> {
+		// #[cfg(feature = "extras")]
+		// if reader.get_options().extras.custom_function_headers && self.get_location().is_none() {
+		// 	let location = parse_location(reader);
+		// 	let _ = reader.expect_keyword("function")?;
+		// 	self.position = self.get_position().union(reader.get_end());
+		// 	return Ok(self);
+		// }
+
+		let _ = reader.expect_keyword("function")?;
+
+		let set_generator = reader.is_operator_advance("*");
+		// TODO update position
+		match self {
+			FunctionHeader::BasicFunctionHeader { ref mut is_generator, .. } => {
+				*is_generator = set_generator;
+			}
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { .. } => {}
+		}
+		Ok(self)
+	}
+
+	#[must_use]
+	pub fn is_async_only(&self) -> bool {
+		match self {
+			FunctionHeader::BasicFunctionHeader {
+				is_async: true,
+				location: None,
+				is_generator: false,
+				position: _,
+			} => true,
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { is_async: true, location: None, position: _ } => true,
+			_ => false,
+		}
+	}
+
+	#[cfg(feature = "extras")]
+	#[must_use]
+	pub fn get_location(&self) -> Option<&FunctionLocationModifier> {
+		match self {
+			FunctionHeader::BasicFunctionHeader { location, .. }
+			| FunctionHeader::ChadFunctionHeader { location, .. } => location.as_ref(),
+		}
+	}
+
+	/// For fallback cases
+	pub fn into_expression(&mut self) -> Result<&'static str, ()> {
+		match std::mem::take(self) {
+			Self::BasicFunctionHeader {
+				is_async: true,
+				#[cfg(feature = "extras")]
+					location: None,
+				is_generator: false,
+				..
+			} => Ok("async"),
+			#[cfg(feature = "extras")]
+			Self::BasicFunctionHeader {
+				is_async: false,
+				location: Some(FunctionLocationModifier::Server),
+				is_generator: false,
+				..
+			} => Ok("server"),
+			#[cfg(feature = "extras")]
+			Self::BasicFunctionHeader {
+				is_async: false,
+				location: Some(FunctionLocationModifier::Worker),
+				is_generator: false,
+				..
+			} => Ok("worker"),
+			#[cfg(feature = "extras")]
+			Self::BasicFunctionHeader {
+				is_async: false,
+				location: Some(FunctionLocationModifier::Test),
+				is_generator: false,
+				..
+			} => Ok("test"),
+			#[cfg(feature = "extras")]
+			Self::ChadFunctionHeader { is_async: false, location: None, .. } => Ok("generator"),
+			_ => Err(()),
+		}
+	}
+}
+
+impl FunctionHeaderTrait for FunctionHeader {
+	fn is_generator(&self) -> bool {
+		match self {
+			FunctionHeader::BasicFunctionHeader { is_generator, .. } => *is_generator,
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { .. } => true,
+		}
+	}
+
+	fn is_async(&self) -> bool {
+		match self {
+			FunctionHeader::BasicFunctionHeader { is_async, .. } => *is_async,
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { is_async, .. } => *is_async,
+		}
+	}
+
+	// fn get_position(&self) -> Span {
+	// 	match self {
+	// 		FunctionHeader::BasicFunctionHeader { position, .. } => *position,
+	// 		#[cfg(feature = "extras")]
+	// 		FunctionHeader::ChadFunctionHeader { position, .. } => *position,
+	// 	}
+	// }
 }
 
 /// This structure removes possible invalid combinations with async
@@ -544,38 +702,53 @@ impl MethodHeader {
 		}
 	}
 
-	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
-		if reader.after_identifier().starts_with(['<', '(', '}', ',', ':']) {
-			MethodHeader::default()
-		} else if let Some(kind) = reader.is_one_of_keywords_advance(&["get", "set"]) {
-			match kind {
-				"get" => MethodHeader::Get,
-				"set" => MethodHeader::Set,
-				slice => unreachable!("{slice:?}"),
-			}
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
+		// , '*'
+		// if reader.after_identifier().starts_with(['<', '(', '}', ',', ':', '?']) {
+		// 	MethodHeader::default()
+		// } else
+
+		if reader.is_keyword_advance("get") {
+			Ok(MethodHeader::Get)
+		} else if reader.is_keyword_advance("set") {
+			Ok(MethodHeader::Set)
 		} else {
-			reader.skip_including_comments();
 			let is_async = reader.is_keyword_advance("async");
-			reader.skip_including_comments();
+
 			let generator = GeneratorSpecifier::from_reader(reader);
-			reader.skip_including_comments();
-			MethodHeader::Regular { is_async, generator }
+
+			Ok(MethodHeader::Regular { is_async, generator })
 		}
-	}
-
-	#[must_use]
-	pub fn is_async(&self) -> bool {
-		matches!(self, Self::Regular { is_async: true, .. })
-	}
-
-	#[must_use]
-	pub fn is_generator(&self) -> bool {
-		matches!(self, Self::Regular { generator: Some(_), .. })
 	}
 
 	#[must_use]
 	pub fn is_no_modifiers(&self) -> bool {
 		matches!(self, Self::Regular { is_async: false, generator: None })
+	}
+
+	/// For fallback cases
+	pub fn into_property_key(&mut self) -> Result<&'static str, ()> {
+		match std::mem::take(self) {
+			MethodHeader::Get => Ok("get"),
+			MethodHeader::Set => Ok("set"),
+			MethodHeader::Regular { is_async: true, generator: None } => Ok("async"),
+			#[cfg(feature = "extras")]
+			MethodHeader::Regular {
+				is_async: false,
+				generator: Some(GeneratorSpecifier::Keyword),
+			} => Ok("generator"),
+			MethodHeader::Regular { .. } => Err(()),
+		}
+	}
+}
+
+impl FunctionHeaderTrait for MethodHeader {
+	fn is_async(&self) -> bool {
+		matches!(self, Self::Regular { is_async: true, .. })
+	}
+
+	fn is_generator(&self) -> bool {
+		matches!(self, Self::Regular { generator: Some(_), .. })
 	}
 }
 
@@ -607,6 +780,24 @@ impl GeneratorSpecifier {
 #[derive(Debug, Clone, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
+#[cfg(feature = "full-typescript")]
+impl FunctionBodyTrait for FunctionBody {
+	fn from_reader_as_function_body(
+		reader: &mut crate::Lexer,
+		directive_allowed: bool,
+	) -> crate::ParseResult<Self> {
+		// If type annotations. Allow elided bodies for function overloading
+		let body = if reader.is_operator("{")
+			|| !reader.get_options().type_annotations.type_annotations()
+		{
+			Some(Block::from_reader_as_function_body(reader, directive_allowed)?)
+		} else {
+			None
+		};
+		Ok(Self(body))
+	}
+}
+
 #[cfg(not(feature = "full-typescript"))]
 pub type FunctionBody = Block;
 
@@ -617,14 +808,7 @@ impl ASTNode for FunctionBody {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		// If type annotations. Allow elided bodies for function overloading
-		reader.skip_including_comments();
-		let body = if reader.is_operator("{") || !reader.get_options().type_annotations {
-			Some(Block::from_reader(reader)?)
-		} else {
-			None
-		};
-		Ok(Self(body))
+		Self::from_reader_as_function_body(reader, true)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

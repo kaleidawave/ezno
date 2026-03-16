@@ -1,7 +1,6 @@
-use crate::{
-	ASTNode, ParseResult, Span, block::BlockOrSingleStatement, derive_ASTNode,
-	expressions::MultipleExpression,
-};
+use crate::block::BlockOrSingleStatement;
+use crate::expressions::MultipleExpression;
+use crate::{ASTNode, ParseResult, Span, derive_ASTNode};
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 use visitable_derive::Visitable;
@@ -43,29 +42,23 @@ impl ASTNode for IfStatement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("if")?;
 
-		reader.expect('(')?;
+		reader.expect_chr('(')?;
 		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
-		reader.expect(')')?;
+		reader.expect_chr(')')?;
 
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
 
 		let (mut else_conditions, mut trailing_else) =
 			(Vec::<ConditionalElseStatement>::new(), None::<UnconditionalElseStatement>);
 
-		while reader.is_keyword("else") || reader.is_one_of(&["//", "/*"]).is_some() {
-			if reader.is_one_of(&["//", "/*"]).is_some() {
-				let is_multiline = reader.starts_with_slice("/*");
-				reader.advance(2);
-				let _content = reader.parse_comment_literal(is_multiline)?;
-				continue;
-			}
-
-			// TODO doesn't use `ConditionalElseStatement` or `UnconditionalElseStatement`, `ASTNode::from_reader` implementations
+		while reader.is_keyword("else") {
+			// TODO doesn't use `ConditionalElseStatement` or `UnconditionalElseStatement`,
+			// `ASTNode::from_reader` implementations
 			reader.advance("else".len() as u32);
 			if reader.is_keyword_advance("if") {
-				let _value = reader.expect('(')?;
+				let _value = reader.expect_chr('(')?;
 				let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
-				reader.expect(')')?;
+				reader.expect_chr(')')?;
 				let inner = BlockOrSingleStatement::from_reader(reader)?;
 				let value = ConditionalElseStatement {
 					condition,
@@ -131,9 +124,9 @@ impl ASTNode for ConditionalElseStatement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("else")?;
 		reader.expect_keyword("if")?;
-		reader.expect('(')?;
+		reader.expect_chr('(')?;
 		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
-		reader.expect(')')?;
+		reader.expect_chr(')')?;
 		let statements = BlockOrSingleStatement::from_reader(reader)?;
 		Ok(Self { condition, position: start.union(statements.get_position()), inner: statements })
 	}
