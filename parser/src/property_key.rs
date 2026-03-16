@@ -10,7 +10,7 @@ use temporary_annex::Annex;
 use crate::numbers::{BigIntRepresentation, NumberRepresentation};
 use crate::{ASTNode, Expression, ParseResult};
 
-pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
+pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + PartialEq + Eq + 'static {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)>;
 
 	fn is_private(&self) -> bool;
@@ -19,7 +19,7 @@ pub trait PropertyKeyKind: Debug + Clone + Sized + Send + Sync + 'static {
 	fn new_public() -> Self;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[apply(derive_ASTNode)]
 pub struct AlwaysPublic;
 
@@ -101,7 +101,7 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 		}
 	}
 
-	pub fn as_str(&self) -> Option<&str> {
+	pub fn as_option_str(&self) -> Option<&str> {
 		match self {
 			Self::Identifier(item, ..) | Self::StringLiteral(item, ..) => Some(item),
 			_ => None,
@@ -111,7 +111,7 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 
 impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
-		self.as_str().is_some_and(|key| key == other)
+		self.as_option_str().is_some_and(|key| key == other)
 	}
 }
 
@@ -120,6 +120,19 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 	pub fn new_identifier(name: String, position: Span) -> Self {
 		// TODO if name is off or starts with '#' then do something here
 		PropertyKey::Identifier(name, position, U::new_public())
+	}
+
+	#[must_use]
+	pub fn definitionally_equal(&self, other: &Self) -> bool {
+		match (self, other) {
+			(
+				Self::Identifier(name1, _pos1, private1),
+				Self::Identifier(name2, _pos2, private2),
+			) => name1 == name2 && private1 == private2,
+			(Self::StringLiteral(name1, ..), Self::StringLiteral(name2, ..)) => name1 == name2,
+			(Self::NumberLiteral(name1, ..), Self::NumberLiteral(name2, ..)) => name1 == name2,
+			_ => false,
+		}
 	}
 }
 

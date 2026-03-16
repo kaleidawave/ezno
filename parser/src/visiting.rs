@@ -238,6 +238,7 @@ mod ast {
 		crate::Quoting,
 		crate::statements_and_declarations::import_export::ImportExportName,
 		crate::statements_and_declarations::import_export::ImportLocation,
+		crate::statements_and_declarations::import_export::ImportKind,
 		crate::statements_and_declarations::variables::VariableKeyword,
 		crate::statements_and_declarations::control_flow::for_statement::VariableKeywordOrUsing,
 		crate::functions::FunctionHeader,
@@ -477,12 +478,22 @@ mod visitors {
 
 	/// A utility type which implements [`VisitorReceiver`]. Use for running a bunch of different **immutable**
 	/// visitors over a **immutable** AST. Used for simple analysis
-	#[derive(Default)]
 	pub struct Visitors<T> {
 		pub expression_visitors: Vec<ExpressionVisitor<T>>,
 		pub statement_visitors: Vec<StatementVisitor<T>>,
 		pub variable_visitors: Vec<VariableVisitor<T>>,
 		pub block_visitors: Vec<BlockVisitor<T>>,
+	}
+
+	impl<T> Default for Visitors<T> {
+		fn default() -> Self {
+			Self {
+				expression_visitors: Vec::new(),
+				statement_visitors: Vec::new(),
+				variable_visitors: Vec::new(),
+				block_visitors: Vec::new(),
+			}
+		}
 	}
 
 	// impl<T, U> Visitor<Expression, T> for U

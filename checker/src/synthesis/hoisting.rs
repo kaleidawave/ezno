@@ -1,6 +1,7 @@
 use parser::extensions::decorators::Decorated;
+use parser::functions::FunctionHeaderTrait;
 use parser::statements_and_declarations::import_export::{
-	ImportExportName, ImportExportPart, ImportOrExport,
+	ImportExportName, ImportExportPart, ImportKind as ParserImportKind, ImportOrExport,
 };
 use parser::statements_and_declarations::variables::{
 	VariableDeclaration, VariableDeclarationKeyword,
@@ -209,7 +210,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 						items,
 						checking_data,
 						false,
-						import.is_type_annotation_import_only,
+						matches!(import.kind, ParserImportKind::TypeOnly),
 					);
 				}
 				StatementOrDeclaration::Export(item) => {

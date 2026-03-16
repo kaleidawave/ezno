@@ -35,13 +35,18 @@ impl ASTNode for VariableIdentifier {
 			let span = start.with_length(0);
 			Ok(Self::Marker(reader.new_partial_point_marker(span), span))
 		} else {
-			let enforce = false;
+			let enforce = true;
 			let identifier = reader.parse_identifier("variable identifier", enforce)?;
 			let position = start.with_length(identifier.len());
 
-			// if !spread_name && !non_strict && identifier == "let" {
-			// 	return Err(ParseError::new(ParseErrors::ReservedIdentifier, start.with_length(3)));
-			// }
+			// `(...let)` allowed under non-strict
+			if reader.strict_mode() && identifier == "let" {
+				return Err(ParseError::new(ParseErrors::ReservedIdentifier, position));
+			}
+
+			if reader.strict_mode() && (identifier == "eval" || identifier == "arguments") {
+				return Err(ParseError::new(ParseErrors::ReservedIdentifier, position));
+			}
 
 			if reader.get_options().features.interpolation_points
 				&& identifier == crate::marker::MARKER
@@ -79,9 +84,9 @@ impl VariableIdentifier {
 	}
 }
 
-impl PartialEq<&str> for VariableIdentifier {
-	fn eq(&self, s: &&str) -> bool {
-		self.as_option_str().is_some_and(|name| name == *s)
+impl PartialEq<str> for VariableIdentifier {
+	fn eq(&self, s: &str) -> bool {
+		self.as_option_str().is_some_and(|name| name == s)
 	}
 }
 
@@ -121,6 +126,18 @@ impl ASTNode for VariableField {
 		let start = reader.get_start();
 		if reader.is_operator_advance("{") {
 			let (members, spread) = bracketed_items_from_reader(reader, "}")?;
+
+			if reader.get_options().features.run_validation {
+				// TODO faster
+				for (idx, member) in members.iter().enumerate() {
+					if members[..idx].iter().any(
+						|other: &ObjectDestructuringField<VariableField>| {
+							member.get_key_option_str() == other.get_key_option_str()
+						},
+					) {}
+				}
+			}
+
 			Ok(Self::ObjectDestructuring {
 				members,
 				spread,
@@ -136,24 +153,23 @@ impl ASTNode for VariableField {
 				position: start.union(reader.get_end()),
 			})
 		} else {
+			let identifier = VariableIdentifier::from_reader(reader)?;
+
 			#[cfg(feature = "extras")]
 			if reader.get_options().extras.destructuring_type_annotation
-				&& reader.after_identifier().starts_with('{')
+				&& reader.is_operator_advance("{")
+				&& let VariableIdentifier::Standard(class_name, ..) = identifier
 			{
-				let start = reader.get_start();
-				let class_name =
-					reader.parse_identifier("class name in destructuring label", true)?;
-				let _ = reader.expect_chr('{')?;
 				let (members, spread) = bracketed_items_from_reader(reader, "}")?;
 				return Ok(Self::ObjectDestructuring {
-					class_name: Some(class_name.into_owned()),
+					class_name: Some(class_name),
 					members,
 					spread,
 					position: start.union(reader.get_end()),
 				});
 			}
 
-			Ok(Self::Name(VariableIdentifier::from_reader(reader)?))
+			Ok(Self::Name(identifier))
 		}
 	}
 
@@ -357,6 +373,15 @@ pub enum ObjectDestructuringField<T: DestructuringFieldInto> {
 		default_value: Option<Box<Expression>>,
 		position: Span,
 	},
+}
+
+impl<T: DestructuringFieldInto> ObjectDestructuringField<T> {
+	pub fn get_key_option_str(&self) -> Option<&str> {
+		match self {
+			ObjectDestructuringField::Name(name, ..) => name.as_option_str(),
+			ObjectDestructuringField::Map { from, .. } => from.as_option_str(),
+		}
+	}
 }
 
 impl<T: DestructuringFieldInto> ListItem for ObjectDestructuringField<T> {
@@ -795,15 +820,23 @@ impl TryFrom<Expression> for VariableField {
 								})
 							};
 						}
-						crate::expressions::object_literal::ObjectLiteralMember::Shorthand(
-							name,
-							pos,
-						) => ObjectDestructuringField::Name(
-							crate::VariableIdentifier::Standard(name, pos),
-							None,
-							None,
-							pos,
-						),
+						crate::expressions::object_literal::ObjectLiteralMember::Shorthand(key) => {
+							if let PropertyKey::Identifier(name, pos, _) = key.0 {
+								ObjectDestructuringField::Name(
+									crate::VariableIdentifier::Standard(name, pos),
+									None,
+									None,
+									pos,
+								)
+							} else {
+								return Err(ParseError::new(
+									crate::ParseErrors::InvalidLHSAssignment,
+									position,
+								));
+							}
+							// let pos = key.0.get_position();
+							// ObjectDestructuringField::Name(key, None, None, pos)
+						}
 						crate::expressions::object_literal::ObjectLiteralMember::Property {
 							assignment,
 							key,
@@ -906,3 +939,5 @@ impl TryFrom<crate::expressions::LHSOfAssignment> for VariableField {
 		}
 	}
 }
+
+fn _check_object_destructuring() {}

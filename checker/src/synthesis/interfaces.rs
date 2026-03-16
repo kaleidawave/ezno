@@ -1,4 +1,5 @@
 use parser::extensions::decorators::Decorated;
+use parser::functions::FunctionHeaderTrait;
 use parser::{PropertyKey as ParserPropertyKey, types::interface::InterfaceMember};
 use source_map::SpanWithSource;
 

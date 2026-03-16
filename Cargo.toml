@@ -107,12 +107,15 @@ new_without_default = "allow"
 result_unit_err = "allow"
 implicit_hasher = "allow"
 
-[package.metadata.commands]
+[package.metadata.scripts]
 check-ws = "cargo check --workspace"
 
+defaults.file = "private/corpus/aaa.tsx" 
+
+parse = "cargo r -p ezno-parser --example parse --message-format short $file $args"
 parse-check = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.tsx --extras"
 parse-check-js = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.js"
-parse-ast = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.tsx --ast --extras"
+parse-ast = "cargo r -p ezno-parser --example parse --message-format short $file --ast $args"
 parse-ast-js = "cargo r -p ezno-parser --example parse --message-format short private/corpus/aaa.js --ast"
 
 parse-fails = "cargo r -p ezno-parser --example parse --message-format short private/corpus/fails.js"
@@ -127,6 +130,7 @@ parser-specification-dry-run = "spectra test parser/specification/*.test.md 'car
 parser-specification-ft = "spectra test parser/specification/*.test.md './target/debug/examples/parse --rpc --interactive'"
 
 test262 = "cargo r --manifest-path test262/Cargo.toml -- --store-results"
+test262-dev = "cargo r --manifest-path test262/Cargo.toml -- --only-fails"
 test262-statistics = "sqlite-tool statistics test262/out/results.db results percentage --grouping parser_out"
 
 # TODO templating here

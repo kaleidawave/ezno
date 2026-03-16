@@ -3,59 +3,57 @@ use std::borrow::Cow;
 use parser::{
 	ASTNode, Expression, ExpressionOrStatementPosition,
 	ast::{ImportExpression, TypeOrConst},
-	expressions::{
-		ArrayElement, ExpressionOrSpreadExpression, MultipleExpression, SpecialOperators,
-		SuperReference, TemplateLiteral,
-		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		operators::{
-			BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
-			UnaryPrefixAssignmentOperator,
-		},
-	},
-	functions::MethodHeader,
+	functions::{FunctionHeaderTrait, MethodHeader},
 };
 use source_map::SpanWithSource;
+
+use parser::expressions::{
+	ArrayElement, ExpressionOrSpreadExpression, MultipleExpression, SpecialOperators,
+	SuperReference, TemplateLiteral,
+	object_literal::{ObjectLiteral, ObjectLiteralMember},
+	operators::{
+		BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
+		UnaryPrefixAssignmentOperator,
+	},
+};
 
 use crate::{
 	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
 	context::Environment,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	features::{
-		self,
-		assignments::{AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement},
-		await_expression,
-		conditional::new_conditional_context,
-		functions::{
-			GetterSetter, function_to_property, register_arrow_function,
-			register_expression_function, synthesise_function,
-		},
-		in_operator,
-		objects::ObjectBuilder,
-		operations::is_null_or_undefined,
-		operations::{
-			EqualityAndInequality, EqualityAndInequalityResultKind, LogicalOperator,
-			MathematicalOrBitwiseOperation, OperatorOptions, UnaryOperation,
-			evaluate_equality_inequality_operation, evaluate_logical_operation_with_expression,
-			evaluate_mathematical_operation, evaluate_unary_operator,
-		},
-		template_literal::synthesise_template_literal_expression,
-		variables::VariableWithValue,
+};
+
+use crate::types::{
+	Constant, Constructor, TypeId,
+	calling::CalledWithNew,
+	calling::{CallingInput, UnsynthesisedArgument},
+	helpers::get_larger_type,
+	logical::{Logical, LogicalOrValid},
+	printing::{print_property_key, print_type},
+	properties::Publicity,
+	properties::{AccessMode, PropertyKey, get_properties_on_single_type, get_property_unbound},
+};
+
+use crate::features::{
+	self,
+	assignments::{AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement},
+	await_expression,
+	conditional::new_conditional_context,
+	functions::{
+		GetterSetter, function_to_property, register_arrow_function, register_expression_function,
+		synthesise_function,
 	},
-	types::{
-		Constructor,
-		calling::{CallingInput, UnsynthesisedArgument},
-		helpers::get_larger_type,
-		logical::{Logical, LogicalOrValid},
-		printing::{print_property_key, print_type},
-		properties::{
-			AccessMode, PropertyKey, get_properties_on_single_type, get_property_unbound,
-		},
+	in_operator,
+	objects::ObjectBuilder,
+	operations::is_null_or_undefined,
+	operations::{
+		EqualityAndInequality, EqualityAndInequalityResultKind, LogicalOperator,
+		MathematicalOrBitwiseOperation, OperatorOptions, UnaryOperation,
+		evaluate_equality_inequality_operation, evaluate_logical_operation_with_expression,
+		evaluate_mathematical_operation, evaluate_unary_operator,
 	},
-	types::{
-		calling::CalledWithNew,
-		properties::Publicity,
-		{Constant, TypeId},
-	},
+	template_literal::synthesise_template_literal_expression,
+	variables::VariableWithValue,
 };
 
 use super::{
@@ -1426,8 +1424,17 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					}
 				}
 			}
-			ObjectLiteralMember::Shorthand(name, position) => {
-				let key = PropertyKey::String(Cow::Owned(name.clone()));
+			ObjectLiteralMember::Shorthand(pkey) => {
+				let key = parser_property_key_to_checker_property_key(
+					&pkey.0,
+					environment,
+					checking_data,
+					true,
+				);
+				let parser::PropertyKey::Identifier(name, position, _) = &pkey.0 else {
+					unreachable!();
+				};
+
 				let get_variable = environment.get_variable_handle_error(
 					name,
 					position.with_source(environment.get_source()),

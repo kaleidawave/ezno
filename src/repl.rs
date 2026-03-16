@@ -94,7 +94,7 @@ impl ReplSystem {
 		let result = if starts_with_brace {
 			Expression::from_string_with_options(input, options).map(|(expression, _)| Module {
 				hashbang_comment: None,
-				span: expression.get_position(),
+				position: expression.get_position(),
 				items: vec![StatementOrDeclaration::Expression(expression.into())],
 			})
 		} else {

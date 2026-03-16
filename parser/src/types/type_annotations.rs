@@ -941,7 +941,8 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let start = reader.expect_start('(')?;
+		let start = reader.get_start();
+		reader.expect_chr('(')?;
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
 

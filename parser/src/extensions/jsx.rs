@@ -66,7 +66,8 @@ impl ASTNode for JSXElement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		debug_assert!(reader.get_options().jsx.is_some());
 
-		let start = reader.expect_start('<')?;
+		let start = reader.get_start();
+		reader.expect_chr('<')?;
 		let tag_name = reader.parse_identifier("JSX element name", false)?.into_owned();
 		let mut attributes = Vec::new();
 

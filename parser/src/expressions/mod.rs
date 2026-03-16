@@ -219,6 +219,12 @@ impl From<String> for PropertyReference {
 	}
 }
 
+impl PropertyReference {
+	pub fn is_private(&self) -> bool {
+		if let Self::Standard { is_private, .. } = self { *is_private } else { false }
+	}
+}
+
 impl ASTNode for Expression {
 	fn get_position(&self) -> Span {
 		*GetFieldByType::get(self)
@@ -306,7 +312,11 @@ impl Expression {
 					let end = reader.get_end();
 					Expression::ArrayLiteral(items, start.union(end))
 				}
-				b'{' => ObjectLiteral::from_reader(reader).map(Expression::ObjectLiteral)?,
+				b'{' => {
+					let object = ObjectLiteral::from_reader(reader)?;
+					// TODO if found assignment, expect = etc
+					Expression::ObjectLiteral(object)
+				}
 				b'(' => {
 					// TODO temp
 					if reader.get_current().starts_with("()") {
@@ -332,12 +342,18 @@ impl Expression {
 								))
 							}
 						});
+
 						if let Ok(parameters) = result {
 							let arrow_function = ArrowFunction::from_reader_with_parameters(
 								reader, start, false, None, parameters,
 							)?;
 							return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
+						} else if let Err(error) = result
+							&& reader.starts_with_slice("(...")
+						{
+							return Err(error);
 						}
+
 						reader.advance(1);
 						let parenthesize_expression = MultipleExpression::from_reader(reader)?;
 						let end = reader.expect_chr(')')?;
@@ -406,8 +422,22 @@ impl Expression {
 				}
 				b'`' => TemplateLiteral::from_reader(reader).map(Expression::TemplateLiteral)?,
 				b'a' | b'f' | b'g' | b's' | b'w' | b't' if reader.starts_with_function_header() => {
-					let mut header = crate::functions::FunctionHeader::from_reader_initial(reader)?;
-					if reader.is_keyword("function") {
+					use crate::functions::{FunctionHeader, FunctionHeaderTrait};
+
+					let mut header = FunctionHeader::from_reader_initial(reader)?;
+					// TODO temp fix
+					let exit_clause = reader.last_was_from_new_line() > 0
+						|| (reader.starts_with_slice("of ") && !reader.starts_with_slice("of =>"));
+					if header.is_async_only() && exit_clause {
+						if let Ok(name) = header.into_expression() {
+							let position = start.with_length(name.len());
+							Expression::VariableReference(name.to_owned(), position)
+						} else {
+							// TODO expected `function`?
+							let (_found, position) = crate::lexer::utilities::next_item(reader);
+							return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
+						}
+					} else if reader.is_keyword("function") {
 						let header = header.to_full(reader)?;
 						let name: crate::ExpressionPosition =
 							crate::ExpressionOrStatementPosition::from_reader(reader)?;
@@ -427,37 +457,21 @@ impl Expression {
 							return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
 						}
 					} else {
-						// `(async(a, b, c))` is valid non-strict syntax
-						if !reader.strict_mode() && header.is_async_only() {
-							use crate::functions::FunctionBased;
+						use crate::functions::FunctionBased;
+						use arrow_function::ArrowFunctionBase;
 
-							let result = reader.try_parse(
-								arrow_function::ArrowFunctionBase::parameters_from_reader,
-							);
-							if let Ok(parameters) = result {
-								// if reader.is_operator_advance("=>") {
+						// `(async(a, b, c))` is valid
+						// !reader.strict_mode()
+						if header.is_async_only() {
+							let result =
+								reader.try_parse(ArrowFunctionBase::parameters_from_reader);
+							if let Ok(parameters) = result
+								&& reader.starts_with_slice("=>")
+							{
 								let function = ArrowFunction::from_reader_with_parameters(
 									reader, start, true, None, parameters,
 								)?;
 								Expression::ArrowFunction(Box::new(function))
-
-								// } else {
-								// 	Expression::VariableReference(
-								// 		"async".to_owned(),
-								// 		start.with_length(5),
-								// 	)
-								// }
-								// if AssociativityDirection::RightToLeft
-								// 	.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
-								// {
-								// 	dbg!(reader.get_current_short());
-								// 	let (_found, position) =
-								// 	crate::lexer::utilities::next_item(reader);
-								// 	return Err(ParseError::new(
-								// 		ParseErrors::ExpectedExpression,
-								// 		position,
-								// 	));
-								// }
 							} else {
 								Expression::VariableReference(
 									"async".to_owned(),
@@ -474,15 +488,21 @@ impl Expression {
 							// 		position,
 							// 	));
 							// }
-							let function = ArrowFunction::from_reader(reader)?;
+							// TODO type_parameters
+							let parameters = ArrowFunctionBase::parameters_from_reader(reader)?;
+							let function = ArrowFunction::from_reader_with_parameters(
+								reader, start, true, None, parameters,
+							)?;
 							Expression::ArrowFunction(Box::new(function))
 						}
 					}
 				}
 				b'#' => {
 					reader.advance(1);
+					// TODO not sure
+					let check = true;
 					let property_name =
-						reader.parse_identifier("property name", false)?.into_owned();
+						reader.parse_identifier("property name", check)?.into_owned();
 					let _ = reader.expect_keyword("in")?;
 					let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
 					let position = start.union(rhs.get_position());
@@ -569,30 +589,25 @@ impl Expression {
 					Expression::UnaryOperation { operand: Box::new(operand), operator, position }
 				}
 				b'a' if reader.is_keyword_advance("await") => {
-					// // TEMP fix, what about comments
-					// if !reader.strict_mode() && reader.is_operator_advance("()") {
-					// 	let on = Expression::VariableReference("await".to_owned(), start.with_length(5));
-					// 	Expression::FunctionCall {
-					// 		function: Box::new(on),
-					// 		type_arguments: None,
-					// 		arguments: Vec::new(),
-					// 		position: start.union(reader.get_end()),
-					// 		is_optional: false,
-					// 	}
-					// } else {
-					let operator = UnaryOperator::Await;
-					if reader.starts_with_expression_delimiter() {
-						let position = start.with_length(5);
-						Expression::VariableReference("await".to_owned(), position)
-					} else {
+					if reader.state.flags.in_async && !reader.starts_with_expression_delimiter() {
+						let operator = UnaryOperator::Await;
 						let operand =
 							Expression::from_reader_with_precedence(reader, operator.precedence())?;
 						let position = start.union(operand.get_position());
+						// if !reader.state.flags.in_async {
+						// 	return Err(ParseError::new(
+						// 		ParseErrors::AwaitOutsideOfAsync,
+						// 		position,
+						// 	));
+						// }
 						Expression::UnaryOperation {
 							operator,
 							operand: Box::new(operand),
 							position,
 						}
+					} else {
+						let position = start.with_length(5);
+						Expression::VariableReference("await".to_owned(), position)
 					}
 				}
 				b't' if reader.is_keyword_advance("typeof") => {
@@ -606,6 +621,23 @@ impl Expression {
 					let operator = UnaryOperator::Delete;
 					let operand =
 						Expression::from_reader_with_precedence(reader, operator.precedence())?;
+
+					if reader.strict_mode() {
+						// TODO wip
+						let is_bad =
+							if let Expression::PropertyAccess { parent, property, .. } = &operand {
+								property.is_private() || parent.is_primary_expression()
+							} else {
+								false
+							};
+						if is_bad {
+							return Err(ParseError::new(
+								ParseErrors::TODO("bad delete"),
+								operand.get_position(),
+							));
+						}
+					}
+
 					let position = start.union(operand.get_position());
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
@@ -617,8 +649,9 @@ impl Expression {
 					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
 				b'y' if reader.is_keyword_advance("yield") => {
-					// TEMP fix, what about comments
-					if !reader.strict_mode() && reader.is_operator_advance("()") {
+					if !reader.state.flags.in_generator {
+						Expression::VariableReference("yield".to_owned(), start.with_length(5))
+					} else if !reader.state.flags.in_generator && reader.is_operator_advance("()") {
 						let on =
 							Expression::VariableReference("yield".to_owned(), start.with_length(5));
 						Expression::FunctionCall {
@@ -641,6 +674,14 @@ impl Expression {
 						};
 
 						let position = start.union(reader.get_end());
+
+						// if  {
+						// 	return Err(ParseError::new(
+						// 		ParseErrors::YieldOutsideOfGenerator,
+						// 		position,
+						// 	));
+						// }
+
 						Expression::SpecialOperators(SpecialOperators::Yield { yielded }, position)
 					}
 				}
@@ -662,6 +703,14 @@ impl Expression {
 					} else {
 						let constructor_expression =
 							Self::from_reader_with_precedence(reader, FUNCTION_CALL_PRECEDENCE)?;
+
+						if !constructor_expression.is_valid_constructor() {
+							return Err(ParseError::new(
+								ParseErrors::TODO("bad new operand"),
+								constructor_expression.get_position(),
+							));
+						}
+
 						let _position = start.union(constructor_expression.get_position());
 
 						let type_arguments = if reader.is_operator_advance("<") {
@@ -689,32 +738,60 @@ impl Expression {
 					}
 				}
 				b's' if reader.is_keyword_advance("super") => {
-					let inner = if reader.is_operator_advance("(") {
+					if reader.is_operator_advance("(") {
 						// TODO generics?
 						let (arguments, _) = bracketed_items_from_reader(reader, ")")?;
-						SuperReference::Call { arguments }
-					} else if reader.is_operator_advance(".") {
-						let property =
-							reader.parse_identifier("property identifier", true)?.into_owned();
-						// TODO PropertyReference::Standard { property, is_private }
-						SuperReference::PropertyAccess(PropertyLike::Fixed(property))
-					} else if reader.is_operator_advance("[") {
-						let indexer = Expression::from_reader(reader)?;
-						reader.expect_chr(']')?;
-						SuperReference::PropertyAccess(PropertyLike::Computed(Box::new(indexer)))
+
+						let position = start.union(reader.get_end());
+						if !matches!(
+							reader.state.flags.function,
+							Some(crate::functions::FunctionKind::Constructor)
+						) {
+							return Err(crate::ParseError::new(
+								crate::ParseErrors::TODO(
+									"Cannot use super in non class constructor",
+								),
+								position,
+							));
+						}
+
+						Expression::SuperExpression(SuperReference::Call { arguments }, position)
 					} else {
-						return Err(crate::lexer::utilities::expected_one_of_items(
-							reader,
-							&[".", "(", "["],
-						));
-					};
-					Expression::SuperExpression(inner, start.union(reader.get_end()))
+						let inner = if reader.is_operator_advance(".") {
+							let property =
+								reader.parse_identifier("property identifier", true)?.into_owned();
+							// TODO PropertyReference::Standard { property, is_private }
+							SuperReference::PropertyAccess(PropertyLike::Fixed(property))
+						} else if reader.is_operator_advance("[") {
+							let indexer = Expression::from_reader(reader)?;
+							reader.expect_chr(']')?;
+							SuperReference::PropertyAccess(PropertyLike::Computed(Box::new(
+								indexer,
+							)))
+						} else {
+							return Err(crate::lexer::utilities::expected_one_of_items(
+								reader,
+								&[".", "(", "["],
+							));
+						};
+
+						let position = start.union(reader.get_end());
+
+						// if !matches!(reader.state.flags.function, Some(FunctionKind::Method)) {
+						// 	return Err(crate::lexer::utilities::expected_one_of_items(
+						// 		reader,
+						// 		&[".", "(", "["],
+						// 	));
+						// }
+
+						Expression::SuperExpression(inner, position)
+					}
 				}
 				b'i' if reader.is_keyword_advance("import") => {
 					Expression::Import(parse_after_import(reader, start)?)
 				}
-				// esid: prod-ClassExpression
-				b'@' if !reader.strict_mode() => {
+				// esid: prod-ClassExpression. TODO maybe other errors. `if reader.state.flags.in_class`?
+				b'@' => {
 					let mut decorators = Vec::new();
 					while reader.is_operator("@") {
 						decorators
@@ -729,6 +806,14 @@ impl Expression {
 				_ => {
 					let name = reader.parse_identifier("variable reference expression", true)?;
 
+					let position = start.with_length(name.len());
+					if reader.state.flags.in_ternary_or_class_field && name == "arguments" {
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::TODO("cannot use 'arguments' here"),
+							position,
+						));
+					}
+
 					if reader.get_options().features.interpolation_points
 						&& name == crate::marker::MARKER
 					{
@@ -736,7 +821,6 @@ impl Expression {
 						let marker_id = reader.new_partial_point_marker(position);
 						Expression::Marker { marker_id, position }
 					} else {
-						let position = start.with_length(name.len());
 						let is_arrow_function =
 							reader.last_was_from_new_line() == 0 && reader.is_operator("=>");
 						if is_arrow_function
@@ -1162,6 +1246,17 @@ impl Expression {
 						));
 					}
 
+					// TODO abstract
+					if let BinaryOperator::NullCoalescing = operator
+						&& let Expression::BinaryOperation { operator, .. } = &top
+						&& let BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr = operator
+					{
+						return Err(ParseError::new(
+							ParseErrors::TODO("invalid null coellescing"),
+							top.get_position(),
+						));
+					}
+
 					let rhs = Self::from_reader_with_precedence(reader, operator.precedence())?;
 
 					top = Expression::BinaryOperation {
@@ -1369,6 +1464,10 @@ impl Expression {
 						return Ok(top);
 					}
 					reader.advance(2);
+
+					let was_in_ternary_or_class_field =
+						std::mem::replace(&mut reader.state.flags.in_ternary_or_class_field, true);
+
 					let condition_position = top.get_position();
 					let condition = Box::new(top);
 					let truthy_result = Box::new(Self::from_reader(reader)?);
@@ -1381,6 +1480,9 @@ impl Expression {
 						let position = condition_position.union(truthy_result.get_position());
 						(Box::new(Expression::Null(source_map::Span::NULL)), position)
 					};
+
+					reader.state.flags.in_ternary_or_class_field = was_in_ternary_or_class_field;
+
 					top = Expression::ConditionalTernary {
 						position,
 						is_keyword: true,
@@ -1945,7 +2047,8 @@ impl Expression {
 			}
 			Expression::VariableReference(name, position) => {
 				buf.add_mapping(&position.with_source(local.under));
-				let is_reserved = crate::lexer::utilities::is_reserved_word(name);
+				// TODO
+				let is_reserved = crate::lexer::utilities::is_reserved_word(name, true);
 				if is_reserved && local2.on_left {
 					buf.push('(');
 				}
@@ -1975,9 +2078,13 @@ impl Expression {
 				path.to_string_from_buffer(buf, options, local);
 				buf.push(')');
 			}
-			Expression::Import(ImportExpression::DynamicImport { path, .. }) => {
+			Expression::Import(ImportExpression::DynamicImport { path, options: with, .. }) => {
 				buf.push_str("import(");
 				path.to_string_from_buffer(buf, options, local);
+				if let Some(with) = with {
+					buf.push(',');
+					with.to_string_from_buffer(buf, options, local);
+				}
 				buf.push(')');
 			}
 			Expression::PropertyAccess { parent, property, is_optional, position, .. } => {
@@ -2383,14 +2490,9 @@ pub(crate) fn parse_after_import(
 			))
 		}
 	} else if reader.is_operator_advance("(") {
-		let path = Expression::from_reader(reader)?;
-		// if let Expression::StringLiteral(path, ..) = &path {
-		//     state.constant_imports.push(path.clone());
-		// }
-
-		// TODO may cause issue?
+		let path = Expression::from_reader_with_precedence(reader, ASSIGNMENT_PRECEDENCE)?;
 		let options = if reader.is_operator_advance(",") && !reader.is_operator(")") {
-			Some(Box::new(Expression::from_reader(reader)?))
+			Some(Box::new(Expression::from_reader_with_precedence(reader, ASSIGNMENT_PRECEDENCE)?))
 		} else {
 			None
 		};
@@ -2719,6 +2821,7 @@ pub enum ImportExpression {
 	},
 	DynamicImport {
 		path: Box<Expression>,
+		// options: Option<Box<crate::statements_and_declarations::import_export::ImportAttribute>>,
 		options: Option<Box<Expression>>,
 		position: Span,
 	},
@@ -2919,6 +3022,23 @@ impl Expression {
 
 			self
 		}
+	}
+
+	/// TODO wip
+	pub fn is_primary_expression(&self) -> bool {
+		let on = self.get_non_parenthesised();
+		matches!(
+			on,
+			Expression::ArrayLiteral(..)
+				| Expression::BooleanLiteral(..)
+				| Expression::StringLiteral(..)
+				| Expression::NumberLiteral(..)
+		)
+	}
+
+	// TODO
+	pub fn is_valid_constructor(&self) -> bool {
+		true
 	}
 
 	/// Recurses to find first non parenthesized expression

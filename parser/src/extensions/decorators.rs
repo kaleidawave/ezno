@@ -77,7 +77,6 @@ impl ASTNode for Decorator {
 			}
 		} else {
 			// TODO check valid here?
-
 			Expression::from_reader_with_precedence(
 				reader,
 				crate::expressions::precedence::FUNCTION_CALL_PRECEDENCE - 1,

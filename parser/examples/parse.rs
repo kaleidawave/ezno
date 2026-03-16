@@ -1,16 +1,11 @@
 use std::{path::Path, time::Instant};
 
-use codespan_reporting::diagnostic::{Diagnostic, Label};
-use codespan_reporting::term::{
-	self, Config,
-	termcolor::{ColorChoice, StandardStream},
-};
 use ezno_parser::{ASTNode, Module, ParseError, ParseState, SourceId, options};
 use source_map::FileSystem;
 
 type Files = source_map::MapFileStore<source_map::WithPathMap>;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
 	let mut arguments = std::env::args();
 	let _ = arguments.next();
 
@@ -18,10 +13,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	if let Some("--interactive") = first_argument.as_deref() {
 		run_interactive();
-		return Ok(());
+		return;
 	}
 
-	let path = first_argument.ok_or("expected path argument")?;
+	let path = first_argument.ok_or("expected path argument").unwrap();
 
 	let mut parse_options = options::ParseOptions::default();
 	let mut to_string_options = options::ToStringOptions {
@@ -83,6 +78,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 			"--ast" => {
 				print_ast = true;
 			}
+			"--strict" => {
+				parse_options.strict_mode = true;
+			}
+			"--tla" => {
+				parse_options.top_level_await = true;
+			}
+			"--validate" => {
+				parse_options.features.run_validation = true;
+			}
 			"--to-string" => {
 				print_output = true;
 			}
@@ -99,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	let to_string_options = if print_output { Some(to_string_options) } else { None };
 
-	parse_path(
+	let _ = parse_path(
 		path.as_ref(),
 		timings,
 		parse_imports,
@@ -109,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		increase_stack_size,
 		&to_string_options,
 		&mut fs,
-	)
+	);
 }
 
 fn parse_path(
@@ -250,6 +254,12 @@ fn parse_source(
 			Ok((module, state))
 		}
 		Err(ParseError { reason, position }) => {
+			use codespan_reporting::diagnostic::{Diagnostic, Label};
+			use codespan_reporting::term::{
+				self, Config,
+				termcolor::{ColorChoice, StandardStream},
+			};
+
 			let writer = StandardStream::stderr(ColorChoice::Always);
 			let config = Config::default();
 

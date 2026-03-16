@@ -33,6 +33,8 @@ pub struct ParseOptions {
 	/// None => Disabled
 	pub jsx: Option<JSX>,
 	pub decorators: bool,
+	pub top_level_await: bool,
+	pub strict_mode: bool,
 	// ---
 	#[cfg(feature = "extras")]
 	pub extras: Extras,
@@ -47,6 +49,8 @@ impl ParseOptions {
 			comments: CommentsOption::All,
 			jsx: Some(JSX::all()),
 			decorators: true,
+			strict_mode: true,
+			top_level_await: true,
 			#[cfg(feature = "extras")]
 			extras: Extras::all(),
 			// just syntax all not feature all

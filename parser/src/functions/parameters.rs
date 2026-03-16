@@ -77,6 +77,24 @@ pub struct FunctionParameters<L, V> {
 	pub position: Span,
 }
 
+impl<L, V> FunctionParameters<L, V> {
+	pub fn is_empty(&self) -> bool {
+		self.parameters.is_empty() && self.rest_parameter.is_none()
+	}
+
+	pub fn is_single(&self) -> bool {
+		self.parameters.len() == 1 && self.rest_parameter.is_none()
+	}
+
+	pub fn has_default_or_spread(&self) -> bool {
+		// TODO Optional
+		self.rest_parameter.is_some()
+			|| self.parameters.iter().any(|param| {
+				matches!(&param.additionally, Some(ParameterData::WithDefaultValue(_)))
+			})
+	}
+}
+
 pub trait LeadingParameter: Send + Sync + Sized + Debug + Clone + 'static {
 	fn try_make(
 		this_annotation: Option<ThisParameter>,
@@ -171,7 +189,8 @@ where
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		let start = reader.expect_start('(')?;
+		let start = reader.get_start();
+		reader.expect_chr('(')?;
 		let mut parameters = Vec::new();
 
 		let mut this_type = None::<ThisParameter>;
@@ -192,7 +211,7 @@ where
 
 				let name_position = name.get_position();
 
-				if reader.get_options().features.run_validation {
+				if reader.get_options().features.run_validation && reader.strict_mode() {
 					let mut duplicate = None;
 					{
 						name.visit_names(&mut |name| {
@@ -241,6 +260,16 @@ where
 
 				let name = VariableField::from_reader(reader)?;
 
+				// TODO only for arrow functions and others
+				// if let VariableField::Name(ref name, ..) = name
+				// 	&& name == "await"
+				// {
+				// 	return Err(ParseError::new(
+				// 		crate::ParseErrors::TODO("cannot have await parameter here"),
+				// 		name.get_position(),
+				// 	));
+				// }
+
 				let (is_optional, type_annotation) = if reader.is_keyword_advance("?:") {
 					let type_annotation = TypeAnnotation::from_reader(reader)?;
 					(true, Some(type_annotation))
@@ -283,7 +312,7 @@ where
 
 				let position = name.get_position().union(end_position);
 
-				if reader.get_options().features.run_validation {
+				if reader.get_options().features.run_validation && reader.strict_mode() {
 					let mut duplicate = None;
 					name.visit_names(&mut |name| {
 						if duplicate.is_none() {

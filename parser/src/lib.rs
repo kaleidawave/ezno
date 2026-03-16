@@ -45,6 +45,8 @@ pub(crate) use visiting::{
 	Chain, ChainVariable, VisitOptions, Visitable, VisitorMutReceiver, VisitorReceiver,
 };
 
+pub use lexer::ParseState;
+
 #[macro_use]
 extern crate macro_rules_attribute;
 
@@ -93,19 +95,6 @@ impl LocalToStringInformation {
 	}
 }
 
-// TODO state for "use strict" etc?
-// TODO hold Keywords map, markers, syntax errors etc
-#[derive(Default, Debug)]
-pub struct ParseState {
-	blank_lines: u32,
-	comment_lines: u32,
-	pub markers: Vec<Span>,
-	pub constant_imports: Vec<String>,
-	/// the current position into the script
-	pub head: u32,
-	pub last: u32,
-}
-
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
 /// serializing to string from options.
 pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
@@ -119,7 +108,6 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 		options: ParseOptions,
 	) -> ParseResult<(Self, ParseState)> {
 		let mut reader = crate::Lexer::new(&script, options.features.position_offset, options);
-		reader.skip_including_comments();
 
 		let node = Self::from_reader(&mut reader)?;
 
@@ -130,11 +118,31 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 			Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
 		}
 	}
+	// /// From string, with default impl to call abstract method `from_reader`
+	// fn from_str<'s>(script: &'s str) -> ParseResult<'s, Self> {
+	// 	Self::from_str_with_options(script, ParseOptions::default()).map(|(ast, _)| ast)
+	// }
+
+	// fn from_str_with_options<'s>(
+	// 	script: &'s str,
+	// 	options: ParseOptions,
+	// ) -> ParseResult<(Self, ParseState)> {
+	// 	let mut reader = crate::Lexer::new(script, options.features.position_offset, options);
+
+	// 	let node = Self::from_reader(&mut reader)?;
+
+	// 	if options.features.section_of_source || reader.is_finished() {
+	// 		Ok((node, reader.state))
+	// 	} else {
+	// 		let (found, position) = crate::lexer::utilities::next_item(&reader);
+	// 		Err(crate::ParseError::new(crate::ParseErrors::ExpectedEndOfSource { found }, position))
+	// 	}
+	// }
 
 	/// Returns position of node as span AS IT WAS PARSED. May be `Span::NULL` if AST was doesn't match anything in source
 	fn get_position(&self) -> Span;
 
-	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
+	fn from_reader<'b, 's>(reader: &'b mut crate::Lexer<'s>) -> ParseResult<Self>;
 
 	fn to_string_from_buffer<T: source_map::ToString>(
 		&self,
@@ -155,7 +163,7 @@ pub trait ASTNode: Sized + Clone + std::fmt::Debug + Sync + Send + 'static {
 /// Classes and `function` functions have two variants depending whether in statement position
 /// or expression position
 pub trait ExpressionOrStatementPosition: Clone + std::fmt::Debug + Sync + Send + 'static {
-	type FunctionBody: ASTNode;
+	type FunctionBody: functions::FunctionBodyTrait;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self>;
 
@@ -223,8 +231,12 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let is_not_name = reader.is_finished() || reader.is_one_of(&["(", "{", "[", "<"]).is_some();
-		let inner = if is_not_name { None } else { Some(VariableIdentifier::from_reader(reader)?) };
-		Ok(Self(inner))
+		if is_not_name {
+			Ok(Self(None))
+		} else {
+			let identifier = VariableIdentifier::from_reader(reader)?;
+			Ok(Self(Some(identifier)))
+		}
 	}
 
 	fn class_name_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {

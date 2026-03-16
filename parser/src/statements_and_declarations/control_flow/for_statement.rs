@@ -27,10 +27,17 @@ impl ASTNode for ForLoopStatement {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("for")?;
 		let is_await = reader.is_keyword_advance("await");
+		if !reader.state.flags.in_async && is_await {
+			return Err(ParseError::new(
+				ParseErrors::TODO("CANNOT USE AWAIT FOR LOOP HERE"),
+				start.union(reader.get_end()),
+			));
+		}
+
 		let mut condition = ForLoopCondition::from_reader(reader)?;
 		if is_await {
-			if let ForLoopCondition::ForOf { is_await: ref mut a, .. } = condition {
-				*a = is_await;
+			if let ForLoopCondition::ForOf { ref mut is_await, .. } = condition {
+				*is_await = true;
 			} else {
 				return Err(ParseError::new(
 					ParseErrors::AwaitRequiresForOf,
@@ -67,6 +74,31 @@ pub enum VariableKeywordOrUsing {
 	Let,
 	Var,
 	Using,
+}
+
+impl VariableKeywordOrUsing {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Option<Self> {
+		if reader.is_keyword_advance("const") {
+			Some(Self::Const)
+		} else if reader.is_keyword_advance("let") {
+			Some(Self::Let)
+		} else if reader.is_keyword_advance("var") {
+			Some(Self::Var)
+		} else if reader.is_keyword_advance("using") {
+			Some(Self::Using)
+		} else {
+			None
+		}
+	}
+
+	pub(crate) fn as_str(&self) -> &str {
+		match self {
+			Self::Const => "const",
+			Self::Let => "let",
+			Self::Var => "var",
+			Self::Using => "using",
+		}
+	}
 }
 
 #[derive(Debug, Clone, Visitable)]
@@ -217,7 +249,9 @@ impl ASTNode for ForLoopCondition {
 			};
 
 			// https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-initializers-in-forin-statement-heads
+			// could make this more of an error
 			if let VariableKeyword::Var = kind
+				&& !reader.strict_mode()
 				&& reader.is_operator_advance("=")
 			{
 				let after_assign = Expression::from_reader_with_precedence(
@@ -288,6 +322,7 @@ impl ASTNode for ForLoopCondition {
 				} else {
 					None
 				};
+
 				let position = start.union(reader.get_end());
 				let declaration = crate::variables::VariableDeclarationItem {
 					name,
@@ -317,7 +352,7 @@ impl ASTNode for ForLoopCondition {
 					}
 
 					declarations.push(declaration);
-					if !reader.is_operator_advance(",") {
+					if !reader.is_operator(",") {
 						break;
 					}
 				}
@@ -360,9 +395,7 @@ impl ASTNode for ForLoopCondition {
 
 		let start = reader.get_start();
 
-		let condition = if reader.is_keyword_advance("using") {
-			parse_using(reader, false, start)?
-		} else if reader.is_keyword_advance("await") {
+		let condition = if reader.is_keyword_advance("await") {
 			if reader.is_keyword_advance("using") {
 				parse_using(reader, true, start)?
 			} else {
@@ -371,12 +404,11 @@ impl ASTNode for ForLoopCondition {
 					Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
 				parse_statements(reader, initialiser, start)?
 			}
-		} else if reader.is_keyword_advance("let") {
+		} else if let Some(kind) = VariableKeywordOrUsing::from_reader(reader) {
 			use crate::expressions::assignments::VariableOrPropertyAccess;
 
 			if reader.starts_with_expression_delimiter() || reader.starts_with('(') {
-				// TODO conflicts with destucturing || reader.get_current().starts_with(['{', '[']) {
-				let identifier = "let";
+				let identifier = kind.as_str();
 				let initial = Expression::VariableReference(
 					identifier.to_owned(),
 					start.with_length(identifier.len()),
@@ -390,9 +422,12 @@ impl ASTNode for ForLoopCondition {
 					Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
 				parse_statements(reader, initialiser, start)?
 			} else if !reader.strict_mode() && reader.is_keyword_advance("in") {
-				let lhs = LHSOfAssignment::VariableOrPropertyAccess(
-					VariableOrPropertyAccess::Variable("let".to_owned(), start.with_length(3)),
-				);
+				let identifier = kind.as_str();
+				let lhs =
+					LHSOfAssignment::VariableOrPropertyAccess(VariableOrPropertyAccess::Variable(
+						identifier.to_owned(),
+						start.with_length(identifier.len()),
+					));
 				let r#in = MultipleExpression::from_reader(reader)?;
 				let position = start.union(r#in.get_position());
 
@@ -400,21 +435,31 @@ impl ASTNode for ForLoopCondition {
 				let r#in = Box::new(r#in);
 				ForLoopCondition::ForIn { lhs, value: None, r#in, position }
 			} else if !reader.strict_mode() && reader.is_keyword_advance("of") {
-				let lhs = LHSOfAssignment::VariableOrPropertyAccess(
-					VariableOrPropertyAccess::Variable("let".to_owned(), start.with_length(3)),
-				);
+				let identifier = kind.as_str();
+				let lhs =
+					LHSOfAssignment::VariableOrPropertyAccess(VariableOrPropertyAccess::Variable(
+						identifier.to_owned(),
+						start.with_length(identifier.len()),
+					));
 				let of = Box::new(Expression::from_reader(reader)?);
 				let position = start.union(reader.get_end());
 
 				let lhs = VariableUsingOrAssignable::Assignable(lhs);
 				ForLoopCondition::ForOf { is_await: false, lhs, of, position }
 			} else {
-				parse_let_const_var(reader, VariableKeyword::Let, start)?
+				match kind {
+					VariableKeywordOrUsing::Using => parse_using(reader, true, start)?,
+					VariableKeywordOrUsing::Const => {
+						parse_let_const_var(reader, VariableKeyword::Const, start)?
+					}
+					VariableKeywordOrUsing::Var => {
+						parse_let_const_var(reader, VariableKeyword::Var, start)?
+					}
+					VariableKeywordOrUsing::Let => {
+						parse_let_const_var(reader, VariableKeyword::Let, start)?
+					}
+				}
 			}
-		} else if reader.is_keyword_advance("var") {
-			parse_let_const_var(reader, VariableKeyword::Var, start)?
-		} else if reader.is_keyword_advance("const") {
-			parse_let_const_var(reader, VariableKeyword::Const, start)?
 		} else if reader.is_operator(";") {
 			parse_statements(reader, None, start)?
 		} else {
@@ -423,8 +468,6 @@ impl ASTNode for ForLoopCondition {
 				reader,
 				crate::expressions::precedence::RELATION_PRECEDENCE,
 			)?;
-
-			// let expression = Expression::from_reader(reader)?;
 
 			if reader.is_keyword_advance("in") {
 				let lhs = LHSOfAssignment::try_from(expression)?;
@@ -442,14 +485,13 @@ impl ASTNode for ForLoopCondition {
 				let lhs = VariableUsingOrAssignable::Assignable(lhs);
 				ForLoopCondition::ForOf { is_await: false, lhs, of, position }
 			} else {
-				let precedence = crate::expressions::precedence::COMMA_PRECEDENCE;
 				let expression =
 					crate::expressions::Expression::from_reader_after_first_expression(
-						reader, precedence, expression,
+						reader, 0, expression,
 					)?;
-				let expression = MultipleExpression::from_first_expression(reader, expression)?;
-				let initialiser =
-					Some(ForLoopStatementInitialiser::Expression(Box::new(expression)));
+				let initialiser = Some(ForLoopStatementInitialiser::Expression(Box::new(
+					MultipleExpression(expression),
+				)));
 				parse_statements(reader, initialiser, start)?
 			}
 		};

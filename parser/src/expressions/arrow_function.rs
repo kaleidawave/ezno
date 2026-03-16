@@ -1,16 +1,20 @@
 use visitable_derive::Visitable;
 
+use crate::functions::{
+	FunctionBased, FunctionBodyTrait, FunctionHeaderTrait, FunctionKind, FunctionParameters,
+	HeadingAndPosition, Parameter, parse_function_body,
+};
 use crate::{
 	ASTNode, Block, Expression, FunctionBase, ParseResult, Span, VariableField, VariableIdentifier,
 	derive_ASTNode,
-	functions::HeadingAndPosition,
-	functions::{FunctionBased, FunctionParameters, Parameter},
 };
 
 #[derive(Debug, Clone, Hash)]
 pub struct ArrowFunctionBase;
 
 pub type ArrowFunction = FunctionBase<ArrowFunctionBase>;
+
+// pub struct IsAsync(bool, Span);
 
 #[cfg_attr(target_family = "wasm", tsify::declare)]
 pub type IsAsync = bool;
@@ -24,12 +28,43 @@ const TYPES: &str = r"
 	}
 ";
 
+impl FunctionHeaderTrait for IsAsync {
+	fn is_async(&self) -> bool {
+		*self
+	}
+
+	fn is_generator(&self) -> bool {
+		false
+	}
+
+	// fn get_position(&self) -> Span {
+	// 	self.1
+	// }
+}
+
+impl FunctionBodyTrait for ExpressionOrBlock {
+	fn from_reader_as_function_body(
+		reader: &mut crate::Lexer,
+		directive_allowed: bool,
+	) -> crate::ParseResult<Self> {
+		if reader.is_operator("{") {
+			Block::from_reader_as_function_body(reader, directive_allowed).map(Self::Block)
+		} else {
+			Expression::from_reader(reader).map(Box::new).map(Self::Expression)
+		}
+	}
+}
+
 impl FunctionBased for ArrowFunctionBase {
 	type Name = ();
 	type Header = IsAsync;
 	type Body = ExpressionOrBlock;
 	type LeadingParameter = ();
 	type ParameterVisibility = ();
+
+	fn kind() -> FunctionKind {
+		FunctionKind::default()
+	}
 
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderArrowFunction(this.body.get_block_id())
@@ -175,7 +210,12 @@ impl ArrowFunction {
 			None
 		};
 		reader.expect_operator("=>")?;
-		let body = ExpressionOrBlock::from_reader(reader)?;
+		let body = parse_function_body::<ArrowFunctionBase>(
+			reader,
+			&is_async,
+			ArrowFunctionBase::kind(),
+			!parameters.has_default_or_spread(),
+		)?;
 		let arrow_function = ArrowFunction {
 			header: is_async,
 			position: start.union(body.get_position()),

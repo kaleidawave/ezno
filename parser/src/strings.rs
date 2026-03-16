@@ -47,6 +47,8 @@ pub struct ParseStringOutput<'a> {
 	pub source_length: u32,
 	/// relative offsets of unknown escapes
 	pub unknown_escapes: Vec<u32>,
+	/// error in strict mode
+	pub uses_octal: bool,
 }
 
 /// expects current to start with string delimeter
@@ -69,6 +71,7 @@ pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError>
 	let delimeters = current.match_indices(chars);
 
 	let mut unknown_escapes = Vec::new();
+	let mut uses_octal = false;
 
 	let mut last = 0;
 	for (idx, matched) in delimeters {
@@ -84,6 +87,7 @@ pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError>
 				quoting,
 				source_length: idx as u32 + 2,
 				unknown_escapes,
+				uses_octal,
 			};
 			return Ok(output);
 		} else if matched == "\\" {
@@ -91,6 +95,11 @@ pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError>
 			let chr = immediate.chars().next();
 			if let Some(chr) = chr {
 				let after = &immediate[chr.len_utf8()..];
+				if matches!(chr, '1'..='9')
+					|| (chr == '0' && after.starts_with(|c: char| c.is_ascii_digit()))
+				{
+					uses_octal = true;
+				}
 				let result = escape_character(chr, after, buf.to_mut());
 				if let Ok(offset) = result {
 					// Skip others
@@ -108,23 +117,6 @@ pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError>
 	}
 
 	Err(StringError::NoDelimeter)
-}
-
-fn parse_hex(on: &str) -> Result<u32, &str> {
-	let mut value = 0u32;
-	for byte in on.bytes() {
-		value <<= 4; // log2(16) = 4
-		let code = match byte {
-			b'0'..=b'9' => u32::from(byte - b'0'),
-			b'a'..=b'f' => u32::from(byte - b'a') + 10,
-			b'A'..=b'F' => u32::from(byte - b'A') + 10,
-			_byte => {
-				return Err(on);
-			}
-		};
-		value |= code;
-	}
-	Ok(value)
 }
 
 #[derive(Debug)]
@@ -160,10 +152,6 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 			buf.push('\r');
 			Ok(1)
 		}
-		'0' => {
-			buf.push('\0');
-			Ok(1)
-		}
 		'v' => {
 			buf.push('\u{000B}');
 			Ok(1)
@@ -189,7 +177,7 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 		// Hexadecimal escape sequences
 		'x' => {
 			if let Some(hex_code) = after.get(..2) {
-				let Ok(code) = parse_hex(hex_code) else {
+				let Ok(code) = u32::from_str_radix(hex_code, 16) else {
 					return Err(EscapeError::InvalidHexadecimalSequence);
 				};
 				if let Some(chr) = char::from_u32(code) {
@@ -200,6 +188,27 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 				}
 			} else {
 				Err(EscapeError::InvalidHexadecimalSequence)
+			}
+		}
+		// Octal escape sequences
+		'0'..='9' => {
+			let (code, _) = after.split_once(|c: char| !c.is_ascii_digit()).unwrap_or((after, ""));
+			// Not octal
+			if code == "0" {
+				buf.push('\0');
+				Ok(1)
+			} else {
+				let octal_code = code;
+				let Ok(code) = u32::from_str_radix(octal_code, 8) else {
+					return Err(EscapeError::InvalidHexadecimalSequence);
+				};
+				if let Some(chr) = char::from_u32(code) {
+					buf.push(chr);
+					Ok(octal_code.len() + 1)
+				} else {
+					// TODO octal
+					Err(EscapeError::HexadecimalNotValidCharacter { code })
+				}
 			}
 		}
 		// Unicode escape sequences
@@ -218,7 +227,7 @@ pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), EscapeEr
 	if let Some(on) = on.strip_prefix('{') {
 		if let Some((inner, _)) = on.split_once('}') {
 			// TODO I think this can be multiple characters
-			let Ok(code) = parse_hex(inner) else {
+			let Ok(code) = u32::from_str_radix(inner, 16) else {
 				return Err(EscapeError::InvalidHexadecimalSequence);
 			};
 			if let Some(chr) = char::from_u32(code) {
@@ -231,7 +240,7 @@ pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), EscapeEr
 		}
 	} else if let Some(lead) = on.get(0..4) {
 		// TODO no early return here
-		let Ok(lead) = parse_hex(lead) else {
+		let Ok(lead) = u32::from_str_radix(lead, 16) else {
 			return Err(EscapeError::InvalidHexadecimalSequence);
 		};
 		// https://en.wikipedia.org/wiki/Universal_Character_Set_characters#Surrogates
@@ -240,7 +249,7 @@ pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), EscapeEr
 			&& !trail.starts_with('{')
 		{
 			// TODO no early return here
-			let Ok(trail) = parse_hex(trail) else {
+			let Ok(trail) = u32::from_str_radix(trail, 16) else {
 				return Err(EscapeError::InvalidHexadecimalSequence);
 			};
 			if (0xD800..=0xDBFF).contains(&lead) && (0xDC00..=0xDFFF).contains(&trail) {

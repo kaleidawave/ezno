@@ -1,7 +1,6 @@
-use super::{ImportExportPart, ImportLocation};
+use super::{ImportAttribute, ImportExportPart, ImportKind, ImportLocation};
 use crate::{
-	ASTNode, ParseResult, VariableIdentifier, ast::object_literal::ObjectLiteral,
-	bracketed_items_from_reader, derive_ASTNode,
+	ASTNode, ParseResult, VariableIdentifier, bracketed_items_from_reader, derive_ASTNode,
 };
 use source_map::Span;
 use visitable_derive::Visitable;
@@ -25,14 +24,11 @@ impl ImportedItems {
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
 #[get_field_by_type_target(Span)]
 pub struct ImportDeclaration {
-	#[cfg(feature = "extras")]
-	pub is_deferred: bool,
-	#[cfg(feature = "full-typescript")]
-	pub is_type_annotation_import_only: bool,
+	pub kind: ImportKind,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 	pub from: ImportLocation,
-	pub with: Option<ObjectLiteral>,
+	pub with: Option<ImportAttribute>,
 	pub position: Span,
 	#[cfg(feature = "extras")]
 	pub reversed: bool,
@@ -57,8 +53,14 @@ impl ASTNode for ImportDeclaration {
 	) {
 		buf.push_str("import");
 
+		#[cfg(feature = "extras")]
+		if let ImportKind::Deferred = self.kind {
+			buf.push_str(" defer");
+		}
+
 		#[cfg(feature = "full-typescript")]
-		if self.is_type_annotation_import_only && options.include_type_annotations {
+		if let ImportKind::TypeOnly = self.kind {
+			assert!(options.include_type_annotations);
 			buf.push_str(" type");
 		}
 
@@ -114,8 +116,8 @@ impl ImportDeclaration {
 
 		let out = import_specifier_and_parts_from_reader(reader)?;
 
-		let with = if reader.is_keyword_advance("assert") {
-			Some(ObjectLiteral::from_reader(reader)?)
+		let with = if reader.is_keyword_advance("with") {
+			Some(ImportAttribute::from_reader(reader)?)
 		} else {
 			None
 		};
@@ -125,10 +127,7 @@ impl ImportDeclaration {
 		Ok(ImportDeclaration {
 			default: out.default,
 			items: out.items,
-			#[cfg(feature = "full-typescript")]
-			is_type_annotation_import_only: out.is_type_annotation_import_only,
-			#[cfg(feature = "extras")]
-			is_deferred: out.is_deferred,
+			kind: out.kind,
 			with,
 			from,
 			position,
@@ -148,9 +147,10 @@ impl ImportDeclaration {
 
 		let from = ImportLocation::from_reader(reader)?;
 
+		// TODO validate
 		let with = reader
 			.is_operator_advance("with")
-			.then(|| ObjectLiteral::from_reader(reader))
+			.then(|| ImportAttribute::from_reader(reader))
 			.transpose()?;
 
 		let end = reader.get_end();
@@ -158,10 +158,7 @@ impl ImportDeclaration {
 		Ok(ImportDeclaration {
 			default: parts.default,
 			items: parts.items,
-			#[cfg(feature = "full-typescript")]
-			is_type_annotation_import_only: parts.is_type_annotation_import_only,
-			#[cfg(feature = "extras")]
-			is_deferred: parts.is_deferred,
+			kind: parts.kind,
 			from,
 			with,
 			position: start.union(end),
@@ -172,10 +169,7 @@ impl ImportDeclaration {
 }
 
 pub(crate) struct PartsResult {
-	#[cfg(feature = "extras")]
-	pub is_deferred: bool,
-	#[cfg(feature = "full-typescript")]
-	pub is_type_annotation_import_only: bool,
+	pub kind: super::ImportKind,
 	pub default: Option<VariableIdentifier>,
 	pub items: ImportedItems,
 }
@@ -193,39 +187,19 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 ) -> ParseResult<PartsResult> {
 	let start = reader.get_start();
 
-	#[cfg(feature = "extras")]
-	let is_deferred = reader.is_operator_advance("defer");
+	let kind = super::ImportKind::from_reader(reader);
 
-	#[cfg(feature = "full-typescript")]
-	let is_type_annotation_import_only = reader.is_operator_advance("type");
-
-	#[cfg(any(feature = "extras", feature = "full-typescript"))]
-	if reader.is_keyword("from") {
-		let mut is_name = false;
-
-		#[cfg(feature = "extras")]
-		{
-			is_name = is_deferred;
-		};
-
-		#[cfg(feature = "full-typescript")]
-		{
-			is_name ^= is_type_annotation_import_only;
-		};
-
-		if is_name {
-			return Ok(PartsResult {
-				#[cfg(feature = "extras")]
-				is_deferred: false,
-				#[cfg(feature = "full-typescript")]
-				is_type_annotation_import_only,
-				default: Some(VariableIdentifier::Standard(
-					"defer".to_owned(),
-					start.with_length(5),
-				)),
-				items: ImportedItems::Parts(None),
-			});
-		}
+	if let Some(name) = kind.as_identifier()
+		&& reader.is_keyword("from")
+	{
+		return Ok(PartsResult {
+			kind: super::ImportKind::Standard,
+			default: Some(VariableIdentifier::Standard(
+				name.to_owned(),
+				start.with_length(name.len()),
+			)),
+			items: ImportedItems::Parts(None),
+		});
 	}
 
 	let is_identifier =
@@ -237,9 +211,7 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 			Some(default_identifier)
 		} else {
 			return Ok(PartsResult {
-				#[cfg(feature = "extras")]
-				is_deferred,
-				is_type_annotation_import_only,
+				kind,
 				default: Some(default_identifier),
 				items: ImportedItems::Parts(None),
 			});
@@ -261,12 +233,16 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 		return Err(crate::lexer::utilities::expected_one_of_items(reader, &["*", "["]));
 	};
 
-	Ok(PartsResult {
-		#[cfg(feature = "extras")]
-		is_deferred,
-		#[cfg(feature = "full-typescript")]
-		is_type_annotation_import_only,
-		default,
-		items,
-	})
+	// #[cfg(feature = "extras")]
+	// if let ImportKind::Deferred = kind
+	// 	&& let ImportedItems::All { .. } = items
+	// {
+	// 	let position = start.union(reader.get_end());
+	// 	return Err(crate::ParseError::new(
+	// 		crate::ParseErrors::ImportDeferCannotBeUsedWithNamedImports,
+	// 		position,
+	// 	));
+	// }
+
+	Ok(PartsResult { kind, default, items })
 }

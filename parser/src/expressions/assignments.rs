@@ -131,6 +131,8 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			}
 			// Yah weird and recursion is fine here
 			Expression::Parenthesised(inner, _) => TryFrom::try_from(inner.0),
+			// TODO checked under strict mode...?
+			Expression::FunctionCall { .. } => Ok(Self::Neither(Box::new(expression))),
 			#[cfg(feature = "full-typescript")]
 			Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(on),
@@ -138,8 +140,12 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			) => TryFrom::try_from(*on)
 				.map(|value| Self::NonNullAssertion(Box::new(value), position)),
 			expression => {
+				Err(ParseError::new(
+					crate::ParseErrors::InvalidLHSAssignment,
+					expression.get_position(),
+				))
 				// TODO
-				Ok(Self::Neither(Box::new(expression)))
+				// Ok(Self::Neither(Box::new(expression)))
 			}
 		}
 	}
@@ -230,7 +236,20 @@ impl ASTNode for LHSOfAssignment {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		Expression::from_reader(reader).and_then(TryInto::try_into)
+		let start = reader.get_start();
+		if reader.is_keyword_advance("await") {
+			if reader.starts_with_expression_delimiter() {
+				let inner =
+					VariableOrPropertyAccess::Variable("await".to_owned(), start.with_length(5));
+				Ok(Self::VariableOrPropertyAccess(inner))
+			} else {
+				let expression = super::parse_after_await(reader, start, false)?;
+				let inner = VariableOrPropertyAccess::Neither(Box::new(expression.0));
+				Ok(Self::VariableOrPropertyAccess(inner))
+			}
+		} else {
+			Expression::from_reader(reader).and_then(TryInto::try_into)
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -358,7 +377,10 @@ impl TryFrom<Expression> for LHSOfAssignment {
 								})
 							};
 						}
-						ObjectLiteralMember::Shorthand(name, pos) => {
+						ObjectLiteralMember::Shorthand(name) => {
+							let PropertyKey::Identifier(name, pos, _) = name.0 else {
+								panic!();
+							};
 							ObjectDestructuringField::Name(
 								crate::VariableIdentifier::Standard(name, pos),
 								(),

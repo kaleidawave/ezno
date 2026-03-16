@@ -27,12 +27,37 @@ pub mod bases {
 	};
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub enum FunctionKind {
+	#[default]
+	Default,
+	/// for `super` checking
+	Constructor,
+	/// for `super.` checking
+	Method,
+}
+
 pub type HeadingAndPosition<T> = <T as FunctionBased>::Header;
+
+pub trait FunctionHeaderTrait: Debug + Clone + Send + Sync {
+	fn is_async(&self) -> bool;
+
+	fn is_generator(&self) -> bool;
+
+	// fn get_position(&self) -> Span;
+}
+
+pub trait FunctionBodyTrait: ASTNode + Send + Sync {
+	fn from_reader_as_function_body(
+		reader: &mut crate::Lexer,
+		directive_allowed: bool,
+	) -> ParseResult<Self>;
+}
 
 /// Specialization information for [`FunctionBase`]
 pub trait FunctionBased: Debug + Clone + Send + Sync {
 	/// Includes a keyword and/or modifiers
-	type Header: Debug + Clone + Send + Sync;
+	type Header: FunctionHeaderTrait;
 
 	/// A name of the function
 	type Name: Debug + Clone + Send + Sync;
@@ -54,10 +79,12 @@ pub trait FunctionBased: Debug + Clone + Send + Sync {
 	type ParameterVisibility: ParameterVisibility + serde::Serialize;
 
 	/// The body of the function
-	type Body: ASTNode;
+	type Body: FunctionBodyTrait;
 
 	/// For debugging only
 	fn get_name(name: &Self::Name) -> Option<&str>;
+
+	fn kind() -> FunctionKind;
 
 	fn header_and_name_from_reader(
 		reader: &mut crate::Lexer,
@@ -129,6 +156,32 @@ pub trait FunctionBased: Debug + Clone + Send + Sync {
 		options: &VisitOptions,
 		chain: &mut temporary_annex::Annex<crate::Chain>,
 	);
+}
+
+pub(crate) fn parse_function_body<T: FunctionBased>(
+	reader: &mut crate::Lexer,
+	header: &T::Header,
+	kind: FunctionKind,
+	parameters_has_default_or_spread: bool,
+) -> ParseResult<T::Body> {
+	let label_boundary =
+		std::mem::replace(&mut reader.state.label_boundary, reader.state.labels.len());
+	let was_async = std::mem::replace(&mut reader.state.flags.in_async, header.is_async());
+	let was_generator =
+		std::mem::replace(&mut reader.state.flags.in_generator, header.is_generator());
+	// WIP
+	let kind = if let Some(FunctionKind::Constructor) = reader.state.flags.function {
+		FunctionKind::Constructor
+	} else {
+		kind
+	};
+	let was_function = std::mem::replace(&mut reader.state.flags.function, Some(kind));
+	let body = T::Body::from_reader_as_function_body(reader, parameters_has_default_or_spread)?;
+	reader.state.label_boundary = label_boundary;
+	reader.state.flags.in_async = was_async;
+	reader.state.flags.in_generator = was_generator;
+	reader.state.flags.function = was_function;
+	Ok(body)
 }
 
 pub type FunctionTypeParameters = Vec<TypeParameter>;
@@ -210,8 +263,8 @@ impl<T: FunctionBased> FunctionBase<T> {
 		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
-		// TODO header.get_start else here
 		let start = reader.get_start();
+		// let start = header.get_start();
 		let type_parameters = if reader.is_operator_advance("<") {
 			Some(bracketed_items_from_reader(reader, ">").map(|(params, _)| params)?)
 		} else {
@@ -236,7 +289,12 @@ impl<T: FunctionBased> FunctionBase<T> {
 		if let Some(slice) = T::get_parameter_body_boundary_slice() {
 			reader.expect_operator(slice)?;
 		}
-		let body = T::Body::from_reader(reader)?;
+		let body = parse_function_body::<T>(
+			reader,
+			&header,
+			T::kind(),
+			!parameters.has_default_or_spread(),
+		)?;
 		let body_pos = body.get_position();
 		// TODO body.is_null
 		let end_pos = if body_pos.is_null() {
@@ -295,6 +353,7 @@ where
 pub struct GeneralFunctionBase<T: ExpressionOrStatementPosition>(PhantomData<T>);
 
 pub type ExpressionFunction = FunctionBase<GeneralFunctionBase<ExpressionPosition>>;
+
 #[cfg_attr(target_family = "wasm", wasm_bindgen::prelude::wasm_bindgen(typescript_custom_section))]
 #[allow(dead_code)]
 const TYPES_EXPRESSION_FUNCTION: &str = r"
@@ -313,6 +372,10 @@ impl<T: ExpressionOrStatementPosition> FunctionBased for GeneralFunctionBase<T> 
 	type LeadingParameter = Option<ThisParameter>;
 	type ParameterVisibility = ();
 	type Body = T::FunctionBody;
+
+	fn kind() -> FunctionKind {
+		FunctionKind::default()
+	}
 
 	fn has_body(body: &Self::Body) -> bool {
 		T::has_function_body(body)
@@ -464,8 +527,9 @@ fn parse_location(reader: &mut crate::Lexer) -> Option<FunctionLocationModifier>
 
 impl FunctionHeader {
 	pub(crate) fn from_reader_initial(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		#[cfg(feature = "extras")]
 		let start = reader.get_start();
+
+		#[cfg(feature = "extras")]
 		let is_async = reader.is_keyword_advance("async");
 
 		#[cfg(feature = "extras")]
@@ -516,24 +580,6 @@ impl FunctionHeader {
 			FunctionHeader::ChadFunctionHeader { .. } => {}
 		}
 		Ok(self)
-	}
-
-	#[must_use]
-	pub fn is_generator(&self) -> bool {
-		match self {
-			FunctionHeader::BasicFunctionHeader { is_generator, .. } => *is_generator,
-			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { .. } => true,
-		}
-	}
-
-	#[must_use]
-	pub fn is_async(&self) -> bool {
-		match self {
-			FunctionHeader::BasicFunctionHeader { is_async, .. } => *is_async,
-			#[cfg(feature = "extras")]
-			FunctionHeader::ChadFunctionHeader { is_async, .. } => *is_async,
-		}
 	}
 
 	#[must_use]
@@ -598,6 +644,32 @@ impl FunctionHeader {
 	}
 }
 
+impl FunctionHeaderTrait for FunctionHeader {
+	fn is_generator(&self) -> bool {
+		match self {
+			FunctionHeader::BasicFunctionHeader { is_generator, .. } => *is_generator,
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { .. } => true,
+		}
+	}
+
+	fn is_async(&self) -> bool {
+		match self {
+			FunctionHeader::BasicFunctionHeader { is_async, .. } => *is_async,
+			#[cfg(feature = "extras")]
+			FunctionHeader::ChadFunctionHeader { is_async, .. } => *is_async,
+		}
+	}
+
+	// fn get_position(&self) -> Span {
+	// 	match self {
+	// 		FunctionHeader::BasicFunctionHeader { position, .. } => *position,
+	// 		#[cfg(feature = "extras")]
+	// 		FunctionHeader::ChadFunctionHeader { position, .. } => *position,
+	// 	}
+	// }
+}
+
 /// This structure removes possible invalid combinations with async
 #[derive(PartialEq, Eq, Clone, Debug)]
 #[apply(derive_ASTNode)]
@@ -650,16 +722,6 @@ impl MethodHeader {
 	}
 
 	#[must_use]
-	pub fn is_async(&self) -> bool {
-		matches!(self, Self::Regular { is_async: true, .. })
-	}
-
-	#[must_use]
-	pub fn is_generator(&self) -> bool {
-		matches!(self, Self::Regular { generator: Some(_), .. })
-	}
-
-	#[must_use]
 	pub fn is_no_modifiers(&self) -> bool {
 		matches!(self, Self::Regular { is_async: false, generator: None })
 	}
@@ -677,6 +739,16 @@ impl MethodHeader {
 			} => Ok("generator"),
 			MethodHeader::Regular { .. } => Err(()),
 		}
+	}
+}
+
+impl FunctionHeaderTrait for MethodHeader {
+	fn is_async(&self) -> bool {
+		matches!(self, Self::Regular { is_async: true, .. })
+	}
+
+	fn is_generator(&self) -> bool {
+		matches!(self, Self::Regular { generator: Some(_), .. })
 	}
 }
 
@@ -708,6 +780,24 @@ impl GeneratorSpecifier {
 #[derive(Debug, Clone, visitable_derive::Visitable)]
 pub struct FunctionBody(pub Option<Block>);
 
+#[cfg(feature = "full-typescript")]
+impl FunctionBodyTrait for FunctionBody {
+	fn from_reader_as_function_body(
+		reader: &mut crate::Lexer,
+		directive_allowed: bool,
+	) -> crate::ParseResult<Self> {
+		// If type annotations. Allow elided bodies for function overloading
+		let body = if reader.is_operator("{")
+			|| !reader.get_options().type_annotations.type_annotations()
+		{
+			Some(Block::from_reader_as_function_body(reader, directive_allowed)?)
+		} else {
+			None
+		};
+		Ok(Self(body))
+	}
+}
+
 #[cfg(not(feature = "full-typescript"))]
 pub type FunctionBody = Block;
 
@@ -718,16 +808,7 @@ impl ASTNode for FunctionBody {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		// If type annotations. Allow elided bodies for function overloading
-
-		let body = if reader.is_operator("{")
-			|| !reader.get_options().type_annotations.type_annotations()
-		{
-			Some(Block::from_reader(reader)?)
-		} else {
-			None
-		};
-		Ok(Self(body))
+		Self::from_reader_as_function_body(reader, true)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

@@ -324,3 +324,83 @@ impl From<String> for ImportLocation {
 		Self::Quoting(value, Quoting::default())
 	}
 }
+
+#[apply(derive_ASTNode)]
+#[derive(Debug, Default, Clone, Copy)]
+pub enum ImportKind {
+	#[default]
+	Standard,
+	#[cfg(feature = "extras")]
+	Deferred,
+	#[cfg(feature = "full-typescript")]
+	TypeOnly,
+}
+
+impl ImportKind {
+	pub(crate) fn from_reader(reader: &mut crate::Lexer) -> Self {
+		if cfg!(feature = "extras") && reader.is_keyword_advance("defer") {
+			Self::Deferred
+		} else if cfg!(feature = "extras") && reader.is_keyword_advance("type") {
+			Self::TypeOnly
+		} else {
+			Self::Standard
+		}
+	}
+
+	/// fallback case
+	pub(crate) fn as_identifier(self) -> Option<&'static str> {
+		match self {
+			#[cfg(feature = "extras")]
+			ImportKind::Deferred => Some("defer"),
+			#[cfg(feature = "full-typescript")]
+			ImportKind::TypeOnly => Some("type"),
+			ImportKind::Standard => None,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Visitable)]
+#[apply(derive_ASTNode)]
+pub struct ImportAttribute(pub crate::expressions::ObjectLiteral);
+
+impl crate::ASTNode for ImportAttribute {
+	fn get_position(&self) -> crate::Span {
+		self.0.get_position()
+	}
+
+	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
+		let ol = crate::expressions::ObjectLiteral::from_reader(reader)?;
+
+		for member in &ol.members {
+			// TODO filter comments
+			let is_okay =
+				if let crate::expressions::object_literal::ObjectLiteralMember::Property {
+					key: _,
+					assignment: false,
+					value,
+					position: _,
+				} = member
+				{
+					matches!(value, crate::Expression::StringLiteral(..))
+				} else {
+					false
+				};
+			if !is_okay {
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::InvalidImportAttribute,
+					ol.get_position(),
+				));
+			}
+		}
+		Ok(Self(ol))
+	}
+
+	fn to_string_from_buffer<T: source_map::ToString>(
+		&self,
+		buf: &mut T,
+		options: &crate::ToStringOptions,
+		local: crate::LocalToStringInformation,
+	) {
+		self.0.to_string_from_buffer(buf, options, local)
+	}
+}

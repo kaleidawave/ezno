@@ -851,7 +851,7 @@ fn property_key_matches(
 	lhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
 	rhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
 ) -> bool {
-	if let (Some(lhs), Some(rhs)) = (lhs.as_str(), rhs.as_str()) {
+	if let (Some(lhs), Some(rhs)) = (lhs.as_option_str(), rhs.as_option_str()) {
 		lhs == rhs
 	} else {
 		// FUTURE might be missing cases here

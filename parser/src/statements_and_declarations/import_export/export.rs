@@ -1,10 +1,10 @@
 use crate::{ASTNode, ParseResult, Span, derive_ASTNode};
 
-use crate::expressions::{Expression, ObjectLiteral};
+use crate::expressions::Expression;
 use crate::type_annotations::TypeAnnotationFunctionParameters;
 use crate::{TypeAnnotation, VariableIdentifier};
 
-use super::{ImportExportName, ImportExportPart, ImportLocation};
+use super::{ImportAttribute, ImportExportName, ImportExportPart, ImportLocation};
 
 use get_field_by_type::GetFieldByType;
 use visitable_derive::Visitable;
@@ -70,14 +70,14 @@ pub enum ExportDeclaration {
 		// under proposal this can be a string
 		r#as: Option<ImportExportName>,
 		from: ImportLocation,
-		with: Option<ObjectLiteral>,
+		with: Option<ImportAttribute>,
 		position: Span,
 	},
 	/// `export { ... } from "..."`
 	ImportToExportParts {
 		parts: Vec<ImportExportPart<super::import::ImportDeclaration>>,
 		from: ImportLocation,
-		with: Option<ObjectLiteral>,
+		with: Option<ImportAttribute>,
 		type_definitions_only: bool,
 		position: Span,
 	},
@@ -151,7 +151,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 
 		let with = reader
 			.is_operator_advance("with")
-			.then(|| ObjectLiteral::from_reader(reader))
+			.then(|| ImportAttribute::from_reader(reader))
 			.transpose()?;
 
 		Ok(ExportDeclaration::ImportToExportAll { r#as, from, position, with })
@@ -167,7 +167,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 
 			let with = reader
 				.is_operator_advance("with")
-				.then(|| ObjectLiteral::from_reader(reader))
+				.then(|| ImportAttribute::from_reader(reader))
 				.transpose()?;
 			let position = start.union(reader.get_end());
 
@@ -196,7 +196,7 @@ pub(crate) fn export_declaration_from_reader_after_export_keyword(
 
 			let with = reader
 				.is_operator_advance("with")
-				.then(|| ObjectLiteral::from_reader(reader))
+				.then(|| ImportAttribute::from_reader(reader))
 				.transpose()?;
 			let position = start.union(reader.get_end());
 

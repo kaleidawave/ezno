@@ -2,14 +2,14 @@ use std::fmt::Debug;
 
 use crate::{
 	ASTNode, Block, Expression, FunctionBase, ParseResult, PropertyKey, TypeAnnotation,
-	derive_ASTNode,
-	functions::{
-		FunctionBased, FunctionBody, HeadingAndPosition, MethodHeader, SuperParameter,
-		ThisParameter,
-	},
-	property_key::PublicOrPrivate,
-	visiting::Visitable,
+	derive_ASTNode, property_key::PublicOrPrivate, visiting::Visitable,
 };
+
+use crate::functions::{
+	FunctionBased, FunctionBody, FunctionHeaderTrait, FunctionKind, HeadingAndPosition,
+	MethodHeader, SuperParameter, ThisParameter,
+};
+
 use source_map::Span;
 use visitable_derive::Visitable;
 
@@ -32,6 +32,16 @@ pub enum ClassMember {
 		position: Span,
 	},
 	Comment(String, bool, Span),
+}
+
+impl ClassMember {
+	pub fn get_key(&self) -> Option<&PropertyKey<PublicOrPrivate>> {
+		match self {
+			Self::Property(_, property) => Some(&property.key),
+			Self::Method(_, method) => Some(&method.name),
+			_ => None,
+		}
+	}
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -156,11 +166,41 @@ impl ASTNode for ClassMember {
 			PropertyKey::<PublicOrPrivate>::from_reader(reader)?
 		};
 
+		if let PropertyKey::Identifier(ref key, pos, _) = key
+			&& key == "constructor"
+			&& !is_static
+		{
+			return Err(crate::ParseError::new(
+				crate::ParseErrors::TODO("key cannot be called constructor"),
+				pos,
+			));
+		}
+
 		if reader.get_current().starts_with(['(', '<']) {
-			let function =
+			let method =
 				ClassFunction::from_reader_with_config(reader, header, key).map(Box::new)?;
-			Ok(ClassMember::Method(is_static, function))
+
+			if let MethodHeader::Get = method.header
+				&& !method.parameters.is_empty()
+			{
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::TODO("get cannot have parameters"),
+					method.parameters.get_position(),
+				));
+			}
+			if let MethodHeader::Set = method.header
+				&& !method.parameters.is_single()
+			{
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::TODO("set can only have 1 parameter"),
+					method.parameters.get_position(),
+				));
+			}
+
+			Ok(ClassMember::Method(is_static, method))
 		} else {
+			let was_in_ternary_or_class_field =
+				std::mem::replace(&mut reader.state.flags.in_ternary_or_class_field, true);
 			if !header.is_no_modifiers() {
 				let (found, position) = crate::lexer::utilities::next_item(reader);
 				return Err(crate::ParseError::new(
@@ -180,6 +220,7 @@ impl ASTNode for ClassMember {
 			} else {
 				None
 			};
+			reader.state.flags.in_ternary_or_class_field = was_in_ternary_or_class_field;
 
 			let position = start.union(reader.get_end());
 
@@ -293,6 +334,10 @@ impl FunctionBased for ClassFunctionBase {
 	type ParameterVisibility = ();
 	type Body = FunctionBody;
 
+	fn kind() -> FunctionKind {
+		FunctionKind::Method
+	}
+
 	fn has_body(body: &Self::Body) -> bool {
 		body.has_body()
 	}
@@ -342,6 +387,16 @@ impl FunctionBased for ClassFunctionBase {
 	}
 }
 
+impl FunctionHeaderTrait for () {
+	fn is_async(&self) -> bool {
+		false
+	}
+
+	fn is_generator(&self) -> bool {
+		false
+	}
+}
+
 impl FunctionBased for ClassConstructorBase {
 	type Header = ();
 	type Name = ();
@@ -352,6 +407,10 @@ impl FunctionBased for ClassConstructorBase {
 	// fn get_chain_variable(this: &FunctionBase<Self>) -> ChainVariable {
 	// 	ChainVariable::UnderClassConstructor(this.body.1)
 	// }
+
+	fn kind() -> FunctionKind {
+		FunctionKind::Constructor
+	}
 
 	fn has_body(body: &Self::Body) -> bool {
 		body.has_body()
