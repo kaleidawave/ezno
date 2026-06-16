@@ -1614,6 +1614,20 @@ let x: number = 5;
 
 > Not shown in the example but thanks to [#69](https://github.com/kaleidawave/ezno/pull/69) for adding the position of the error
 
+#### TDZ from free variable write (across function)
+
+```ts
+function setX() {
+	x = 1
+}
+
+setX();
+
+let x: number = 5;
+```
+
+- Variable 'x' used before declaration
+
 #### TDZ errors through nested getter
 
 ```ts

@@ -123,6 +123,27 @@ pub(crate) fn apply_events(
 					// TODO maybe needs to be returned back up, rather than set here?
 					top_environment.possibly_mutated_variables.insert(*variable);
 				} else {
+					if get_value_of_variable(
+						top_environment,
+						*variable,
+						Some(type_arguments),
+						types,
+					)
+					.is_none()
+					{
+						diagnostics.errors.push(
+							crate::types::calling::FunctionCallingError::VariableUsedInTDZ {
+								error: VariableUsedInTDZ {
+									variable_name: top_environment
+										.get_variable_name(*variable)
+										.to_owned(),
+									position: *position,
+								},
+								call_site: input.call_site,
+							},
+						);
+					}
+
 					let new_value = substitute(*value, type_arguments, top_environment, types);
 
 					// There is probably a way to speed this up. For example `Environment` could have a range?
