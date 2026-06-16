@@ -1,4 +1,4 @@
-A fast and correct TypeScript type checker and compiler with additional experiments
+A correct and efficient TypeScript type checker and compiler with additional experiments
 
 > [!IMPORTANT]
 > Ezno is in active development and **does not currently support enough features to check existing projects** (see [blocking issues](https://github.com/kaleidawave/ezno/labels/blocking)). Check out the [getting started guide](./checker/documentation/getting-started.md) for experimenting with what it [currently supports](./checker/specification/specification.md).
@@ -27,13 +27,13 @@ What Ezno is not
 
 Read more about Ezno (in chronological order)
 
-- [Introducing Ezno](https://kaleidawave.github.io/posts/introducing-ezno/)
-- [Ezno in '23](https://kaleidawave.github.io/posts/ezno-23/)
-- [A preview of the checker](https://kaleidawave.github.io/posts/a-preview-of-the-checker/)
-- [The quest continues](https://kaleidawave.github.io/posts/the-quest-continues/)
-- [Sets, types and type checking](https://kaleidawave.github.io/posts/sets-types-and-type-checking/) (*general post*)
-- [Experimental types](https://kaleidawave.github.io/posts/experimental-types/)
-- [Mapped types and properties](https://kaleidawave.github.io/posts/mapped-types/)
+- [Introducing Ezno](https://kaleidawave.blog/posts/introducing-ezno/)
+- [Ezno in '23](https://kaleidawave.blog/posts/ezno-23/)
+- [A preview of the checker](https://kaleidawave.blog/posts/a-preview-of-the-checker/)
+- [The quest continues](https://kaleidawave.blog/posts/the-quest-continues/)
+- [Sets, types and type checking](https://kaleidawave.blog/posts/sets-types-and-type-checking/) (*general post*)
+- [Experimental types](https://kaleidawave.blog/posts/experimental-types/)
+- [Mapped types and properties](https://kaleidawave.blog/posts/mapped-types/)
 
 ---
 
