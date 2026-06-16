@@ -10,12 +10,12 @@ members = [
 
 [package]
 name = "ezno"
-description = "A fast and correct TypeScript type checker and compiler with additional experiments. For use as a library or through the CLI"
+description = "A correct and efficient TypeScript type checker and compiler with additional experiments. For use as a library or through the CLI"
 authors = ["Ben <kaleidawave@gmail.com>"]
 version = "0.0.23"
 edition = "2021"
 license = "MIT"
-homepage = "https://kaleidawave.github.io/posts/introducing-ezno/"
+homepage = "https://kaleidawave.blog/posts/introducing-ezno/"
 repository = "https://github.com/kaleidawave/ezno"
 default-run = "ezno"
 categories = ["compilers"]
