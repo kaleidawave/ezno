@@ -130,6 +130,28 @@ pub(crate) fn apply_events(
 					let in_above_environment =
 						top_environment.variables.values().any(|var| var.get_id() == *variable);
 
+					if in_above_environment {
+						let current_value = get_value_of_variable(
+							top_environment,
+							*variable,
+							Some(type_arguments),
+							types,
+						);
+						if current_value.is_none() {
+							diagnostics.errors.push(
+								crate::types::calling::FunctionCallingError::VariableUsedInTDZ {
+									error: VariableUsedInTDZ {
+										variable_name: top_environment
+											.get_variable_name(*variable)
+											.to_owned(),
+										position: *position,
+									},
+									call_site: input.call_site,
+								},
+							);
+						}
+					}
+
 					// TODO temp assigns to many contexts, which is bad.
 					// Closures should have an indicator of what they close over #56
 					let info = target.get_latest_info(top_environment);
