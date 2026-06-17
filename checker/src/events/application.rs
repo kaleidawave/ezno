@@ -123,33 +123,34 @@ pub(crate) fn apply_events(
 					// TODO maybe needs to be returned back up, rather than set here?
 					top_environment.possibly_mutated_variables.insert(*variable);
 				} else {
-					if get_value_of_variable(
-						top_environment,
-						*variable,
-						Some(type_arguments),
-						types,
-					)
-					.is_none()
-					{
-						diagnostics.errors.push(
-							crate::types::calling::FunctionCallingError::VariableUsedInTDZ {
-								error: VariableUsedInTDZ {
-									variable_name: top_environment
-										.get_variable_name(*variable)
-										.to_owned(),
-									position: *position,
-								},
-								call_site: input.call_site,
-							},
-						);
-					}
-
 					let new_value = substitute(*value, type_arguments, top_environment, types);
 
 					// There is probably a way to speed this up. For example `Environment` could have a range?
 					// This also doesn't work around conditionals
 					let in_above_environment =
 						top_environment.variables.values().any(|var| var.get_id() == *variable);
+
+					if in_above_environment {
+						let current_value = get_value_of_variable(
+							top_environment,
+							*variable,
+							Some(type_arguments),
+							types,
+						);
+						if current_value.is_none() {
+							diagnostics.errors.push(
+								crate::types::calling::FunctionCallingError::VariableUsedInTDZ {
+									error: VariableUsedInTDZ {
+										variable_name: top_environment
+											.get_variable_name(*variable)
+											.to_owned(),
+										position: *position,
+									},
+									call_site: input.call_site,
+								},
+							);
+						}
+					}
 
 					// TODO temp assigns to many contexts, which is bad.
 					// Closures should have an indicator of what they close over #56
