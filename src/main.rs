@@ -1,8 +1,4 @@
 #![allow(
-    clippy::new_without_default,
-    // TODO: Remove when fixed
-	clippy::result_unit_err,
-    clippy::default_trait_access,
     clippy::missing_errors_doc,
     clippy::missing_panics_doc,
     clippy::implicit_hasher,
@@ -10,9 +6,17 @@
     // More explicit sometimes to have the module name
     clippy::module_name_repetitions
 )]
-#![warn(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#![warn(
+	clippy::cast_precision_loss,
+	clippy::cast_possible_truncation,
+	clippy::cast_sign_loss,
+    clippy::new_without_default,
+    // TODO: Remove when fixed
+	clippy::result_unit_err,
+    clippy::default_trait_access
+)]
 
-use ezno_lib::cli::run_cli;
+use ezno::cli::run_cli;
 
 fn main() -> std::process::ExitCode {
 	fn read_from_file(path: &std::path::Path) -> Option<String> {

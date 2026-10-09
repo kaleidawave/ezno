@@ -34,23 +34,6 @@ pub(crate) fn print_info() {
 	}
 }
 
-pub(crate) fn cli_input_resolver(prompt: &str) -> String {
-	use std::io;
-	print!("{prompt}> ");
-	std::io::Write::flush(&mut io::stdout()).unwrap();
-	let mut input = String::new();
-	let std_in = &mut io::stdin();
-
-	// multiline_term_input only works on windows for now
-	#[cfg(target_family = "windows")]
-	let _n = multiline_term_input::read_string(std_in, &mut input);
-
-	#[cfg(target_family = "unix")]
-	let _n = std_in.read_line(&mut input).unwrap();
-
-	input
-}
-
 fn wrap_with_indent(input: &str) {
 	// Four spaces is consitently rendered across terminals (unlike tabs)
 	const INDENT: &str = "    ";

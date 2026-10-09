@@ -1,10 +1,12 @@
 use crate::{
 	ASTNode, ExpressionOrStatementPosition, ParseErrors, ParseResult, PropertyKey, Span,
-	StatementPosition, TypeAnnotation, TypeParameter, WithComment, bracketed_items_from_reader,
-	bracketed_items_to_string, derive_ASTNode, extensions::decorators::Decorated,
-	functions::MethodHeader, property_key::PublicOrPrivate,
-	types::type_annotations::TypeAnnotationFunctionParameters,
+	StatementPosition, TypeAnnotation, TypeParameter, bracketed_items_from_reader,
+	bracketed_items_to_string, derive_ASTNode, property_key::PublicOrPrivate,
 };
+
+use crate::extensions::decorators::Decorated;
+use crate::functions::MethodHeader;
+use crate::types::type_annotations::TypeAnnotationFunctionParameters;
 
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
@@ -20,7 +22,7 @@ pub struct InterfaceDeclaration {
 	pub type_parameters: Option<Vec<TypeParameter>>,
 	/// The document interface extends a multiple of other interfaces
 	pub extends: Option<Vec<TypeAnnotation>>,
-	pub members: Vec<WithComment<Decorated<InterfaceMember>>>,
+	pub members: Vec<Decorated<InterfaceMember>>,
 	pub position: Span,
 }
 
@@ -40,44 +42,7 @@ impl ASTNode for InterfaceDeclaration {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("interface")?;
-
-		// #[cfg(feature = "extras")]
-		// let is_nominal = reader
-		// 	.conditional_next(|t| matches!(t, TSXToken::Keyword(TSXKeyword::Nominal)))
-		// 	.is_some();
-
-		let name = StatementPosition::from_reader(reader)?;
-		let type_parameters = if reader.is_operator_advance("<") {
-			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
-			Some(params)
-		} else {
-			None
-		};
-
-		let extends = if reader.is_keyword_advance("extends") {
-			let type_annotation = TypeAnnotation::from_reader(reader)?;
-			let mut extends = vec![type_annotation];
-			while reader.is_operator_advance(",") {
-				extends.push(TypeAnnotation::from_reader(reader)?);
-			}
-			Some(extends)
-		} else {
-			None
-		};
-
-		let _ = reader.expect('{')?;
-		let members = interface_members_from_reader(reader)?;
-		let position = start.union(reader.expect('}')?);
-		Ok(InterfaceDeclaration {
-			name,
-			is_is_declare: false,
-			// #[cfg(feature = "extras")]
-			// is_nominal,
-			type_parameters,
-			extends,
-			members,
-			position,
-		})
+		InterfaceDeclaration::from_reader_after_keyword(reader, start)
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -121,6 +86,44 @@ impl ASTNode for InterfaceDeclaration {
 			options.add_indent(local.depth, buf);
 			buf.push('}');
 		}
+	}
+}
+
+impl InterfaceDeclaration {
+	pub fn from_reader_after_keyword(
+		reader: &mut crate::Lexer,
+		start: source_map::Start,
+	) -> ParseResult<Self> {
+		let name = StatementPosition::from_reader(reader)?;
+		let type_parameters = if reader.is_operator_advance("<") {
+			let (params, _) = crate::bracketed_items_from_reader(reader, ">")?;
+			Some(params)
+		} else {
+			None
+		};
+
+		let extends = if reader.is_keyword_advance("extends") {
+			let type_annotation = TypeAnnotation::from_reader(reader)?;
+			let mut extends = vec![type_annotation];
+			while reader.is_operator_advance(",") {
+				extends.push(TypeAnnotation::from_reader(reader)?);
+			}
+			Some(extends)
+		} else {
+			None
+		};
+
+		let _ = reader.expect_chr('{')?;
+		let members = interface_members_from_reader(reader)?;
+		let position = start.union(reader.expect_chr('}')?);
+		Ok(InterfaceDeclaration {
+			name,
+			is_is_declare: false,
+			type_parameters,
+			extends,
+			members,
+			position,
+		})
 	}
 }
 
@@ -204,7 +207,7 @@ impl ASTNode for InterfaceMember {
 		let is_readonly = reader.is_keyword_advance("readonly");
 
 		// This match will early return if not a method
-		if reader.is_operator("(") {
+		if reader.starts_with_slice("(") {
 			// Calling self
 			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
 			// let parameters = function_parameters_from_reader(reader)?;
@@ -223,7 +226,7 @@ impl ASTNode for InterfaceMember {
 				return_type,
 				type_parameters: None,
 			})
-		} else if reader.is_operator("<") {
+		} else if reader.is_operator_advance("<") {
 			// Caller self with generic parameters
 			let (type_parameters, _) = bracketed_items_from_reader(reader, ">")?;
 			let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
@@ -302,14 +305,23 @@ impl ASTNode for InterfaceMember {
 			let position = start.union(reader.get_end());
 			Ok(InterfaceMember::Comment(content, is_multiline, position))
 		} else {
-			let header = MethodHeader::from_reader(reader);
+			let start = reader.get_start();
+			let mut header = MethodHeader::from_reader(reader)?;
 
 			// We do not use `PropertyKey::from_reader` to handle a case with type annotation
-			let name = if reader.is_operator_advance("[") {
+			let name = if reader.get_current().starts_with(['<', '(', '<', '?', ':']) {
+				if let Ok(name) = header.into_property_key() {
+					let privacy = PublicOrPrivate::Public;
+					let position = start.with_length(name.len());
+					PropertyKey::Identifier(name.to_owned(), position, privacy)
+				} else {
+					todo!("error")
+				}
+			} else if reader.is_operator_advance("[") {
 				if reader.starts_with_string_delimeter() {
-					let (content, quoted, width) = reader.parse_string_literal()?;
+					let (content, quoting, width) = reader.parse_string_literal()?;
 					let position = start.with_length(width as usize);
-					PropertyKey::StringLiteral(content.into_owned(), quoted, position)
+					PropertyKey::StringLiteral(content.into_owned(), quoting, position)
 				} else if reader.starts_with_number() {
 					let (value, length) = reader.parse_number_literal()?;
 					let position = start.with_length(length as usize);
@@ -325,29 +337,29 @@ impl ASTNode for InterfaceMember {
 					use crate::Expression;
 					// "name" is the name of the parameter name for indexing
 					let start = reader.get_start();
-					let name = reader.parse_identifier("interface parameter name", false)?;
+					let name =
+						reader.parse_identifier("interface parameter name", false)?.into_owned();
 
 					// Catch for computed symbol: e.g. `[Symbol.instanceOf()]`, rather than indexer
 					if reader.is_operator(".") {
-						let top = Expression::VariableReference(
-							name.into(),
-							start.with_length(name.len()),
-						);
+						let position = start.with_length(name.len());
+						let top = Expression::VariableReference(name, position);
 						let expression =
 							Expression::from_reader_after_first_expression(reader, 0, top)?;
-						let end = reader.expect(']')?;
+						let end = reader.expect_chr(']')?;
 						PropertyKey::Computed(Box::new(expression), start.union(end))
 					} else if reader.is_operator_advance(":") && header.is_no_modifiers() {
 						// Indexed type
 						let indexer_type = TypeAnnotation::from_reader(reader)?;
-						reader.expect(']')?;
-						reader.expect(':')?;
+						reader.expect_chr(']')?;
+						reader.expect_chr(':')?;
 						let return_type = TypeAnnotation::from_reader(reader)?;
+						let position = start.union(return_type.get_position());
 						return Ok(InterfaceMember::Indexer {
-							name: name.to_owned(),
+							name,
 							is_readonly,
 							indexer_type,
-							position: start.union(return_type.get_position()),
+							position,
 							return_type,
 						});
 					} else if reader.is_keyword_advance("in") && header.is_no_modifiers() {
@@ -360,7 +372,7 @@ impl ASTNode for InterfaceMember {
 							None
 						};
 
-						reader.expect(']')?;
+						reader.expect_chr(']')?;
 						let optionality = if reader.is_operator_advance("?:") {
 							Optionality::Optional
 						} else if reader.is_operator_advance("-?:") {
@@ -385,7 +397,7 @@ impl ASTNode for InterfaceMember {
 						};
 
 						return Ok(InterfaceMember::Rule {
-							parameter: name.to_owned(),
+							parameter: name,
 							optionality,
 							is_readonly,
 							matching_type: Box::new(matching_type),
@@ -404,12 +416,28 @@ impl ASTNode for InterfaceMember {
 						});
 					}
 				}
+			} else if reader.starts_with_string_delimeter() {
+				let (value, quoting, length) = reader.parse_string_literal()?;
+				let position = start.with_length(length as usize);
+				PropertyKey::StringLiteral(value.into_owned(), quoting, position)
+			} else if reader.starts_with_number() {
+				let (value, length) = reader.parse_number_literal()?;
+				let position = start.with_length(length as usize);
+				if let crate::numbers::ParsedNumberLiteral::Number(value) = value {
+					PropertyKey::NumberLiteral(value, position)
+				} else {
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::BigIntNotAllowedHere,
+						position,
+					));
+				}
 			} else {
 				let start = reader.get_start();
-				let name = reader.parse_identifier("interface parameter name", false)?;
+				let name = reader.parse_identifier("interface parameter name", false)?.into_owned();
 				// TODO...?
 				let privacy = PublicOrPrivate::Public;
-				PropertyKey::Identifier(name.to_owned(), start.with_length(name.len()), privacy)
+				let position = start.with_length(name.len());
+				PropertyKey::Identifier(name, position, privacy)
 			};
 
 			let type_parameters = reader
@@ -418,7 +446,7 @@ impl ASTNode for InterfaceMember {
 				.transpose()?
 				.map(|(tp, _)| tp);
 
-			if !header.is_no_modifiers() || reader.is_operator("(") || reader.is_operator("?(") {
+			if reader.is_operator("(") || reader.is_operator("?(") {
 				let is_optional = reader.is_operator_advance("?");
 				// This will eat the first parenthesis, thus not eating above
 				let parameters = TypeAnnotationFunctionParameters::from_reader(reader)?;
@@ -440,12 +468,11 @@ impl ASTNode for InterfaceMember {
 					is_optional,
 					position,
 				})
-			} else if let Some(seperator) = reader.is_one_of_operators(&["?:", ":"]) {
-				// if let Some(header) = header {
+			} else if reader.is_operator(":") || reader.is_operator("?:") {
+				let is_optional = reader.is_operator_advance("?");
 				// 	Err(crate::ParseError::new(ParseErrors::UnexpectedHeader, header.get_position()))
-				// } else {
-				let is_optional = "?:" == seperator;
-				reader.advance(if is_optional { 2 } else { 1 });
+				// } else if type_parameters.is_some() {}
+				reader.advance(1);
 				let type_annotation = TypeAnnotation::from_reader(reader)?;
 				let position = start.union(type_annotation.get_position());
 				Ok(InterfaceMember::Property {
@@ -596,14 +623,13 @@ impl ASTNode for InterfaceMember {
 
 pub(crate) fn interface_members_from_reader(
 	reader: &mut crate::Lexer,
-) -> ParseResult<Vec<WithComment<Decorated<InterfaceMember>>>> {
+) -> ParseResult<Vec<Decorated<InterfaceMember>>> {
 	let mut members = Vec::new();
 	loop {
-		reader.skip();
 		if reader.is_operator("}") {
 			break;
 		}
-		let decorated_member = WithComment::from_reader(reader)?;
+		let decorated_member = ASTNode::from_reader(reader)?;
 
 		if reader.is_operator("}") {
 			members.push(decorated_member);

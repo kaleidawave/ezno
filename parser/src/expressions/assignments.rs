@@ -1,8 +1,8 @@
 use crate::{
-	ASTNode, ParseError, ParseErrors, ParseResult, WithComment,
+	ASTNode, ParseError, ParseErrors, ParseResult,
 	ast::{
-		ArrayDestructuringField, Expression, FunctionArgument, ObjectDestructuringField,
-		PropertyKey, PropertyLike, PropertyReference, SpreadDestructuringField, SuperReference,
+		ArrayDestructuringField, Expression, ObjectDestructuringField, PropertyKey, PropertyLike,
+		PropertyReference, SpreadDestructuringField, SuperReference,
 		object_literal::{ObjectLiteral, ObjectLiteralMember},
 	},
 	derive_ASTNode,
@@ -31,6 +31,9 @@ pub enum VariableOrPropertyAccess {
 		position: Span,
 	},
 	PropertyOnSuper(PropertyLike, Span),
+	/// Allowed under strict mode
+	/// For bad property assignment
+	Neither(Box<Expression>),
 	#[cfg(feature = "full-typescript")]
 	NonNullAssertion(Box<VariableOrPropertyAccess>, Span),
 }
@@ -42,7 +45,7 @@ impl ASTNode for VariableOrPropertyAccess {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		// I think this is correct
-		let precedence = super::operators::INDEX_PRECEDENCE - 1;
+		let precedence = super::precedence::INDEX_PRECEDENCE - 1;
 		Expression::from_reader_with_precedence(reader, precedence)?.try_into()
 	}
 
@@ -83,6 +86,9 @@ impl ASTNode for VariableOrPropertyAccess {
 				indexer.to_string_from_buffer(buf, options, local);
 				buf.push(']');
 			}
+			VariableOrPropertyAccess::Neither(expression) => {
+				expression.to_string_from_buffer(buf, options, local);
+			}
 			VariableOrPropertyAccess::PropertyOnSuper(PropertyLike::Fixed(name), _) => {
 				buf.push_str("super.");
 				buf.push_str(name);
@@ -106,7 +112,7 @@ impl ASTNode for VariableOrPropertyAccess {
 impl TryFrom<Expression> for VariableOrPropertyAccess {
 	type Error = ParseError;
 
-	fn try_from(expression: Expression) -> Result<Self, Self::Error> {
+	fn try_from(expression: Expression) -> ParseResult<Self> {
 		match expression {
 			Expression::VariableReference(name, position) => Ok(Self::Variable(name, position)),
 			Expression::PropertyAccess { parent, position, property, is_optional } => {
@@ -125,16 +131,22 @@ impl TryFrom<Expression> for VariableOrPropertyAccess {
 			}
 			// Yah weird and recursion is fine here
 			Expression::Parenthesised(inner, _) => TryFrom::try_from(inner.0),
+			// TODO checked under strict mode...?
+			Expression::FunctionCall { .. } => Ok(Self::Neither(Box::new(expression))),
 			#[cfg(feature = "full-typescript")]
 			Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(on),
 				position,
 			) => TryFrom::try_from(*on)
 				.map(|value| Self::NonNullAssertion(Box::new(value), position)),
-			expression => Err(ParseError::new(
-				crate::ParseErrors::InvalidLHSAssignment,
-				expression.get_position(),
-			)),
+			expression => {
+				Err(ParseError::new(
+					crate::ParseErrors::InvalidLHSAssignment,
+					expression.get_position(),
+				))
+				// TODO
+				// Ok(Self::Neither(Box::new(expression)))
+			}
 		}
 	}
 }
@@ -154,6 +166,7 @@ impl From<VariableOrPropertyAccess> for Expression {
 			VariableOrPropertyAccess::PropertyOnSuper(property, position) => {
 				Expression::SuperExpression(SuperReference::PropertyAccess(property), position)
 			}
+			VariableOrPropertyAccess::Neither(expression) => *expression,
 			#[cfg(feature = "full-typescript")]
 			VariableOrPropertyAccess::NonNullAssertion(on, position) => Expression::SpecialOperators(
 				super::SpecialOperators::NonNullAssertion(Box::new((*on).into())),
@@ -168,7 +181,8 @@ impl VariableOrPropertyAccess {
 	pub fn get_parent(&self) -> Option<&Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..)
-			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
+			| VariableOrPropertyAccess::PropertyOnSuper(..)
+			| VariableOrPropertyAccess::Neither(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]
@@ -179,7 +193,8 @@ impl VariableOrPropertyAccess {
 	pub fn get_parent_mut(&mut self) -> Option<&mut Expression> {
 		match self {
 			VariableOrPropertyAccess::Variable(..)
-			| VariableOrPropertyAccess::PropertyOnSuper(..) => None,
+			| VariableOrPropertyAccess::PropertyOnSuper(..)
+			| VariableOrPropertyAccess::Neither(..) => None,
 			VariableOrPropertyAccess::PropertyAccess { parent, .. }
 			| VariableOrPropertyAccess::Index { indexee: parent, .. } => Some(parent),
 			#[cfg(feature = "full-typescript")]
@@ -197,13 +212,13 @@ pub enum LHSOfAssignment {
 	VariableOrPropertyAccess(VariableOrPropertyAccess),
 	ArrayDestructuring {
 		#[visit_skip_field]
-		members: Vec<WithComment<ArrayDestructuringField<LHSOfAssignment>>>,
+		members: Vec<ArrayDestructuringField<LHSOfAssignment>>,
 		spread: Option<SpreadDestructuringField<LHSOfAssignment>>,
 		position: Span,
 	},
 	ObjectDestructuring {
 		#[visit_skip_field]
-		members: Vec<WithComment<ObjectDestructuringField<LHSOfAssignment>>>,
+		members: Vec<ObjectDestructuringField<LHSOfAssignment>>,
 		spread: Option<SpreadDestructuringField<LHSOfAssignment>>,
 		position: Span,
 	},
@@ -221,7 +236,20 @@ impl ASTNode for LHSOfAssignment {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
-		Expression::from_reader(reader).and_then(TryInto::try_into)
+		let start = reader.get_start();
+		if reader.is_keyword_advance("await") {
+			if reader.starts_with_expression_delimiter() {
+				let inner =
+					VariableOrPropertyAccess::Variable("await".to_owned(), start.with_length(5));
+				Ok(Self::VariableOrPropertyAccess(inner))
+			} else {
+				let expression = super::parse_after_await(reader, start, false)?;
+				let inner = VariableOrPropertyAccess::Neither(Box::new(expression.0));
+				Ok(Self::VariableOrPropertyAccess(inner))
+			}
+		} else {
+			Expression::from_reader(reader).and_then(TryInto::try_into)
+		}
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -287,15 +315,11 @@ impl TryFrom<Expression> for LHSOfAssignment {
 				let mut new_members = Vec::with_capacity(members.len());
 				let mut iter = members.into_iter();
 				for member in iter.by_ref() {
-					let new_member = match member.0 {
-						Some(FunctionArgument::Comment { content, is_multiline: _, position }) => {
-							WithComment::PrefixComment(
-								content,
-								ArrayDestructuringField::None,
-								position,
-							)
-						}
-						Some(FunctionArgument::Spread(expression, span)) => {
+					let position = member.get_position();
+					if let Some(member) = member.0 {
+						let (expression, spread) = member.value_and_spread();
+
+						if spread {
 							return if let Some(next) = iter.next() {
 								Err(ParseError::new(
 									ParseErrors::CannotHaveRegularMemberAfterSpread,
@@ -305,24 +329,31 @@ impl TryFrom<Expression> for LHSOfAssignment {
 								let inner: LHSOfAssignment = expression.try_into()?;
 								Ok(Self::ArrayDestructuring {
 									members: new_members,
-									spread: Some(SpreadDestructuringField(Box::new(inner), span)),
+									spread: Some(SpreadDestructuringField(
+										Box::new(inner),
+										position,
+									)),
+									// TODO
 									position,
 								})
 							};
 						}
-						Some(FunctionArgument::Standard(expression)) => {
-							WithComment::None(match expression {
-								Expression::Assignment { lhs, rhs, position: _ } => {
-									ArrayDestructuringField::Name(lhs, (), Some(rhs))
-								}
-								expression => {
-									ArrayDestructuringField::Name(expression.try_into()?, (), None)
-								}
-							})
+
+						match expression {
+							Expression::Assignment { lhs, rhs, position: _ } => {
+								new_members.push(ArrayDestructuringField::Name(lhs, (), Some(rhs)));
+							}
+							expression => {
+								new_members.push(ArrayDestructuringField::Name(
+									expression.try_into()?,
+									(),
+									None,
+								));
+							}
 						}
-						None => WithComment::None(ArrayDestructuringField::None),
-					};
-					new_members.push(new_member);
+					} else {
+						new_members.push(ArrayDestructuringField::None);
+					}
 				}
 				Ok(Self::ArrayDestructuring { members: new_members, spread: None, position })
 			}
@@ -346,7 +377,10 @@ impl TryFrom<Expression> for LHSOfAssignment {
 								})
 							};
 						}
-						ObjectLiteralMember::Shorthand(name, pos) => {
+						ObjectLiteralMember::Shorthand(name) => {
+							let PropertyKey::Identifier(name, pos, _) = name.0 else {
+								panic!();
+							};
 							ObjectDestructuringField::Name(
 								crate::VariableIdentifier::Standard(name, pos),
 								(),
@@ -356,7 +390,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 						}
 						ObjectLiteralMember::Property { assignment, key, position, value } => {
 							if assignment {
-								if let PropertyKey::Identifier(name, pos, _) = key.get_ast() {
+								if let PropertyKey::Identifier(name, pos, _) = key {
 									ObjectDestructuringField::Name(
 										crate::VariableIdentifier::Standard(name, pos),
 										(),
@@ -379,9 +413,9 @@ impl TryFrom<Expression> for LHSOfAssignment {
 									};
 
 								ObjectDestructuringField::Map {
-									from: key.get_ast(),
+									from: key,
 									annotation: (),
-									name: WithComment::None(name),
+									name,
 									default_value,
 									position,
 								}
@@ -397,7 +431,7 @@ impl TryFrom<Expression> for LHSOfAssignment {
 							continue;
 						}
 					};
-					new_members.push(WithComment::None(new_member));
+					new_members.push(new_member);
 				}
 				Ok(Self::ObjectDestructuring { members: new_members, spread: None, position })
 			}

@@ -3,10 +3,6 @@ use ezno_parser::{
 	visiting::{Annex, Chain, VisitOptions, Visitable, Visitor, Visitors},
 };
 
-fn parse<T: ASTNode>(s: &str) -> T {
-	T::from_string(s.to_owned(), Default::default()).unwrap()
-}
-
 struct ShowChain;
 
 impl Visitor<Expression, ()> for ShowChain {
@@ -18,7 +14,7 @@ impl Visitor<Expression, ()> for ShowChain {
 }
 
 fn main() {
-	let expr = parse::<Expression>("3 && (4 && chain) && 2 == chain");
+	let expr = Expression::from_string("3 && (4 && chain) && 2 == chain".to_owned()).unwrap();
 
 	expr.visit(
 		&mut Visitors { expression_visitors: vec![Box::new(ShowChain)], ..Default::default() },

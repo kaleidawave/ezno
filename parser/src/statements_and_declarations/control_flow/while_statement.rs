@@ -19,10 +19,12 @@ impl ASTNode for WhileStatement {
 
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("while")?;
-		reader.expect('(')?;
+		reader.expect_chr('(')?;
 		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
-		reader.expect(')')?;
+		reader.expect_chr(')')?;
+		reader.start_variable_region();
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		reader.end_block();
 		Ok(Self { position: start.union(inner.get_position()), condition, inner })
 	}
 
@@ -58,11 +60,13 @@ impl ASTNode for DoWhileStatement {
 
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("do")?;
+		reader.start_variable_region();
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		reader.end_block();
 		let _ = reader.expect_keyword("while")?;
-		let _ = reader.expect('(')?;
+		let _ = reader.expect_chr('(')?;
 		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
-		let position = start.union(reader.expect(')')?);
+		let position = start.union(reader.expect_chr(')')?);
 		Ok(Self { inner, condition, position })
 	}
 

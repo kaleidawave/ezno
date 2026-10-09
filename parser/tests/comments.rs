@@ -8,7 +8,7 @@ fn random_comments() {
 	.trim_start()
 	.replace("    ", "\t");
 
-	let _module = Module::from_string(input.clone(), Default::default()).unwrap();
+	let _module = Module::from_string(input.clone()).unwrap();
 	// let output = module.to_string(&ToStringOptions::typescript());
 	// pretty_assertions::assert_eq!(output, input);
 }

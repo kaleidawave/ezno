@@ -1,14 +1,17 @@
 use crate::{
 	CheckingData, TypeId,
 	context::{Environment, Scope},
-	synthesis::{
-		expressions::synthesise_multiple_expression, functions::SynthesisableFunctionBody,
-		type_annotations::synthesise_type_annotation,
-	},
 };
 
+use crate::synthesis::{
+	expressions::synthesise_multiple_expression, functions::SynthesisableFunctionBody,
+	type_annotations::synthesise_type_annotation,
+};
+
+use parser::extensions::is_expression::IsExpression;
+
 pub(crate) fn synthesise_is_expression<T: crate::ReadFromFS>(
-	is_expression: &parser::is_expression::IsExpression,
+	is_expression: &IsExpression,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, crate::synthesis::EznoParser>,
 ) -> TypeId {

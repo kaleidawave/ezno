@@ -2,35 +2,59 @@ use source_map::Span;
 /// Contains lexing and parser errors
 use std::fmt::{self, Display};
 
-pub trait ParserErrorReason: Display {}
+// /// A error for not parsing
+// #[derive(Debug)]
+// pub struct ParseError<'a> {
+// 	pub reason: ParseErrors<'a>,
+// 	pub position: Span,
+// }
 
-impl ParserErrorReason for ParseErrors<'_> {}
+// impl<'a> ParseError<'a> {
+// 	#[allow(clippy::needless_pass_by_value)]
+// 	pub fn new(reason: ParseErrors<'a>, position: Span) -> Self {
+// 		Self { reason, position }
+// 	}
+// }
+
+// impl<'a> std::error::Error for ParseError<'a> {}
+
+// impl<'a> std::fmt::Display for ParseError<'a> {
+// 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+// 		let Self { reason, position };
+// 		f.write_fmt(format_args!("ParseError: {reason} @ {position:?}"))
+// 	}
+// }
 
 /// A error for not parsing
 #[derive(Debug)]
 pub struct ParseError {
+	// pub reason: ParseErrors,
 	pub reason: String,
 	pub position: Span,
 }
 
 impl ParseError {
 	#[allow(clippy::needless_pass_by_value)]
-	pub fn new(reason: impl ParserErrorReason, position: Span) -> Self {
+	pub fn new(reason: ParseErrors<'_>, position: Span) -> Self {
 		Self { reason: reason.to_string(), position }
 	}
 }
 
 impl std::error::Error for ParseError {}
+
 impl std::fmt::Display for ParseError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_fmt(format_args!("ParseError: {} @ byte indices {:?}", self.reason, self.position))
+		let Self { reason, position } = self;
+		f.write_fmt(format_args!("ParseError: {reason} @ {position:?}"))
 	}
 }
 
 pub type ParseResult<T> = Result<T, ParseError>;
+// pub type ParseResult<'a, T> = Result<T, ParseError<'a>>;
 
 /// TODO documentation + combine some of these
 #[allow(missing_docs)]
+#[derive(Debug)]
 pub enum ParseErrors<'a> {
 	UnexpectedCharacter {
 		expected: &'a [char],
@@ -42,7 +66,7 @@ pub enum ParseErrors<'a> {
 	},
 	// Keywords and/or operators
 	ExpectedOneOfItems {
-		expected: &'static [&'static str],
+		expected: &'a [&'static str],
 		found: &'a str,
 	},
 	ExpectedOperator {
@@ -81,16 +105,23 @@ pub enum ParseErrors<'a> {
 	NonStandardSyntaxUsedWithoutEnabled {
 		syntax: &'static str,
 	},
+	DecoratorsNotAllowed {
+		on: &'static str,
+	},
 	ExpectedRule,
 	ExpectedJSXAttribute,
 	ExpectedStatement,
 	ExpectedDeclaration,
 	CannotHaveRegularMemberAfterSpread,
 	InvalidLHSOfIs,
+	InvalidVariableField,
 	InvalidStringLiteral,
 	InvalidRegexFlag,
 	InvalidRegularExpression,
 	InvalidNumberLiteral,
+	InvalidStatementLabel,
+	InvalidArrowFunctionParameter,
+	InvalidClassPropertyName,
 	BigIntNotAllowedHere,
 	/// For strings, regular expressions, multiline comments.
 	/// TODO specify by field
@@ -101,6 +132,14 @@ pub enum ParseErrors<'a> {
 	TaggedTemplateCannotBeUsedWithOptionalChain,
 	ExpectedExpression,
 	DuplicateParameterName,
+	CannotUsePrivatePropertyHere,
+	AwaitOutsideOfAsync,
+	YieldOutsideOfGenerator,
+	NonTopLevelImportOrExport,
+	NoLabel(&'a str),
+	CannotLabelItem,
+	InvalidImportAttribute,
+	TODO(&'static str),
 }
 
 impl Display for ParseErrors<'_> {
@@ -143,6 +182,9 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::UnexpectedEnd => {
 				write!(f, "Unexpected end")
+			}
+			ParseErrors::DecoratorsNotAllowed { on } => {
+				write!(f, "Decorator not allowed on {on}")
 			}
 			ParseErrors::ClosingTagDoesNotMatch { tag_name: expected, closing_tag_name: found } => {
 				write!(f, "Closing tag does not match, expected </{expected}> found </{found}>")
@@ -195,6 +237,9 @@ impl Display for ParseErrors<'_> {
 			ParseErrors::ReservedIdentifier => {
 				write!(f, "Found reserved identifier")
 			}
+			ParseErrors::InvalidClassPropertyName => {
+				write!(f, "Invalid class property name")
+			}
 			ParseErrors::AwaitRequiresForOf => {
 				write!(f, "Can only use await on for (.. of ..)")
 			}
@@ -240,6 +285,39 @@ impl Display for ParseErrors<'_> {
 			}
 			ParseErrors::BigIntNotAllowedHere => {
 				write!(f, "Big integer literal not allowed here")
+			}
+			ParseErrors::CannotUsePrivatePropertyHere => {
+				write!(f, "Cannot use private property here")
+			}
+			ParseErrors::InvalidStatementLabel => {
+				write!(f, "Invalid statement label")
+			}
+			ParseErrors::InvalidArrowFunctionParameter => {
+				write!(f, "Invalid arrow function parameter")
+			}
+			ParseErrors::InvalidVariableField => {
+				write!(f, "Invalid variable field")
+			}
+			ParseErrors::AwaitOutsideOfAsync => {
+				write!(f, "Cannot use await outside of async")
+			}
+			ParseErrors::YieldOutsideOfGenerator => {
+				write!(f, "Cannot use yield outside of generator")
+			}
+			ParseErrors::NonTopLevelImportOrExport => {
+				write!(f, "Non top level import or export")
+			}
+			ParseErrors::NoLabel(name) => {
+				write!(f, "No label {name:?} in chain")
+			}
+			ParseErrors::CannotLabelItem => {
+				write!(f, "Cannot label item")
+			}
+			ParseErrors::InvalidImportAttribute => {
+				write!(f, "Invalid import attribute")
+			}
+			ParseErrors::TODO(hmm) => {
+				write!(f, "TODO {hmm:?}")
 			}
 		}
 	}

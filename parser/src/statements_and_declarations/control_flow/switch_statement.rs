@@ -1,7 +1,7 @@
 use source_map::Span;
 use visitable_derive::Visitable;
 
-use crate::{ASTNode, Expression, StatementOrDeclaration, ast::MultipleExpression, derive_ASTNode};
+use crate::{ASTNode, StatementOrDeclaration, ast::MultipleExpression, derive_ASTNode};
 
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, Visitable, get_field_by_type::GetFieldByType)]
@@ -16,7 +16,7 @@ pub struct SwitchStatement {
 #[apply(derive_ASTNode)]
 pub enum SwitchBranch {
 	Default(Vec<StatementOrDeclaration>),
-	Case(Box<Expression>, Vec<StatementOrDeclaration>),
+	Case(Box<MultipleExpression>, Vec<StatementOrDeclaration>),
 }
 
 impl ASTNode for SwitchStatement {
@@ -27,21 +27,27 @@ impl ASTNode for SwitchStatement {
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("switch")?;
 
-		reader.expect('(')?;
+		reader.expect_chr('(')?;
 		let case = MultipleExpression::from_reader(reader).map(Box::new)?;
-		reader.expect(')')?;
-		reader.expect('{')?;
+		reader.expect_chr(')')?;
+		reader.expect_chr('{')?;
+
+		let was_top_level = reader.state.flags.top_level;
+		reader.state.flags.top_level = false;
+
+		// TODO duplicate
 
 		let mut branches = Vec::new();
+		reader.start_variable_region();
 		loop {
-			let case: Option<Box<Expression>> = if reader.is_operator_advance("}") {
+			let case: Option<Box<MultipleExpression>> = if reader.is_operator_advance("}") {
 				break;
 			} else if reader.is_operator_advance("case") {
-				let case = Expression::from_reader(reader).map(Box::new)?;
-				reader.expect(':')?;
+				let case = MultipleExpression::from_reader(reader).map(Box::new)?;
+				reader.expect_chr(':')?;
 				Some(case)
 			} else if reader.is_operator_advance("default") {
-				reader.expect(':')?;
+				reader.expect_chr(':')?;
 				None
 			} else if reader.is_one_of(&["//", "/*"]).is_some() {
 				let is_multiline = reader.starts_with_slice("/*");
@@ -56,12 +62,13 @@ impl ASTNode for SwitchStatement {
 				));
 			};
 
-			// This is a modified form of Block::from_reader where `TSXKeyword::Case` and
+			// This is a modified form of `Block::from_reader` where `TSXKeyword::Case` and
 			// `TSXKeyword::Default` are delimiters
 			let mut items = Vec::new();
 			loop {
 				if reader.is_operator("}")
-					|| reader.is_one_of_keywords(&["case", "default"]).is_some()
+					|| reader.is_keyword("case")
+					|| reader.is_keyword("default")
 				{
 					break;
 				}
@@ -69,11 +76,8 @@ impl ASTNode for SwitchStatement {
 				// TODO temp
 				let retain_blank_lines = false;
 
-				if let (
-					false,
-					StatementOrDeclaration::AestheticSemiColon(..)
-					| StatementOrDeclaration::Empty(..),
-				) = (retain_blank_lines, &item)
+				if let StatementOrDeclaration::Empty(..) = item
+					&& !retain_blank_lines
 				{
 					continue;
 				}
@@ -90,7 +94,13 @@ impl ASTNode for SwitchStatement {
 				branches.push(SwitchBranch::Default(items));
 			}
 		}
-		Ok(Self { case, branches, position: start.union(reader.get_end()) })
+
+		reader.state.flags.top_level = was_top_level;
+
+		let position = start.union(reader.get_end());
+		reader.end_block();
+
+		Ok(Self { case, branches, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

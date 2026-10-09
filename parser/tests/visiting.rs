@@ -14,7 +14,7 @@ function y() {
 	}
 }"#;
 
-	let mut module = Module::from_string(input.to_owned(), Default::default()).unwrap();
+	let mut module = Module::from_string(input.to_owned()).unwrap();
 
 	let mut visitors = VisitorsMut {
 		expression_visitors_mut: vec![Box::new(MakeStringsUppercase)],
@@ -49,9 +49,7 @@ impl VisitorMut<StatementOrDeclaration, ()> for AddElseClause {
 		if let StatementOrDeclaration::If(if_statement) = item {
 			if if_statement.trailing_else.is_none() {
 				let inner =
-					Statement::from_string("console.log(\"else!\")".to_owned(), Default::default())
-						.unwrap()
-						.into();
+					Statement::from_string("console.log(\"else!\")".to_owned()).unwrap().into();
 
 				if_statement.trailing_else = Some(UnconditionalElseStatement {
 					inner,

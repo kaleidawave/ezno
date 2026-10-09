@@ -21,7 +21,7 @@ fn get_top_level_identifiers(m: &Module) -> (HashSet<String>, HashSet<String>) {
 		match item {
 			StatementOrDeclaration::Variable(variable) => {
 				for declaration in &variable.item.declarations {
-					if let VariableField::Name(identifier) = declaration.name.get_ast_ref() {
+					if let VariableField::Name(identifier) = &declaration.name {
 						variables.insert(identifier.as_option_str().unwrap().to_owned());
 					}
 				}
@@ -45,7 +45,7 @@ let z = 6;
 	.trim();
 
 	// function func() {{ return [x, z] }}
-	let module = Module::from_string(code.into(), Default::default()).unwrap();
+	let module = Module::from_string(code.into()).unwrap();
 
 	let (top_level_variables, top_level_types) = get_top_level_identifiers(&module);
 

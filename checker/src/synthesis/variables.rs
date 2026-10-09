@@ -1,29 +1,27 @@
 use std::borrow::Cow;
 
-use parser::{
-	ASTNode, ArrayDestructuringField, Expression, ObjectDestructuringField,
-	SpreadDestructuringField, VariableField, VariableIdentifier,
-	statements_and_declarations::variables::VariableDeclarationItem,
+use parser::statements_and_declarations::variables::VariableDeclarationItem;
+use parser::{ASTNode, Expression};
+
+use parser::variable_fields::{
+	ArrayDestructuringField, ObjectDestructuringField, SpreadDestructuringField, VariableField,
+	VariableIdentifier,
 };
 
 use super::expressions::synthesise_expression;
+use crate::context::{Context, ContextType, VariableRegisterArguments};
+use crate::features::{
+	self,
+	variables::{VariableMutability, VariableOrImport, get_new_register_argument_under},
+};
+use crate::types::properties::{
+	PropertyKey, Publicity, get_properties_on_single_type, get_property_key_names_on_a_single_type,
+};
+use crate::types::{helpers::get_larger_type, printing};
 use crate::{
 	CheckingData, Environment, TypeId,
-	context::{Context, ContextType, VariableRegisterArguments},
 	diagnostics::{PropertyKeyRepresentation, TypeCheckError, TypeStringRepresentation},
-	features::{
-		self,
-		variables::{VariableMutability, VariableOrImport, get_new_register_argument_under},
-	},
 	synthesis::parser_property_key_to_checker_property_key,
-	types::{
-		helpers::get_larger_type,
-		printing,
-		properties::{
-			PropertyKey, Publicity, get_properties_on_single_type,
-			get_property_key_names_on_a_single_type,
-		},
-	},
 };
 
 pub(crate) fn register_variable_identifier<T: crate::ReadFromFS, V: ContextType>(
@@ -62,7 +60,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 		parser::VariableField::Name(variable) => {
 			register_variable_identifier(variable, environment, checking_data, argument);
 		}
-		parser::VariableField::Array { members, spread, position } => {
+		parser::VariableField::ArrayDestructuring { members, spread, position } => {
 			if let Some(_spread) = spread {
 				checking_data.raise_unimplemented_error(
 					"spread variable field",
@@ -70,7 +68,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 				);
 			}
 			for (idx, field) in members.iter().enumerate() {
-				match field.get_ast_ref() {
+				match field {
 					// ArrayDestructuringField::Spread(variable, _pos) => {
 					// 	// TODO
 					// 	let argument = VariableRegisterArguments {
@@ -102,11 +100,11 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		parser::VariableField::Object { members, spread, .. } => {
+		parser::VariableField::ObjectDestructuring { members, spread, .. } => {
 			let mut taken_members = spread.is_some().then(Vec::<Cow<str>>::new);
 
 			for field in members {
-				match field.get_ast_ref() {
+				match field {
 					ObjectDestructuringField::Name(variable, _type, ..) => {
 						let name = match variable {
 							VariableIdentifier::Standard(name, _) => name,
@@ -159,7 +157,7 @@ pub(crate) fn register_variable<T: crate::ReadFromFS>(
 							checking_data,
 							*position,
 						);
-						register_variable(name.get_ast_ref(), environment, checking_data, argument);
+						register_variable(name, environment, checking_data, argument);
 					}
 				}
 			}
@@ -245,7 +243,7 @@ pub(super) fn synthesise_variable_declaration_item<T: crate::ReadFromFS>(
 		let expected: TypeId = if let (
 			VariableField::Name(name),
 			Expression::ExpressionFunction(_) | Expression::ClassExpression(_),
-		) = (variable_declaration.name.get_ast_ref(), expression)
+		) = (&variable_declaration.name, expression)
 		{
 			let name = checking_data.types.new_constant_type(crate::Constant::String(
 				name.as_option_str().unwrap_or_default().to_owned(),
@@ -284,7 +282,7 @@ pub(super) fn synthesise_variable_declaration_item<T: crate::ReadFromFS>(
 		} else if infer_constraint {
 			let constraint = get_larger_type(value_ty, &checking_data.types);
 
-			if let VariableField::Name(n) = variable_declaration.name.get_ast_ref() {
+			if let VariableField::Name(n) = &variable_declaration.name {
 				if let VariableOrImport::Variable {
 					mutability: VariableMutability::Mutable { reassignment_constraint },
 					..
@@ -293,10 +291,7 @@ pub(super) fn synthesise_variable_declaration_item<T: crate::ReadFromFS>(
 					let _ = reassignment_constraint.insert(constraint);
 				}
 			} else {
-				crate::utilities::notify!(
-					"Infer constraint on {:?}",
-					variable_declaration.name.get_ast_ref()
-				);
+				crate::utilities::notify!("Infer constraint on {:?}", variable_declaration.name);
 			}
 
 			value_ty
@@ -307,7 +302,7 @@ pub(super) fn synthesise_variable_declaration_item<T: crate::ReadFromFS>(
 		TypeId::UNDEFINED_TYPE
 	};
 
-	let item = variable_declaration.name.get_ast_ref();
+	let item = &variable_declaration.name;
 	assign_initial_to_fields(item, environment, checking_data, value_ty, exported);
 }
 
@@ -349,7 +344,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 				}
 			}
 		}
-		VariableField::Array { members: _, spread: _, position } => {
+		VariableField::ArrayDestructuring { members: _, spread: _, position } => {
 			checking_data.raise_unimplemented_error(
 				"array spread",
 				position.with_source(environment.get_source()),
@@ -359,15 +354,15 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 			// if let Some(spread) = spread {
 			// }
 		}
-		VariableField::Object { members, spread, position, .. } => {
-			if let VariableField::Object { class_name: Some(_), .. } = item {
+		VariableField::ObjectDestructuring { members, spread, position, .. } => {
+			if let VariableField::ObjectDestructuring { class_name: Some(_), .. } = item {
 				checking_data.raise_unimplemented_error(
 					"Object destructuring + class name",
 					position.with_source(environment.get_source()),
 				);
 			}
 			for member in members {
-				match member.get_ast_ref() {
+				match member {
 					ObjectDestructuringField::Name(name, _, default_value, _) => {
 						let position = name.get_position().with_source(environment.get_source());
 						let id = crate::VariableId(environment.get_source(), position.start);
@@ -521,13 +516,7 @@ fn assign_initial_to_fields<T: crate::ReadFromFS>(
 							}
 						};
 
-						assign_initial_to_fields(
-							name.get_ast_ref(),
-							environment,
-							checking_data,
-							value,
-							exported,
-						);
+						assign_initial_to_fields(name, environment, checking_data, value, exported);
 					}
 				}
 			}

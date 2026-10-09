@@ -3,7 +3,7 @@
 pub mod declare_variable;
 pub mod enum_declaration;
 pub mod interface;
-pub mod namespace;
+pub mod module_namespace;
 pub mod type_alias;
 pub mod type_annotations;
 pub mod type_declarations;

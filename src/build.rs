@@ -107,7 +107,7 @@ pub fn build<T: crate::ReadFromFS>(
 		let null_module = parser::Module {
 			hashbang_comment: None,
 			items: Default::default(),
-			span: parser::source_map::Nullable::NULL,
+			position: parser::source_map::Nullable::NULL,
 		};
 
 		let mut artifacts = Vec::new();

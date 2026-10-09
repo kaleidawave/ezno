@@ -3,16 +3,16 @@ use super::{
 	expressions::synthesise_multiple_expression, synthesise_block,
 	variables::synthesise_variable_declaration_item,
 };
+use crate::features::{
+	conditional::new_conditional_context,
+	exceptions::new_try_context,
+	iteration::{IterationBehavior, synthesise_iteration},
+	variables::VariableMutability,
+};
 use crate::{
 	CheckingData, TypeId,
 	context::{Environment, Scope},
 	diagnostics::TypeCheckError,
-	features::{
-		conditional::new_conditional_context,
-		exceptions::new_try_context,
-		iteration::{IterationBehavior, synthesise_iteration},
-		variables::VariableMutability,
-	},
 };
 use parser::{
 	ASTNode, BlockOrSingleStatement,
@@ -45,7 +45,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 				&declaration.item,
 				environment,
 				checking_data,
-				false,
+				declaration.is_exported,
 				false,
 			);
 		}
@@ -107,6 +107,52 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 							position: position.with_source(environment.get_source()),
 						},
 					);
+				}
+				ExportDeclaration::Parts(parts, _) => {
+					use parser::statements_and_declarations::import_export::ImportExportName;
+					// TODO not sure if this is correct
+					for part in parts {
+						let name = match &part.name {
+							ImportExportName::Reference(name)
+							| ImportExportName::Quoted(name, _) => name,
+							ImportExportName::Marker(..) => {
+								continue;
+							}
+						};
+
+						let export_name = if let Some(alias) = &part.alias {
+							match alias {
+								ImportExportName::Reference(name)
+								| ImportExportName::Quoted(name, _) => name,
+								ImportExportName::Marker(..) => {
+									continue;
+								}
+							}
+						} else {
+							name
+						};
+
+						let variable = environment.get_variable_handle_error(
+							name.as_str(),
+							part.position.with_source(environment.get_source()),
+							checking_data,
+						);
+
+						if let Ok(variable) = variable {
+							let variable = variable.0.get_origin_variable_id();
+
+							if let crate::Scope::Module { ref mut exported, .. } =
+								environment.context_type.scope
+							{
+								exported.named.insert(
+									export_name.clone(),
+									(variable, VariableMutability::Constant),
+								);
+							} else {
+								crate::utilities::notify!("bad export position");
+							}
+						}
+					}
 				}
 				_ => {}
 			}
@@ -171,7 +217,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 		StatementOrDeclaration::Return(return_statement) => {
 			environment.return_value(
 				&crate::context::environment::Returnable::Statement(
-					return_statement.0.as_ref().map(MultipleExpression::get_inner),
+					return_statement.0.as_ref().map(MultipleExpression::get_inner_ref),
 					return_statement.1,
 				),
 				checking_data,
@@ -244,7 +290,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 			});
 		}
 		StatementOrDeclaration::WhileLoop(stmt) => synthesise_iteration(
-			IterationBehavior::While(stmt.condition.get_inner()),
+			IterationBehavior::While(stmt.condition.get_inner_ref()),
 			information.and_then(|info| info.label),
 			environment,
 			checking_data,
@@ -254,7 +300,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 			position,
 		),
 		StatementOrDeclaration::DoWhileLoop(stmt) => synthesise_iteration(
-			IterationBehavior::DoWhile(stmt.condition.get_inner()),
+			IterationBehavior::DoWhile(stmt.condition.get_inner_ref()),
 			information.and_then(|info| info.label),
 			environment,
 			checking_data,
@@ -264,9 +310,20 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 			position,
 		),
 		StatementOrDeclaration::ForLoop(stmt) => match &stmt.condition {
-			ForLoopCondition::ForOf { is_await: _, keyword: _, variable, of, position } => {
+			ForLoopCondition::ForOf { is_await: _, lhs, of, position } => {
+				use parser::control_flow::for_statement::VariableUsingOrAssignable;
+				let lhs = match lhs {
+					VariableUsingOrAssignable::Variable(_, field, _) => field,
+					VariableUsingOrAssignable::Using { .. } => {
+						todo!()
+					}
+					VariableUsingOrAssignable::Assignable(_lhs) => {
+						todo!()
+					}
+				};
+
 				synthesise_iteration(
-					IterationBehavior::ForOf { lhs: variable.get_ast_ref(), rhs: &**of },
+					IterationBehavior::ForOf { lhs, rhs: &**of },
 					information.and_then(|info| info.label),
 					environment,
 					checking_data,
@@ -280,9 +337,17 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 					position.with_source(environment.get_source()),
 				);
 			}
-			ForLoopCondition::ForIn { keyword: _, variable, r#in, position } => {
+			// TODO _value
+			ForLoopCondition::ForIn { lhs, r#in, position, value: _ } => {
+				use parser::control_flow::for_statement::VariableOrAssignable;
+				let lhs = match lhs {
+					VariableOrAssignable::Variable(_, field, _) => field,
+					VariableOrAssignable::Assignable(_lhs) => {
+						todo!()
+					}
+				};
 				synthesise_iteration(
-					IterationBehavior::ForIn { lhs: variable.get_ast_ref(), rhs: r#in.get_inner() },
+					IterationBehavior::ForIn { lhs, rhs: r#in.get_inner_ref() },
 					information.and_then(|info| info.label),
 					environment,
 					checking_data,
@@ -300,8 +365,10 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 				synthesise_iteration(
 					IterationBehavior::For {
 						initialiser: initialiser.as_ref(),
-						condition: condition.as_deref().map(MultipleExpression::get_inner),
-						afterthought: afterthought.as_deref().map(MultipleExpression::get_inner),
+						condition: condition.as_deref().map(MultipleExpression::get_inner_ref),
+						afterthought: afterthought
+							.as_deref()
+							.map(MultipleExpression::get_inner_ref),
 					},
 					information.and_then(|info| info.label),
 					environment,
@@ -375,10 +442,7 @@ pub(super) fn synthesise_statement_or_declaration<T: crate::ReadFromFS>(
 		StatementOrDeclaration::TryCatch(stmt) => new_try_context(
 			&stmt.try_inner,
 			stmt.catch_inner.as_ref().map(|inner| {
-				(
-					inner,
-					stmt.exception_var.as_ref().map(|(var, ty)| (var.get_ast_ref(), ty.as_ref())),
-				)
+				(inner, stmt.exception_var.as_ref().map(|(var, ty)| (var, ty.as_ref())))
 			}),
 			stmt.finally_inner.as_ref(),
 			environment,

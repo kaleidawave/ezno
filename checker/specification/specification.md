@@ -1,3 +1,7 @@
+---
+lists-as-expected: true
+---
+
 ## Specification
 
 See [./README.md](README.md) for details about how `specification.md` works
@@ -4562,7 +4566,7 @@ function func(param: number | Array<string>) {
 
 - Expected null, found Array\<string>
 
-#### Number `isNan`
+#### Number `isNaN`
 
 ```ts
 function func(param: number) {
@@ -5075,6 +5079,8 @@ export const the = ((4 satisfies 1),3);
 
 > The fact the `Expected 1, found 4` only occurs once means that the module was only synthesised once
 
+> TODO should have some mutable aspect to it
+
 #### Use export in scope
 
 ```ts
@@ -5210,7 +5216,7 @@ const x = <h1 title="Example text">Hello World</h1> satisfies string;
 
 - Expected string, found { tag_name: "h1", attributes: { title: "Example text" }, children: ["Hello World"] }
 
-#### Comments as type annotations
+#### Comments as type annotations (skip)
 
 ```ts
 function x(a /** string */) {

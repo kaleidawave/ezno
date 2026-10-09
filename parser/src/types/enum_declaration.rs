@@ -1,6 +1,6 @@
-use crate::{
-	ASTNode, Expression, derive_ASTNode, statements_and_declarations::classes::ClassMember,
-};
+use crate::extensions::decorators::Decorated;
+use crate::statements_and_declarations::classes::ClassMember;
+use crate::{ASTNode, Expression, derive_ASTNode};
 use iterator_endiate::EndiateIteratorExt;
 use source_map::Span;
 use visitable_derive::Visitable;
@@ -23,8 +23,8 @@ impl ASTNode for EnumDeclaration {
 		let start = reader.get_start();
 		let is_constant = reader.is_keyword_advance("const");
 		reader.expect_keyword("enum")?;
-		let name = reader.parse_identifier("enum name", true)?.to_owned();
-		reader.expect('{')?;
+		let name = reader.parse_identifier("enum name", true)?.into_owned();
+		reader.expect_chr('{')?;
 		let mut members = Vec::new();
 		loop {
 			if reader.is_operator("}") {
@@ -43,7 +43,7 @@ impl ASTNode for EnumDeclaration {
 				reader.expect_semi_colon()?;
 			}
 		}
-		reader.expect('}')?;
+		reader.expect_chr('}')?;
 		let position = start.union(reader.get_end());
 		Ok(EnumDeclaration { is_constant, name, members, position })
 	}
@@ -83,7 +83,7 @@ impl ASTNode for EnumDeclaration {
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum EnumMemberValue {
-	ClassMembers(Vec<crate::Decorated<ClassMember>>),
+	ClassMembers(Vec<Decorated<ClassMember>>),
 	Value(Box<Expression>),
 	None,
 }
@@ -103,25 +103,25 @@ impl ASTNode for EnumMember {
 
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.get_start();
-		let name = reader.parse_identifier("enum member name", true)?.to_owned();
+		let name = reader.parse_identifier("enum member name", true)?.into_owned();
 		let value = if reader.is_operator_advance("=") {
 			let expression = Expression::from_reader(reader).map(Box::new)?;
 			EnumMemberValue::Value(expression)
-		} else if reader.get_options().enum_members_as_data_types && reader.is_operator_advance("{")
+		} else if reader.get_options().extras.enum_members_as_data_types
+			&& reader.is_operator_advance("{")
 		{
-			let mut members: Vec<crate::Decorated<ClassMember>> = Vec::new();
+			let mut members: Vec<Decorated<ClassMember>> = Vec::new();
 			loop {
-				reader.skip();
 				if reader.starts_with('}') {
 					break;
 				}
-				let value = crate::Decorated::<ClassMember>::from_reader(reader)?;
+				let value = Decorated::<ClassMember>::from_reader(reader)?;
 				if let ClassMember::Property { .. } | ClassMember::Indexer { .. } = &value.on {
 					reader.expect_semi_colon()?;
 				}
 				members.push(value);
 			}
-			let _end = reader.expect('}')?;
+			let _end = reader.expect_chr('}')?;
 			EnumMemberValue::ClassMembers(members)
 		} else {
 			EnumMemberValue::None

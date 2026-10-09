@@ -160,6 +160,7 @@ pub trait ASTImplementation: Sized {
 		extra_syntax: bool,
 		parse_comments: bool,
 		lsp_mode: bool,
+		is_jsx: bool,
 	) -> Self::ParseOptions;
 
 	fn owned_module_from_module(m: Self::Module<'static>) -> Self::OwnedModule;
@@ -552,13 +553,20 @@ fn parse_source<T: crate::ReadFromFS, A: crate::ASTImplementation>(
 	let now = checking_data.options.measure_time.then(std::time::Instant::now);
 
 	// TODO abstract using similar to import logic
-	let is_js = path.extension().and_then(|s| s.to_str()).is_some_and(|s| s.ends_with("js"));
+	let extension = path.extension().and_then(|s| s.to_str());
+	let mut is_js = false;
+	let mut is_jsx = false;
+	if let Some(extension) = extension {
+		is_js = extension.ends_with("js");
+		is_jsx = extension.ends_with('x');
+	}
 
 	let parse_options = A::parse_options(
 		is_js,
 		checking_data.options.extra_syntax,
 		checking_data.options.parse_comments,
 		checking_data.options.lsp_mode,
+		is_jsx,
 	);
 
 	let result = A::module_from_string(source, content, parse_options);
@@ -590,7 +598,7 @@ pub(crate) fn add_definition_files_to_root<T: crate::ReadFromFS, A: crate::ASTIm
 		let chronometer =
 			checking_data.options.measure_time.then_some(&mut checking_data.chronometer);
 
-		let file = if path == PathBuf::from(crate::INTERNAL_DEFINITION_FILE_PATH) {
+		let file = if &path == crate::INTERNAL_DEFINITION_FILE_PATH {
 			File::Binary(crate::INTERNAL_DEFINITION_FILE.to_owned())
 		} else if let Some(file) = checking_data.modules.get_file(&path, chronometer) {
 			file

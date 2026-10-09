@@ -23,16 +23,16 @@ pub mod variables;
 
 use source_map::SpanWithSource;
 
+use crate::types::{
+	self, PartiallyAppliedGenerics, TypeStore,
+	logical::{Logical, LogicalOrValid},
+	properties,
+};
 use crate::{
 	CheckingData, Environment, PropertyValue, Type, TypeId,
 	context::{ClosedOverReferencesInScope, InformationChain, get_value_of_variable},
 	diagnostics::TypeStringRepresentation,
 	events::RootReference,
-	types::{
-		self, PartiallyAppliedGenerics, TypeStore,
-		logical::{Logical, LogicalOrValid},
-		properties,
-	},
 };
 
 use self::{functions::ClosedOverVariables, objects::SpecialObject};

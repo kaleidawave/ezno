@@ -170,14 +170,11 @@ fn synthesise_class_declaration_extends_and_members<
 	for member in &class.members {
 		match &member.on {
 			ClassMember::Method(false, method) => {
-				let publicity = if method.name.get_ast_ref().is_private() {
-					Publicity::Private
-				} else {
-					Publicity::Public
-				};
+				let publicity =
+					if method.name.is_private() { Publicity::Private } else { Publicity::Public };
 
 				let key = parser_property_key_to_checker_property_key(
-					method.name.get_ast_ref(),
+					&method.name,
 					environment,
 					checking_data,
 					true,
@@ -193,7 +190,7 @@ fn synthesise_class_declaration_extends_and_members<
 				};
 
 				let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
-					(is_declare, method.name.get_ast_ref())
+					(is_declare, &method.name)
 				{
 					get_internal_function_effect_from_decorators(
 						&member.decorators,
@@ -258,13 +255,10 @@ fn synthesise_class_declaration_extends_and_members<
 				);
 			}
 			ClassMember::Property(false, property) => {
-				let publicity = if property.key.get_ast_ref().is_private() {
-					Publicity::Private
-				} else {
-					Publicity::Public
-				};
+				let publicity =
+					if property.key.is_private() { Publicity::Private } else { Publicity::Public };
 				let key = parser_property_key_to_checker_property_key(
-					property.key.get_ast_ref(),
+					&property.key,
 					environment,
 					checking_data,
 					true,
@@ -288,7 +282,7 @@ fn synthesise_class_declaration_extends_and_members<
 			}
 			ClassMember::Property(true, property) => {
 				let key = parser_property_key_to_checker_property_key(
-					property.key.get_ast_ref(),
+					&property.key,
 					environment,
 					checking_data,
 					true,
@@ -297,7 +291,7 @@ fn synthesise_class_declaration_extends_and_members<
 			}
 			ClassMember::Method(true, method) => {
 				let key = parser_property_key_to_checker_property_key(
-					method.name.get_ast_ref(),
+					&method.name,
 					environment,
 					checking_data,
 					true,
@@ -393,14 +387,14 @@ fn synthesise_class_declaration_extends_and_members<
 		for member in &class.members {
 			match &member.on {
 				ClassMember::Method(true, method) => {
-					let publicity = if method.name.get_ast_ref().is_private() {
+					let publicity = if method.name.is_private() {
 						Publicity::Private
 					} else {
 						Publicity::Public
 					};
 
 					let internal_marker = if let (true, ParserPropertyKey::Identifier(name, _, _)) =
-						(is_declare, method.name.get_ast_ref())
+						(is_declare, &method.name)
 					{
 						get_internal_function_effect_from_decorators(
 							&member.decorators,
@@ -461,7 +455,7 @@ fn synthesise_class_declaration_extends_and_members<
 					);
 				}
 				ClassMember::Property(true, property) => {
-					let publicity = if property.key.get_ast_ref().is_private() {
+					let publicity = if property.key.is_private() {
 						Publicity::Private
 					} else {
 						Publicity::Public
@@ -575,11 +569,8 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 	while let Some(member) = members_iter.next() {
 		match &member.on {
 			ClassMember::Method(initial_is_static, method) => {
-				let publicity = if method.name.get_ast_ref().is_private() {
-					Publicity::Private
-				} else {
-					Publicity::Public
-				};
+				let publicity =
+					if method.name.is_private() { Publicity::Private } else { Publicity::Public };
 
 				// TODO refactor. Maybe do in reverse?
 				let (overloads, actual) = if method.body.0.is_none() {
@@ -589,7 +580,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 
 					// Read declarations until
 					while let Some(overload_declaration) = members_iter.next_if(|dec_mem| {
-						next_key_matches(&dec_mem.on, method.name.get_ast_ref(), *initial_is_static)
+						next_key_matches(&dec_mem.on, &method.name, *initial_is_static)
 					}) {
 						let ClassMember::Method(_, method) = &overload_declaration.on else {
 							unreachable!()
@@ -599,7 +590,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					}
 
 					let upcoming = members_iter.peek().and_then(|next| {
-						next_key_matches(&next.on, method.name.get_ast_ref(), *initial_is_static)
+						next_key_matches(&next.on, &method.name, *initial_is_static)
 							.then_some(&next.on)
 					});
 
@@ -623,13 +614,12 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 					(Vec::new(), actual)
 				};
 
-				let name =
-					if let parser::PropertyKey::Identifier(name, ..) = method.name.get_ast_ref() {
-						name
-					} else {
-						// TODO skip decorator
-						"no_name"
-					};
+				let name = if let parser::PropertyKey::Identifier(name, ..) = &method.name {
+					name
+				} else {
+					// TODO skip decorator
+					"no_name"
+				};
 				let internal_effect = get_internal_function_effect_from_decorators(
 					&member.decorators,
 					name,
@@ -666,7 +656,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				);
 
 				let under = crate::synthesis::parser_property_key_to_checker_property_key(
-					method.name.get_ast_ref(),
+					&method.name,
 					environment,
 					checking_data,
 					false,
@@ -690,7 +680,7 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 			}
 			ClassMember::Property(is_static, property) => {
 				let under = crate::synthesis::parser_property_key_to_checker_property_key(
-					property.key.get_ast_ref(),
+					&property.key,
 					environment,
 					checking_data,
 					false,
@@ -700,11 +690,8 @@ fn register_extends_and_member<T: crate::ReadFromFS>(
 				} else {
 					TypeId::ANY_TYPE
 				};
-				let publicity = if property.key.get_ast_ref().is_private() {
-					Publicity::Private
-				} else {
-					Publicity::Public
-				};
+				let publicity =
+					if property.key.is_private() { Publicity::Private } else { Publicity::Public };
 				if *is_static {
 					crate::utilities::notify!("TODO static item?");
 				} else {
@@ -853,7 +840,7 @@ fn next_key_matches(
 ) -> bool {
 	if let ClassMember::Method(is_static, method) = member {
 		initial_is_static == *is_static
-			&& property_key_matches(method.name.get_ast_ref(), initial_name)
+			&& property_key_matches(&method.name, initial_name)
 			&& !method.has_body()
 	} else {
 		false
@@ -864,7 +851,7 @@ fn property_key_matches(
 	lhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
 	rhs: &parser::PropertyKey<parser::property_key::PublicOrPrivate>,
 ) -> bool {
-	if let (Some(lhs), Some(rhs)) = (lhs.as_str(), rhs.as_str()) {
+	if let (Some(lhs), Some(rhs)) = (lhs.as_option_str(), rhs.as_option_str()) {
 		lhs == rhs
 	} else {
 		// FUTURE might be missing cases here

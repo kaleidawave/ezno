@@ -1,61 +1,59 @@
-use std::{borrow::Cow, str::FromStr};
+use std::borrow::Cow;
 
 use parser::{
 	ASTNode, Expression, ExpressionOrStatementPosition,
 	ast::{ImportExpression, TypeOrConst},
-	expressions::{
-		ArrayElement, FunctionArgument, MultipleExpression, SpecialOperators, SuperReference,
-		TemplateLiteral,
-		object_literal::{ObjectLiteral, ObjectLiteralMember},
-		operators::{
-			BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
-			UnaryPrefixAssignmentOperator,
-		},
-	},
-	functions::MethodHeader,
+	functions::{FunctionHeaderTrait, MethodHeader},
 };
-use source_map::{Nullable, SpanWithSource};
+use source_map::SpanWithSource;
+
+use parser::expressions::{
+	ArrayElement, ExpressionOrSpreadExpression, MultipleExpression, SpecialOperators,
+	SuperReference, TemplateLiteral,
+	object_literal::{ObjectLiteral, ObjectLiteralMember},
+	operators::{
+		BinaryOperator, IncrementOrDecrement as ParserIncrementOrDecrement, UnaryOperator,
+		UnaryPrefixAssignmentOperator,
+	},
+};
 
 use crate::{
 	CheckingData, Decidable, Instance, PropertyValue, SpecialExpressions,
 	context::Environment,
 	diagnostics::{TypeCheckError, TypeCheckWarning, TypeStringRepresentation},
-	features::{
-		self,
-		assignments::{AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement},
-		await_expression,
-		conditional::new_conditional_context,
-		functions::{
-			GetterSetter, function_to_property, register_arrow_function,
-			register_expression_function, synthesise_function,
-		},
-		in_operator,
-		objects::ObjectBuilder,
-		operations::is_null_or_undefined,
-		operations::{
-			EqualityAndInequality, EqualityAndInequalityResultKind, LogicalOperator,
-			MathematicalOrBitwiseOperation, OperatorOptions, UnaryOperation,
-			evaluate_equality_inequality_operation, evaluate_logical_operation_with_expression,
-			evaluate_mathematical_operation, evaluate_unary_operator,
-		},
-		template_literal::synthesise_template_literal_expression,
-		variables::VariableWithValue,
+};
+
+use crate::types::{
+	Constant, Constructor, TypeId,
+	calling::CalledWithNew,
+	calling::{CallingInput, UnsynthesisedArgument},
+	helpers::get_larger_type,
+	logical::{Logical, LogicalOrValid},
+	printing::{print_property_key, print_type},
+	properties::Publicity,
+	properties::{AccessMode, PropertyKey, get_properties_on_single_type, get_property_unbound},
+};
+
+use crate::features::{
+	self,
+	assignments::{AssignmentKind, AssignmentReturnStatus, IncrementOrDecrement},
+	await_expression,
+	conditional::new_conditional_context,
+	functions::{
+		GetterSetter, function_to_property, register_arrow_function, register_expression_function,
+		synthesise_function,
 	},
-	types::{
-		Constructor,
-		calling::{CallingInput, UnsynthesisedArgument},
-		helpers::get_larger_type,
-		logical::{Logical, LogicalOrValid},
-		printing::{print_property_key, print_type},
-		properties::{
-			AccessMode, PropertyKey, get_properties_on_single_type, get_property_unbound,
-		},
+	in_operator,
+	objects::ObjectBuilder,
+	operations::is_null_or_undefined,
+	operations::{
+		EqualityAndInequality, EqualityAndInequalityResultKind, LogicalOperator,
+		MathematicalOrBitwiseOperation, OperatorOptions, UnaryOperation,
+		evaluate_equality_inequality_operation, evaluate_logical_operation_with_expression,
+		evaluate_mathematical_operation, evaluate_unary_operator,
 	},
-	types::{
-		calling::CalledWithNew,
-		properties::Publicity,
-		{Constant, TypeId},
-	},
+	template_literal::synthesise_template_literal_expression,
+	variables::VariableWithValue,
 };
 
 use super::{
@@ -122,25 +120,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 				environment: &mut Environment,
 				checking_data: &mut CheckingData<T, super::EznoParser>,
 			) -> Option<(PropertyKey<'static>, TypeId)> {
-				element.0.as_ref().and_then(|element| match element {
-					FunctionArgument::Standard(element) => {
-						// TODO based off above
-						let expecting = TypeId::ANY_TYPE;
-						let expression_type =
-							synthesise_expression(element, environment, checking_data, expecting);
-						let property = match idx {
-							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
-							Decidable::Unknown(_) => {
-								checking_data.raise_unimplemented_error(
-									"property after array spread",
-									element.get_position().with_source(environment.get_source()),
-								);
-								PropertyKey::Type(TypeId::NUMBER_TYPE)
-							}
-						};
-						Some((property, expression_type))
-					}
-					FunctionArgument::Spread(_expr, position) => {
+				element.0.as_ref().map(|element| {
+					let position = element.get_position();
+					let (element, spread) = element.value_and_spread_ref();
+					if spread {
 						{
 							checking_data.raise_unimplemented_error(
 								"Spread elements",
@@ -158,9 +141,24 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 								PropertyKey::Type(TypeId::NUMBER_TYPE)
 							}
 						};
-						Some((property, TypeId::UNIMPLEMENTED_ERROR_TYPE))
+						(property, TypeId::UNIMPLEMENTED_ERROR_TYPE)
+					} else {
+						// TODO based off above
+						let expecting = TypeId::ANY_TYPE;
+						let expression_type =
+							synthesise_expression(element, environment, checking_data, expecting);
+						let property = match idx {
+							Decidable::Known(idx) => PropertyKey::from_usize(*idx),
+							Decidable::Unknown(_) => {
+								checking_data.raise_unimplemented_error(
+									"property after array spread",
+									element.get_position().with_source(environment.get_source()),
+								);
+								PropertyKey::Type(TypeId::NUMBER_TYPE)
+							}
+						};
+						(property, expression_type)
 					}
-					FunctionArgument::Comment { .. } => None,
 				})
 			}
 
@@ -610,6 +608,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 						}
 					}
 				}
+				UnaryOperator::Spread => unreachable!(),
 			}
 		}
 		Expression::Assignment { lhs, rhs, position } => {
@@ -974,7 +973,7 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 			synthesise_multiple_expression(inner_expression, environment, checking_data, expecting),
 		),
 		Expression::ClassExpression(class) => Instance::RValue(synthesise_class_declaration(
-			class,
+			&class.on,
 			None,
 			expecting,
 			environment,
@@ -1036,7 +1035,9 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 					Instance::RValue(to_cast)
 				}
 			}
-			SpecialOperators::Satisfies { value, type_annotation, .. } => {
+			// FUTURE `WithTypeAnnotation`?
+			SpecialOperators::Satisfies { value, type_annotation, .. }
+			| SpecialOperators::WithTypeAnnotation { value, type_annotation } => {
 				let satisfying =
 					synthesise_type_annotation(type_annotation, environment, checking_data);
 
@@ -1140,6 +1141,10 @@ pub(super) fn synthesise_expression<T: crate::ReadFromFS>(
 		Expression::IsExpression(is_expr) => {
 			Instance::RValue(synthesise_is_expression(is_expr, environment, checking_data))
 		}
+		Expression::Raw(..) => {
+			crate::utilities::notify!("TODO big int");
+			return TypeId::UNIMPLEMENTED_ERROR_TYPE;
+		}
 	};
 
 	let position = ASTNode::get_position(expression).with_source(environment.get_source());
@@ -1213,7 +1218,7 @@ fn call_function<T: crate::ReadFromFS>(
 	function_type_id: TypeId,
 	called_with_new: CalledWithNew,
 	type_arguments: Option<&[parser::TypeAnnotation]>,
-	arguments: Option<&[FunctionArgument]>,
+	arguments: Option<&[ExpressionOrSpreadExpression]>,
 	environment: &mut Environment,
 	checking_data: &mut CheckingData<T, super::EznoParser>,
 	call_site: parser::Span,
@@ -1231,25 +1236,18 @@ fn call_function<T: crate::ReadFromFS>(
 			.collect::<Vec<_>>()
 	});
 
-	let comment = parser::Expression::VariableReference(
-		String::from_str("undefined").unwrap(),
-		source_map::BaseSpan::NULL,
-	);
+	// let comment = parser::Expression::VariableReference(
+	// 	String::from_str("undefined").unwrap(),
+	// 	source_map::BaseSpan::NULL,
+	// );
 
 	let arguments = arguments
 		.map(|arguments| {
 			arguments
 				.iter()
-				.map(|a| match a {
-					FunctionArgument::Spread(e, _) => {
-						UnsynthesisedArgument { spread: true, expression: e }
-					}
-					FunctionArgument::Standard(e) => {
-						UnsynthesisedArgument { spread: false, expression: e }
-					}
-					FunctionArgument::Comment { .. } => {
-						UnsynthesisedArgument { spread: false, expression: &comment }
-					}
+				.map(|argument| {
+					let (expression, spread) = argument.value_and_spread_ref();
+					UnsynthesisedArgument { spread, expression }
 				})
 				.collect::<Vec<_>>()
 		})
@@ -1426,8 +1424,17 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 					}
 				}
 			}
-			ObjectLiteralMember::Shorthand(name, position) => {
-				let key = PropertyKey::String(Cow::Owned(name.clone()));
+			ObjectLiteralMember::Shorthand(pkey) => {
+				let key = parser_property_key_to_checker_property_key(
+					&pkey.0,
+					environment,
+					checking_data,
+					true,
+				);
+				let parser::PropertyKey::Identifier(name, position, _) = &pkey.0 else {
+					unreachable!();
+				};
+
 				let get_variable = environment.get_variable_handle_error(
 					name,
 					position.with_source(environment.get_source()),
@@ -1451,7 +1458,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 			}
 			ObjectLiteralMember::Property { key, value, position, .. } => {
 				let key = parser_property_key_to_checker_property_key(
-					key.get_ast_ref(),
+					key,
 					environment,
 					checking_data,
 					true,
@@ -1521,7 +1528,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 				// checking_data
 				//     .type_mappings
 				//     .properties_to_types
-				//     .insert(property_key.get_ast().get_property_id(), value.clone());
+				//     .insert(property_key.get_property_id(), value.clone());
 
 				// (
 				//     property_name,
@@ -1536,7 +1543,7 @@ pub(super) fn synthesise_object_literal<T: crate::ReadFromFS>(
 			// TODO abstract
 			ObjectLiteralMember::Method(method) => {
 				let key = parser_property_key_to_checker_property_key(
-					method.name.get_ast_ref(),
+					&method.name,
 					environment,
 					checking_data,
 					true,

@@ -59,7 +59,7 @@ impl VisitorMut<Expression, CheckingOutputWithoutDiagnostics> for ExpressionOpti
 				}
 			}
 			Expression::ClassExpression(cls) => {
-				shake_class(cls, data, chain.get_module());
+				shake_class(&mut cls.on, data, chain.get_module());
 			}
 			_ => {}
 		}
@@ -124,6 +124,7 @@ fn shake_class<T: ExpressionOrStatementPosition>(
 				item.on = ClassMember::Property(
 					*is_static,
 					ClassProperty {
+						is_accessor: false,
 						is_readonly: false,
 						is_optional: false,
 						key: func.name.clone(),

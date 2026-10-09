@@ -39,8 +39,7 @@ fn run_interactive() {
 				let source: &str = if let Some((options, source)) = source.split_once("\n---") {
 					// TODO more
 					for part in options.split(',') {
-						let part = part.trim();
-						match part {
+						match part.trim() {
 							"advanced_numbers" => {
 								type_check_options.advanced_numbers = true;
 							}

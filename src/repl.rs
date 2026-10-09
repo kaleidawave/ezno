@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
 use parser::{
-	visiting::VisitorsMut, ASTNode, Expression, Module, SourceId, StatementOrDeclaration,
+	visiting::VisitorsMut, ASTNode, Expression, Module, ParseOptions, SourceId,
+	StatementOrDeclaration,
 };
 
-use crate::reporting::report_diagnostics_to_cli;
+use crate::reporting::{checker_diagnostic_to_codespan_diagnostic, report_diagnostics_to_cli};
 
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -82,23 +83,22 @@ impl ReplSystem {
 		input.push('\n');
 		let (start, _) = self.state.get_fs_mut().append_to_file(self.source, &input);
 
-		let options = Default::default();
-		let offset = Some(start as u32);
+		let mut options = ParseOptions::default();
+		options.features.position_offset = start as u32;
+		let compact = false;
 
 		// self.offset += input.len() as u32 + 1;
 
 		// Fix to remain consistent with other JS REPLs
 		let starts_with_brace = input.trim_start().starts_with('{');
 		let result = if starts_with_brace {
-			Expression::from_string_with_options(input, options, offset).map(|(expression, _)| {
-				Module {
-					hashbang_comment: None,
-					span: expression.get_position(),
-					items: vec![StatementOrDeclaration::Expression(expression.into())],
-				}
+			Expression::from_string_with_options(input, options).map(|(expression, _)| Module {
+				hashbang_comment: None,
+				position: expression.get_position(),
+				items: vec![StatementOrDeclaration::Expression(expression.into())],
 			})
 		} else {
-			Module::from_string_with_options(input, options, offset).map(|(module, _state)| module)
+			Module::from_string_with_options(input, options).map(|(module, _state)| module)
 		};
 
 		match result {
@@ -120,13 +120,15 @@ impl ReplSystem {
 				match self.arguments.mode {
 					REPLMode::Check => {
 						let result = self.state.check_item(&item);
-
 						match result {
 							Ok((last_ty, diagnostics)) => {
+								let diagnostics = diagnostics.into_iter().map(|diagnostic| {
+									checker_diagnostic_to_codespan_diagnostic(diagnostic, compact)
+								});
 								report_diagnostics_to_cli(
 									diagnostics,
 									self.state.get_fs_ref(),
-									false,
+									compact,
 									crate::utilities::MaxDiagnostics::All,
 								)
 								.unwrap();
@@ -136,10 +138,13 @@ impl ReplSystem {
 								}
 							}
 							Err(diagnostics) => {
+								let diagnostics = diagnostics.into_iter().map(|diagnostic| {
+									checker_diagnostic_to_codespan_diagnostic(diagnostic, compact)
+								});
 								report_diagnostics_to_cli(
 									diagnostics,
 									self.state.get_fs_ref(),
-									false,
+									compact,
 									crate::utilities::MaxDiagnostics::All,
 								)
 								.unwrap();
@@ -155,10 +160,12 @@ impl ReplSystem {
 				}
 			}
 			Err(err) => {
+				let error =
+					checker_diagnostic_to_codespan_diagnostic((err, self.source).into(), compact);
 				report_diagnostics_to_cli(
-					std::iter::once((err, self.source).into()),
+					std::iter::once(error),
 					self.state.get_fs_ref(),
-					false,
+					compact,
 					crate::utilities::MaxDiagnostics::All,
 				)
 				.unwrap();
@@ -180,14 +187,19 @@ pub(crate) fn run_repl(arguments: ReplArguments) {
 
 	print_to_cli(format_args!("Entering REPL\n.Use #exist, .exit or close() to leave"));
 
+	let compact = false;
+
 	let system = ReplSystem::new(arguments, crate::utilities::FSFunction);
 	let mut system = match system {
 		Ok(system) => system,
 		Err((diagnostics, fs)) => {
+			let diagnostics = diagnostics
+				.into_iter()
+				.map(|diagnostic| checker_diagnostic_to_codespan_diagnostic(diagnostic, compact));
 			report_diagnostics_to_cli(
 				diagnostics,
 				&fs,
-				false,
+				compact,
 				crate::utilities::MaxDiagnostics::All,
 			)
 			.unwrap();
