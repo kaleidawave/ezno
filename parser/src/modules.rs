@@ -63,11 +63,14 @@ impl Module {
 		fs: &impl source_map::FileSystem,
 	) -> (String, Option<source_map::SourceMap>) {
 		let mut buf = source_map::StringWithOptionalSourceMap::new(true);
-		self.to_string_from_buffer(
-			&mut buf,
-			options,
-			LocalToStringInformation { depth: 0, under: this, should_try_pretty_print: true },
-		);
+		// TODO new with source
+		let local = LocalToStringInformation {
+			depth: 0,
+			under: this,
+			should_try_pretty_print: true,
+			in_pre: false,
+		};
+		self.to_string_from_buffer(&mut buf, options, local);
 		buf.build(fs)
 	}
 

@@ -8,18 +8,13 @@ const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 #[allow(unused_mut)]
 fn main() {
 	let root = Path::new(ROOT);
-	let tests_dir: PathBuf = root.join("test262/test");
-	let tests_dir_prefix: usize = tests_dir.display().to_string().len() + 1;
-
-	let mut completed = 0;
-	let mut successful = 0;
-
-	let mut yaml_parsing = Duration::default();
-	let mut parsing = Duration::default();
 
 	let db_file = root.join("out/results.db");
 	let _ = create_dir(db_file.parent().unwrap());
 	let connection = sqlite::open(&db_file).unwrap();
+
+	let tests_dir: PathBuf = root.join("test262/test");
+	let tests_dir_prefix: usize = tests_dir.display().to_string().len() + 1;
 
 	let mut store_results_in_db = false;
 	// let mut list_files_with_errors = false;
@@ -44,6 +39,13 @@ fn main() {
 		}
 	}
 
+	let mut completed = 0;
+	let mut successful = 0;
+
+	let mut yaml_parsing = Duration::default();
+	let mut parsing = Duration::default();
+
+
 	let mut statement = if store_results_in_db || only_fails {
 		if !only_fails {
 			// clean up existing results
@@ -62,7 +64,8 @@ fn main() {
 			es5id       TEXT,
 			negative    INTEGER NOT NULL,
 			pass        INTEGER NOT NULL,
-			parser_out  TEXT
+			parser_out  TEXT,
+			additional  BLOB
 		);"
 			.trim_start();
 
@@ -71,8 +74,17 @@ fn main() {
 
 		{
 			let query = "
-		CREATE VIEW IF NOT EXISTS bad_results (full_path, path, pass, parser_out, negative, flags, description) AS 
-		SELECT 'test262/test262/test/' || path AS full_path, path, pass, parser_out, negative, flags, description
+		CREATE VIEW IF NOT EXISTS bad_results 
+			(full_path, path, pass, parser_out, negative, flags, description, additional) AS 
+		SELECT 
+			'test262/test262/test/' || path AS full_path,
+			path,
+			pass,
+			parser_out,
+			negative,
+			flags,
+			description,
+			additional
 		FROM results
 		WHERE pass = 0;"
 				.trim_start();
@@ -85,7 +97,9 @@ fn main() {
 			WHERE path = :path"
 		} else {
 			"INSERT INTO results VALUES (
-				:path, :info, :description, :features, :flags, :es5id, :negative, :pass, :parser_out
+				:path, :info, :description, :features,
+				:flags, :es5id, :negative, :pass, :parser_out,
+				:additional
 			)"
 		};
 		Some(connection.prepare(query).unwrap())
@@ -149,15 +163,14 @@ fn main() {
 	eprintln!();
 	eprintln!("--- Results ---");
 	eprintln!(
-		"Completed {completed} tests in {duration:?} (yaml_parsing={yaml_parsing:?}, parsing={parsing:?}). {successful} successful passes. {errors} fails",
+		"Completed {completed} tests in {duration:?} (yaml_parsing={yaml_parsing:?}, parsing={parsing:?}). {successful} matches. {errors} fails",
 		errors = completed - successful,
 		duration = now.elapsed()
 	);
 
 	if store_results_in_db || only_fails {
 		let query = "SELECT parser_out, COUNT(*) 
-			FROM results 
-			WHERE pass = 0
+			FROM bad_results 
 			GROUP BY parser_out
 			ORDER BY COUNT(*) DESC";
 
@@ -227,7 +240,6 @@ fn parse_path(
 		parse_options.strict_mode = true;
 		parse_options.features.run_validation = true;
 
-		// TODO want to run parse x2 here
 		let mut only_strict = false;
 		let mut non_strict = false;
 		let mut module = false;
@@ -308,27 +320,25 @@ fn parse_path(
 				}
 			});
 
-			// // TODO temp fix because YAML parser broken
-			// if es5id == Some("7.7_A2_T6") {
-			// 	should_not_parse = true;
-			// }
-
 			if let Err(err) = result {
 				eprintln!("yaml-parse {path} {err:?}", path = path.display());
 				return;
 			}
 
 			*yaml_parsing += now.elapsed();
-
-			if module && tla_feature {
-				parse_options.top_level_await = true;
-			}
 		};
+
+		if module && tla_feature {
+			parse_options.top_level_await = true;
+		}
+		parse_options.module = module;
 
 		// TODO
 		// if let Some(ref mut trace_file) = trace_file {
 		// 	writeln!(trace_file, "{path}", path = path.display());
 		// }
+
+		// TODO want to run parse x2 here based on strict etc
 
 		let now = std::time::Instant::now();
 		let result = <ezno_parser::Module as ezno_parser::ASTNode>::from_string_with_options(
@@ -337,21 +347,31 @@ fn parse_path(
 		);
 		*parsing += now.elapsed();
 
-		let (matched, reason) = match result {
-			Ok(_) if should_not_parse => (false, Cow::Borrowed("parsed when should have failed")),
-			Err(error) if !should_not_parse => (false, Cow::Owned(error.reason)),
+		let (pass, reason, additional) = match result {
+			Ok((module, _state)) if should_not_parse => {
+				let record_data = false;
+				let additional = if let Some(path) = path.to_str() && path.contains("RegExp") && record_data {
+					sqlite::Value::Binary(analyse(&module))
+				} else {
+					sqlite::Value::Null
+				};
+				(false, Cow::Borrowed("parsed when should have failed"), additional)
+			},
+			Err(error) if !should_not_parse => {
+				(false, Cow::Owned(error.reason), sqlite::Value::Null)
+			},
 			_ => {
 				*successful += 1;
 				// TODO should emit -> parse -> emit and check results (roundtrip)
 				// TODO should type check
-				(true, Cow::Borrowed(""))
+				(true, Cow::Borrowed(""), sqlite::Value::Null)
 			}
 		};
 
 		// TODO re-check without strict mode 
 		// if only_strict {}
 
-		// if !matched && list_files_with_errors {
+		// if !pass && list_files_with_errors {
 		// 	eprintln!("{path}", path = path.display());
 		// }
 
@@ -360,7 +380,7 @@ fn parse_path(
 			let values: &[_] = if only_fails {
 				&[
 					(":path", path.into()),
-					(":pass", (matched as i64).into()),
+					(":pass", (pass as i64).into()),
 					(":parser_out", (&*reason).into()),
 				]
 			} else {
@@ -372,8 +392,9 @@ fn parse_path(
 					(":flags", flags.into()),
 					(":es5id", es5id.into()),
 					(":negative", (should_not_parse as i64).into()),
-					(":pass", (matched as i64).into()),
+					(":pass", (pass as i64).into()),
 					(":parser_out", (&*reason).into()),
+					(":additional", additional),
 				]
 			};
 
@@ -391,4 +412,53 @@ fn parse_path(
 	} else if extension.is_some_and(|extension| extension != ".DS_Store") {
 		eprintln!("Not a test file: {path}", path = path.display());
 	}
+}
+
+fn analyse(module: &ezno_parser::Module) -> Vec<u8> {
+	// Visitable
+	use ezno_parser::visiting::{Visitor, Visitors, VisitOptions, Chain};
+	use ezno_parser::Expression;
+	use ezno_parser::source_map::Nullable;
+
+	#[derive(Debug, Default)]
+	pub struct Wrapper(pub Vec<u8>);
+
+	pub struct ExpressionFinder;
+
+	impl Wrapper {
+		pub fn add(&mut self, kind: u8, item: &str) {
+			self.0.push(kind);
+			let len: u8 = item.len().try_into().unwrap();
+			self.0.push(len);
+			self.0.extend_from_slice(item.as_bytes());
+		}
+	}
+
+	impl Visitor<Expression, Wrapper> for ExpressionFinder {
+		fn visit(&mut self, item: &Expression, data: &mut Wrapper, _chain: &Chain) {
+			match item {
+				Expression::RegexLiteral { pattern, flags: _, .. } => {
+					data.add(b'r', &pattern);
+				}
+				Expression::StringLiteral(value, ..) => {
+					data.add(b's', &value);
+				}
+				_ => {}
+			}
+		}
+	}
+
+	let mut state = Wrapper::default(); 
+	let mut visitors = Visitors {
+		expression_visitors: vec![Box::new(ExpressionFinder)],
+		// statement_visitors_mut: vec![Box::new(ImportChanger)],
+		..Default::default()
+	};
+	module.visit(
+		&mut visitors,
+		&mut state,
+		&VisitOptions::default(),
+		ezno_parser::source_map::SourceId::NULL,
+	);
+	state.0
 }

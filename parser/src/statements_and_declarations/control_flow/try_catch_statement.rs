@@ -25,7 +25,9 @@ impl ASTNode for TryCatchStatement {
 
 	fn from_reader(reader: &mut crate::Lexer) -> Result<Self, crate::ParseError> {
 		let start = reader.expect_keyword("try")?;
+		reader.start_variable_region();
 		let try_inner = Block::from_reader(reader)?;
+		reader.end_block();
 
 		let mut catch_inner: Option<Block> = None;
 		let mut exception_var: Option<(ExceptionVarField, Option<TypeAnnotation>)> = None;
@@ -36,6 +38,14 @@ impl ASTNode for TryCatchStatement {
 
 			// Optional exception variable field `catch (e)`
 			if reader.is_operator_advance("(") {
+				reader.start_variable_region();
+				/* TODO A var declaration within a catch block can have the same name as the catch-bound identifier, but only if the catch binding is a simple identifier, not a destructuring pattern. This is a deprecated syntax and you should not rely on it. In this case, the declaration is hoisted to outside the catch block, but any value assigned within the catch block is not visible outside.*/
+
+				if reader.starts_with('{') || reader.starts_with('[') {
+					reader.state.current = Some(crate::lexer::VariableKind::BlockScoped);
+				} else {
+					reader.state.current = Some(crate::lexer::VariableKind::Var);
+				}
 				let variable_field = VariableField::from_reader(reader)?;
 
 				// Optional type reference `catch (e: type)`
@@ -56,6 +66,7 @@ impl ASTNode for TryCatchStatement {
 			}
 
 			catch_inner = Some(Block::from_reader(reader)?);
+			reader.end_block();
 		}
 
 		// Optional `finally` clause

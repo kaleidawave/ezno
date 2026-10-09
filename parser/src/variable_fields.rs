@@ -10,6 +10,7 @@ use crate::{
 use get_field_by_type::GetFieldByType;
 use iterator_endiate::EndiateIteratorExt;
 
+/// Currently only for variable declarations and assignments, maybe in future for expressions
 #[apply(derive_ASTNode)]
 #[derive(Debug, Clone, GetFieldByType)]
 #[get_field_by_type_target(Span)]
@@ -36,7 +37,7 @@ impl ASTNode for VariableIdentifier {
 			Ok(Self::Marker(reader.new_partial_point_marker(span), span))
 		} else {
 			let enforce = true;
-			let identifier = reader.parse_identifier("variable identifier", enforce)?;
+			let identifier = reader.parse_identifier("variable identifier", enforce)?.into_owned();
 			let position = start.with_length(identifier.len());
 
 			// `(...let)` allowed under non-strict
@@ -44,7 +45,9 @@ impl ASTNode for VariableIdentifier {
 				return Err(ParseError::new(ParseErrors::ReservedIdentifier, position));
 			}
 
-			if reader.strict_mode() && (identifier == "eval" || identifier == "arguments") {
+			if reader.strict_mode()
+				&& (identifier == "eval" || identifier == "arguments" || identifier == "yield")
+			{
 				return Err(ParseError::new(ParseErrors::ReservedIdentifier, position));
 			}
 
@@ -54,7 +57,12 @@ impl ASTNode for VariableIdentifier {
 				let span = start.with_length(0);
 				Ok(Self::Marker(reader.new_partial_point_marker(span), span))
 			} else {
-				Ok(Self::Standard(identifier.into_owned(), position))
+				// TODO
+				// if reader.add_variable(identifier.clone()) {
+				// 	return Err(ParseError::new(ParseErrors::TODO("double variable"), position));
+				// }
+
+				Ok(Self::Standard(identifier, position))
 			}
 		}
 	}
@@ -155,6 +163,13 @@ impl ASTNode for VariableField {
 		} else {
 			let identifier = VariableIdentifier::from_reader(reader)?;
 
+			if &identifier == "await" {
+				return Err(ParseError::new(
+					ParseErrors::TODO("invalid await name"),
+					identifier.get_position(),
+				));
+			}
+
 			#[cfg(feature = "extras")]
 			if reader.get_options().extras.destructuring_type_annotation
 				&& reader.is_operator_advance("{")
@@ -245,6 +260,8 @@ pub trait DestructuringFieldInto: ASTNode {
 	type TypeAnnotation: Clone + Debug + Sync + Send + 'static;
 
 	fn type_annotation_from_reader(reader: &mut crate::Lexer) -> ParseResult<Self::TypeAnnotation>;
+
+	fn as_option_str(&self) -> Option<&str>;
 }
 
 impl DestructuringFieldInto for VariableField {
@@ -259,6 +276,14 @@ impl DestructuringFieldInto for VariableField {
 			Ok(None)
 		}
 	}
+
+	fn as_option_str(&self) -> Option<&str> {
+		if let VariableField::Name(VariableIdentifier::Standard(name, ..)) = self {
+			Some(name)
+		} else {
+			None
+		}
+	}
 }
 
 impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
@@ -268,6 +293,17 @@ impl DestructuringFieldInto for crate::ast::LHSOfAssignment {
 		_reader: &mut crate::Lexer,
 	) -> ParseResult<Self::TypeAnnotation> {
 		Ok(())
+	}
+
+	fn as_option_str(&self) -> Option<&str> {
+		if let crate::ast::LHSOfAssignment::VariableOrPropertyAccess(
+			crate::ast::VariableOrPropertyAccess::Variable(name, ..),
+		) = self
+		{
+			Some(name)
+		} else {
+			None
+		}
 	}
 }
 
@@ -301,6 +337,16 @@ impl<T: DestructuringFieldInto> ASTNode for ArrayDestructuringField<T> {
 			Ok(Self::None)
 		} else {
 			let name = T::from_reader(reader)?;
+			if let Some(name) = name.as_option_str()
+				&& (crate::lexer::utilities::is_reserved_word(&name, reader.strict_mode())
+					|| (reader.strict_mode()
+						&& (name == "await" || name == "arguments" || name == "eval")))
+			{
+				// TODO
+				let position = reader.get_start().with_length(1);
+				return Err(ParseError::new(ParseErrors::TODO("invalid name"), position));
+			}
+
 			let annotation = T::type_annotation_from_reader(reader)?;
 			let default_value = if reader.is_operator_advance("=") {
 				Some(ASTNode::from_reader(reader).map(Box::new)?)
@@ -436,12 +482,24 @@ impl<T: DestructuringFieldInto> ASTNode for ObjectDestructuringField<T> {
 
 			Ok(Self::Map { from: key, annotation, name, default_value, position })
 		} else if let PropertyKey::Identifier(name, key_pos, _) = key {
+			const BAD_IDENTIFIERS: [&str; 3] = ["await", "arguments", "eval"];
+			if crate::lexer::utilities::is_reserved_word(&name, reader.strict_mode())
+				|| (reader.strict_mode() && BAD_IDENTIFIERS.contains(&name.as_str()))
+			{
+				// TODO
+				let position = reader.get_start().with_length(1);
+				return Err(ParseError::new(ParseErrors::TODO("invalid name"), position));
+			}
+
 			let default_value = reader
 				.is_operator_advance("=")
 				.then(|| Expression::from_reader(reader).map(Box::new))
 				.transpose()?;
 
 			let standard = VariableIdentifier::Standard(name, key_pos);
+
+			// reader.add_variable(name.clone())
+
 			let annotation = T::type_annotation_from_reader(reader)?;
 			let position = if let Some(ref dv) = default_value {
 				key_pos.union(dv.get_position())
@@ -845,6 +903,11 @@ impl TryFrom<Expression> for VariableField {
 						} => {
 							if assignment {
 								if let PropertyKey::Identifier(name, pos, _) = key {
+									// 						if (crate::lexer::utilities::is_reserved_word(&name, reader.strict_mode())
+									// 		|| (reader.strict_mode() && (name == "await" || name == "arguments" || name == "eval")))
+									// {
+									// 	return Err(ParseError::new(ParseErrors::TODO("invalid name"), pos));
+									// }
 									ObjectDestructuringField::Name(
 										crate::VariableIdentifier::Standard(name, pos),
 										None,

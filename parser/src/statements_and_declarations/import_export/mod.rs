@@ -38,6 +38,12 @@ pub struct ImportExportPart<T: ImportOrExport> {
 	pub _marker: std::marker::PhantomData<T>,
 }
 
+impl<T: ImportOrExport> ImportExportPart<T> {
+	pub fn name(&self) -> &str {
+		self.name.as_str()
+	}
+}
+
 // TODO I think this okay
 impl ImportExportPart<export::ExportDeclaration> {
 	#[must_use]
@@ -371,20 +377,38 @@ impl crate::ASTNode for ImportAttribute {
 	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		let ol = crate::expressions::ObjectLiteral::from_reader(reader)?;
 
-		for member in &ol.members {
+		// TODO only validation
+		for (idx, member) in ol.members.iter().enumerate() {
 			// TODO filter comments
 			let is_okay =
 				if let crate::expressions::object_literal::ObjectLiteralMember::Property {
-					key: _,
+					key,
 					assignment: false,
 					value,
-					position: _,
+					position,
 				} = member
 				{
+					if let Some(current_key) = key.as_option_str() {
+						for other in ol.members.iter().skip(idx + 1) {
+							if let crate::expressions::object_literal::ObjectLiteralMember::Property { key, .. } = other && key.as_option_str() == Some(current_key) {
+								return Err(crate::ParseError::new(
+									crate::ParseErrors::TODO("duplicate key in with"),
+									*position,
+								));
+							}
+						}
+					} else {
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::TODO("with key not a string"),
+							*position,
+						));
+					}
+
 					matches!(value, crate::Expression::StringLiteral(..))
 				} else {
 					false
 				};
+
 			if !is_okay {
 				return Err(crate::ParseError::new(
 					crate::ParseErrors::InvalidImportAttribute,

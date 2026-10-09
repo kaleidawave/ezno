@@ -6,8 +6,8 @@ use syn_helpers::{
 	proc_macro2::{Ident, Span},
 	quote,
 	syn::{
-		self, parse_macro_input, parse_quote, DeriveInput, Stmt, __private::quote::format_ident,
-		parse::Parse,
+		self, __private::quote::format_ident, parse::Parse, parse_macro_input, parse_quote,
+		DeriveInput, Stmt,
 	},
 	Constructable, FieldMut, HasAttributes, NamedOrUnnamedFieldMut, Trait, TraitItem,
 };

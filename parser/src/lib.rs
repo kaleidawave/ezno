@@ -14,6 +14,7 @@ pub mod modules;
 pub mod numbers;
 pub mod options;
 pub mod property_key;
+pub mod regexp;
 pub mod statements_and_declarations;
 pub mod strings;
 pub mod types;
@@ -57,42 +58,6 @@ attribute_alias! {
 		#[cfg_attr(feature = "self-rust-tokenize", derive(self_rust_tokenize::SelfRustTokenize))]
 		#[cfg_attr(feature = "serde-serialize", derive(serde::Serialize))]
 		#[cfg_attr(target_family = "wasm", derive(tsify::Tsify))];
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct LocalToStringInformation {
-	under: SourceId,
-	depth: u8,
-	should_try_pretty_print: bool,
-}
-
-impl LocalToStringInformation {
-	#[must_use]
-	pub fn new_under(under: SourceId) -> Self {
-		Self { under, depth: 0, should_try_pretty_print: true }
-	}
-
-	pub(crate) fn next_level(self) -> Self {
-		Self {
-			under: self.under,
-			depth: self.depth + 1,
-			should_try_pretty_print: self.should_try_pretty_print,
-		}
-	}
-
-	/// For printing source maps after bundling
-	pub(crate) fn change_source(self, new: SourceId) -> Self {
-		Self {
-			under: new,
-			depth: self.depth,
-			should_try_pretty_print: self.should_try_pretty_print,
-		}
-	}
-
-	/// Prevents recursion & other excess
-	pub(crate) fn do_not_pretty_print(self) -> Self {
-		Self { under: self.under, depth: self.depth, should_try_pretty_print: false }
-	}
 }
 
 /// Defines common methods that would exist on a AST part include position in source, creation from reader and
@@ -230,6 +195,7 @@ impl ExpressionOrStatementPosition for ExpressionPosition {
 	type FunctionBody = Block;
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		reader.state.current = None;
 		let is_not_name = reader.is_finished() || reader.is_one_of(&["(", "{", "[", "<"]).is_some();
 		if is_not_name {
 			Ok(Self(None))
@@ -400,6 +366,54 @@ pub fn are_nodes_over_length<'a, T: ASTNode>(
 		false
 	} else {
 		false
+	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LocalToStringInformation {
+	under: SourceId,
+	depth: u8,
+	should_try_pretty_print: bool,
+	in_pre: bool,
+}
+
+impl LocalToStringInformation {
+	#[must_use]
+	pub fn new_under(under: SourceId) -> Self {
+		Self { under, depth: 0, should_try_pretty_print: true, in_pre: false }
+	}
+
+	pub(crate) fn next_level(self) -> Self {
+		Self {
+			under: self.under,
+			depth: self.depth + 1,
+			should_try_pretty_print: self.should_try_pretty_print,
+			in_pre: self.in_pre,
+		}
+	}
+
+	pub(crate) fn in_pre(self) -> Self {
+		Self { in_pre: true, ..self }
+	}
+
+	/// For printing source maps after bundling
+	pub(crate) fn change_source(self, new: SourceId) -> Self {
+		Self {
+			under: new,
+			depth: self.depth,
+			should_try_pretty_print: self.should_try_pretty_print,
+			in_pre: self.in_pre,
+		}
+	}
+
+	/// Prevents recursion & other excess
+	pub(crate) fn do_not_pretty_print(self) -> Self {
+		Self {
+			under: self.under,
+			depth: self.depth,
+			should_try_pretty_print: false,
+			in_pre: self.in_pre,
+		}
 	}
 }
 

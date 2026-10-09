@@ -945,6 +945,7 @@ impl ASTNode for TypeAnnotationFunctionParameters {
 		reader.expect_chr('(')?;
 		let mut parameters = Vec::new();
 		let mut rest_parameter = None;
+		reader.state.current = Some(crate::lexer::VariableKind::BlockScoped);
 
 		loop {
 			if reader.starts_with(')') {

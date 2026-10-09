@@ -197,7 +197,6 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 		}
 		"build" => {
 			let mut input = String::default();
-			let mut watch = false;
 			let mut definition_file = None;
 			let mut timings = false;
 			let mut compact_diagnostics = false;
@@ -223,9 +222,9 @@ pub fn run_cli<T: crate::ReadFromFS, U: crate::WriteToFS>(
 					"timings" => {
 						timings = true;
 					}
-					"watch" => {
-						watch = true;
-					}
+					// "watch" => {
+					// 	watch = true;
+					// }
 					"max-diagnostics" => {
 						// TODO unwraps
 						max_diagnostics =

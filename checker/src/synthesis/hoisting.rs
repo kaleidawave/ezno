@@ -179,7 +179,7 @@ pub(crate) fn hoist_statements<T: crate::ReadFromFS>(
 				StatementOrDeclaration::Import(import) => {
 					let items = match &import.items {
 						ImportedItems::Parts(parts) => crate::features::modules::ImportKind::Parts(
-							parts.iter().flatten().filter_map(part_to_name_pair),
+							parts.iter().filter_map(part_to_name_pair),
 						),
 						ImportedItems::All { under } => match under {
 							VariableIdentifier::Standard(under, position) => {

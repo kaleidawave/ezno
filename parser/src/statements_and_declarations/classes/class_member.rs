@@ -106,7 +106,10 @@ impl ASTNode for ClassMember {
 		let is_accessor = reader.is_keyword_advance("accessor");
 
 		if is_static && reader.starts_with('{') {
-			return Ok(ClassMember::StaticBlock(Block::from_reader(reader)?));
+			reader.start_variable_region();
+			let inner = Block::from_reader(reader)?;
+			reader.end_function_or_static_block();
+			return Ok(ClassMember::StaticBlock(inner));
 		}
 
 		let is_readonly = reader.is_keyword_advance("readonly");
@@ -166,13 +169,11 @@ impl ASTNode for ClassMember {
 			PropertyKey::<PublicOrPrivate>::from_reader(reader)?
 		};
 
-		if let PropertyKey::Identifier(ref key, pos, _) = key
-			&& key == "constructor"
-			&& !is_static
-		{
+		//  && header.is_get()
+		if is_static && &key == "prototype" {
 			return Err(crate::ParseError::new(
-				crate::ParseErrors::TODO("key cannot be called constructor"),
-				pos,
+				crate::ParseErrors::TODO("class static get cannot be named prototype"),
+				key.get_position(),
 			));
 		}
 
@@ -208,6 +209,7 @@ impl ASTNode for ClassMember {
 					position,
 				));
 			}
+
 			let is_optional = reader.is_operator_advance("?:");
 			let type_annotation = if is_optional || reader.is_operator_advance(":") {
 				Some(TypeAnnotation::from_reader(reader)?)
@@ -220,9 +222,17 @@ impl ASTNode for ClassMember {
 			} else {
 				None
 			};
+
 			reader.state.flags.in_ternary_or_class_field = was_in_ternary_or_class_field;
 
 			let position = start.union(reader.get_end());
+
+			if is_static && &key == "prototype" {
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::TODO("class static get cannot be named prototype"),
+					key.get_position(),
+				));
+			}
 
 			let property = ClassProperty {
 				is_readonly,

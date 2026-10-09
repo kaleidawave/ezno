@@ -9,14 +9,15 @@ use visitable_derive::Visitable;
 #[derive(Debug, Clone, Visitable)]
 #[apply(derive_ASTNode)]
 pub enum ImportedItems {
-	Parts(Option<Vec<ImportExportPart<ImportDeclaration>>>),
+	Parts(Vec<ImportExportPart<ImportDeclaration>>),
 	All { under: VariableIdentifier },
 }
 
 impl ImportedItems {
 	#[must_use]
 	pub fn is_some(&self) -> bool {
-		!matches!(self, Self::Parts(None))
+		let is_empty = matches!(self, Self::Parts(parts) if parts.is_empty());
+		!is_empty
 	}
 }
 
@@ -67,7 +68,7 @@ impl ASTNode for ImportDeclaration {
 		if let Some(ref default) = self.default {
 			buf.push(' ');
 			default.to_string_from_buffer(buf, options, local);
-			if matches!(self.items, ImportedItems::Parts(None)) {
+			if !self.items.is_some() {
 				buf.push(' ');
 			}
 		} else {
@@ -84,9 +85,7 @@ impl ASTNode for ImportDeclaration {
 				buf.push(' ');
 			}
 			ImportedItems::Parts(ref parts) => {
-				if let Some(parts) = parts
-					&& !parts.is_empty()
-				{
+				if !parts.is_empty() {
 					if self.default.is_some() {
 						buf.push_str(", ");
 					}
@@ -95,7 +94,7 @@ impl ASTNode for ImportDeclaration {
 				}
 			}
 		}
-		if !(matches!(self.items, ImportedItems::Parts(None)) && self.default.is_none()) {
+		if !(!self.items.is_some() && self.default.is_none()) {
 			buf.push_str("from");
 			options.push_gap_optionally(buf);
 		}
@@ -198,7 +197,7 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 				name.to_owned(),
 				start.with_length(name.len()),
 			)),
-			items: ImportedItems::Parts(None),
+			items: ImportedItems::Parts(Vec::new()),
 		});
 	}
 
@@ -213,7 +212,7 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 			return Ok(PartsResult {
 				kind,
 				default: Some(default_identifier),
-				items: ImportedItems::Parts(None),
+				items: ImportedItems::Parts(Vec::new()),
 			});
 		}
 	} else {
@@ -226,9 +225,9 @@ pub(crate) fn import_specifier_and_parts_from_reader_without_import(
 		ImportedItems::All { under }
 	} else if reader.is_operator_advance("{") {
 		let (parts, _) = bracketed_items_from_reader::<ImportExportPart<_>>(reader, "}")?;
-		ImportedItems::Parts(Some(parts))
+		ImportedItems::Parts(parts)
 	} else if reader.starts_with_string_delimeter() || reader.is_keyword("from") {
-		ImportedItems::Parts(None)
+		ImportedItems::Parts(Vec::new())
 	} else {
 		return Err(crate::lexer::utilities::expected_one_of_items(reader, &["*", "["]));
 	};

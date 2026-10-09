@@ -834,7 +834,8 @@ pub fn synthesise_type_name<T: crate::ReadFromFS>(
 }
 
 /// Comment as type annotation
-pub(crate) fn comment_as_type_annotation<T: crate::ReadFromFS>(
+/// TODO add back
+pub(crate) fn _comment_as_type_annotation<T: crate::ReadFromFS>(
 	possible_declaration: &str,
 	position: &source_map::SpanWithSource,
 	environment: &mut Environment,

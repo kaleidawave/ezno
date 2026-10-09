@@ -34,10 +34,19 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 
 		let name = U::class_name_from_reader(reader)?;
 
-		if let Some("let") = name.as_option_str() {
+		if let Some("let" | "yield") = name.as_option_str() {
 			return Err(crate::ParseError::new(
 				crate::ParseErrors::ReservedIdentifier,
 				start.with_length(3),
+			));
+		}
+
+		if let Some("await") = name.as_option_str()
+			&& reader.state.flags.in_module
+		{
+			return Err(crate::ParseError::new(
+				crate::ParseErrors::ReservedIdentifier,
+				start.with_length(5),
 			));
 		}
 
@@ -72,6 +81,7 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 		let was_in_class = std::mem::replace(&mut reader.state.flags.in_class, true);
 
 		let mut members: Vec<Decorated<ClassMember>> = Vec::new();
+		let mut has_constructor = false;
 		loop {
 			// TODO temp fix
 			while reader.is_operator_advance(";") {}
@@ -83,35 +93,14 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 			let member = Decorated::<ClassMember>::from_reader(reader)?;
 
 			if reader.get_options().features.run_validation {
-				if let Some(_key) = member.on.get_key() {
-					// let run = if let ClassMember::Method(method) = member.on
-					// 	&& let MethodHeader::Get | MethodHeader::Set = method.header
-					// {
-					// 	false
-					// } else {
-					// 	true
-					// };
-					// if run {
-					// 	for existing_member in &members {
-					// 		if let Some(existing_key) = existing_member.on.get_key()
-					// 			&& key.definitionally_equal(existing_key)
-					// 		{
-					// 			return Err(crate::ParseError::new(
-					// 				crate::ParseErrors::TODO("duplicate class member key"),
-					// 				member.get_position(),
-					// 			));
-					// 		}
-					// 	}
-					// }
-				} else if let ClassMember::Constructor(_) = &member.on {
-					for existing_member in &members {
-						if let ClassMember::Constructor(_) = &existing_member.on {
-							return Err(crate::ParseError::new(
-								crate::ParseErrors::TODO("duplicate constructor"),
-								member.get_position(),
-							));
-						}
+				if let ClassMember::Constructor(_) = &member.on {
+					if has_constructor {
+						return Err(crate::ParseError::new(
+							crate::ParseErrors::TODO("duplicate constructor"),
+							member.get_position(),
+						));
 					}
+					has_constructor = true;
 				}
 			}
 
@@ -119,6 +108,20 @@ impl<U: ExpressionOrStatementPosition + Debug + Clone + 'static> ASTNode for Cla
 				reader.expect_semi_colon()?;
 			}
 			members.push(member);
+		}
+
+		// WIP
+		if reader.get_options().features.run_validation && !has_constructor {
+			for member in &members {
+				if let Some(key) = member.on.get_key()
+					&& (key == "constructor" || key == "#constructor")
+				{
+					return Err(crate::ParseError::new(
+						crate::ParseErrors::TODO("cannot have constructor"),
+						member.get_position(),
+					));
+				}
+			}
 		}
 
 		let end = reader.expect_chr('}')?;

@@ -45,6 +45,7 @@ pub struct ParseStringOutput<'a> {
 	pub quoting: Quoting,
 	/// used to advance read head
 	pub source_length: u32,
+	pub invalid_escapes: bool,
 	/// relative offsets of unknown escapes
 	pub unknown_escapes: Vec<u32>,
 	/// error in strict mode
@@ -72,6 +73,7 @@ pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError>
 
 	let mut unknown_escapes = Vec::new();
 	let mut uses_octal = false;
+	let mut invalid_escapes = false;
 
 	let mut last = 0;
 	for (idx, matched) in delimeters {
@@ -82,12 +84,14 @@ pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError>
 
 		// this is okay because delimeter is dynamic...
 		if let "\"" | "'" = matched {
+			let source_length = idx as u32 + 2;
 			let output = ParseStringOutput {
 				value: buf,
 				quoting,
-				source_length: idx as u32 + 2,
+				source_length,
 				unknown_escapes,
 				uses_octal,
+				invalid_escapes,
 			};
 			return Ok(output);
 		} else if matched == "\\" {
@@ -101,12 +105,18 @@ pub fn parse_string(current: &str) -> Result<ParseStringOutput<'_>, StringError>
 					uses_octal = true;
 				}
 				let result = escape_character(chr, after, buf.to_mut());
-				if let Ok(offset) = result {
-					// Skip others
-					last = idx + 1 + offset;
-				} else {
-					unknown_escapes.push(idx as u32);
-					last = idx + 1;
+				match result {
+					Ok(offset) => {
+						// Skip others
+						last = idx + 1 + offset;
+					}
+					Err(EscapeError::CodeNotCharacter { code: _ }) => {
+						unknown_escapes.push(idx as u32);
+						last = idx + 1;
+					}
+					Err(_) => {
+						invalid_escapes = true;
+					}
 				}
 			} else {
 				return Err(StringError::NoDelimeter);
@@ -126,7 +136,7 @@ pub enum EscapeError {
 	InvalidHexadecimalSequence,
 	// Missing } etc
 	InvalidUnicodeSequence,
-	HexadecimalNotValidCharacter { code: u32 },
+	CodeNotCharacter { code: u32 },
 }
 
 /// Appends an [escape sequence](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#escape_sequences) to `buf` based on the character `chr` after the backslash and any characters in `after`
@@ -184,7 +194,7 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 					buf.push(chr);
 					Ok(hex_code.len() + 1)
 				} else {
-					Err(EscapeError::HexadecimalNotValidCharacter { code })
+					Err(EscapeError::CodeNotCharacter { code })
 				}
 			} else {
 				Err(EscapeError::InvalidHexadecimalSequence)
@@ -192,13 +202,13 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 		}
 		// Octal escape sequences
 		'0'..='9' => {
+			// TODO better here + hexadecimal sequence errors should be octal
 			let (code, _) = after.split_once(|c: char| !c.is_ascii_digit()).unwrap_or((after, ""));
 			// Not octal
 			if code == "0" {
 				buf.push('\0');
 				Ok(1)
-			} else {
-				let octal_code = code;
+			} else if let Some(octal_code) = after.get(..3) {
 				let Ok(code) = u32::from_str_radix(octal_code, 8) else {
 					return Err(EscapeError::InvalidHexadecimalSequence);
 				};
@@ -207,8 +217,10 @@ pub fn escape_character(chr: char, after: &str, buf: &mut String) -> Result<usiz
 					Ok(octal_code.len() + 1)
 				} else {
 					// TODO octal
-					Err(EscapeError::HexadecimalNotValidCharacter { code })
+					Err(EscapeError::CodeNotCharacter { code })
 				}
+			} else {
+				return Err(EscapeError::InvalidHexadecimalSequence);
 			}
 		}
 		// Unicode escape sequences
@@ -233,7 +245,7 @@ pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), EscapeEr
 			if let Some(chr) = char::from_u32(code) {
 				Ok((chr, 2 + inner.len()))
 			} else {
-				Err(EscapeError::HexadecimalNotValidCharacter { code })
+				Err(EscapeError::CodeNotCharacter { code })
 			}
 		} else {
 			Err(EscapeError::InvalidUnicodeSequence)
@@ -272,7 +284,7 @@ pub fn parse_unicode_escape_sequence(on: &str) -> Result<(char, usize), EscapeEr
 		if let Some(chr) = char::from_u32(code) {
 			Ok((chr, count))
 		} else {
-			Err(EscapeError::HexadecimalNotValidCharacter { code })
+			Err(EscapeError::CodeNotCharacter { code })
 		}
 	} else {
 		Err(EscapeError::InvalidUnicodeSequence)
@@ -293,6 +305,7 @@ mod tests {
 			quoting,
 			source_length: source_length as u32,
 			unknown_escapes: Vec::default(),
+			uses_octal: false,
 		}
 	}
 

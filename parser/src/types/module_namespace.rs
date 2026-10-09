@@ -22,7 +22,9 @@ impl crate::ASTNode for Namespace {
 	fn from_reader(reader: &mut crate::Lexer) -> crate::ParseResult<Self> {
 		let start = reader.expect_keyword("namespace")?;
 		let name = reader.parse_identifier("namespace name", true)?.into_owned();
+		reader.start_variable_region();
 		let inner = Block::from_reader(reader)?;
+		reader.end_block();
 		let position = start.union(inner.get_position());
 		Ok(Self { is_declare: false, name, inner, position })
 	}
@@ -69,14 +71,16 @@ impl crate::ASTNode for Module {
 			let content = reader.parse_identifier("module name", true)?.into_owned();
 			(content, None)
 		};
-		if reader.starts_with('{') {
+		let inner = if reader.starts_with('{') {
+			reader.start_variable_region();
 			let inner = Block::from_reader(reader)?;
-			let position = start.union(inner.get_position());
-			Ok(Self { is_declare: false, name, inner: Some(inner), position })
+			reader.end_block();
+			Some(inner)
 		} else {
-			let position = start.union(reader.get_end());
-			Ok(Self { is_declare: false, name, inner: None, position })
-		}
+			None
+		};
+		let position = start.union(reader.get_end());
+		Ok(Self { is_declare: false, name, inner, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

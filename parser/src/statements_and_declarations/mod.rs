@@ -271,6 +271,7 @@ impl ASTNode for StatementOrDeclaration {
 				} else if reader.is_keyword("function") {
 					// `to_full` absorbs the function keyword
 					let header = header.to_full(reader)?;
+					reader.state.current = Some(crate::lexer::VariableKind::Function);
 					let name: crate::StatementPosition =
 						crate::ExpressionOrStatementPosition::from_reader(reader)?;
 					let function =
@@ -440,6 +441,7 @@ impl ASTNode for StatementOrDeclaration {
 					let parts =
 						import::import_specifier_and_parts_from_reader_without_import(reader)?;
 					let import = ImportDeclaration::from_reader_with_parts(reader, start, parts)?;
+
 					if !reader.state.flags.top_level {
 						return Err(ParseError::new(
 							ParseErrors::NonTopLevelImportOrExport,
@@ -469,6 +471,7 @@ impl ASTNode for StatementOrDeclaration {
 					let decorated = Decorated::new(possible_decorators, class);
 					Ok(StatementOrDeclaration::Class(Box::new(decorated)))
 				} else if reader.is_keyword("function") || reader.is_keyword("async") {
+					reader.state.current = Some(crate::lexer::VariableKind::Function);
 					let mut function = StatementFunction::from_reader(reader)?;
 					function.name.is_declare = true;
 					function.position.start = start.0;
@@ -540,31 +543,21 @@ impl ASTNode for StatementOrDeclaration {
 						StatementOrDeclaration::UsingDeclaration(ud)
 					}
 				} else if reader.is_operator_advance(":") {
-					let statement = Statement::from_reader(reader)?;
-					check_semi_colon(&statement.0, reader)?;
-					let position = start.union(statement.get_position());
-					let statement = Box::new(statement);
-					let name = "await".to_owned();
-					if let StatementOrDeclaration::Function(..) | StatementOrDeclaration::Class(..) =
-						&statement.0 && reader.strict_mode()
-					{
-						return Err(ParseError::new(
-							ParseErrors::CannotLabelItem,
-							statement.get_position(),
-						));
-					}
-					return Ok(StatementOrDeclaration::Labelled { name, statement, position });
+					let label_pos = start.with_length("async".len());
+					return new_labelled_statement("async".to_owned(), label_pos, start, reader);
 				} else {
 					warn_if_possible_decorators_unused("await", possible_decorators)?;
 					let expression = crate::expressions::parse_after_await(reader, start, false)?;
 					StatementOrDeclaration::Expression(expression)
 				};
-				// if !reader.state.flags.in_async {
-				// 	return Err(ParseError::new(
-				// 		ParseErrors::AwaitOutsideOfAsync,
-				// 		on.get_position(),
-				// 	));
-				// }
+
+				if !reader.state.flags.in_async {
+					return Err(ParseError::new(
+						ParseErrors::AwaitOutsideOfAsync,
+						on.get_position(),
+					));
+				}
+
 				Ok(on)
 			}
 			b'i' if reader.is_keyword("if") => {
@@ -610,7 +603,10 @@ impl ASTNode for StatementOrDeclaration {
 			}
 			b'{' => {
 				warn_if_possible_decorators_unused("block", possible_decorators)?;
-				Block::from_reader(reader).map(StatementOrDeclaration::Block)
+				reader.start_variable_region();
+				let block = Block::from_reader(reader)?;
+				reader.end_block();
+				Ok(StatementOrDeclaration::Block(block))
 			}
 			b'd' if reader.is_keyword_advance("debugger") => {
 				warn_if_possible_decorators_unused("debugger", possible_decorators)?;
@@ -767,33 +763,8 @@ impl ASTNode for StatementOrDeclaration {
 				if reader.is_operator_advance(":") {
 					let position = expression.get_position();
 					let inner = expression.get_inner();
-					return if let Ok((name, _label_pos)) = inner.as_identifier() {
-						let on_iteration_item = reader.is_keyword("for")
-							|| reader.is_keyword("while")
-							|| reader.is_keyword("do");
-						reader.push_label(name.clone(), on_iteration_item);
-						let statement = Statement::from_reader(reader)?;
-						reader.pop_label();
-						check_semi_colon(&statement.0, reader)?;
-						let position = start.union(statement.get_position());
-						let statement = Box::new(statement);
-						if let StatementOrDeclaration::Function(..)
-						| StatementOrDeclaration::Class(..) = &statement.0
-							&& reader.strict_mode()
-						{
-							return Err(ParseError::new(
-								ParseErrors::CannotLabelItem,
-								statement.get_position(),
-							));
-						}
-						// TODO
-						// if name == "yield" {
-						// 	return Err(ParseError::new(
-						// 		ParseErrors::TODO("`yield` invalid label name"),
-						// 		label_pos,
-						// 	));
-						// }
-						Ok(StatementOrDeclaration::Labelled { name, statement, position })
+					return if let Ok((name, label_pos)) = inner.as_identifier() {
+						new_labelled_statement(name, label_pos, start, reader)
 					} else {
 						Err(ParseError::new(ParseErrors::InvalidStatementLabel, position))
 					};
@@ -1024,17 +995,69 @@ impl StatementOrDeclaration {
 	pub fn is_declaration(&self) -> bool {
 		match self {
 			StatementOrDeclaration::Variable(_)
-			// TODO strict mode | StatementOrDeclaration::Function(_)
 			| StatementOrDeclaration::Class(_)
 			| StatementOrDeclaration::Enum(_)
 			| StatementOrDeclaration::Interface(_)
 			| StatementOrDeclaration::TypeAlias(_)
 			| StatementOrDeclaration::DeclareVariable(_) => true,
+			// StatementOrDeclaration::Function(func) => func.header.is_async()
 			#[cfg(feature = "full-typescript")]
 			StatementOrDeclaration::Namespace(_) => true,
 			_ => false,
 		}
 	}
+
+	pub fn declaration_name(&self) -> Option<&str> {
+		use crate::ExpressionOrStatementPosition;
+
+		match self {
+			StatementOrDeclaration::Class(cls) => cls.on.item.name.as_option_str(),
+			StatementOrDeclaration::Function(func) => func.on.item.name.as_option_str(),
+			_ => None,
+		}
+	}
+}
+
+fn new_labelled_statement(
+	name: String,
+	label_pos: Span,
+	start: source_map::Start,
+	reader: &mut crate::Lexer,
+) -> ParseResult<StatementOrDeclaration> {
+	if reader.state.flags.in_async && name == "async" {
+		return Err(ParseError::new(ParseErrors::TODO("async label"), label_pos));
+	}
+	if reader.state.flags.in_generator && name == "yield" {
+		return Err(ParseError::new(ParseErrors::TODO("yield label"), label_pos));
+	}
+
+	let on_iteration_item =
+		reader.is_keyword("for") || reader.is_keyword("while") || reader.is_keyword("do");
+
+	let contains = reader.push_label(name.clone(), on_iteration_item);
+
+	if contains {
+		return Err(ParseError::new(ParseErrors::TODO("duplicate label"), label_pos));
+	}
+
+	let statement = Statement::from_reader(reader)?;
+	reader.pop_label();
+	check_semi_colon(&statement.0, reader)?;
+	let position = start.union(statement.get_position());
+	let statement = Box::new(statement);
+	if let StatementOrDeclaration::Function(..) | StatementOrDeclaration::Class(..) = &statement.0
+		&& reader.strict_mode()
+	{
+		return Err(ParseError::new(ParseErrors::CannotLabelItem, statement.get_position()));
+	}
+	// TODO
+	// if name == "yield" {
+	// 	return Err(ParseError::new(
+	// 		ParseErrors::TODO("`yield` invalid label name"),
+	// 		label_pos,
+	// 	));
+	// }
+	Ok(StatementOrDeclaration::Labelled { name, statement, position })
 }
 
 #[apply(derive_ASTNode!)]
@@ -1050,6 +1073,12 @@ impl ASTNode for Statement {
 		// TEMP fix
 		let start = reader.get_start();
 		if reader.is_keyword_advance("let") {
+			if reader.starts_with('[') {
+				return Err(ParseError::new(
+					ParseErrors::TODO("lookahead restriction broken"),
+					start.union(reader.get_end()),
+				));
+			}
 			return expression_statement_after(reader, start, "let").map(Statement);
 		}
 

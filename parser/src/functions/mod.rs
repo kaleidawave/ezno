@@ -162,13 +162,16 @@ pub(crate) fn parse_function_body<T: FunctionBased>(
 	reader: &mut crate::Lexer,
 	header: &T::Header,
 	kind: FunctionKind,
-	parameters_has_default_or_spread: bool,
+	parameters_has_default_destructuring_or_spread: bool,
 ) -> ParseResult<T::Body> {
 	let label_boundary =
 		std::mem::replace(&mut reader.state.label_boundary, reader.state.labels.len());
 	let was_async = std::mem::replace(&mut reader.state.flags.in_async, header.is_async());
 	let was_generator =
 		std::mem::replace(&mut reader.state.flags.in_generator, header.is_generator());
+	let under_generator = header.is_generator() || reader.state.flags.under_generator;
+	let was_under_generator =
+		std::mem::replace(&mut reader.state.flags.under_generator, under_generator);
 	// WIP
 	let kind = if let Some(FunctionKind::Constructor) = reader.state.flags.function {
 		FunctionKind::Constructor
@@ -176,10 +179,14 @@ pub(crate) fn parse_function_body<T: FunctionBased>(
 		kind
 	};
 	let was_function = std::mem::replace(&mut reader.state.flags.function, Some(kind));
-	let body = T::Body::from_reader_as_function_body(reader, parameters_has_default_or_spread)?;
+	let body = T::Body::from_reader_as_function_body(
+		reader,
+		parameters_has_default_destructuring_or_spread,
+	)?;
 	reader.state.label_boundary = label_boundary;
 	reader.state.flags.in_async = was_async;
 	reader.state.flags.in_generator = was_generator;
+	reader.state.flags.under_generator = was_under_generator;
 	reader.state.flags.function = was_function;
 	Ok(body)
 }
@@ -263,6 +270,8 @@ impl<T: FunctionBased> FunctionBase<T> {
 		header: T::Header,
 		name: T::Name,
 	) -> ParseResult<Self> {
+		reader.start_variable_region();
+
 		let start = reader.get_start();
 		// let start = header.get_start();
 		let type_parameters = if reader.is_operator_advance("<") {
@@ -293,7 +302,7 @@ impl<T: FunctionBased> FunctionBase<T> {
 			reader,
 			&header,
 			T::kind(),
-			!parameters.has_default_or_spread(),
+			!parameters.has_default_destructuring_or_spread(),
 		)?;
 		let body_pos = body.get_position();
 		// TODO body.is_null
@@ -302,6 +311,8 @@ impl<T: FunctionBased> FunctionBase<T> {
 		} else {
 			body_pos
 		};
+
+		reader.end_function_or_static_block();
 
 		let position = start.union(end_pos);
 

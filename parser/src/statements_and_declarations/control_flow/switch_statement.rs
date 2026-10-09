@@ -32,7 +32,13 @@ impl ASTNode for SwitchStatement {
 		reader.expect_chr(')')?;
 		reader.expect_chr('{')?;
 
+		let was_top_level = reader.state.flags.top_level;
+		reader.state.flags.top_level = false;
+
+		// TODO duplicate
+
 		let mut branches = Vec::new();
+		reader.start_variable_region();
 		loop {
 			let case: Option<Box<MultipleExpression>> = if reader.is_operator_advance("}") {
 				break;
@@ -56,7 +62,7 @@ impl ASTNode for SwitchStatement {
 				));
 			};
 
-			// This is a modified form of Block::from_reader where `TSXKeyword::Case` and
+			// This is a modified form of `Block::from_reader` where `TSXKeyword::Case` and
 			// `TSXKeyword::Default` are delimiters
 			let mut items = Vec::new();
 			loop {
@@ -88,7 +94,13 @@ impl ASTNode for SwitchStatement {
 				branches.push(SwitchBranch::Default(items));
 			}
 		}
-		Ok(Self { case, branches, position: start.union(reader.get_end()) })
+
+		reader.state.flags.top_level = was_top_level;
+
+		let position = start.union(reader.get_end());
+		reader.end_block();
+
+		Ok(Self { case, branches, position })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

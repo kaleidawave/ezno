@@ -189,17 +189,17 @@ impl ASTNode for ObjectLiteralMember {
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.get_start();
 
-		if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
-			let is_multiline = reader.starts_with_slice("/*");
-			reader.advance(2);
-			let content = reader.parse_comment_literal(is_multiline)?.to_owned();
-			let position = if is_multiline {
-				start.with_length(2 + content.len())
-			} else {
-				start.with_length(4 + content.len())
-			};
-			return Ok(Self::Comment(content.clone(), false, position));
-		}
+		// if reader.starts_with_slice("//") || reader.starts_with_slice("/*") {
+		// 	let is_multiline = reader.starts_with_slice("/*");
+		// 	reader.advance(2);
+		// 	let content = reader.parse_comment_literal(is_multiline)?.to_owned();
+		// 	let position = if is_multiline {
+		// 		start.with_length(2 + content.len())
+		// 	} else {
+		// 		start.with_length(4 + content.len())
+		// 	};
+		// 	return Ok(Self::Comment(content.clone(), false, position));
+		// }
 
 		if reader.is_operator_advance("...") {
 			// TODO precedence okay?
@@ -220,6 +220,16 @@ impl ASTNode for ObjectLiteralMember {
 		} else {
 			PropertyKey::<crate::property_key::AlwaysPublic>::from_reader(reader)?
 		};
+
+		if reader.strict_mode()
+			&& let Some(name) = key.as_option_str()
+			&& crate::lexer::utilities::is_strict_mode_reserved_word(name)
+		{
+			return Err(crate::ParseError::new(
+				crate::ParseErrors::TODO("bad name"),
+				key.get_position(),
+			));
+		}
 
 		if reader.get_current().starts_with(['(', '<']) {
 			let method: ObjectLiteralMethod =
@@ -253,6 +263,15 @@ impl ASTNode for ObjectLiteralMember {
 				// 		));
 				// 	}
 
+				if let PropertyKey::Identifier(..) = key {
+					Ok(Self::Shorthand(ShorthandKey(key)))
+				} else {
+					Err(crate::ParseError::new(
+						crate::ParseErrors::TODO("shorthand with not identifier"),
+						reader.get_start().with_length(1),
+					))
+				}
+
 				// } else {
 				// 	let found = reader.get_current().chars().next();
 				// 	Err(crate::ParseError::new(
@@ -260,7 +279,6 @@ impl ASTNode for ObjectLiteralMember {
 				// 		reader.get_start().with_length(1),
 				// 	))
 				// }
-				Ok(Self::Shorthand(ShorthandKey(key)))
 			} else {
 				// FUTURE currently for `{ x = 2 } = {}` but means that `console.log({ x = 2 })`, is a false positive
 				let assignment = if reader.is_operator_advance("=") {

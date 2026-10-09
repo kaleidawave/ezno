@@ -46,7 +46,9 @@ impl ASTNode for IfStatement {
 		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect_chr(')')?;
 
+		reader.start_variable_region();
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		reader.end_block();
 
 		let (mut else_conditions, mut trailing_else) =
 			(Vec::<ConditionalElseStatement>::new(), None::<UnconditionalElseStatement>);
@@ -59,7 +61,9 @@ impl ASTNode for IfStatement {
 				let _value = reader.expect_chr('(')?;
 				let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 				reader.expect_chr(')')?;
+				reader.start_variable_region();
 				let inner = BlockOrSingleStatement::from_reader(reader)?;
+				reader.end_block();
 				let value = ConditionalElseStatement {
 					condition,
 					position: start.union(inner.get_position()),
@@ -67,7 +71,9 @@ impl ASTNode for IfStatement {
 				};
 				else_conditions.push(value);
 			} else {
+				reader.start_variable_region();
 				let inner = BlockOrSingleStatement::from_reader(reader)?;
+				reader.end_block();
 				let position = start.union(inner.get_position());
 				trailing_else = Some(UnconditionalElseStatement { inner, position });
 				break;
@@ -127,8 +133,10 @@ impl ASTNode for ConditionalElseStatement {
 		reader.expect_chr('(')?;
 		let condition = MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect_chr(')')?;
-		let statements = BlockOrSingleStatement::from_reader(reader)?;
-		Ok(Self { condition, position: start.union(statements.get_position()), inner: statements })
+		reader.start_variable_region();
+		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		reader.end_block();
+		Ok(Self { condition, position: start.union(inner.get_position()), inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(
@@ -154,8 +162,10 @@ impl ASTNode for UnconditionalElseStatement {
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
 		let start = reader.expect_keyword("else")?;
-		let statements = BlockOrSingleStatement::from_reader(reader)?;
-		Ok(Self { position: start.union(statements.get_position()), inner: statements })
+		reader.start_variable_region();
+		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		reader.end_block();
+		Ok(Self { position: start.union(inner.get_position()), inner })
 	}
 
 	fn to_string_from_buffer<T: source_map::ToString>(

@@ -25,6 +25,8 @@ impl ASTNode for ForLoopStatement {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		// Start region here to account for variables in `for` part
+		reader.start_variable_region();
 		let start = reader.expect_keyword("for")?;
 		let is_await = reader.is_keyword_advance("await");
 		if !reader.state.flags.in_async && is_await {
@@ -46,6 +48,7 @@ impl ASTNode for ForLoopStatement {
 			}
 		}
 		let inner = BlockOrSingleStatement::from_reader(reader)?;
+		reader.end_block();
 		let position = start.union(inner.get_position());
 		Ok(ForLoopStatement { condition, inner, position })
 	}
@@ -208,12 +211,20 @@ impl ASTNode for ForLoopCondition {
 				let position = start.union(reader.get_end());
 				Ok(ForLoopCondition::ForOf { is_await: false, lhs, of, position })
 			} else {
+				reader.add_variable(name.clone());
 				reader.expect_operator("=")?;
 				let value = Expression::from_reader(reader)?;
 				let binding = UsingBinding { name, annotation, value };
 				let mut bindings = vec![binding];
 				while reader.is_operator_advance(",") {
 					let name = reader.parse_identifier("using name", false)?.into_owned();
+					if let "let" = name.as_str() {
+						return Err(ParseError::new(
+							ParseErrors::TODO("CANNOT USE 'let' as using name"),
+							start.union(reader.get_end()),
+						));
+					}
+					reader.add_variable(name.clone());
 					let annotation = if reader.is_operator_advance(":") {
 						Some(crate::TypeAnnotation::from_reader(reader)?)
 					} else {
@@ -236,6 +247,11 @@ impl ASTNode for ForLoopCondition {
 			kind: VariableKeyword,
 			start: source_map::Start,
 		) -> ParseResult<ForLoopCondition> {
+			if let VariableKeyword::Var = kind {
+				reader.state.current = Some(crate::lexer::VariableKind::Var);
+			} else {
+				reader.state.current = Some(crate::lexer::VariableKind::BlockScoped);
+			}
 			let name = VariableField::from_reader(reader)?;
 			let type_annotation = if reader.is_operator_advance(":") {
 				let annotation = crate::TypeAnnotation::from_reader(reader)?;

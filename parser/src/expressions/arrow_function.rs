@@ -178,13 +178,18 @@ impl ArrowFunction {
 	pub(crate) fn from_reader_with_first_parameter(
 		reader: &mut crate::Lexer,
 		is_async: bool,
-		name: VariableField,
+		name: crate::VariableIdentifier,
 	) -> ParseResult<Self> {
+		reader.start_variable_region();
+		reader.state.current = Some(crate::lexer::VariableKind::BlockScoped);
+		if let Some(name) = name.as_option_str() {
+			reader.add_variable(name.to_owned());
+		}
 		let position = name.get_position();
 		let parameters = FunctionParameters {
 			leading: (),
 			parameters: vec![Parameter {
-				name,
+				name: name.into(),
 				position,
 				visibility: (),
 				type_annotation: None,
@@ -194,7 +199,15 @@ impl ArrowFunction {
 			position,
 		};
 
-		Self::from_reader_with_parameters(reader, position.get_start(), is_async, None, parameters)
+		let value = Self::from_reader_with_parameters(
+			reader,
+			position.get_start(),
+			is_async,
+			None,
+			parameters,
+		);
+		reader.end_function_or_static_block();
+		value
 	}
 
 	pub(crate) fn from_reader_with_parameters(
@@ -214,7 +227,7 @@ impl ArrowFunction {
 			reader,
 			&is_async,
 			ArrowFunctionBase::kind(),
-			!parameters.has_default_or_spread(),
+			!parameters.has_default_destructuring_or_spread(),
 		)?;
 		let arrow_function = ArrowFunction {
 			header: is_async,

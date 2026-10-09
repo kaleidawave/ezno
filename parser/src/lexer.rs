@@ -3,17 +3,13 @@ use crate::errors::{ParseError, ParseErrors};
 use crate::marker::Marker;
 use crate::options::ParseOptions;
 
-// #[derive(Default, Debug, Clone, Copy)]
-// pub struct FunctionModifiers {
-// 	pub in_async: bool,
-// 	pub in_generator: bool,
-// }
-
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ParsingFlags {
 	pub(crate) strict_mode: bool,
+	pub(crate) in_module: bool,
 	pub(crate) in_async: bool,
 	pub(crate) in_generator: bool,
+	pub(crate) under_generator: bool,
 	/// TODO invert
 	pub(crate) top_level: bool,
 	/// for `return` checking
@@ -21,6 +17,9 @@ pub struct ParsingFlags {
 	pub(crate) in_class: bool,
 	/// for `arguments` checking
 	pub(crate) in_ternary_or_class_field: bool,
+	// TODO
+	// pub(crate) under_control_flow: bool,
+	// pub(crate) in_block_statement: bool,
 }
 
 // TODO Vec<u32> for keywords?
@@ -28,6 +27,7 @@ pub struct ParsingFlags {
 pub struct ParseState {
 	blank_lines: u32,
 	comment_lines: u32,
+
 	pub markers: Vec<Span>,
 	pub constant_imports: Vec<String>,
 	pub errors: Vec<ParseError>,
@@ -37,9 +37,28 @@ pub struct ParseState {
 
 	pub(crate) flags: ParsingFlags,
 
+	/// For double variables
+	pub(crate) variable_bounary: usize,
+	pub(crate) variables: Vec<(String, VariableKind)>,
+	pub(crate) current: Option<VariableKind>,
+
+	pub(crate) expecting_private_references: Vec<String>,
+	pub(crate) expecting_private_reference_boundary: usize,
+	pub(crate) exported_default: bool,
+
 	/// the current position into the script
 	pub head: u32,
+	/// used for JSX and returning positions
 	pub last: u32,
+}
+
+/// WIP
+#[derive(Clone, Copy, Debug)]
+pub enum VariableKind {
+	Var,
+	Function,
+	/// var, class, const, let, parameter etc
+	BlockScoped,
 }
 
 pub struct Lexer<'a> {
@@ -93,6 +112,7 @@ impl<'a> Lexer<'a> {
 		// TODO what about nested
 		state.flags.top_level = true;
 		state.flags.in_async = options.top_level_await;
+		state.flags.in_module = options.module;
 		state.flags.strict_mode = options.strict_mode;
 
 		let mut reader = Lexer { script, offset, options, state };
@@ -130,6 +150,12 @@ impl<'a> Lexer<'a> {
 					label_boundary: _,
 					errors: _,
 					flags: _,
+					variable_bounary: _,
+					mut variables,
+					current: _,
+					expecting_private_references: _,
+					expecting_private_reference_boundary: _,
+					exported_default: _,
 				} = forked.state;
 				self.state.head = head;
 				self.state.blank_lines = blank_lines;
@@ -137,6 +163,8 @@ impl<'a> Lexer<'a> {
 				self.state.last = last;
 				self.state.markers.append(&mut markers);
 				self.state.constant_imports.append(&mut constant_imports);
+				// I think this is okay. Neccessary for arrow function parameters
+				self.state.variables.append(&mut variables);
 				Ok(node)
 			}
 			Err(err) => Err(err),
@@ -496,6 +524,31 @@ impl<'a> Lexer<'a> {
 		location: &'static str,
 		check_reserved: bool,
 	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+		self.parse_identifier_(location, check_reserved, false)
+	}
+
+	pub(crate) fn parse_reserved_identifier(
+		&mut self,
+		location: &'static str,
+	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+		self.parse_identifier_(location, true, false)
+	}
+
+	pub(crate) fn parse_jsx_identifier(
+		&mut self,
+		location: &'static str,
+	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+		// TODO bool WIP
+		self.parse_identifier_(location, false, true)
+	}
+
+	// JSX needed for `class` = identifier
+	pub(crate) fn parse_identifier_(
+		&mut self,
+		location: &'static str,
+		check_reserved: bool,
+		jsx: bool,
+	) -> Result<std::borrow::Cow<'a, str>, ParseError> {
 		fn valid_start_character(chr: char) -> bool {
 			unicode_id_start::is_id_start(chr) || matches!(chr, '\\' | '_' | '$')
 		}
@@ -507,6 +560,7 @@ impl<'a> Lexer<'a> {
 		let start = self.get_start();
 		let current = self.get_current();
 
+		// TODO JSX can start with @ and : etc under options
 		if !current.starts_with(valid_start_character) {
 			return Err(ParseError::new(
 				ParseErrors::ExpectedIdentifier { location },
@@ -519,6 +573,10 @@ impl<'a> Lexer<'a> {
 		for (idx, chr) in current.char_indices() {
 			if !valid_continue_character(chr) {
 				if idx < last {
+					continue;
+				}
+				// TODO allowed JSX/HTML identifiers ...
+				if jsx && chr == '-' {
 					continue;
 				}
 				value += &current[last..idx];
@@ -555,6 +613,7 @@ impl<'a> Lexer<'a> {
 			last = current.len();
 		}
 		self.advance(last as u32);
+
 		// if check_reserved {
 		// 	let is_invalid = if self.strict_mode() && utilities::is_strict_mode_reserved_word(&value) {
 		// 		true
@@ -608,30 +667,15 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	// For JSX attributes and content. Also returns which one of `possibles` matched
-	pub(crate) fn parse_until_one_of_advance(
-		&mut self,
-		possibles: &[char],
-	) -> Result<(&'a str, &'a str), ()> {
+	pub(crate) fn parse_jsx_text(&mut self) -> Result<&'a str, ()> {
+		let possibles: &[char] = &['<', '{'];
+		// because of whitespace skip during advance we want to get the start
+		let start = self.state.last;
 		let current = self.get_current();
-		if let Some((idx, until)) = current.match_indices(possibles).next() {
-			self.state.head += (idx + 1) as u32;
-			self.skip_including_comments();
-			Ok((&current[..idx], until))
-		} else {
-			Err(())
-		}
-	}
-
-	pub(crate) fn parse_until_one_of_no_advance(
-		&mut self,
-		possibles: &[char],
-	) -> Result<(&'a str, &'a str), ()> {
-		let current = self.get_current();
-		if let Some((idx, until)) = current.match_indices(possibles).next() {
+		if let Some(idx) = current.find(possibles) {
 			self.state.head += idx as u32;
-			self.skip_including_comments();
-			Ok((&current[..idx], until))
+			self.state.last = self.state.head;
+			Ok(&self.script[start as usize..self.state.head as usize])
 		} else {
 			Err(())
 		}
@@ -695,18 +739,24 @@ impl<'a> Lexer<'a> {
 				value,
 				quoting,
 				source_length,
-				unknown_escapes,
+				unknown_escapes: _,
 				uses_octal,
+				invalid_escapes,
 			}) => {
 				if uses_octal && self.strict_mode() {
 					// TODO better
 					return Err(ParseError::new(ParseErrors::InvalidStringLiteral, position));
 				}
 
-				if !unknown_escapes.is_empty() {
+				if invalid_escapes {
 					// TODO better
 					return Err(ParseError::new(ParseErrors::InvalidStringLiteral, position));
 				}
+
+				// if !unknown_escapes.is_empty() {
+				// 	// TODO better
+				// 	return Err(ParseError::new(ParseErrors::InvalidStringLiteral, position));
+				// }
 
 				// TODO add unknown escapes to warnings (or errors on strict mode)
 				self.advance(source_length);
@@ -719,7 +769,8 @@ impl<'a> Lexer<'a> {
 		}
 	}
 
-	/// Returns content and flags. Flags can be empty
+	/// Returns content and flags. Flags can be empty string.
+	/// TODO maybe move?
 	pub(crate) fn parse_regex_literal(&mut self) -> Result<(&'a str, &'a str), ParseError> {
 		fn valid_regexp_flag(chr: char) -> bool {
 			// TODO specify via reader.get_options()
@@ -736,21 +787,89 @@ impl<'a> Lexer<'a> {
 			}
 		}
 
-		fn find_end_of_regexp(on: &str) -> Option<usize> {
+		fn find_end_of_regexp(on: &str, okay: &mut bool) -> Option<usize> {
 			fn is_escaped_at(on: &str, at: usize) -> bool {
 				on[..at].bytes().rev().take_while(|chr: &u8| *chr == b'\\').count() % 2 == 1
 			}
 
 			// For character classes
 			let mut upto = 0;
-			for (idx, matched) in on.match_indices(['[', '/']) {
+			for (idx, matched) in on.match_indices(['[', '/', '\\']) {
 				if upto > idx || is_escaped_at(on, idx) {
 					continue;
 				} else if let "[" = matched {
 					let after = &on[idx..][1..];
 					let (offset, _) =
 						after.match_indices(']').find(|(idx, _)| !is_escaped_at(after, *idx))?;
+
+					let set = &after[..offset];
+					const PUNCTUATORS: [char; 19] = [
+						'&', '!', '#', '$', '%', '*', '+', ',', '.', ':', ';', '<', '=', '>', '?',
+						'@', '^', '`',
+						'~',
+						// these need to be escaped if USED LITERALLY SO ARE OKAY?
+						// '(', ')', '[', '{', '}', '/', '-', '|',
+					];
+
+					for (idx, matched) in set.match_indices(&PUNCTUATORS) {
+						// if let "(" | ")" | "[" | "{" | "}" | "/" | "-" | "|" = matched {
+						// 	if !is_escaped_at(set, idx) {
+						// 		*okay = false;
+						// 	}
+						// } else
+						if !is_escaped_at(set, idx) && set[idx..][1..].starts_with(matched) {
+							*okay = false;
+						}
+					}
+
 					upto = idx + offset + 2;
+				} else if let "\\" = matched {
+					static BAD: &[&str] = &[
+						// "RGI_Emoji_Modifier_Sequence",
+						// "RGI_Emoji_Flag_Sequence",
+						// "RGI_Emoji_Tag_Sequence",
+						// "RGI_Emoji",
+						// "Basic_Emoji",
+						// // what, i think there may be more going on here
+						// "ascii",
+						// "^General_Category=Letter",
+						// "InAdlam",
+						// "Expands_On_NFD",
+						// "assigned",
+						// // requires v flag possibly?
+						// "Emoji_Keycap_Sequence",
+						// "RGI_Emoji_ZWJ_Sequence",
+					];
+
+					// WIP
+					let after = &on[idx..][1..];
+					if let Some(after) = after.strip_prefix('p') {
+						if let Some(after) = after.strip_prefix('{') {
+							if let Some((inner, _)) = after.split_once('}') {
+								// Might only be for u or v flag
+								if BAD.contains(&inner) {
+									*okay = false;
+								}
+
+								// TODO is_ascii letter?
+								if inner.contains(|c: char| !c.is_ascii()) {
+									dbg!(inner);
+									*okay = false;
+								}
+							} else {
+								// *okay = false;
+							}
+						} else {
+							*okay = false;
+						}
+					} else if let Some(after) = after.strip_prefix("P{") {
+						if let Some((inner, _)) = after.split_once('}') {
+							// Might only be for u or v flag
+							if BAD.contains(&inner) {
+								*okay = false;
+							}
+						}
+					}
 				} else {
 					return Some(idx);
 				}
@@ -766,12 +885,21 @@ impl<'a> Lexer<'a> {
 			));
 		};
 
-		let Some(advance) = find_end_of_regexp(on) else {
+		let mut okay = true;
+
+		let Some(advance) = find_end_of_regexp(on, &mut okay) else {
 			return Err(ParseError::new(
 				ParseErrors::TODO("no end to regexp"),
 				self.get_start().with_length(1),
 			));
 		};
+
+		if !okay {
+			return Err(ParseError::new(
+				ParseErrors::TODO("bad regexp"),
+				self.get_start().with_length(advance),
+			));
+		}
 
 		let regex = &on[..advance];
 		self.state.head += 2 + advance as u32;
@@ -780,7 +908,8 @@ impl<'a> Lexer<'a> {
 		let (flags, _) = on.split_once(|c: char| !c.is_ascii_lowercase()).unwrap_or((on, ""));
 
 		let invalid_flag = flags.contains(|chr: char| !valid_regexp_flag(chr));
-		if invalid_flag {
+		let bad_flag_combination = flags.contains('v') && flags.contains('u');
+		if invalid_flag || bad_flag_combination {
 			Err(ParseError::new(
 				ParseErrors::InvalidRegexFlag,
 				self.get_start().with_length(flags.len()),
@@ -881,9 +1010,14 @@ impl<'a> Lexer<'a> {
 			false
 		}
 	}
+}
 
-	pub(crate) fn push_label(&mut self, name: String, on_iteration_item: bool) {
+impl<'a> Lexer<'a> {
+	/// adds label and returns whether it already exists
+	pub(crate) fn push_label(&mut self, name: String, on_iteration_item: bool) -> bool {
+		let contains = self.state.labels.iter().any(|(existing, _)| existing == &name);
 		self.state.labels.push((name, on_iteration_item));
+		contains
 	}
 
 	pub(crate) fn pop_label(&mut self) {
@@ -896,13 +1030,65 @@ impl<'a> Lexer<'a> {
 			|(name, on_iteration_item)| (name.as_str() == label).then_some(*on_iteration_item),
 		)
 	}
+
+	// TODO eventually Cow<'a, str>
+	pub(crate) fn add_variable(&mut self, name: String) -> bool {
+		// little bit of an unsafe hack
+		if let Some(kind) = self.state.current {
+			let in_scope = &self.state.variables[self.state.variable_bounary..];
+			// dbg!(in_scope, &name, kind);
+			let clash = in_scope.iter().any(|(existing_name, existing_kind)| {
+				if existing_name == &name {
+					match (kind, existing_kind) {
+						(
+							VariableKind::Var | VariableKind::Function,
+							VariableKind::Var | VariableKind::Function,
+						) => false,
+						_ => true,
+					}
+				} else {
+					false
+				}
+			});
+
+			if clash {
+				true
+			} else {
+				self.state.variables.push((name, kind));
+				false
+			}
+		} else {
+			false
+		}
+	}
+
+	pub(crate) fn start_variable_region(&mut self) {
+		self.state.variable_bounary = self.state.variables.len();
+	}
+
+	pub(crate) fn end_block(&mut self) {
+		let mut variables_to_hoist = self
+			.state
+			.variables
+			.drain(self.state.variable_bounary..)
+			.filter(|(_, kind)| matches!(kind, VariableKind::Var))
+			.collect();
+
+		self.state.variables.append(&mut variables_to_hoist);
+		self.state.variable_bounary = self.state.variables.len();
+	}
+
+	pub(crate) fn end_function_or_static_block(&mut self) {
+		self.state.variables.drain(self.state.variable_bounary..);
+		self.state.variable_bounary = self.state.variables.len();
+	}
 }
 
 const NEW_LINE_CHARACTERS: [char; 4] = ['\n', '\r', '\u{2028}', '\u{2029}'];
 
 pub(crate) mod utilities {
 	pub(crate) fn is_identifier_start(chr: char) -> bool {
-		unicode_id_start::is_id_start(chr) || chr == '$'
+		unicode_id_start::is_id_start(chr) || chr == '$' || chr == '_'
 	}
 
 	pub(crate) fn is_identifier_continutation(chr: char) -> bool {
@@ -936,17 +1122,21 @@ pub(crate) mod utilities {
 		if reserved {
 			true
 		} else if strict_mode {
-			matches!(
-				identifier,
-				"implements"
-					| "interface" | "let"
-					| "package" | "private"
-					| "protected" | "public"
-					| "static"
-			)
+			is_strict_mode_reserved_word(identifier)
 		} else {
 			false
 		}
+	}
+
+	pub(crate) fn is_strict_mode_reserved_word(identifier: &str) -> bool {
+		matches!(
+			identifier,
+			"implements"
+				| "interface"
+				| "let" | "package"
+				| "private" | "protected"
+				| "public" | "static"
+		)
 	}
 
 	// TODO move

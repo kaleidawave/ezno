@@ -64,6 +64,17 @@ pub enum PublicOrPrivate {
 impl PropertyKeyKind for PublicOrPrivate {
 	fn parse_identifier(reader: &mut crate::Lexer) -> ParseResult<(String, Span, Self)> {
 		let start = reader.get_start();
+		let current = reader.get_current();
+		if let Some(after) = current.strip_prefix('#') {
+			if !after
+				.starts_with(|c: char| crate::lexer::utilities::is_identifier_start(c) || c == '\\')
+			{
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::TODO("Cannot have gap between # and identifier"),
+					reader.get_start().with_length(1),
+				));
+			}
+		}
 		let publicity = if reader.is_operator_advance("#") { Self::Private } else { Self::Public };
 		let name = reader.parse_identifier("property key", false)?.into_owned();
 		let position = start.with_length(name.len());
@@ -101,6 +112,7 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 		}
 	}
 
+	// TODO loses privacy
 	pub fn as_option_str(&self) -> Option<&str> {
 		match self {
 			Self::Identifier(item, ..) | Self::StringLiteral(item, ..) => Some(item),
@@ -111,7 +123,20 @@ impl<U: PropertyKeyKind> PropertyKey<U> {
 
 impl<U: PropertyKeyKind> PartialEq<str> for PropertyKey<U> {
 	fn eq(&self, other: &str) -> bool {
-		self.as_option_str().is_some_and(|key| key == other)
+		if let Some(other) = other.strip_prefix('#') {
+			if let Self::Identifier(inner, _, p) = self
+				&& inner == other
+				&& U::is_private(p)
+			{
+				true
+			} else {
+				false
+			}
+		} else if self.is_private() {
+			false
+		} else {
+			self.as_option_str().is_some_and(|key| key == other)
+		}
 	}
 }
 

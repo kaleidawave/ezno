@@ -2,7 +2,7 @@
 
 mod build;
 mod check;
-mod repl;
+// mod repl;
 mod reporting;
 
 pub(crate) mod utilities;

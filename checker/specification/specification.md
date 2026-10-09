@@ -1,5 +1,5 @@
 ---
-lists-to-code-blocks: true
+lists-as-expected: true
 ---
 
 ## Specification
@@ -5216,7 +5216,7 @@ const x = <h1 title="Example text">Hello World</h1> satisfies string;
 
 - Expected string, found { tag_name: "h1", attributes: { title: "Example text" }, children: ["Hello World"] }
 
-#### Comments as type annotations
+#### Comments as type annotations (skip)
 
 ```ts
 function x(a /** string */) {

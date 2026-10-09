@@ -67,9 +67,11 @@ impl UsingDeclaration {
 		start: source_map::Start,
 		is_await: bool,
 	) -> crate::ParseResult<Self> {
+		reader.state.current = Some(crate::lexer::VariableKind::BlockScoped);
 		let mut bindings = Vec::new();
 		loop {
 			let name = reader.parse_identifier("using name", false)?.into_owned();
+			reader.add_variable(name.clone());
 			let annotation = if reader.is_operator_advance(":") {
 				Some(TypeAnnotation::from_reader(reader)?)
 			} else {

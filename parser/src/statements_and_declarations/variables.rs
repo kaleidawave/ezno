@@ -149,6 +149,7 @@ impl ASTNode for VariableDeclaration {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		reader.state.current = Some(crate::lexer::VariableKind::BlockScoped);
 		let start = reader.get_start();
 		if let Some(kind) = VariableDeclarationKeyword::from_reader(reader) {
 			Self::parse_declarations_after_kind((start, kind), reader)
@@ -257,18 +258,31 @@ impl ASTNode for VarVariableStatement {
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		reader.state.current = Some(crate::lexer::VariableKind::Var);
 		let start = reader.get_start();
 		let _ = reader.expect_keyword("var")?;
 		let mut declarations = Vec::new();
 		loop {
-			let value = VariableDeclarationItem::from_reader(reader)?;
-			if value.expression.is_none() && !matches!(value.name, crate::VariableField::Name(_)) {
+			let item = VariableDeclarationItem::from_reader(reader)?;
+			// WIP
+			if let crate::VariableField::Name(ref name, ..) = item.name
+				&& name == "yield"
+				&& reader.state.flags.under_generator
+			{
 				return Err(crate::ParseError::new(
-					crate::ParseErrors::DestructuringRequiresValue,
-					value.name.get_position(),
+					crate::ParseErrors::TODO("cannot use `yield` here"),
+					item.name.get_position(),
 				));
 			}
-			declarations.push(value);
+
+			if item.expression.is_none() && !matches!(item.name, crate::VariableField::Name(_)) {
+				return Err(crate::ParseError::new(
+					crate::ParseErrors::DestructuringRequiresValue,
+					item.name.get_position(),
+				));
+			}
+
+			declarations.push(item);
 			if !reader.is_operator_advance(",") {
 				break;
 			}

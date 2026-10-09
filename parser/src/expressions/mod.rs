@@ -327,6 +327,7 @@ impl Expression {
 						// {
 						// 	return Ok(Break::Break);
 						// }
+						reader.start_variable_region();
 						let result = reader.try_parse(|reader: &mut crate::Lexer<'_>| {
 							let parameters =
 								crate::functions::parameters::FunctionParameters::from_reader(
@@ -347,10 +348,12 @@ impl Expression {
 							let arrow_function = ArrowFunction::from_reader_with_parameters(
 								reader, start, false, None, parameters,
 							)?;
+							reader.end_function_or_static_block();
 							return Ok(Expression::ArrowFunction(Box::new(arrow_function)));
 						} else if let Err(error) = result
 							&& reader.starts_with_slice("(...")
 						{
+							reader.end_function_or_static_block();
 							return Err(error);
 						}
 
@@ -438,6 +441,7 @@ impl Expression {
 							return Err(ParseError::new(ParseErrors::ExpectedExpression, position));
 						}
 					} else if reader.is_keyword("function") {
+						reader.state.current = Some(crate::lexer::VariableKind::Function);
 						let header = header.to_full(reader)?;
 						let name: crate::ExpressionPosition =
 							crate::ExpressionOrStatementPosition::from_reader(reader)?;
@@ -463,9 +467,10 @@ impl Expression {
 						// `(async(a, b, c))` is valid
 						// !reader.strict_mode()
 						if header.is_async_only() {
+							reader.start_variable_region();
 							let result =
 								reader.try_parse(ArrowFunctionBase::parameters_from_reader);
-							if let Ok(parameters) = result
+							let inner = if let Ok(parameters) = result
 								&& reader.starts_with_slice("=>")
 							{
 								let function = ArrowFunction::from_reader_with_parameters(
@@ -477,7 +482,9 @@ impl Expression {
 									"async".to_owned(),
 									start.with_length(5),
 								)
-							}
+							};
+							reader.end_function_or_static_block();
+							inner
 						} else {
 							// if AssociativityDirection::RightToLeft
 							// 	.should_return(return_precedence, ARROW_FUNCTION_PRECEDENCE)
@@ -489,10 +496,12 @@ impl Expression {
 							// 	));
 							// }
 							// TODO type_parameters
+							reader.start_variable_region();
 							let parameters = ArrowFunctionBase::parameters_from_reader(reader)?;
 							let function = ArrowFunction::from_reader_with_parameters(
 								reader, start, true, None, parameters,
 							)?;
+							reader.end_function_or_static_block();
 							Expression::ArrowFunction(Box::new(function))
 						}
 					}
@@ -504,8 +513,25 @@ impl Expression {
 					let property_name =
 						reader.parse_identifier("property name", check)?.into_owned();
 					let _ = reader.expect_keyword("in")?;
+
 					let rhs = Expression::from_reader_with_precedence(reader, RELATION_PRECEDENCE)?;
 					let position = start.union(rhs.get_position());
+
+					let bad = if let Expression::ObjectLiteral(..) | Expression::ArrowFunction(..) =
+						rhs
+					{
+						true
+					} else {
+						false
+					};
+
+					if bad {
+						return Err(ParseError::new(
+							ParseErrors::TODO("bad rhs for private in expression"),
+							position,
+						));
+					}
+
 					Expression::SpecialOperators(
 						SpecialOperators::In {
 							lhs: InExpressionLHS::PrivateProperty(property_name),
@@ -519,8 +545,8 @@ impl Expression {
 						IncrementOrDecrement::Increment,
 					);
 					let _precedence = operator.precedence();
-					// _with_precedence, _with_precedence
 					let operand = VariableOrPropertyAccess::from_reader(reader)?;
+					let operand = variable_to_assignable(operand, reader)?;
 					let position = start.union(operand.get_position());
 					Expression::UnaryPrefixAssignmentOperation { operand, operator, position }
 				}
@@ -529,8 +555,8 @@ impl Expression {
 						IncrementOrDecrement::Decrement,
 					);
 					let _precedence = operator.precedence();
-					// _with_precedence, _with_precedence
 					let operand = VariableOrPropertyAccess::from_reader(reader)?;
+					let operand = variable_to_assignable(operand, reader)?;
 					let position = start.union(operand.get_position());
 					Expression::UnaryPrefixAssignmentOperation { operand, operator, position }
 				}
@@ -607,61 +633,17 @@ impl Expression {
 						}
 					} else {
 						let position = start.with_length(5);
+						if reader.strict_mode() {
+							return Err(ParseError::new(
+								ParseErrors::TODO("Cannot use await as identifier in strict mode"),
+								position,
+							));
+						}
 						Expression::VariableReference("await".to_owned(), position)
 					}
 				}
-				b't' if reader.is_keyword_advance("typeof") => {
-					let operator = UnaryOperator::TypeOf;
-					let operand =
-						Expression::from_reader_with_precedence(reader, operator.precedence())?;
-					let position = start.union(operand.get_position());
-					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
-				}
-				b'd' if reader.is_keyword_advance("delete") => {
-					let operator = UnaryOperator::Delete;
-					let operand =
-						Expression::from_reader_with_precedence(reader, operator.precedence())?;
-
-					if reader.strict_mode() {
-						// TODO wip
-						let is_bad =
-							if let Expression::PropertyAccess { parent, property, .. } = &operand {
-								property.is_private() || parent.is_primary_expression()
-							} else {
-								false
-							};
-						if is_bad {
-							return Err(ParseError::new(
-								ParseErrors::TODO("bad delete"),
-								operand.get_position(),
-							));
-						}
-					}
-
-					let position = start.union(operand.get_position());
-					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
-				}
-				b'v' if reader.is_keyword_advance("void") => {
-					let operator = UnaryOperator::Void;
-					let operand =
-						Expression::from_reader_with_precedence(reader, operator.precedence())?;
-					let position = start.union(operand.get_position());
-					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
-				}
 				b'y' if reader.is_keyword_advance("yield") => {
-					if !reader.state.flags.in_generator {
-						Expression::VariableReference("yield".to_owned(), start.with_length(5))
-					} else if !reader.state.flags.in_generator && reader.is_operator_advance("()") {
-						let on =
-							Expression::VariableReference("yield".to_owned(), start.with_length(5));
-						Expression::FunctionCall {
-							function: Box::new(on),
-							type_arguments: None,
-							arguments: Vec::new(),
-							position: start.union(reader.get_end()),
-							is_optional: false,
-						}
-					} else {
+					if reader.state.flags.in_generator {
 						let yielded = if reader.starts_with_expression_delimiter() {
 							None
 						} else {
@@ -683,7 +665,87 @@ impl Expression {
 						// }
 
 						Expression::SpecialOperators(SpecialOperators::Yield { yielded }, position)
+					} else {
+						let expression = if reader.is_operator_advance("()") {
+							let on = Expression::VariableReference(
+								"yield".to_owned(),
+								start.with_length(5),
+							);
+							Expression::FunctionCall {
+								function: Box::new(on),
+								type_arguments: None,
+								arguments: Vec::new(),
+								position: start.union(reader.get_end()),
+								is_optional: false,
+							}
+						} else {
+							Expression::VariableReference("yield".to_owned(), start.with_length(5))
+						};
+
+						if reader.strict_mode() {
+							return Err(ParseError::new(
+								ParseErrors::TODO("Cannot use yield as identifier in strict mode"),
+								expression.get_position(),
+							));
+						}
+
+						expression
 					}
+				}
+				b't' if reader.is_keyword_advance("typeof") => {
+					let operator = UnaryOperator::TypeOf;
+					let operand =
+						Expression::from_reader_with_precedence(reader, operator.precedence())?;
+					let position = start.union(operand.get_position());
+					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
+				}
+				b'd' if reader.is_keyword_advance("delete") => {
+					let operator = UnaryOperator::Delete;
+					// TODO > shift expression?
+					let operand =
+						Expression::from_reader_with_precedence(reader, operator.precedence())?;
+
+					if reader.strict_mode() {
+						let operand = operand.get_non_parenthesised();
+						// TODO wip
+						let is_bad: bool =
+							if let Expression::PropertyAccess { parent, property, .. } = operand {
+								property.is_private() || parent.is_primary_expression()
+							} else if let Expression::VariableReference(..)
+							| Expression::BinaryOperation { .. } = operand
+							{
+								// TODO exponentiation
+								true
+							} else {
+								false
+							};
+						if is_bad {
+							return Err(ParseError::new(
+								ParseErrors::TODO("bad delete"),
+								operand.get_position(),
+							));
+						}
+					}
+
+					let position = start.union(operand.get_position());
+					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
+				}
+				b'v' if reader.is_keyword_advance("void") => {
+					let operator = UnaryOperator::Void;
+					let operand =
+						Expression::from_reader_with_precedence(reader, operator.precedence())?;
+
+					if let Expression::VariableReference(ref name, ..) = operand
+						&& (name == "yield" || name == "await")
+					{
+						return Err(ParseError::new(
+							ParseErrors::TODO("bad name with void"),
+							operand.get_position(),
+						));
+					}
+
+					let position = start.union(operand.get_position());
+					Expression::UnaryOperation { operator, operand: Box::new(operand), position }
 				}
 				b't' if reader.is_keyword_advance("true") => {
 					Expression::BooleanLiteral(true, start.with_length(4))
@@ -831,9 +893,7 @@ impl Expression {
 								crate::VariableIdentifier::Standard(name.into_owned(), position);
 							let is_async = false;
 							let function = ArrowFunction::from_reader_with_first_parameter(
-								reader,
-								is_async,
-								identifier.into(),
+								reader, is_async, identifier,
 							)?;
 
 							Expression::ArrowFunction(Box::new(function))
@@ -984,9 +1044,7 @@ impl Expression {
 						Ok((name, position)) => {
 							let identifier = crate::VariableIdentifier::Standard(name, position);
 							let function = ArrowFunction::from_reader_with_first_parameter(
-								reader,
-								false,
-								identifier.into(),
+								reader, false, identifier,
 							)?;
 							top = Expression::ArrowFunction(Box::new(function));
 							continue;
@@ -1140,12 +1198,12 @@ impl Expression {
 
 					reader.advance(operator.to_str().len() as u32);
 					let position = top.get_position().union(reader.get_end());
+
+					let operand: VariableOrPropertyAccess = top.try_into()?;
+					let operand = variable_to_assignable(operand, reader)?;
 					// Increment and decrement are the only two postfix operations
-					top = Expression::UnaryPostfixAssignmentOperation {
-						operand: top.try_into()?,
-						operator,
-						position,
-					};
+					top =
+						Expression::UnaryPostfixAssignmentOperation { operand, operator, position };
 				}
 				AfterFirst::BinaryOperator(BinaryOperator::LessThan)
 					if reader.parse_type_annotations() && !reader.last_was_whitespace() =>
@@ -1266,24 +1324,6 @@ impl Expression {
 						rhs: Box::new(rhs),
 					};
 				}
-				AfterFirst::BinaryAssignmentOperator(operator) => {
-					if operator
-						.associativity_direction()
-						.should_return(return_precedence, operator.precedence())
-					{
-						return Ok(top);
-					}
-
-					reader.advance(operator.to_str().len() as u32);
-
-					let new_rhs = Self::from_reader_with_precedence(reader, operator.precedence())?;
-					top = Expression::BinaryAssignmentOperation {
-						position: top.get_position().union(new_rhs.get_position()),
-						lhs: top.try_into()?,
-						operator,
-						rhs: Box::new(new_rhs),
-					};
-				}
 				AfterFirst::Assign => {
 					if AssociativityDirection::RightToLeft
 						.should_return(return_precedence, ASSIGNMENT_PRECEDENCE)
@@ -1294,11 +1334,74 @@ impl Expression {
 					let position = top.get_position();
 					let lhs: LHSOfAssignment = top.try_into()?;
 
+					if let LHSOfAssignment::VariableOrPropertyAccess(
+						VariableOrPropertyAccess::Variable(ref name, pos),
+					) = lhs && let "arguments" | "eval" = name.as_str()
+						&& reader.strict_mode()
+					{
+						return Err(ParseError::new(
+							ParseErrors::TODO(
+								"cannot assign to 'arguments' or 'eval' in strict mode",
+							),
+							pos,
+						));
+					}
+
 					reader.advance(1);
 
 					let new_rhs = Self::from_reader_with_precedence(reader, return_precedence)?;
 					let position = position.union(new_rhs.get_position());
 					top = Expression::Assignment { position, lhs, rhs: Box::new(new_rhs) };
+				}
+				AfterFirst::BinaryAssignmentOperator(operator) => {
+					if operator
+						.associativity_direction()
+						.should_return(return_precedence, operator.precedence())
+					{
+						return Ok(top);
+					}
+
+					let lhs: VariableOrPropertyAccess = top.try_into()?;
+
+					if let VariableOrPropertyAccess::Variable(ref name, pos) = lhs
+						&& let "arguments" | "eval" = name.as_str()
+						&& reader.strict_mode()
+					{
+						return Err(ParseError::new(
+							ParseErrors::TODO(
+								"cannot assign to 'arguments' or 'eval' in strict mode",
+							),
+							pos,
+						));
+					}
+
+					// WIP
+					if reader.strict_mode() {
+						let is_simple = if let VariableOrPropertyAccess::Neither(..) = lhs {
+							false
+						} else {
+							true
+						};
+
+						if !is_simple {
+							return Err(ParseError::new(
+								ParseErrors::TODO("cannot assign to non-simple"),
+								lhs.get_position(),
+							));
+						}
+					}
+
+					reader.advance(operator.to_str().len() as u32);
+
+					let new_rhs = Self::from_reader_with_precedence(reader, operator.precedence())?;
+					let position = lhs.get_position().union(new_rhs.get_position());
+
+					top = Expression::BinaryAssignmentOperation {
+						position,
+						lhs,
+						operator,
+						rhs: Box::new(new_rhs),
+					};
 				}
 				AfterFirst::TemplateLiteralStart => {
 					if AssociativityDirection::LeftToRight
@@ -1530,6 +1633,41 @@ impl Expression {
 						let marker = reader.new_partial_point_marker(position);
 						PropertyReference::Marker(marker)
 					} else {
+						let current = reader.get_current();
+						if let Some(after) = current.strip_prefix('#') {
+							if !after.starts_with(|c: char| {
+								crate::lexer::utilities::is_identifier_start(c) || c == '\\'
+							}) {
+								return Err(ParseError::new(
+									ParseErrors::TODO("Cannot have gap between # and identifier"),
+									reader.get_start().with_length(1),
+								));
+							}
+
+							if !reader.state.flags.in_class {
+								return Err(ParseError::new(
+									ParseErrors::TODO(
+										"Cannot use private identifier outside of class body",
+									),
+									reader.get_start().with_length(1),
+								));
+							}
+
+							let is_bad = if let Expression::FunctionCall { .. } = top {
+								true
+							} else {
+								false
+							};
+
+							if is_bad {
+								return Err(ParseError::new(
+									ParseErrors::TODO(
+										"Cannot reference private property on this operand",
+									),
+									top.get_position(),
+								));
+							}
+						}
 						let is_private = reader.is_operator_advance("#");
 						let property =
 							reader.parse_identifier("property name", false)?.into_owned();
@@ -2425,7 +2563,7 @@ pub(crate) fn parse_after_await(
 	start: source_map::Start,
 	using: bool,
 ) -> ParseResult<MultipleExpression> {
-	if reader.starts_with_expression_delimiter() {
+	if reader.starts_with_expression_delimiter() && !reader.state.flags.in_async {
 		let position = start.with_length(5);
 		let expression = Expression::VariableReference("await".to_owned(), position);
 		Expression::from_reader_after_first_expression(reader, 0, expression)
@@ -2444,6 +2582,23 @@ pub(crate) fn parse_after_await(
 		let position = start.union(operand.get_position());
 		let top = Expression::UnaryOperation { operator, operand, position };
 		Expression::from_reader_after_first_expression(reader, 0, top).map(MultipleExpression)
+	}
+}
+
+pub(crate) fn variable_to_assignable(
+	input: VariableOrPropertyAccess,
+	reader: &crate::Lexer,
+) -> ParseResult<VariableOrPropertyAccess> {
+	if let VariableOrPropertyAccess::Variable(ref name, pos) = input
+		&& let "arguments" | "eval" = name.as_str()
+		&& reader.strict_mode()
+	{
+		Err(ParseError::new(
+			ParseErrors::TODO("cannot assign to 'arguments' or 'eval' in strict mode"),
+			pos,
+		))
+	} else {
+		Ok(input)
 	}
 }
 
@@ -2471,6 +2626,12 @@ pub(crate) fn parse_after_import(
 			Ok(ImportExpression::ImportDefer { path, position })
 		} else if reader.is_keyword_advance("meta") {
 			let position = start.union(reader.get_end());
+			if !reader.state.flags.in_module {
+				return Err(ParseError::new(
+					ParseErrors::TODO("cannot use import.meta in script"),
+					position,
+				));
+			}
 			Ok(ImportExpression::ImportMeta(position))
 		} else {
 			Err(crate::lexer::utilities::expected_one_of_items(
@@ -3005,13 +3166,7 @@ impl Expression {
 	#[must_use]
 	pub fn get_non_parenthesised(&self) -> &Self {
 		if let Expression::Parenthesised(inner_multiple_expr, _) = self {
-			&inner_multiple_expr.0
-			// if let MultipleExpression(expr) = &**inner_multiple_expr {
-			// 	expr.get_non_parenthesised()
-			// } else {
-			// 	// TODO could return a variant here...
-			// 	self
-			// }
+			&inner_multiple_expr.0.get_non_parenthesised()
 		} else if let Expression::Comment { on, .. } = self {
 			on.get_non_parenthesised()
 		} else {
@@ -3038,7 +3193,7 @@ impl Expression {
 
 	// TODO
 	pub fn is_valid_constructor(&self) -> bool {
-		true
+		!matches!(self, Expression::Import(..))
 	}
 
 	/// Recurses to find first non parenthesized expression

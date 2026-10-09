@@ -20,7 +20,20 @@ impl crate::ASTNode for WithStatement {
 		reader.expect_operator("(")?;
 		let expression = crate::MultipleExpression::from_reader(reader).map(Box::new)?;
 		reader.expect_operator(")")?;
+		reader.start_variable_region();
 		let inner = crate::block::BlockOrSingleStatement::from_reader(reader)?;
+
+		// WIP
+		if let crate::block::BlockOrSingleStatement::SingleStatement(ref statement) = inner
+			&& let crate::StatementOrDeclaration::Function(ref func) = statement.0
+		{
+			return Err(crate::ParseError::new(
+				crate::ParseErrors::TODO("function with"),
+				func.get_position(),
+			));
+		}
+
+		reader.end_block();
 		let position = start.union(reader.get_end());
 		Ok(Self { expression, inner, position })
 	}

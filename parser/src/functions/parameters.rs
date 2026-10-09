@@ -86,11 +86,12 @@ impl<L, V> FunctionParameters<L, V> {
 		self.parameters.len() == 1 && self.rest_parameter.is_none()
 	}
 
-	pub fn has_default_or_spread(&self) -> bool {
+	pub fn has_default_destructuring_or_spread(&self) -> bool {
 		// TODO Optional
 		self.rest_parameter.is_some()
 			|| self.parameters.iter().any(|param| {
 				matches!(&param.additionally, Some(ParameterData::WithDefaultValue(_)))
+					|| !matches!(&param.name, VariableField::Name(_))
 			})
 	}
 }
@@ -189,6 +190,17 @@ where
 	}
 
 	fn from_reader(reader: &mut crate::Lexer) -> ParseResult<Self> {
+		// TODO unsure
+		reader.state.current = Some(crate::lexer::VariableKind::BlockScoped);
+		let was_top_level_await = if reader.state.flags.in_async
+			&& reader.state.flags.top_level
+			&& reader.state.flags.in_module
+		{
+			std::mem::take(&mut reader.state.flags.in_async)
+		} else {
+			reader.state.flags.in_async
+		};
+
 		let start = reader.get_start();
 		reader.expect_chr('(')?;
 		let mut parameters = Vec::new();
@@ -312,24 +324,24 @@ where
 
 				let position = name.get_position().union(end_position);
 
-				if reader.get_options().features.run_validation && reader.strict_mode() {
-					let mut duplicate = None;
-					name.visit_names(&mut |name| {
-						if duplicate.is_none() {
-							duplicate = names
-								.iter()
-								.any(|existing| existing == name)
-								.then_some(name.to_owned());
-						}
-						names.push(name.into());
-					});
-					if let Some(_duplicate) = duplicate {
-						return Err(ParseError::new(
-							crate::ParseErrors::DuplicateParameterName,
-							position,
-						));
-					}
-				}
+				// if reader.get_options().features.run_validation && reader.strict_mode() {
+				// 	let mut duplicate = None;
+				// 	name.visit_names(&mut |name| {
+				// 		if duplicate.is_none() {
+				// 			duplicate = names
+				// 				.iter()
+				// 				.any(|existing| existing == name)
+				// 				.then_some(name.to_owned());
+				// 		}
+				// 		names.push(name.into());
+				// 	});
+				// 	if let Some(_duplicate) = duplicate {
+				// 		return Err(ParseError::new(
+				// 			crate::ParseErrors::DuplicateParameterName,
+				// 			position,
+				// 		));
+				// 	}
+				// }
 
 				parameters.push(Parameter {
 					visibility,
@@ -347,6 +359,9 @@ where
 		let close = reader.expect_chr(')')?;
 		let leading = L::try_make(this_type, super_type)?;
 		let position = start.union(close);
+
+		reader.state.flags.in_async = was_top_level_await;
+
 		Ok(FunctionParameters { leading, parameters, rest_parameter, position })
 	}
 

@@ -196,47 +196,9 @@ pub(crate) fn statements_and_declarations_from_reader(
 
 		let item = StatementOrDeclaration::from_reader(reader)?;
 
-		// Duplicate checking
-		if reader.get_options().features.run_validation && reader.strict_mode() {
-			// I believe this is lazyly allocated. TODO string -> &str
-			let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-			let mut duplicate = false;
-			if let StatementOrDeclaration::Function(ref func) = item {
-				if let Some(name) = &func.on.item.name.identifier.as_option_str() {
-					let name: String = String::from(*name);
-					duplicate = !seen.insert(name);
-				}
-			}
-
-			if let StatementOrDeclaration::VarVariable(ref item) = item {
-				for declaration in &item.item.declarations {
-					declaration.name.visit_names(&mut |name| {
-						duplicate = !seen.insert(name.to_owned());
-					});
-				}
-			}
-
-			if let StatementOrDeclaration::Variable(ref item) = item {
-				for declaration in &item.item.declarations {
-					declaration.name.visit_names(&mut |name| {
-						duplicate = !seen.insert(name.to_owned());
-					});
-				}
-			}
-
-			if duplicate {
-				let err = crate::ParseError::new(
-					crate::ParseErrors::TODO("double variable"),
-					item.get_position(),
-				);
-				return Err(err);
-			}
-		}
-
 		if let Some(allowed) = in_script_or_function_block {
-			if let StatementOrDeclaration::Expression(expression) = &item
-				&& let crate::Expression::StringLiteral(inner, ..) = &expression.0
+			if let StatementOrDeclaration::Expression(ref expression) = item
+				&& let crate::Expression::StringLiteral(ref inner, ..) = expression.0
 				&& inner == "use strict"
 			{
 				// TODO if last string octal

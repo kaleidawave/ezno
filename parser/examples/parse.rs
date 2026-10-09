@@ -145,8 +145,8 @@ fn parse_path(
 
 	let jsx = if let Some(jsx_options) = parse_options.jsx {
 		Some(jsx_options)
-	} else if path_str.ends_with('x') {
-		Some(options::JSX::default())
+	} else if path_str.ends_with('x') || path_str.ends_with("html") {
+		Some(options::JSXOptions::default())
 	} else {
 		None
 	};
@@ -304,10 +304,10 @@ fn run_interactive() {
 						}
 						"extras" => {
 							parse_options.extras = options::Extras::all();
-							parse_options.jsx = Some(options::JSX::all());
+							parse_options.jsx = Some(options::JSXOptions::all());
 						}
 						"jsx" => {
-							parse_options.jsx = Some(options::JSX::default());
+							parse_options.jsx = Some(options::JSXOptions::default());
 						}
 						option => {
 							eprintln!("unexpected {option:?}");

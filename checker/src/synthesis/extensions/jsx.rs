@@ -151,10 +151,8 @@ pub(crate) fn synthesise_jsx_element<T: crate::ReadFromFS>(
 			&mut environment.info,
 		);
 
-		let children_iterator = children
-			.iter()
-			.filter(|p| !matches!(p, JSXNode::LineBreak | JSXNode::Comment(..)))
-			.enumerate();
+		let children_iterator =
+			children.iter().filter(|p| !matches!(p, JSXNode::Comment(..))).enumerate();
 
 		let mut count = 0;
 		for (idx, child) in children_iterator {
@@ -467,11 +465,11 @@ fn synthesise_jsx_child<T: crate::ReadFromFS>(
 			//     );
 			// }
 		}
-		JSXNode::TextNode(text, _) => {
+		JSXNode::Text(text, _) => {
 			checking_data.types.new_constant_type(Constant::String(text.clone()))
 		}
 		JSXNode::UnknownExpression(_, _) => todo!(),
-		JSXNode::LineBreak | JSXNode::Comment(..) => {
+		JSXNode::Comment(..) => {
 			unreachable!("Should have been skipped higher up");
 		}
 	}

@@ -171,12 +171,23 @@ impl crate::ASTImplementation for EznoParser {
 				run_validation: false,
 				..Default::default()
 			},
-			jsx: if is_jsx { Some(Default::default()) } else { None },
+			jsx: if is_jsx {
+				Some(if extra_syntax {
+					parser::options::JSXOptions::all()
+				} else {
+					parser::options::JSXOptions::default()
+				})
+			} else {
+				None
+			},
 			extras: if extra_syntax {
 				parser::options::Extras::all()
 			} else {
 				parser::options::Extras::default()
 			},
+			// TODO as option
+			module: true,
+			top_level_await: true,
 			..Default::default()
 		}
 	}
