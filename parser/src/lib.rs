@@ -14,7 +14,7 @@ pub mod modules;
 pub mod numbers;
 pub mod options;
 pub mod property_key;
-pub mod regexp;
+// pub mod regexp;
 pub mod statements_and_declarations;
 pub mod strings;
 pub mod types;
